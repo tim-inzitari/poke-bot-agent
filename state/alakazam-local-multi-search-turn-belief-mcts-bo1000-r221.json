@@ -1,0 +1,380 @@
+{
+  "schema": "poke_bot.alakazam_local_multi_search_turn_belief_mcts_bo1000_r221/v1",
+  "owner_decision_revision": 221,
+  "recorded_at_utc": "2026-08-10T19:38:22Z",
+  "status": "authorized_local_exploratory_bo1000_multi_search_turn_planner_pending_fresh_r221_preflight",
+  "owner_intent": "supersede only r219 stochastic fallback semantics for a new local approximate BO1000: fully forceable finite chance may still be exactly enumerated and probability-weighted, but every random or chance event lacking a complete proof of exact outcomes, probabilities, independently forceable successors, and future legality stops search at the pre-random boundary for frozen leaf evaluation; private sampling, rule/distribution guessing, and advancement through an unobserved outcome are forbidden",
+  "relationship_to_existing_work": {
+    "supersedes_only_r219_stochastic_fallback_semantics_for_a_new_r221_run_only": true,
+    "r219_contract_path": "state/alakazam-local-multi-search-turn-belief-mcts-bo1000-r219.json",
+    "r219_contract_sha256": "sha256:0ba3e67de761eae8c189cf4bf9900ff01574b54941ca42d0dbdc2b9fdb134f3e",
+    "r219_contract_must_be_preserved_byte_for_byte": true,
+    "r219_45_second_pool_15_second_segment_multi_search_canary_bo1000_and_no_kaggle_constraints_preserved": true,
+    "all_nonstochastic_r219_execution_semantics_remain_in_force": true,
+    "r218_contract_path": "state/alakazam-local-first-decision-belief-mcts-bo1000-r218.json",
+    "r218_contract_sha256": "sha256:5ffb63883290d5cc295cb337ceb9fee9ba075356ab88d67a6cf616ec44bb485a",
+    "r218_contract_must_be_preserved_byte_for_byte": true,
+    "r218_historical_authorization_or_receipts_are_not_rewritten": true,
+    "r216_contract_path": "state/alakazam-local-approximate-belief-mcts-bo1000-r216.json",
+    "r216_contract_sha256": "sha256:2e260755c33d9fa8a2f821f7eb5e6edb8cd609112d8e01e7c94937aefbe776f3",
+    "r216_contract_must_be_preserved_byte_for_byte": true,
+    "r215_contract_must_be_preserved_byte_for_byte": true,
+    "does_not_replace_r215_for_exact_or_promotion_qualified_work": true,
+    "separate_from_r202_r205_r207_exact_chance_research": true,
+    "r207_research_and_typed_contract_must_be_preserved": true,
+    "legacy_recursive_rtp_abandoned_under_r210": true,
+    "legacy_rtp_sidecar_executor_corpus_or_partial_receipt_allowed": false
+  },
+  "frozen_r195_package": {
+    "r195_contract_path": "state/alakazam-terminal-expert-bootstrap-no-rtp-submit-r195.json",
+    "r195_contract_sha256": "sha256:e37cf1d3e638c3aed56230c9fa970c61e6c1ed8b4bd3024de259cb9847c31e48",
+    "submission_id": 55378392,
+    "submission_message": "alakazam training milestone iter 21 copy 1/2 first 261d367e131e NO RTP",
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "checkpoint_bytes": 127914385,
+    "bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "deck_id": "alakazam-owner-rtp-pilot-r175",
+    "deck_path": "decks/archetype-samples/alakazam-owner-rtp-pilot-r175.csv",
+    "deck_cards_sha256": "sha256:660c1274aac19d88c40fd2bb52187f53dc639d944506760e386f2686b91cc247",
+    "same_checkpoint_deck_model_config_and_non_experimental_runtime_required_for_both_arms": true,
+    "experimental_wrapper_may_change_only_approximate_multi_search_turn_belief_mcts_action_selection_and_its_typed_config": true,
+    "base_checkpoint_or_parameter_mutation_allowed": false,
+    "disabled_runtime_components": {
+      "recursive_turn_planner_rtp": true,
+      "legacy_rtp_sidecar_or_executor": true,
+      "guide_linear_additive_logit_layer": true,
+      "guide_logit_bonus": true,
+      "guide2vec": true,
+      "new_learned_head_or_adapter_training": true
+    }
+  },
+  "matchup_adapter": {
+    "required_on_both_arms": true,
+    "frozen_trained_adapter_bank_required": true,
+    "runtime_enabled_required": true,
+    "exact_r195_public_matchup_tree_sha256": "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe0194c9049",
+    "same_tree_bank_runtime_graph_and_route_resolution_required_for_both_arms": true,
+    "matchup_adapter_is_inside_the_frozen_whole_model_path": true
+  },
+  "experimental_arm": {
+    "strategy_id": "local_approximate_multi_search_per_actual_turn_public_history_root_sampled_belief_mcts_whole_frozen_model_wrapper",
+    "implementation": {
+      "module": "poke_bot.belief_mcts",
+      "class": "BeliefMCTS",
+      "optional_turn_cache_module": "poke_bot.r215_full_turn_belief_mcts",
+      "existing_approximate_belief_mcts_or_search_api_permitted": true,
+      "private_simulator_actions_only": true,
+      "only_final_selected_verified_next_legal_action_reaches_real_game": true,
+      "direct_policy_action_is_a_search_candidate": true,
+      "missing_illegal_or_untrusted_search_result_behavior": "execute_exact_frozen_r195_direct_policy_action"
+    },
+    "multi_search_actual_turn_planning": {
+      "one_shared_source_backed_planner_pool_per_actual_turn_required": true,
+      "planner_is_receding_horizon_multi_search_turn_planner": true,
+      "fresh_searches_per_actual_turn_is_fixed": false,
+      "fresh_searches_may_recur_only_at_meaningful_stop_or_decision_boundaries": true,
+      "per_meaningful_search_segment_ceiling_seconds": 15.0,
+      "first_meaningful_search_has_no_special_lower_ceiling": true,
+      "later_meaningful_searches_use_only_residual_shared_turn_pool": true,
+      "new_actual_turn_resets_the_shared_pool_and_cached_turn_plan": true,
+      "private_simulator_actions_never_reach_the_real_game": true,
+      "no_hard_abort_when_pool_is_short_or_exhausted": true,
+      "short_or_exhausted_pool_behavior": "execute_exact_frozen_r195_direct_policy_action_for_the_current_legal_decision"
+    },
+    "meaningful_stop_or_decision_boundaries": {
+      "definition": "a state during a still-active actual turn at which a non-forced current legal decision, a realized chance or information divergence, or a validated cached-plan endpoint requires choosing the next branch",
+      "first_meaningful_choice_may_open_search": true,
+      "realized_chance_or_information_divergence_may_open_fresh_search_if_residual_pool_remains": true,
+      "realized_unforceable_random_outcome_may_open_fresh_search_only_after_reality_if_residual_pool_remains": true,
+      "validated_cached_plan_endpoint_may_open_fresh_search_if_residual_pool_remains": true,
+      "simulated_turn_end_is_a_leaf_or_terminal_evaluation_within_the_current_segment": true,
+      "actual_turn_end_may_not_open_another_search": true,
+      "actual_turn_end_closes_and_discards_the_current_turn_pool_and_cache": true,
+      "fresh_search_without_residual_pool_allowed": false,
+      "search_result_selects_only_the_current_next_legal_action": true,
+      "best_fully_backed_up_legal_root_action_is_required_before_search_action_authority": true
+    },
+    "deterministic_cached_or_obvious_steps": {
+      "fresh_search_required": false,
+      "consume_only_required_validation_and_dispatch_time": true,
+      "fingerprint_validation_required_before_cached_action_dispatch": true,
+      "validation_facts": [
+        "actual_turn_key",
+        "policy_visible_observation_fingerprint",
+        "complete_legal_action_order_or_exact_factorized_equivalent",
+        "option_encoding_fingerprint",
+        "cached_selected_action_legality"
+      ],
+      "forced_or_single_legal_action_is_not_a_search_boundary": true,
+      "cached_deterministic_continuation_is_not_researched_when_valid": true,
+      "obvious_direct_policy_action_may_be_dispatched_without_forcing_fresh_search": true
+    },
+    "cache_divergence_and_plan_endpoints": {
+      "valid_deterministic_cached_subtree_may_advance_without_recalculation": true,
+      "realized_chance_or_information_divergence_invalidates_only_the_affected_cached_branch": true,
+      "unforceable_random_pre_boundary_leaf_does_not_create_an_unobserved_outcome_cache_child": true,
+      "missing_invalid_diverged_or_exhausted_cached_plan_with_residual_pool_behavior": "open_one_fresh_search_at_the_current_meaningful_boundary",
+      "missing_invalid_diverged_or_exhausted_cached_plan_without_residual_pool_behavior": "execute_exact_frozen_r195_direct_policy_action",
+      "direct_fallback_does_not_abort_the_turn_or_game": true
+    },
+    "chance_and_information_handling": {
+      "simple_finite_chance_may_be_advanced_past_for_effective_value_only_when_all_outcomes_exact_probabilities_independently_forceable_successors_and_future_legality_are_available": true,
+      "fully_enumerated_outcome_cap": 6,
+      "coin_flip_outcome_count": 2,
+      "standard_die_outcome_count": 6,
+      "simple_finite_chance_backup_is_exact_probability_weighted_sum_when_that_condition_holds": true,
+      "continue_evaluation_beyond_each_enumerated_child_within_current_segment_and_remaining_turn_budget": true,
+      "exact_finite_chance_node_requires_force_enumeration_probability_independent_successor_and_future_legality_receipt": true,
+      "exact_finite_chance_children_must_each_be_forced_from_the_same_pre_random_state": true,
+      "paired_engine_seed_material_is_for_match_reproducibility_only": true,
+      "paired_engine_seeding_may_not_hunt_or_pre_randomize_desired_chance_outcomes": true,
+      "unforceable_or_incompletely_proven_randomness_is_a_pre_random_leaf_evaluation_boundary": true,
+      "unforceable_randomness_behavior": "stop_at_pre_random_boundary_and_leaf_evaluate_without_sampling_guessing_or_unobserved_advancement",
+      "private_sampling_of_unforceable_coin_die_or_other_random_outcome_allowed": false,
+      "guessing_random_distribution_rules_or_successors_allowed": false,
+      "advance_through_unobserved_random_outcome_allowed": false,
+      "root_sampled_hidden_particles_do_not_authorize_private_random_outcome_sampling": true,
+      "realized_random_outcome_requires_cache_validation_before_reuse": true,
+      "realized_unforceable_random_outcome_may_research_only_after_reality_and_from_residual_turn_pool": true,
+      "local_approximate_run_must_not_be_labelled_r207_exact_chance": true
+    },
+    "prior_allocation": {
+      "frozen_policy_priors_feed_puct": true,
+      "dominant_prior_lines_are_naturally_prioritized_by_puct": true,
+      "positive_legal_low_prior_lines_remain_available_to_search": true,
+      "arbitrary_probability_threshold_pruning_allowed": false,
+      "only_zero_prior_or_illegal_lines_may_be_excluded_without_other_search_evidence": true,
+      "low_prior_lines_may_remain_unexpanded_at_deadline_without_being_reported_as_pruned": true,
+      "higher_probability_finite_chance_children_are_prioritized_for_deeper_search": true,
+      "nonzero_probability_finite_chance_children_receive_bounded_coverage_when_valid_and_budget_permits": true,
+      "nonzero_probability_finite_chance_child_threshold_pruning_allowed": false
+    },
+    "approximation_boundary": {
+      "local_exploratory_only": true,
+      "perfect_native_complete_semantic_state_equivalence_proof_required_before_local_launch": false,
+      "perfect_native_actions_commute_certificate_required_before_local_launch": false,
+      "approximate_reuse_must_not_be_reported_as_native_exact_equivalence_or_actions_commute": true,
+      "transposition_or_model_evaluation_savings_claim_without_native_attestation_allowed": false,
+      "required_report_labels": [
+        "local_approximate_belief_mcts_non_exact",
+        "root_sampled_belief_mcts_non_r207_exact_chance",
+        "non_promotion_exploratory_result"
+      ]
+    },
+    "whole_frozen_model_wrapper": {
+      "all_policy_value_fusion_and_matchup_adapter_inference_comes_from_exact_frozen_r195_package": true,
+      "frozen_model_policy_priors_required": true,
+      "frozen_model_leaf_values_required": true,
+      "unforceable_random_pre_boundary_leaf_values_come_from_the_frozen_model": true,
+      "matchup_adapter_route_is_used_in_direct_and_search_model_forwards": true,
+      "standalone_reranker_or_partial_model_substitution_allowed": false,
+      "gradient_optimizer_parameter_update_or_calibration_training_allowed": false
+    }
+  },
+  "timing": {
+    "configuration_surface": "config/rl_protocol.yaml#/alakazam_local_multi_search_turn_belief_mcts_bo1000_r221/timing",
+    "clock": "monotonic_wall_clock",
+    "source_backed_outer_game_clock": {
+      "module": "poke_bot.mcts.GameClock",
+      "default_total_game_wall_seconds": 600.0,
+      "default_reserve_wall_seconds": 30.0,
+      "turn_pool_divisor": 8.0,
+      "dynamic_game_allowance_formula": "min(45.0, max(0.0, (remaining_game_seconds - 30.0) / 8.0))",
+      "healthy_game_dynamic_allowance_seconds": 45.0,
+      "dynamic_allowance_shrink_begins_only_when_remaining_game_seconds_below": 390.0,
+      "r216_dynamic_game_allowance_reused_without_mutating_r216": true
+    },
+    "shared_actual_turn_planner_pool": {
+      "default_wall_seconds": 45.0,
+      "effective_turn_pool_formula": "dynamic_game_allowance",
+      "all_search_simulator_model_adapter_validation_cache_backup_receipt_and_direct_fallback_work_is_charged": true,
+      "atomic_steps_do_not_reset_the_turn_pool": true,
+      "remaining_pool_is_recomputed_before_each_meaningful_boundary": true,
+      "pool_exhaustion_is_a_direct_fallback_condition_not_a_hard_abort": true
+    },
+    "meaningful_search_segments": {
+      "per_search_segment_ceiling_seconds": 15.0,
+      "effective_fresh_search_allowance_formula": "min(15.0, remaining_shared_turn_pool)",
+      "first_segment_has_no_special_lower_ceiling": true,
+      "every_later_meaningful_segment_uses_the_same_ceiling_and_only_the_residual_pool": true,
+      "if_a_direct_fallback_reservation_is_required_it_must_come_from_the_same_shared_turn_pool": true
+    },
+    "later_meaningful_searches": {
+      "fresh_search_allowed_when_meaningful_boundary_and_residual_pool_remain": true,
+      "effective_fresh_search_allowance_formula": "min(15.0, remaining_shared_turn_pool_after_required_direct_fallback_reservation)",
+      "fixed_per_step_search_cap": 15.0,
+      "five_second_outer_call_cap_inherited_from_r216": false,
+      "must_not_open_or_reset_another_twenty_second_pool": true
+    },
+    "individual_model_or_simulator_calls": {
+      "hard_outer_call_cap_enforced": false,
+      "observed_and_telemetrized": true,
+      "required_telemetry": [
+        "call_kind",
+        "started_monotonic_seconds",
+        "ended_monotonic_seconds",
+        "elapsed_wall_seconds",
+        "outcome_or_deadline_reason"
+      ]
+    },
+    "direct_fallback": {
+      "exact_frozen_r195_direct_policy_required_for_insufficient_time_or_untrusted_search": true,
+      "may_use_only_remaining_shared_turn_pool": true,
+      "does_not_authorize_a_hard_abort_or_turn_termination": true
+    },
+    "fixed_simulation_target_allowed": false,
+    "fixed_depth_target_allowed": false,
+    "fixed_simulation_or_depth_completion_gate_allowed": false,
+    "emergency_safety_guard_only": {
+      "simulation_count_ceiling": 1000000,
+      "is_a_requested_simulation_or_depth_target": false,
+      "is_an_optimization_goal": false,
+      "behavior_when_reached": "stop_the_current_search_and_execute_a_valid_cached_or_exact_direct_action"
+    },
+    "early_search_stop": {
+      "allowed": true,
+      "requires_explicit_stable_root_convergence_receipt": true,
+      "requires_fully_backed_up_selected_legal_action": true,
+      "selected_action_must_be_in_current_complete_legal_action_set": true,
+      "partial_tree_time_only_simulation_count_only_or_unbacked_action_early_stop_allowed": false,
+      "required_receipt_facts": [
+        "stable_root_convergence",
+        "selected_action_legal",
+        "selected_action_fully_backed_up",
+        "root_value_or_visit_stability_evidence"
+      ]
+    }
+  },
+  "evaluation_design": {
+    "evaluation_id": "alakazam-r221-local-multi-search-turn-belief-mcts-bo1000",
+    "output_root": "/home/inzi/poke-bot-agent/outputs/evaluations/alakazam-local-multi-search-turn-belief-mcts-r221-bo1000",
+    "required_r221_canary_before_bo1000": {
+      "evaluation_id": "alakazam-r221-local-multi-search-turn-belief-mcts-canary10",
+      "total_games": 10,
+      "matched_rng_pairs": 5,
+      "games_per_pair": 2,
+      "belief_mcts_as_seat_0": 5,
+      "belief_mcts_as_seat_1": 5,
+      "belief_mcts_actual_first": 5,
+      "belief_mcts_actual_second": 5,
+      "same_frozen_r195_package_and_runtime_on_matchup_adapter_required": true,
+      "successful_valid_canary_required_before_bo1000_dispatch": true,
+      "invalid_or_incomplete_canary_behavior": "hold_bo1000_and_report_the_failure_without_training_serving_or_kaggle_action",
+      "required_report_facts": [
+        "total_mcts_turns",
+        "turns_with_exactly_one_search_segment",
+        "turns_with_one_or_more_later_research_segments",
+        "average_search_segments_per_turn",
+        "maximum_search_segments_per_turn",
+        "cache_only_later_steps",
+        "finite_chance_enumerations",
+        "unforceable_random_pre_boundary_leaf_evaluations",
+        "unforceable_random_boundary_reasons",
+        "private_random_outcome_samples",
+        "guessed_random_rules_or_successors",
+        "unobserved_random_outcome_advances",
+        "chance_or_information_rebuilds",
+        "simulations",
+        "depth",
+        "convergence",
+        "direct_fallbacks",
+        "mcts_action_changes_relative_to_frozen_direct_policy"
+      ]
+    },
+    "total_games": 1000,
+    "matched_rng_pairs": 500,
+    "games_per_pair": 2,
+    "complete_all_1000_games_without_early_best_of_stop": true,
+    "arms": [
+      "frozen_r195_no_rtp_direct_policy_with_matchup_adapter",
+      "local_approximate_multi_search_turn_belief_mcts_wrapping_same_frozen_r195_package_with_matchup_adapter"
+    ],
+    "seat_balance": {
+      "belief_mcts_as_seat_0": 500,
+      "belief_mcts_as_seat_1": 500,
+      "direct_policy_as_seat_0": 500,
+      "direct_policy_as_seat_1": 500,
+      "swap_seats_within_every_rng_pair": true
+    },
+    "actual_turn_order_balance": {
+      "belief_mcts_actual_first": 500,
+      "belief_mcts_actual_second": 500,
+      "direct_policy_actual_first": 500,
+      "direct_policy_actual_second": 500,
+      "initial_actor_is_explicit_sealed_pair_material_not_inferred_from_seat": true,
+      "missing_duplicate_crossed_or_unbalanced_pair_fails_closed": true
+    },
+    "pairing": {
+      "identical_initial_rng_and_deck_order_material_within_pair": true,
+      "unique_pair_ids_and_pair_game_nonces_required": true,
+      "same_frozen_package_and_matchup_adapter_runtime_required": true,
+      "only_experimental_runtime_graph_difference_is_approximate_multi_search_turn_belief_mcts_action_selection": true
+    },
+    "parallelism": {
+      "parallel_execution_required_when_safe_capacity_exists": true,
+      "remote_workers_allowed_after_safe_noninterference_preflight": true,
+      "bert_elmo_and_train_allowed_only_after_per_host_safe_noninterference_preflight": true,
+      "existing_protected_workload_stop_restart_reconfigure_or_worker_reduction_allowed": false,
+      "interactive_sessions_may_be_signalled_terminated_or_replaced": false,
+      "content_addressed_output_required": true
+    }
+  },
+  "reporting": {
+    "must_state_approximate_non_exact_and_non_promotion_status": true,
+    "must_not_describe_results_as_r207_exact_chance_or_native_exact_state_equivalence": true,
+    "paired_seat_first_second_results_required": true,
+    "shared_turn_pool_initial_effective_used_and_remaining_values_required": true,
+    "meaningful_boundary_search_cache_validation_and_direct_fallback_counts_required": true,
+    "first_and_later_search_allowances_used_wall_seconds_and_stop_reasons_required": true,
+    "r221_canary_reports_total_mcts_turns_one_segment_turns_later_research_turns_average_and_max_segments_cache_only_steps_exact_finite_chance_enumerations_unforceable_random_boundary_leaf_evaluations_reasons_zero_private_samples_zero_rule_guesses_zero_unobserved_advances_rebuilds_simulations_depth_convergence_fallbacks_and_action_changes_required": true,
+    "chance_information_divergence_and_plan_endpoint_research_reasons_required": true,
+    "unforceable_random_boundary_receipts_required": true,
+    "private_random_outcome_sampling_count_must_be_zero": true,
+    "guessed_random_rule_or_successor_count_must_be_zero": true,
+    "unobserved_random_outcome_advance_count_must_be_zero": true,
+    "prior_allocation_and_low_prior_line_telemetry_required": true,
+    "early_stop_convergence_and_fully_backed_up_legal_action_receipts_required": true,
+    "timing_simulations_depth_and_emergency_guard_summary_required": true,
+    "plain_english_result_table_required": true,
+    "missing_telemetry_may_be_imputed": false
+  },
+  "future_separately_authorized_kaggle_runtime_target": {
+    "applies_only_after_a_separate_future_owner_authorization": true,
+    "aws_instance_equivalent": "p5.4xlarge-equivalent",
+    "accelerator": "H100 80GB",
+    "accelerator_memory_gib": 80,
+    "host_memory_gib": 256,
+    "vcpus": 16,
+    "optimization_requirements": [
+      "batched_frozen_inference",
+      "resource_aware_search"
+    ],
+    "this_contract_grants_kaggle_runtime_or_submission_authority": false
+  },
+  "launch": {
+    "offline_implementation_and_tests_authorized": true,
+    "fresh_r221_preflight_and_content_addressed_output_required_before_execution": true,
+    "managed_r221_canary_launch_authorized_after_fresh_preflight": true,
+    "local_exploratory_bo1000_authorized_after_fresh_r221_preflight_and_valid_canary": true,
+    "contract_recording_step_performs_no_launch_runtime_or_service_change": true,
+    "perfect_native_state_equivalence_or_actions_commute_receipt_required": false
+  },
+  "authority": {
+    "offline_implementation_and_tests_authorized": true,
+    "local_exploratory_bo1000_authorized_after_fresh_r221_preflight_and_valid_canary": true,
+    "training_or_gradient_updates_authorized": false,
+    "evaluation_games_training_eligible": false,
+    "frozen_model_or_matchup_adapter_updates_authorized": false,
+    "serving_eligible": false,
+    "production_action_authority_enabled": false,
+    "selector_change_authorized": false,
+    "checkpoint_publication_authorized": false,
+    "promotion_authorized": false,
+    "kaggle_api_calls_authorized": false,
+    "kaggle_upload_authorized": false,
+    "kaggle_queue_authorized": false,
+    "kaggle_submission_authorized": false,
+    "r175_restart_authorized": false,
+    "iteration_21_collection_authorized": false
+  }
+}

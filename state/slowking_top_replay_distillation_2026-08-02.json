@@ -1,0 +1,3480 @@
+{
+  "schema": "poke_bot.slowking_top_replay_distillation/v1",
+  "status": "research_only_no_training_or_runtime_authority",
+  "source": {
+    "date": "2026-08-02",
+    "archive": "/Users/tsinzitari/Documents/poke-agent-codex/data/episodes/raw/pokemon-tcg-ai-battle-episodes-2026-08-02.zip",
+    "archive_sha256": "sha256:fa91e058a42d5fffab0f3e63f04fba5acc9bfbd2e2225e97aa62f45f5d430eb8",
+    "archive_json_members": 4586,
+    "manifest_episode_count": 4587,
+    "manifest_minus_archive_members": 1,
+    "episodes_scanned": 4586
+  },
+  "identity": {
+    "unique_deck_lists": 1,
+    "unique_team_names": [
+      "ShumpeiNomura"
+    ],
+    "decks": [
+      {
+        "fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+        "games": 101,
+        "card_count": 60,
+        "cards": [
+          {
+            "card_id": 5,
+            "card_name": "Basic {P} Energy",
+            "count": 4
+          },
+          {
+            "card_id": 19,
+            "card_name": "Telepath Psychic Energy",
+            "count": 4
+          },
+          {
+            "card_id": 115,
+            "card_name": "Conkeldurr",
+            "count": 1
+          },
+          {
+            "card_id": 140,
+            "card_name": "Fezandipiti ex",
+            "count": 1
+          },
+          {
+            "card_id": 144,
+            "card_name": "Kyurem",
+            "count": 2
+          },
+          {
+            "card_id": 162,
+            "card_name": "Slowpoke",
+            "count": 4
+          },
+          {
+            "card_id": 163,
+            "card_name": "Slowking",
+            "count": 4
+          },
+          {
+            "card_id": 183,
+            "card_name": "Smoochum",
+            "count": 2
+          },
+          {
+            "card_id": 184,
+            "card_name": "Latias ex",
+            "count": 2
+          },
+          {
+            "card_id": 224,
+            "card_name": "Annihilape",
+            "count": 1
+          },
+          {
+            "card_id": 756,
+            "card_name": "Mega Kangaskhan ex",
+            "count": 3
+          },
+          {
+            "card_id": 1071,
+            "card_name": "Meowth ex",
+            "count": 1
+          },
+          {
+            "card_id": 1088,
+            "card_name": "Prime Catcher",
+            "count": 1
+          },
+          {
+            "card_id": 1097,
+            "card_name": "Night Stretcher",
+            "count": 4
+          },
+          {
+            "card_id": 1121,
+            "card_name": "Ultra Ball",
+            "count": 4
+          },
+          {
+            "card_id": 1123,
+            "card_name": "Switch",
+            "count": 1
+          },
+          {
+            "card_id": 1146,
+            "card_name": "Wondrous Patch",
+            "count": 3
+          },
+          {
+            "card_id": 1152,
+            "card_name": "Poké Pad",
+            "count": 4
+          },
+          {
+            "card_id": 1188,
+            "card_name": "Ciphermaniac’s Codebreaking",
+            "count": 4
+          },
+          {
+            "card_id": 1194,
+            "card_name": "Colress’s Tenacity",
+            "count": 1
+          },
+          {
+            "card_id": 1225,
+            "card_name": "Hilda",
+            "count": 1
+          },
+          {
+            "card_id": 1227,
+            "card_name": "Lillie's Determination",
+            "count": 4
+          },
+          {
+            "card_id": 1248,
+            "card_name": "Academy at Night",
+            "count": 4
+          }
+        ]
+      }
+    ]
+  },
+  "outcomes": {
+    "games": 101,
+    "wins": 67,
+    "losses": 34,
+    "draws": 0,
+    "win_rate": 0.6633663366336634,
+    "turn_order": {
+      "first": {
+        "games": 48,
+        "wins": 35,
+        "win_rate": 0.7291666666666666
+      },
+      "second": {
+        "games": 53,
+        "wins": 32,
+        "win_rate": 0.6037735849056604
+      },
+      "unknown": {
+        "games": 0,
+        "wins": 0,
+        "win_rate": null
+      }
+    },
+    "by_opponent_team": [
+      {
+        "opponent_team_name": "Octavi Grau",
+        "games": 5,
+        "wins": 4,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.8
+      },
+      {
+        "opponent_team_name": "RtoABC",
+        "games": 5,
+        "wins": 2,
+        "losses": 3,
+        "draws": 0,
+        "win_rate": 0.4
+      },
+      {
+        "opponent_team_name": "Jose Coronel",
+        "games": 4,
+        "wins": 3,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.75
+      },
+      {
+        "opponent_team_name": "Raihan Ramadistra",
+        "games": 4,
+        "wins": 3,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.75
+      },
+      {
+        "opponent_team_name": "palsystem",
+        "games": 4,
+        "wins": 2,
+        "losses": 2,
+        "draws": 0,
+        "win_rate": 0.5
+      },
+      {
+        "opponent_team_name": "カントー地方マスター(KantoRegionMaster)",
+        "games": 4,
+        "wins": 3,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.75
+      },
+      {
+        "opponent_team_name": "@kdcyberdude",
+        "games": 3,
+        "wins": 3,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "ANDPAD kaggler team",
+        "games": 3,
+        "wins": 3,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Dries @ Tufa Labs",
+        "games": 3,
+        "wins": 3,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Iliamna",
+        "games": 3,
+        "wins": 2,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.6666666666666666
+      },
+      {
+        "opponent_team_name": "Iolzpo + emonga",
+        "games": 3,
+        "wins": 1,
+        "losses": 2,
+        "draws": 0,
+        "win_rate": 0.3333333333333333
+      },
+      {
+        "opponent_team_name": "James Cox & Henry Chao",
+        "games": 3,
+        "wins": 1,
+        "losses": 2,
+        "draws": 0,
+        "win_rate": 0.3333333333333333
+      },
+      {
+        "opponent_team_name": "MtN",
+        "games": 3,
+        "wins": 2,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.6666666666666666
+      },
+      {
+        "opponent_team_name": "Rmy",
+        "games": 3,
+        "wins": 2,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.6666666666666666
+      },
+      {
+        "opponent_team_name": "Tatsuya Kayama",
+        "games": 3,
+        "wins": 1,
+        "losses": 2,
+        "draws": 0,
+        "win_rate": 0.3333333333333333
+      },
+      {
+        "opponent_team_name": "sadwat",
+        "games": 3,
+        "wins": 3,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Bart, Edwyn",
+        "games": 2,
+        "wins": 2,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Dominic Peel",
+        "games": 2,
+        "wins": 2,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "JZ",
+        "games": 2,
+        "wins": 2,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Oshbocker",
+        "games": 2,
+        "wins": 1,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.5
+      },
+      {
+        "opponent_team_name": "bono",
+        "games": 2,
+        "wins": 2,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "flg",
+        "games": 2,
+        "wins": 2,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "keidroid",
+        "games": 2,
+        "wins": 1,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.5
+      },
+      {
+        "opponent_team_name": "lmaffei",
+        "games": 2,
+        "wins": 1,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.5
+      },
+      {
+        "opponent_team_name": "李秉叡（ntumlnoob）",
+        "games": 2,
+        "wins": 2,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "213tubo",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Charmander & Meowth",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Gijs Smit",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "Iain and David",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "Jack",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Kosmostars",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "LiamK",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "MR.h",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "Made a Beautiful Bouquet",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "Majkel1337",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Matsu",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "MissingNo.",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Shun",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "THIRD PTCG Club",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "Thai",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Where is my orbit",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "clora",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "denden12",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "junlee789",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "miya",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "nasuo445",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "qb",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "szlachetny snieg",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "tonakaiiii",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "vvs",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "低消650元任你吃啊",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "想要成为kaggle大师",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      }
+    ]
+  },
+  "behavior": {
+    "initial_active": [
+      {
+        "key": 756,
+        "count": 22,
+        "fraction": 0.2558139534883721,
+        "card_name": "Mega Kangaskhan ex"
+      },
+      {
+        "key": 162,
+        "count": 22,
+        "fraction": 0.2558139534883721,
+        "card_name": "Slowpoke"
+      },
+      {
+        "key": 183,
+        "count": 21,
+        "fraction": 0.2441860465116279,
+        "card_name": "Smoochum"
+      },
+      {
+        "key": 184,
+        "count": 13,
+        "fraction": 0.1511627906976744,
+        "card_name": "Latias ex"
+      },
+      {
+        "key": 144,
+        "count": 6,
+        "fraction": 0.06976744186046512,
+        "card_name": "Kyurem"
+      },
+      {
+        "key": 140,
+        "count": 2,
+        "fraction": 0.023255813953488372,
+        "card_name": "Fezandipiti ex"
+      }
+    ],
+    "initial_bench": [
+      {
+        "key": 140,
+        "count": 1,
+        "fraction": 1.0,
+        "card_name": "Fezandipiti ex"
+      }
+    ],
+    "main_action_types": [
+      {
+        "key": "play",
+        "count": 632,
+        "fraction": 0.5262281432139884
+      },
+      {
+        "key": "attach",
+        "count": 199,
+        "fraction": 0.16569525395503748
+      },
+      {
+        "key": "retreat",
+        "count": 109,
+        "fraction": 0.09075770191507078
+      },
+      {
+        "key": "ability",
+        "count": 88,
+        "fraction": 0.07327227310574522
+      },
+      {
+        "key": "attack",
+        "count": 68,
+        "fraction": 0.05661948376353039
+      },
+      {
+        "key": "end",
+        "count": 54,
+        "fraction": 0.044962531223980015
+      },
+      {
+        "key": "evolve",
+        "count": 51,
+        "fraction": 0.042464612822647796
+      }
+    ],
+    "played_cards": [
+      {
+        "key": 1227,
+        "count": 86,
+        "fraction": 0.1360759493670886,
+        "card_name": "Lillie's Determination"
+      },
+      {
+        "key": 1152,
+        "count": 67,
+        "fraction": 0.1060126582278481,
+        "card_name": "Poké Pad"
+      },
+      {
+        "key": 1097,
+        "count": 65,
+        "fraction": 0.10284810126582279,
+        "card_name": "Night Stretcher"
+      },
+      {
+        "key": 1188,
+        "count": 61,
+        "fraction": 0.09651898734177215,
+        "card_name": "Ciphermaniac’s Codebreaking"
+      },
+      {
+        "key": 1121,
+        "count": 59,
+        "fraction": 0.09335443037974683,
+        "card_name": "Ultra Ball"
+      },
+      {
+        "key": 144,
+        "count": 51,
+        "fraction": 0.08069620253164557,
+        "card_name": "Kyurem"
+      },
+      {
+        "key": 1248,
+        "count": 47,
+        "fraction": 0.07436708860759493,
+        "card_name": "Academy at Night"
+      },
+      {
+        "key": 756,
+        "count": 39,
+        "fraction": 0.061708860759493674,
+        "card_name": "Mega Kangaskhan ex"
+      },
+      {
+        "key": 1146,
+        "count": 37,
+        "fraction": 0.058544303797468354,
+        "card_name": "Wondrous Patch"
+      },
+      {
+        "key": 162,
+        "count": 34,
+        "fraction": 0.05379746835443038,
+        "card_name": "Slowpoke"
+      },
+      {
+        "key": 1123,
+        "count": 15,
+        "fraction": 0.023734177215189875,
+        "card_name": "Switch"
+      },
+      {
+        "key": 183,
+        "count": 13,
+        "fraction": 0.020569620253164556,
+        "card_name": "Smoochum"
+      },
+      {
+        "key": 184,
+        "count": 12,
+        "fraction": 0.0189873417721519,
+        "card_name": "Latias ex"
+      },
+      {
+        "key": 1194,
+        "count": 12,
+        "fraction": 0.0189873417721519,
+        "card_name": "Colress’s Tenacity"
+      },
+      {
+        "key": 140,
+        "count": 11,
+        "fraction": 0.01740506329113924,
+        "card_name": "Fezandipiti ex"
+      },
+      {
+        "key": 1071,
+        "count": 11,
+        "fraction": 0.01740506329113924,
+        "card_name": "Meowth ex"
+      },
+      {
+        "key": 1225,
+        "count": 7,
+        "fraction": 0.011075949367088608,
+        "card_name": "Hilda"
+      },
+      {
+        "key": 1088,
+        "count": 5,
+        "fraction": 0.007911392405063292,
+        "card_name": "Prime Catcher"
+      }
+    ],
+    "attached_energy": [
+      {
+        "key": 19,
+        "count": 104,
+        "fraction": 0.5226130653266332,
+        "card_name": "Telepath Psychic Energy"
+      },
+      {
+        "key": 5,
+        "count": 95,
+        "fraction": 0.47738693467336685,
+        "card_name": "Basic {P} Energy"
+      }
+    ],
+    "attachment_targets": [
+      {
+        "key": 756,
+        "count": 64,
+        "fraction": 0.32160804020100503,
+        "card_name": "Mega Kangaskhan ex"
+      },
+      {
+        "key": 162,
+        "count": 50,
+        "fraction": 0.25125628140703515,
+        "card_name": "Slowpoke"
+      },
+      {
+        "key": 184,
+        "count": 34,
+        "fraction": 0.1708542713567839,
+        "card_name": "Latias ex"
+      },
+      {
+        "key": 163,
+        "count": 21,
+        "fraction": 0.10552763819095477,
+        "card_name": "Slowking"
+      },
+      {
+        "key": 183,
+        "count": 19,
+        "fraction": 0.09547738693467336,
+        "card_name": "Smoochum"
+      },
+      {
+        "key": 144,
+        "count": 6,
+        "fraction": 0.03015075376884422,
+        "card_name": "Kyurem"
+      },
+      {
+        "key": 1071,
+        "count": 4,
+        "fraction": 0.020100502512562814,
+        "card_name": "Meowth ex"
+      },
+      {
+        "key": 140,
+        "count": 1,
+        "fraction": 0.005025125628140704,
+        "card_name": "Fezandipiti ex"
+      }
+    ],
+    "evolved_cards": [
+      {
+        "key": 163,
+        "count": 51,
+        "fraction": 1.0,
+        "card_name": "Slowking"
+      }
+    ],
+    "ability_sources": [
+      {
+        "key": 1248,
+        "count": 87,
+        "fraction": 0.9886363636363636,
+        "card_name": "Academy at Night"
+      },
+      {
+        "key": 756,
+        "count": 1,
+        "fraction": 0.011363636363636364,
+        "card_name": "Mega Kangaskhan ex"
+      }
+    ],
+    "academy_targets": [
+      {
+        "key": 144,
+        "count": 19,
+        "fraction": 0.475,
+        "card_name": "Kyurem"
+      },
+      {
+        "key": 115,
+        "count": 7,
+        "fraction": 0.175,
+        "card_name": "Conkeldurr"
+      },
+      {
+        "key": 163,
+        "count": 5,
+        "fraction": 0.125,
+        "card_name": "Slowking"
+      },
+      {
+        "key": 1121,
+        "count": 3,
+        "fraction": 0.075,
+        "card_name": "Ultra Ball"
+      },
+      {
+        "key": 224,
+        "count": 2,
+        "fraction": 0.05,
+        "card_name": "Annihilape"
+      },
+      {
+        "key": 5,
+        "count": 1,
+        "fraction": 0.025,
+        "card_name": "Basic {P} Energy"
+      },
+      {
+        "key": 1248,
+        "count": 1,
+        "fraction": 0.025,
+        "card_name": "Academy at Night"
+      },
+      {
+        "key": 1146,
+        "count": 1,
+        "fraction": 0.025,
+        "card_name": "Wondrous Patch"
+      },
+      {
+        "key": 162,
+        "count": 1,
+        "fraction": 0.025,
+        "card_name": "Slowpoke"
+      }
+    ],
+    "effect_selected_cards": {
+      "19": {
+        "effect_card_name": "Telepath Psychic Energy",
+        "targets": [
+          {
+            "key": 162,
+            "count": 31,
+            "fraction": 0.6326530612244898,
+            "card_name": "Slowpoke"
+          },
+          {
+            "key": 183,
+            "count": 10,
+            "fraction": 0.20408163265306123,
+            "card_name": "Smoochum"
+          },
+          {
+            "key": 184,
+            "count": 8,
+            "fraction": 0.16326530612244897,
+            "card_name": "Latias ex"
+          }
+        ]
+      },
+      "162": {
+        "effect_card_name": "Slowpoke",
+        "targets": [
+          {
+            "key": 183,
+            "count": 1,
+            "fraction": 1.0,
+            "card_name": "Smoochum"
+          }
+        ]
+      },
+      "163": {
+        "effect_card_name": "Slowking",
+        "targets": [
+          {
+            "key": 756,
+            "count": 1,
+            "fraction": 1.0,
+            "card_name": "Mega Kangaskhan ex"
+          }
+        ]
+      },
+      "183": {
+        "effect_card_name": "Smoochum",
+        "targets": [
+          {
+            "key": 163,
+            "count": 1,
+            "fraction": 1.0,
+            "card_name": "Slowking"
+          }
+        ]
+      },
+      "1071": {
+        "effect_card_name": "Meowth ex",
+        "targets": [
+          {
+            "key": 1188,
+            "count": 8,
+            "fraction": 0.8,
+            "card_name": "Ciphermaniac’s Codebreaking"
+          },
+          {
+            "key": 1225,
+            "count": 1,
+            "fraction": 0.1,
+            "card_name": "Hilda"
+          },
+          {
+            "key": 1194,
+            "count": 1,
+            "fraction": 0.1,
+            "card_name": "Colress’s Tenacity"
+          }
+        ]
+      },
+      "1097": {
+        "effect_card_name": "Night Stretcher",
+        "targets": [
+          {
+            "key": 5,
+            "count": 13,
+            "fraction": 0.35135135135135137,
+            "card_name": "Basic {P} Energy"
+          },
+          {
+            "key": 163,
+            "count": 11,
+            "fraction": 0.2972972972972973,
+            "card_name": "Slowking"
+          },
+          {
+            "key": 144,
+            "count": 5,
+            "fraction": 0.13513513513513514,
+            "card_name": "Kyurem"
+          },
+          {
+            "key": 115,
+            "count": 4,
+            "fraction": 0.10810810810810811,
+            "card_name": "Conkeldurr"
+          },
+          {
+            "key": 162,
+            "count": 2,
+            "fraction": 0.05405405405405406,
+            "card_name": "Slowpoke"
+          },
+          {
+            "key": 183,
+            "count": 1,
+            "fraction": 0.02702702702702703,
+            "card_name": "Smoochum"
+          },
+          {
+            "key": 184,
+            "count": 1,
+            "fraction": 0.02702702702702703,
+            "card_name": "Latias ex"
+          }
+        ]
+      },
+      "1121": {
+        "effect_card_name": "Ultra Ball",
+        "targets": [
+          {
+            "key": 756,
+            "count": 14,
+            "fraction": 0.1320754716981132,
+            "card_name": "Mega Kangaskhan ex"
+          },
+          {
+            "key": 184,
+            "count": 13,
+            "fraction": 0.12264150943396226,
+            "card_name": "Latias ex"
+          },
+          {
+            "key": 144,
+            "count": 12,
+            "fraction": 0.11320754716981132,
+            "card_name": "Kyurem"
+          },
+          {
+            "key": 163,
+            "count": 11,
+            "fraction": 0.10377358490566038,
+            "card_name": "Slowking"
+          },
+          {
+            "key": 162,
+            "count": 9,
+            "fraction": 0.08490566037735849,
+            "card_name": "Slowpoke"
+          },
+          {
+            "key": 19,
+            "count": 8,
+            "fraction": 0.07547169811320754,
+            "card_name": "Telepath Psychic Energy"
+          },
+          {
+            "key": 1097,
+            "count": 6,
+            "fraction": 0.05660377358490566,
+            "card_name": "Night Stretcher"
+          },
+          {
+            "key": 224,
+            "count": 5,
+            "fraction": 0.04716981132075472,
+            "card_name": "Annihilape"
+          },
+          {
+            "key": 115,
+            "count": 5,
+            "fraction": 0.04716981132075472,
+            "card_name": "Conkeldurr"
+          },
+          {
+            "key": 1188,
+            "count": 5,
+            "fraction": 0.04716981132075472,
+            "card_name": "Ciphermaniac’s Codebreaking"
+          },
+          {
+            "key": 1227,
+            "count": 4,
+            "fraction": 0.03773584905660377,
+            "card_name": "Lillie's Determination"
+          },
+          {
+            "key": 140,
+            "count": 3,
+            "fraction": 0.02830188679245283,
+            "card_name": "Fezandipiti ex"
+          },
+          {
+            "key": 1071,
+            "count": 3,
+            "fraction": 0.02830188679245283,
+            "card_name": "Meowth ex"
+          },
+          {
+            "key": 183,
+            "count": 2,
+            "fraction": 0.018867924528301886,
+            "card_name": "Smoochum"
+          },
+          {
+            "key": 1146,
+            "count": 2,
+            "fraction": 0.018867924528301886,
+            "card_name": "Wondrous Patch"
+          },
+          {
+            "key": 1152,
+            "count": 1,
+            "fraction": 0.009433962264150943,
+            "card_name": "Poké Pad"
+          },
+          {
+            "key": 1088,
+            "count": 1,
+            "fraction": 0.009433962264150943,
+            "card_name": "Prime Catcher"
+          },
+          {
+            "key": 5,
+            "count": 1,
+            "fraction": 0.009433962264150943,
+            "card_name": "Basic {P} Energy"
+          },
+          {
+            "key": 1248,
+            "count": 1,
+            "fraction": 0.009433962264150943,
+            "card_name": "Academy at Night"
+          }
+        ]
+      },
+      "1146": {
+        "effect_card_name": "Wondrous Patch",
+        "targets": [
+          {
+            "key": 5,
+            "count": 46,
+            "fraction": 0.8846153846153846,
+            "card_name": "Basic {P} Energy"
+          },
+          {
+            "key": 184,
+            "count": 2,
+            "fraction": 0.038461538461538464,
+            "card_name": "Latias ex"
+          },
+          {
+            "key": 163,
+            "count": 2,
+            "fraction": 0.038461538461538464,
+            "card_name": "Slowking"
+          },
+          {
+            "key": 162,
+            "count": 1,
+            "fraction": 0.019230769230769232,
+            "card_name": "Slowpoke"
+          },
+          {
+            "key": 183,
+            "count": 1,
+            "fraction": 0.019230769230769232,
+            "card_name": "Smoochum"
+          }
+        ]
+      },
+      "1152": {
+        "effect_card_name": "Poké Pad",
+        "targets": [
+          {
+            "key": 163,
+            "count": 17,
+            "fraction": 0.34,
+            "card_name": "Slowking"
+          },
+          {
+            "key": 162,
+            "count": 16,
+            "fraction": 0.32,
+            "card_name": "Slowpoke"
+          },
+          {
+            "key": 144,
+            "count": 10,
+            "fraction": 0.2,
+            "card_name": "Kyurem"
+          },
+          {
+            "key": 183,
+            "count": 4,
+            "fraction": 0.08,
+            "card_name": "Smoochum"
+          },
+          {
+            "key": 115,
+            "count": 3,
+            "fraction": 0.06,
+            "card_name": "Conkeldurr"
+          }
+        ]
+      },
+      "1188": {
+        "effect_card_name": "Ciphermaniac’s Codebreaking",
+        "targets": [
+          {
+            "key": 1227,
+            "count": 6,
+            "fraction": 0.2857142857142857,
+            "card_name": "Lillie's Determination"
+          },
+          {
+            "key": 1248,
+            "count": 4,
+            "fraction": 0.19047619047619047,
+            "card_name": "Academy at Night"
+          },
+          {
+            "key": 19,
+            "count": 3,
+            "fraction": 0.14285714285714285,
+            "card_name": "Telepath Psychic Energy"
+          },
+          {
+            "key": 163,
+            "count": 2,
+            "fraction": 0.09523809523809523,
+            "card_name": "Slowking"
+          },
+          {
+            "key": 5,
+            "count": 2,
+            "fraction": 0.09523809523809523,
+            "card_name": "Basic {P} Energy"
+          },
+          {
+            "key": 115,
+            "count": 2,
+            "fraction": 0.09523809523809523,
+            "card_name": "Conkeldurr"
+          },
+          {
+            "key": 183,
+            "count": 1,
+            "fraction": 0.047619047619047616,
+            "card_name": "Smoochum"
+          },
+          {
+            "key": 1188,
+            "count": 1,
+            "fraction": 0.047619047619047616,
+            "card_name": "Ciphermaniac’s Codebreaking"
+          }
+        ]
+      },
+      "1194": {
+        "effect_card_name": "Colress’s Tenacity",
+        "targets": [
+          {
+            "key": 19,
+            "count": 12,
+            "fraction": 0.5454545454545454,
+            "card_name": "Telepath Psychic Energy"
+          },
+          {
+            "key": 1248,
+            "count": 10,
+            "fraction": 0.45454545454545453,
+            "card_name": "Academy at Night"
+          }
+        ]
+      },
+      "1197": {
+        "effect_card_name": "Xerosic’s Machinations",
+        "targets": [
+          {
+            "key": 1248,
+            "count": 8,
+            "fraction": 0.1095890410958904,
+            "card_name": "Academy at Night"
+          },
+          {
+            "key": 1152,
+            "count": 7,
+            "fraction": 0.0958904109589041,
+            "card_name": "Poké Pad"
+          },
+          {
+            "key": 1097,
+            "count": 7,
+            "fraction": 0.0958904109589041,
+            "card_name": "Night Stretcher"
+          },
+          {
+            "key": 1121,
+            "count": 7,
+            "fraction": 0.0958904109589041,
+            "card_name": "Ultra Ball"
+          },
+          {
+            "key": 224,
+            "count": 6,
+            "fraction": 0.0821917808219178,
+            "card_name": "Annihilape"
+          },
+          {
+            "key": 1227,
+            "count": 6,
+            "fraction": 0.0821917808219178,
+            "card_name": "Lillie's Determination"
+          },
+          {
+            "key": 756,
+            "count": 5,
+            "fraction": 0.0684931506849315,
+            "card_name": "Mega Kangaskhan ex"
+          },
+          {
+            "key": 144,
+            "count": 3,
+            "fraction": 0.0410958904109589,
+            "card_name": "Kyurem"
+          },
+          {
+            "key": 162,
+            "count": 3,
+            "fraction": 0.0410958904109589,
+            "card_name": "Slowpoke"
+          },
+          {
+            "key": 1146,
+            "count": 3,
+            "fraction": 0.0410958904109589,
+            "card_name": "Wondrous Patch"
+          },
+          {
+            "key": 1071,
+            "count": 3,
+            "fraction": 0.0410958904109589,
+            "card_name": "Meowth ex"
+          },
+          {
+            "key": 183,
+            "count": 2,
+            "fraction": 0.0273972602739726,
+            "card_name": "Smoochum"
+          },
+          {
+            "key": 1194,
+            "count": 2,
+            "fraction": 0.0273972602739726,
+            "card_name": "Colress’s Tenacity"
+          },
+          {
+            "key": 1088,
+            "count": 2,
+            "fraction": 0.0273972602739726,
+            "card_name": "Prime Catcher"
+          },
+          {
+            "key": 1188,
+            "count": 2,
+            "fraction": 0.0273972602739726,
+            "card_name": "Ciphermaniac’s Codebreaking"
+          },
+          {
+            "key": 184,
+            "count": 2,
+            "fraction": 0.0273972602739726,
+            "card_name": "Latias ex"
+          },
+          {
+            "key": 1123,
+            "count": 2,
+            "fraction": 0.0273972602739726,
+            "card_name": "Switch"
+          },
+          {
+            "key": 115,
+            "count": 1,
+            "fraction": 0.0136986301369863,
+            "card_name": "Conkeldurr"
+          },
+          {
+            "key": 5,
+            "count": 1,
+            "fraction": 0.0136986301369863,
+            "card_name": "Basic {P} Energy"
+          },
+          {
+            "key": 19,
+            "count": 1,
+            "fraction": 0.0136986301369863,
+            "card_name": "Telepath Psychic Energy"
+          }
+        ]
+      },
+      "1225": {
+        "effect_card_name": "Hilda",
+        "targets": [
+          {
+            "key": 19,
+            "count": 12,
+            "fraction": 0.5217391304347826,
+            "card_name": "Telepath Psychic Energy"
+          },
+          {
+            "key": 163,
+            "count": 9,
+            "fraction": 0.391304347826087,
+            "card_name": "Slowking"
+          },
+          {
+            "key": 115,
+            "count": 1,
+            "fraction": 0.043478260869565216,
+            "card_name": "Conkeldurr"
+          },
+          {
+            "key": 5,
+            "count": 1,
+            "fraction": 0.043478260869565216,
+            "card_name": "Basic {P} Energy"
+          }
+        ]
+      },
+      "1248": {
+        "effect_card_name": "Academy at Night",
+        "targets": [
+          {
+            "key": 144,
+            "count": 19,
+            "fraction": 0.475,
+            "card_name": "Kyurem"
+          },
+          {
+            "key": 115,
+            "count": 7,
+            "fraction": 0.175,
+            "card_name": "Conkeldurr"
+          },
+          {
+            "key": 163,
+            "count": 5,
+            "fraction": 0.125,
+            "card_name": "Slowking"
+          },
+          {
+            "key": 1121,
+            "count": 3,
+            "fraction": 0.075,
+            "card_name": "Ultra Ball"
+          },
+          {
+            "key": 224,
+            "count": 2,
+            "fraction": 0.05,
+            "card_name": "Annihilape"
+          },
+          {
+            "key": 5,
+            "count": 1,
+            "fraction": 0.025,
+            "card_name": "Basic {P} Energy"
+          },
+          {
+            "key": 1248,
+            "count": 1,
+            "fraction": 0.025,
+            "card_name": "Academy at Night"
+          },
+          {
+            "key": 1146,
+            "count": 1,
+            "fraction": 0.025,
+            "card_name": "Wondrous Patch"
+          },
+          {
+            "key": 162,
+            "count": 1,
+            "fraction": 0.025,
+            "card_name": "Slowpoke"
+          }
+        ]
+      }
+    },
+    "seek_sources": [
+      {
+        "key": 144,
+        "count": 31,
+        "fraction": 0.7045454545454546,
+        "card_name": "Kyurem"
+      },
+      {
+        "key": 115,
+        "count": 6,
+        "fraction": 0.13636363636363635,
+        "card_name": "Conkeldurr"
+      },
+      {
+        "key": 224,
+        "count": 4,
+        "fraction": 0.09090909090909091,
+        "card_name": "Annihilape"
+      },
+      {
+        "key": 163,
+        "count": 3,
+        "fraction": 0.06818181818181818,
+        "card_name": "Slowking"
+      }
+    ],
+    "seek_copied_attack_ids": [
+      {
+        "key": 188,
+        "count": 31,
+        "fraction": 0.7045454545454546,
+        "card_name": "Vibrava"
+      },
+      {
+        "key": 146,
+        "count": 6,
+        "fraction": 0.13636363636363635,
+        "card_name": "Lileep"
+      },
+      {
+        "key": 305,
+        "count": 3,
+        "fraction": 0.06818181818181818,
+        "card_name": "Dunsparce"
+      },
+      {
+        "key": 214,
+        "count": 3,
+        "fraction": 0.06818181818181818,
+        "card_name": "Togekiss"
+      },
+      {
+        "key": 304,
+        "count": 1,
+        "fraction": 0.022727272727272728,
+        "card_name": "Hop’s Snorlax"
+      }
+    ],
+    "attack_users": [
+      {
+        "key": 163,
+        "count": 44,
+        "fraction": 0.6470588235294118,
+        "card_name": "Slowking"
+      },
+      {
+        "key": 183,
+        "count": 23,
+        "fraction": 0.3382352941176471,
+        "card_name": "Smoochum"
+      },
+      {
+        "key": 162,
+        "count": 1,
+        "fraction": 0.014705882352941176,
+        "card_name": "Slowpoke"
+      }
+    ],
+    "top_turn_bigrams": [
+      {
+        "key": "play:Lillie's Determination > play:Lillie's Determination",
+        "count": 16,
+        "fraction": 0.05442176870748299
+      },
+      {
+        "key": "retreat > attack:Slowking",
+        "count": 15,
+        "fraction": 0.05102040816326531
+      },
+      {
+        "key": "play:Night Stretcher > play:Night Stretcher",
+        "count": 14,
+        "fraction": 0.047619047619047616
+      },
+      {
+        "key": "play:Ultra Ball > retreat",
+        "count": 11,
+        "fraction": 0.03741496598639456
+      },
+      {
+        "key": "ability:Academy at Night > retreat",
+        "count": 9,
+        "fraction": 0.030612244897959183
+      },
+      {
+        "key": "evolve:Slowking > ability:Academy at Night",
+        "count": 9,
+        "fraction": 0.030612244897959183
+      },
+      {
+        "key": "play:Poké Pad > retreat",
+        "count": 9,
+        "fraction": 0.030612244897959183
+      },
+      {
+        "key": "evolve:Slowking > evolve:Slowking",
+        "count": 8,
+        "fraction": 0.027210884353741496
+      },
+      {
+        "key": "ability:Academy at Night > attack:Slowking",
+        "count": 8,
+        "fraction": 0.027210884353741496
+      },
+      {
+        "key": "retreat > attack:Smoochum",
+        "count": 8,
+        "fraction": 0.027210884353741496
+      },
+      {
+        "key": "play:Academy at Night > ability:Academy at Night",
+        "count": 7,
+        "fraction": 0.023809523809523808
+      },
+      {
+        "key": "play:Poké Pad > play:Poké Pad",
+        "count": 7,
+        "fraction": 0.023809523809523808
+      },
+      {
+        "key": "play:Poké Pad > play:Ultra Ball",
+        "count": 7,
+        "fraction": 0.023809523809523808
+      },
+      {
+        "key": "evolve:Slowking > retreat",
+        "count": 6,
+        "fraction": 0.02040816326530612
+      },
+      {
+        "key": "play:Wondrous Patch > ability:Academy at Night",
+        "count": 6,
+        "fraction": 0.02040816326530612
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > play:Lillie's Determination",
+        "count": 6,
+        "fraction": 0.02040816326530612
+      },
+      {
+        "key": "play:Kyurem > play:Kyurem",
+        "count": 6,
+        "fraction": 0.02040816326530612
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > retreat",
+        "count": 6,
+        "fraction": 0.02040816326530612
+      },
+      {
+        "key": "attach:Basic {P} Energy->Mega Kangaskhan ex > retreat",
+        "count": 6,
+        "fraction": 0.02040816326530612
+      },
+      {
+        "key": "play:Lillie's Determination > play:Ultra Ball",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "play:Ultra Ball > play:Ultra Ball",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "retreat > retreat",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > play:Ciphermaniac’s Codebreaking",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > ability:Academy at Night",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "play:Mega Kangaskhan ex > retreat",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "ability:Academy at Night > ability:Academy at Night",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "play:Kyurem > ability:Academy at Night",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "play:Night Stretcher > play:Kyurem",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "play:Lillie's Determination > retreat",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "play:Academy at Night > evolve:Slowking",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "attach:Basic {P} Energy->Slowking > retreat",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "play:Poké Pad > ability:Academy at Night",
+        "count": 5,
+        "fraction": 0.017006802721088437
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > play:Kyurem",
+        "count": 4,
+        "fraction": 0.013605442176870748
+      },
+      {
+        "key": "play:Night Stretcher > play:Wondrous Patch",
+        "count": 4,
+        "fraction": 0.013605442176870748
+      },
+      {
+        "key": "play:Ultra Ball > play:Mega Kangaskhan ex",
+        "count": 4,
+        "fraction": 0.013605442176870748
+      },
+      {
+        "key": "play:Academy at Night > retreat",
+        "count": 4,
+        "fraction": 0.013605442176870748
+      },
+      {
+        "key": "play:Kyurem > play:Ultra Ball",
+        "count": 4,
+        "fraction": 0.013605442176870748
+      },
+      {
+        "key": "play:Lillie's Determination > play:Ciphermaniac’s Codebreaking",
+        "count": 4,
+        "fraction": 0.013605442176870748
+      },
+      {
+        "key": "play:Wondrous Patch > retreat",
+        "count": 4,
+        "fraction": 0.013605442176870748
+      },
+      {
+        "key": "attach:Basic {P} Energy->Latias ex > retreat",
+        "count": 4,
+        "fraction": 0.013605442176870748
+      },
+      {
+        "key": "play:Mega Kangaskhan ex > play:Mega Kangaskhan ex",
+        "count": 4,
+        "fraction": 0.013605442176870748
+      },
+      {
+        "key": "play:Night Stretcher > end",
+        "count": 4,
+        "fraction": 0.013605442176870748
+      },
+      {
+        "key": "play:Wondrous Patch > play:Wondrous Patch",
+        "count": 4,
+        "fraction": 0.013605442176870748
+      },
+      {
+        "key": "play:Fezandipiti ex > play:Smoochum",
+        "count": 3,
+        "fraction": 0.01020408163265306
+      },
+      {
+        "key": "play:Lillie's Determination > evolve:Slowking",
+        "count": 3,
+        "fraction": 0.01020408163265306
+      },
+      {
+        "key": "play:Slowpoke > retreat",
+        "count": 3,
+        "fraction": 0.01020408163265306
+      },
+      {
+        "key": "play:Poké Pad > play:Lillie's Determination",
+        "count": 3,
+        "fraction": 0.01020408163265306
+      },
+      {
+        "key": "play:Mega Kangaskhan ex > attach:Basic {P} Energy->Mega Kangaskhan ex",
+        "count": 3,
+        "fraction": 0.01020408163265306
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > attach:Telepath Psychic Energy->Mega Kangaskhan ex",
+        "count": 3,
+        "fraction": 0.01020408163265306
+      },
+      {
+        "key": "play:Lillie's Determination > play:Poké Pad",
+        "count": 3,
+        "fraction": 0.01020408163265306
+      }
+    ],
+    "top_turn_trigrams": [
+      {
+        "key": "play:Night Stretcher > play:Night Stretcher > play:Night Stretcher",
+        "count": 4,
+        "fraction": 0.05405405405405406
+      },
+      {
+        "key": "play:Lillie's Determination > play:Lillie's Determination > play:Lillie's Determination",
+        "count": 3,
+        "fraction": 0.04054054054054054
+      },
+      {
+        "key": "play:Lillie's Determination > play:Ultra Ball > play:Ultra Ball",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Academy at Night > ability:Academy at Night > retreat",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Night Stretcher > ability:Academy at Night > ability:Academy at Night",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "evolve:Slowking > evolve:Slowking > evolve:Slowking",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "evolve:Slowking > ability:Academy at Night > attack:Slowking",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "ability:Academy at Night > play:Switch > attack:Slowking",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Lillie's Determination > play:Lillie's Determination > retreat",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Ultra Ball > retreat > attack:Slowking",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Mega Kangaskhan ex > retreat > play:Mega Kangaskhan ex",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Night Stretcher > attach:Basic {P} Energy->Mega Kangaskhan ex > retreat",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Mega Kangaskhan ex > attach:Basic {P} Energy->Mega Kangaskhan ex > retreat",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Poké Pad > play:Poké Pad > retreat",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "ability:Academy at Night > retreat > attack:Slowking",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Lillie's Determination > play:Ciphermaniac’s Codebreaking > play:Mega Kangaskhan ex",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "attach:Basic {P} Energy->Slowking > retreat > attack:Slowking",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Ultra Ball > play:Night Stretcher > retreat",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "ability:Academy at Night > attach:Basic {P} Energy->Slowking > retreat",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Academy at Night > evolve:Slowking > ability:Academy at Night",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "attach:Basic {P} Energy->Latias ex > retreat > attack:Slowking",
+        "count": 2,
+        "fraction": 0.02702702702702703
+      },
+      {
+        "key": "play:Lillie's Determination > evolve:Slowking > attach:Basic {P} Energy->Slowking",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "evolve:Slowking > attach:Basic {P} Energy->Slowking > play:Kyurem",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Latias ex > play:Latias ex > play:Prime Catcher",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Latias ex > play:Prime Catcher > play:Slowpoke",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Prime Catcher > play:Slowpoke > retreat",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Meowth ex > attach:Telepath Psychic Energy->Kyurem > attach:Telepath Psychic Energy->Kyurem",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Kyurem > attach:Telepath Psychic Energy->Kyurem > ability:Academy at Night",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Slowpoke > play:Ultra Ball > attach:Basic {P} Energy->Slowpoke",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Ultra Ball > attach:Basic {P} Energy->Slowpoke > play:Wondrous Patch",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "attach:Basic {P} Energy->Slowpoke > play:Wondrous Patch > play:Ciphermaniac’s Codebreaking",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Wondrous Patch > play:Ciphermaniac’s Codebreaking > play:Slowpoke",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Poké Pad > play:Lillie's Determination > play:Ultra Ball",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Ultra Ball > play:Ultra Ball > play:Academy at Night",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > retreat > retreat",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Poké Pad > play:Ciphermaniac’s Codebreaking > play:Ciphermaniac’s Codebreaking",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > play:Ciphermaniac’s Codebreaking > play:Poké Pad",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Night Stretcher > play:Night Stretcher > play:Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Night Stretcher > play:Mega Kangaskhan ex > play:Poké Pad",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Mega Kangaskhan ex > play:Poké Pad > play:Smoochum",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "evolve:Slowking > retreat > retreat",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "retreat > retreat > attack:Slowking",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "attach:Basic {P} Energy->Smoochum > attach:Basic {P} Energy->Smoochum > play:Hilda",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "attach:Basic {P} Energy->Smoochum > play:Hilda > attack:Slowking",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "attach:Basic {P} Energy->Slowpoke > attach:Basic {P} Energy->Mega Kangaskhan ex > play:Kyurem",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Slowpoke > play:Lillie's Determination > play:Colress’s Tenacity",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Mega Kangaskhan ex > attach:Basic {P} Energy->Mega Kangaskhan ex > play:Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "attach:Basic {P} Energy->Mega Kangaskhan ex > play:Mega Kangaskhan ex > end",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "retreat > play:Poké Pad > attach:Basic {P} Energy->Slowpoke",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > attach:Telepath Psychic Energy->Mega Kangaskhan ex > ability:Academy at Night",
+        "count": 1,
+        "fraction": 0.013513513513513514
+      }
+    ]
+  },
+  "card_moves": {
+    "19": [
+      "n/a"
+    ],
+    "115": [
+      "Tantrum",
+      "Gutsy Swing"
+    ],
+    "140": [
+      "[Ability] Flip the Script",
+      "Cruel Arrow"
+    ],
+    "144": [
+      "[Ability] Plasma Bane",
+      "Trifrost"
+    ],
+    "162": [
+      "Dangle Tail",
+      "Tackle"
+    ],
+    "163": [
+      "Seek Inspiration",
+      "Super Psy Bolt"
+    ],
+    "183": [
+      "Delightful Kiss"
+    ],
+    "184": [
+      "[Ability] Skyliner",
+      "Eon Blade"
+    ],
+    "224": [
+      "Tantrum",
+      "Destined Fight"
+    ],
+    "756": [
+      "[Ability] Run Errand",
+      "Rapid-Fire Combo"
+    ],
+    "1071": [
+      "[Ability] Last-Ditch Catch",
+      "Tuck Tail"
+    ],
+    "1088": [
+      "n/a"
+    ],
+    "1097": [
+      "n/a"
+    ],
+    "1121": [
+      "n/a"
+    ],
+    "1123": [
+      "n/a"
+    ],
+    "1146": [
+      "n/a"
+    ],
+    "1152": [
+      "n/a"
+    ],
+    "1188": [
+      "n/a"
+    ],
+    "1194": [
+      "n/a"
+    ],
+    "1225": [
+      "n/a"
+    ],
+    "1227": [
+      "n/a"
+    ],
+    "1248": [
+      "n/a"
+    ]
+  },
+  "games": [
+    {
+      "episode_id": "89474478",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Dominic Peel",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 49,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89527308",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "@kdcyberdude",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 53,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89532175",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "szlachetny snieg",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 46,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89532717",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "JZ",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 44,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89533289",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "213tubo",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 60,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89533843",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Raihan Ramadistra",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 40,
+      "seek_sources": [
+        115,
+        144,
+        144
+      ]
+    },
+    {
+      "episode_id": "89534959",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "bono",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 49,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89536088",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "denden12",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 67,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89536647",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "palsystem",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 48,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89537780",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Octavi Grau",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 63,
+      "seek_sources": [
+        224
+      ]
+    },
+    {
+      "episode_id": "89538349",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Tatsuya Kayama",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 34,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89538878",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "tonakaiiii",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 38,
+      "seek_sources": [
+        224
+      ]
+    },
+    {
+      "episode_id": "89538896",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "nasuo445",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 52,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89541152",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Iliamna",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 43,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89542645",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "想要成为kaggle大师",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 53,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89543398",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "sadwat",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 36,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89543952",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "flg",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 58,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89553199",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "カントー地方マスター(KantoRegionMaster)",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 48,
+      "seek_sources": [
+        144,
+        144
+      ]
+    },
+    {
+      "episode_id": "89558766",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "カントー地方マスター(KantoRegionMaster)",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 58,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89559152",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "低消650元任你吃啊",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 27,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89560907",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Matsu",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 39,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89560914",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "James Cox & Henry Chao",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 40,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89562395",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Kosmostars",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 61,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89566933",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Iain and David",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 83,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89576384",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Jose Coronel",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 62,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89579124",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "MissingNo.",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 35,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89581684",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Made a Beautiful Bouquet",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 33,
+      "seek_sources": [
+        163
+      ]
+    },
+    {
+      "episode_id": "89583361",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "MtN",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 34,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89589552",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "MtN",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 39,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89591081",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Rmy",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 21,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89593433",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "ANDPAD kaggler team",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 59,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89593822",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Iolzpo + emonga",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 74,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89594925",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "flg",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 19,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89594928",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "RtoABC",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 28,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89594932",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Tatsuya Kayama",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 51,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89594972",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Iolzpo + emonga",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 41,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89595089",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Jose Coronel",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 48,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89595507",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "vvs",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 43,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89596029",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Octavi Grau",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 38,
+      "seek_sources": [
+        144,
+        144
+      ]
+    },
+    {
+      "episode_id": "89596057",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "sadwat",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 65,
+      "seek_sources": [
+        115
+      ]
+    },
+    {
+      "episode_id": "89596562",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Dries @ Tufa Labs",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 48,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89596581",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Jose Coronel",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 42,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89596761",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "JZ",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 59,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89597126",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "qb",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 51,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89597678",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "palsystem",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 28,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89597679",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "sadwat",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 26,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89598197",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Majkel1337",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 35,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89598229",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "MR.h",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 51,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89598304",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "miya",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 44,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89598384",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "ANDPAD kaggler team",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 40,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89598754",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Iliamna",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 29,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89598771",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Gijs Smit",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 34,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89599321",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Oshbocker",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 69,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89599333",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "ANDPAD kaggler team",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 52,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89599764",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Bart, Edwyn",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 24,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89599881",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Thai",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 46,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89600414",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Rmy",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 30,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89600419",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Iliamna",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 37,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89600431",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Jose Coronel",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 68,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89600967",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Raihan Ramadistra",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 48,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89600980",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "palsystem",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 59,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89600987",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Raihan Ramadistra",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 37,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89601515",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "keidroid",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 49,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89601542",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Tatsuya Kayama",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 74,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89601544",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "RtoABC",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 39,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89602103",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "clora",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 39,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89602106",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "James Cox & Henry Chao",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 54,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89602639",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "カントー地方マスター(KantoRegionMaster)",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 34,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89603167",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "李秉叡（ntumlnoob）",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 54,
+      "seek_sources": [
+        115,
+        144
+      ]
+    },
+    {
+      "episode_id": "89603190",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Octavi Grau",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 81,
+      "seek_sources": [
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "episode_id": "89603731",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "junlee789",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 53,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89604839",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Dries @ Tufa Labs",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 47,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89604841",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "カントー地方マスター(KantoRegionMaster)",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 51,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89604846",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Octavi Grau",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 72,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89605390",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Jack",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 59,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89605397",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Where is my orbit",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 72,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89605401",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Octavi Grau",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 58,
+      "seek_sources": [
+        163
+      ]
+    },
+    {
+      "episode_id": "89605938",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Charmander & Meowth",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 34,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89606497",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "MtN",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 60,
+      "seek_sources": [
+        224
+      ]
+    },
+    {
+      "episode_id": "89607593",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "RtoABC",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 37,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89607623",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Dries @ Tufa Labs",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 41,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89608010",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "LiamK",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 79,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89608145",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "RtoABC",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 50,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89608324",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Iolzpo + emonga",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 38,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89608715",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "palsystem",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 35,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89608721",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "RtoABC",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 53,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89609269",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "@kdcyberdude",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 46,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89609270",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "lmaffei",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 44,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89609280",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "THIRD PTCG Club",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 3,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89609843",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "bono",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 44,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89610371",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "李秉叡（ntumlnoob）",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 35,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89610383",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "lmaffei",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 42,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89610393",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Shun",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 25,
+      "seek_sources": [
+        224
+      ]
+    },
+    {
+      "episode_id": "89610412",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Oshbocker",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 73,
+      "seek_sources": [
+        163
+      ]
+    },
+    {
+      "episode_id": "89610938",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "keidroid",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 38,
+      "seek_sources": [
+        115,
+        115
+      ]
+    },
+    {
+      "episode_id": "89610939",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "@kdcyberdude",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 47,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89611488",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Dominic Peel",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 39,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89612045",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Bart, Edwyn",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 53,
+      "seek_sources": [
+        144,
+        115
+      ]
+    },
+    {
+      "episode_id": "89612046",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Raihan Ramadistra",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 38,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89612586",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "James Cox & Henry Chao",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 31,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89613148",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Rmy",
+      "deck_fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 56,
+      "seek_sources": []
+    }
+  ],
+  "limitations": [
+    "Observational replay evidence cannot identify unchosen counterfactual actions.",
+    "Opponent team names are not equivalent to normalized deck archetypes.",
+    "Win rate is conditional on this public daily opponent mix, not a formal paired gate.",
+    "Repeated deterministic actions may reflect simulator or policy implementation artifacts."
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "schema": "poke_bot.alakazam_rtp_owner_hard_swap_r175/v1",
+  "owner_decision_revision": 175,
+  "status": "armed",
+  "specialist_id": "alakazam",
+  "deck": {
+    "list_id": "alakazam-owner-rtp-pilot-r175",
+    "path": "decks/archetype-samples/alakazam-owner-rtp-pilot-r175.csv",
+    "archetypes_binding": "poke_bot.archetypes.ALAKAZAM_FINAL_REFRESH_REPRESENTATIVE",
+    "dudunsparce_count_note": "Owner prose said 2x Dudunsparce but Pokemon(19)/60-card math requires 3x; bound 3x"
+  },
+  "expert_window": {
+    "start": "2026-08-01",
+    "end": "2026-08-05"
+  },
+  "parent_checkpoint": {
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k/checkpoints/iter_00020.pt",
+    "family": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/final-format-alakazam-r79-h10-refresh-v1"
+  },
+  "self_play": {
+    "games_per_iteration": 8196,
+    "self_play_mirrors": 1024,
+    "self_play_fraction": 0.12493901903367496,
+    "public_mix_fill_games": 7172,
+    "grimmsnarl_floor_per_set": 1024,
+    "iteration_ceiling": 300,
+    "expert_rehearsal_every": 5,
+    "expert_rehearsal_epochs": 5
+  },
+  "grimmsnarl": {
+    "package_id": "specialist-marnie-final-format-h10-f20efb20f5c3",
+    "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/checkpoints/iter_00007.pt",
+    "checkpoint_sha256": "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381"
+  },
+  "heads": {
+    "live": [
+      "policy",
+      "value",
+      "archetype",
+      "opponent_hand",
+      "opponent_remainder",
+      "lethal_threat",
+      "prize_race",
+      "action_q",
+      "action_type",
+      "action_target",
+      "action_resource",
+      "action_utility",
+      "tactical_outcome",
+      "opponent_response",
+      "resource_forecast",
+      "game_phase",
+      "outcome_distribution",
+      "remaining_turns",
+      "setup_board_outcome",
+      "guide_strategic_directional_v2"
+    ],
+    "disabled": ["combo_state"],
+    "guide_loss_weight": 0.05,
+    "setup_board_outcome_loss_weight": 0.025,
+    "combo_state_loss_weight": 0.0,
+    "ce_bootstrap_expanded_schedule": "all_heads_live_from_epoch_1",
+    "ce_bootstrap_note": "Alakazam CE uses protocol nonzero expanded-head weights every epoch (no staged zero-weight shadow). Combo omitted."
+  },
+  "units": {
+    "orchestrator": "pokebot-final-format-alakazam-rtp-r175-orchestrator.service",
+    "rl": "pokebot-final-format-alakazam-rtp-r175-rl.service",
+    "held_off": [
+      "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+      "pokebot-final-format-alakazam-r79-h10.service"
+    ]
+  },
+  "spelling_mismatches": [
+    "Boss's Orders -> Boss\u2019s Orders",
+    "Xerosic's Mechinations -> Xerosic\u2019s Machinations",
+    "Lana's Aid -> Lana\u2019s Aid",
+    "Basic Psychic Energy -> Basic {P} Energy"
+  ]
+}

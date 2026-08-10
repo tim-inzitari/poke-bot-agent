@@ -17,6 +17,12 @@ from typing import Mapping
 from .config import RTPConfig
 
 
+# Exact complete-action support used to materialize and execute r197. It is
+# deliberately profile-specific; legacy RTP behavior remains independently
+# controlled by its historical runtime path.
+PURE_RL_R197_MAX_ACTION_COMBOS = 1024
+
+
 @dataclass(frozen=True)
 class RTPSizingProfile:
     """Named sizing contract for one encoder/runtime parent."""
@@ -71,7 +77,7 @@ GLOBAL_TRANSFORMER = RTPSizingProfile(
     dynamics_width=512,
     num_plan_candidates=4,
     max_recursion_depth=2,
-    # Root + complexity + up to two subgoal passes.
+    # Historical profile: preserve the existing serialized runtime contract.
     max_neural_passes=4,
     max_plan_length=12,
     # Shared with mcts.planned_sims / SearchConfig.complex_option_threshold.
@@ -97,6 +103,7 @@ PURE_RL = RTPSizingProfile(
     dynamics_width=192,
     num_plan_candidates=4,
     max_recursion_depth=2,
+    # Historical profile: preserve the existing serialized runtime contract.
     max_neural_passes=4,
     max_plan_length=12,
     complexity_option_threshold=8,
@@ -112,6 +119,33 @@ PURE_RL = RTPSizingProfile(
         "Attaches to pure_rl model_profile d_model=96 and matchup adapter "
         "hidden dim 96. Prefer archetype adapters for plan scoring later, "
         "not a second full trunk."
+    ),
+)
+
+
+#: Separately versioned r197 production candidate.  It deliberately does not
+#: alter the legacy ``pure_rl`` profile used by historical checkpoints/bundles.
+PURE_RL_R197 = RTPSizingProfile(
+    name="pure_rl_r197",
+    d_model=96,
+    dynamics_width=192,
+    num_plan_candidates=4,
+    max_recursion_depth=2,
+    # The current skeleton needs six passes; revision 198 makes 256 the exact
+    # r197 ceiling. It is a hard cap, not an instruction to consume 256 passes.
+    max_neural_passes=256,
+    max_plan_length=12,
+    complexity_option_threshold=8,
+    complexity_entropy_threshold=1.5,
+    online_sim_verify_budget=0,
+    repair_budget=1,
+    compute_cost_penalty=0.01,
+    option_batch_hint=64,
+    prefer_option_hidden=True,
+    policy_aid_cap=0.25,
+    notes=(
+        "r197 checksum-bound Alakazam serving candidate; four candidates, "
+        "depth two, exact 256-pass ceiling."
     ),
 )
 
@@ -151,6 +185,7 @@ VERIFY_ABLATONS: Mapping[str, int] = {
 PROFILES: Mapping[str, RTPSizingProfile] = {
     GLOBAL_TRANSFORMER.name: GLOBAL_TRANSFORMER,
     PURE_RL.name: PURE_RL,
+    PURE_RL_R197.name: PURE_RL_R197,
     UNIT_TEST.name: UNIT_TEST,
 }
 

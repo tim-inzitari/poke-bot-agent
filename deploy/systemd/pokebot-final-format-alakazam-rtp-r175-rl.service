@@ -1,0 +1,71 @@
+[Unit]
+Description=Final-format Alakazam RTP RL (owner hard-swap r175)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_registry_h10_r175.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-bootstrap-ready.json
+Conflicts=pokebot-final-format-slop-box-h10-rtp-bootstrap.service pokebot-final-format-alakazam-r79-h10.service
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent
+EnvironmentFile=-/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_h10_r175.env
+EnvironmentFile=-/home/inzi/poke-bot-agent/config/final_format_marnie_h10_runtime.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent
+Environment=POKEBOT_ACTIVE_SPECIALIST=alakazam
+Environment=POKEBOT_CURRENT_DECK_GUIDE=alakazam
+Environment=POKEBOT_CURRENT_DECK_GUIDE_VERSION=powerful-hand-v1
+Environment=PURE_RL_SELF_PLAY_FRAC=0.12493901903367496
+Environment=PURE_RL_PUBLIC_MIX_LOCAL_ONLY=0
+Environment=PURE_RL_SPATIAL_LAYERS=7
+Environment=PURE_RL_TEMPORAL_LAYERS=3
+Environment=PURE_RL_OPTION_DECODER_LAYERS=7
+Environment=PURE_RL_FF_DIM=2496
+Environment=POKEBOT_H10_CAPACITY_ENABLED=1
+Environment=POKEBOT_H10_HEAD_RESIDUAL_WIDTH=512
+Environment=POKEBOT_EXPANDED_HEADS_ENABLED=1
+Environment=POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED=1
+Environment=POKEBOT_COMBO_STATE_HEAD_ENABLED=1
+Environment=POKEBOT_COMBO_STATE_ROUTE_ENABLED=0
+Environment=POKEBOT_COMBO_STATE_ROUTE_SPECIALIST=alakazam
+Environment=POKEBOT_DECISION_FUSION_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_RUNTIME_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_RUNTIME_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_TYPED_OUTPUT_CENTERED_ROUTES_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_ACTION_TYPE_RELIABILITY_CAP=0.25
+Environment=POKEBOT_MATCHUP_ADAPTER_FORMAT=poke-bot-matchup-adapter-bank-v6
+Environment=PURE_RL_PARAM_TARGET_MAX=11000000
+Environment=PURE_RL_PARAM_FAIL_MAX=12000000
+Environment=PURE_RL_SIM_WORKERS=96
+Environment=PURE_RL_GAMES_IN_FLIGHT=96
+Environment=PURE_RL_HELDOUT_LOCAL_WORKERS=96
+Environment=PURE_RL_REBALANCE_MIN_WORKERS=96
+Environment=PURE_RL_REBALANCE_MAX_WORKERS=96
+Environment=POKEBOT_LIVE_POOL_MAX_WORKERS=96
+Environment=POKEBOT_USE_RECURSIVE_TURN_PLANNER=1
+Environment=POKEBOT_RTP_CHECKPOINT=/home/inzi/poke-bot-agent/outputs/rtp_fleet/alakazam-r175.live/rtp_shadow_planner.pt
+Environment=POKEBOT_RTP_SPECIALIST_ID=alakazam
+Environment=POKEBOT_RTP_SIZING_PROFILE=pure_rl
+Environment=POKEBOT_RELEASE_LOCAL_POOL_BEFORE_RESULT_DRAIN=1
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/outputs/state/TRAINING_ARMED
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_registry_h10_r175.json
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent/scripts/launch_active_specialist.py --registry /home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_registry_h10_r175.json --check
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent/scripts/launch_active_specialist.py --registry /home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_registry_h10_r175.json
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=45
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=96G
+MemoryMax=112G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/logs/rl.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/logs/rl.log
+
+[Install]
+WantedBy=default.target

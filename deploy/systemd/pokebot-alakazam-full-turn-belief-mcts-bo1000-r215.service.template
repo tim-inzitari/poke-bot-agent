@@ -1,0 +1,44 @@
+# r216 local approximate evaluator service template.
+# Render all @...@ fields to absolute paths before installing as a user service.
+# This unit is evaluation-only: it neither starts training nor has submission,
+# selector, promotion, or external queue authority.
+[Unit]
+Description=Pokebot r216 local approximate frozen-r195 BeliefMCTS BO1000 evaluator
+ConditionPathExists=@R216_LAUNCH_PLAN@
+ConditionPathExists=@R216_R195_BUNDLE@
+ConditionPathIsDirectory=@R216_FROZEN_PACKAGE_ROOT@
+ConditionPathExists=@R216_SEEDED_ENGINE_LIB@
+ConditionPathExists=@R216_NONINTERFERENCE_RECEIPT@
+ConditionPathExists=@R216_CANARY_ACCEPTANCE_RECEIPT@
+ConditionPathExists=@R216_PYTHON311_EXECUTABLE@
+ConditionPathIsDirectory=@R216_OUTPUT_ROOT@
+
+[Service]
+Type=exec
+WorkingDirectory=@R216_REPOSITORY_ROOT@
+Environment=PYTHONNOUSERSITE=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONHASHSEED=0
+Environment=PYTHONPATH=@R216_REPOSITORY_ROOT@
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
+Environment=CUDA_VISIBLE_DEVICES=GPU-79cf504f-6573-0b8c-c90e-eb567b7bcfa6
+Environment=NVIDIA_VISIBLE_DEVICES=GPU-79cf504f-6573-0b8c-c90e-eb567b7bcfa6
+Environment=POKEBOT_USE_RECURSIVE_TURN_PLANNER=0
+Environment=POKEBOT_MATCHUP_ADAPTER_RUNTIME=1
+Environment=POKEBOT_LIBCG_PATH=@R216_SEEDED_ENGINE_LIB@
+Environment=POKEBOT_R215_FULL_TURN_BELIEF_MCTS=1
+Environment=POKEBOT_R215_GUIDE_LINEAR_ENABLED=0
+Environment=POKEBOT_R215_GUIDE_LOGIT_ENABLED=0
+Environment=POKEBOT_R215_GUIDE2VEC_ENABLED=0
+Environment=POKEBOT_EVALUATION_TRAINING_ELIGIBLE=0
+ExecStart=@R216_PYTHON311_EXECUTABLE@ @R216_REPOSITORY_ROOT@/scripts/run_alakazam_full_turn_belief_mcts_bo1000_r215.py --execute --plan @R216_LAUNCH_PLAN@ --r195-bundle @R216_R195_BUNDLE@ --frozen-package-root @R216_FROZEN_PACKAGE_ROOT@ --seeded-engine-lib @R216_SEEDED_ENGINE_LIB@ --noninterference-receipt @R216_NONINTERFERENCE_RECEIPT@ --canary-acceptance @R216_CANARY_ACCEPTANCE_RECEIPT@ --output-root @R216_OUTPUT_ROOT@ --local-exploratory-override
+Restart=no
+TimeoutStartSec=infinity
+NoNewPrivileges=yes
+PrivateTmp=yes
+UMask=0077
+StandardOutput=append:@R216_OUTPUT_ROOT@/service.log
+StandardError=append:@R216_OUTPUT_ROOT@/service.log
+
+[Install]
+WantedBy=default.target

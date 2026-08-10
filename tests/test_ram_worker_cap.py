@@ -125,6 +125,14 @@ def test_apply_ram_cap_clamps_plan_via_helper_reference(monkeypatch) -> None:
     )
 
     monkeypatch.setenv("POKEBOT_LIVE_POOL", "1")
+    for key in (
+        "PURE_RL_SIM_WORKERS",
+        "PURE_RL_GAMES_IN_FLIGHT",
+        "PURE_RL_REBALANCE_MIN_WORKERS",
+        "PURE_RL_REBALANCE_MAX_WORKERS",
+        "POKEBOT_LIVE_POOL_MAX_WORKERS",
+    ):
+        monkeypatch.delenv(key, raising=False)
     monkeypatch.setattr(
         apply_mod,
         "read_live_pool_plan",
@@ -149,3 +157,60 @@ def test_apply_ram_cap_clamps_plan_via_helper_reference(monkeypatch) -> None:
     assert seq == 1
     assert new_hw.sim_workers == 48
     assert procs == 48
+
+
+def test_apply_exact_fixed_96_profile_ignores_live_plan_and_ram_clamp(
+    monkeypatch,
+) -> None:
+    """The owner-pinned 96/96 profile must never silently downscale."""
+    hardware = _load("poke_bot.pure_rl.hardware", "poke_bot/pure_rl/hardware.py")
+    multi = _load(
+        "poke_bot.pure_rl.multi_env_self_play",
+        "poke_bot/pure_rl/multi_env_self_play.py",
+    )
+    sys.modules["poke_bot.pure_rl.multi_env_self_play"] = multi
+    sys.modules["poke_bot.pure_rl.hardware"] = hardware
+    apply_mod = _load(
+        "poke_bot.pure_rl.live_pool_apply", "poke_bot/pure_rl/live_pool_apply.py"
+    )
+
+    monkeypatch.setenv("POKEBOT_LIVE_POOL", "1")
+    for key in (
+        "PURE_RL_SIM_WORKERS",
+        "PURE_RL_GAMES_IN_FLIGHT",
+        "PURE_RL_REBALANCE_MIN_WORKERS",
+        "PURE_RL_REBALANCE_MAX_WORKERS",
+    ):
+        monkeypatch.setenv(key, "96")
+    monkeypatch.delenv("POKEBOT_LIVE_POOL_MAX_WORKERS", raising=False)
+    assert apply_mod._exact_fixed_local_worker_target() is None
+    monkeypatch.setenv("POKEBOT_LIVE_POOL_MAX_WORKERS", "96")
+    monkeypatch.setattr(
+        apply_mod,
+        "read_live_pool_plan",
+        lambda path=None: live_pool.LivePoolPlan(
+            seq=1, workers=74, leaf_servers=12, reason="generic ram backoff"
+        ).clamped(),
+    )
+
+    def ram_cap_must_not_run(**_kwargs):
+        raise AssertionError("fixed 96 profile must bypass generic RAM clamping")
+
+    monkeypatch.setattr(apply_mod, "max_local_workers_for_ram", ram_cap_must_not_run)
+
+    hw = hardware.FullHardwareProfile(
+        sim_workers=96,
+        games_in_flight=96,
+        train_cuda_device=1,
+        leaf_gpu1_replicas=8,
+        leaf_gpu0_replicas=4,
+        torch_threads=8,
+    )
+    new_hw, procs, seq, plan, _leaf_changed = apply_mod.apply_live_pool_plan(
+        hw=hw, last_seq=0, multi_env_per_worker=1, visible_gpu_count=2
+    )
+    assert plan is not None
+    assert seq == 1
+    assert new_hw.sim_workers == 96
+    assert new_hw.games_in_flight == 96
+    assert procs == 96

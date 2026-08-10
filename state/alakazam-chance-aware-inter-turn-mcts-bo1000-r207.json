@@ -1,0 +1,223 @@
+{
+  "schema": "poke_bot.alakazam_chance_aware_inter_turn_mcts_bo1000_r207/v1",
+  "owner_decision_revision": 207,
+  "recorded_at_utc": "2026-08-10T15:19:29Z",
+  "status": "authorized_implementation_preflight_and_exact_bo1000_shadow_evaluation_pending_prerequisites",
+  "owner_intent": "retain the exact training-ineligible r205 BO1000 and its frozen r195 NO-RTP comparator, while requiring the experimental arm to use simulator-backed MCTS, frozen-model policy priors, batched frozen outcome/value leaf reranking, exact simulator terminal results, safe Bert/Elmo/train noninterference, and component-split telemetry",
+  "supersedes": {
+    "path": "state/alakazam-chance-aware-inter-turn-mcts-bo1000-r205.json",
+    "sha256": "sha256:90d1018d67fddc0565adc195f56830aca2f92d60f57d20b6bb1494d956e74a1d",
+    "owner_decision_revision": 205,
+    "supersedes_only_experimental_arm_mechanics": true,
+    "retains_exact_bo1000_pairing_frozen_model_timing_and_authority_limits": true,
+    "in_place_retry_or_mutation_of_r205_evidence_allowed": false
+  },
+  "design_source": {
+    "path": "state/alakazam-chance-aware-inter-turn-mcts-r202.json",
+    "sha256": "sha256:5df1eadedb342e90c56aa24c5b59f9887c229243411a4112acb6e69562841d32",
+    "owner_decision_revision": 202,
+    "chance_aware_cached_inter_turn_contract_remains_required": true
+  },
+  "frozen_model": {
+    "r195_contract_path": "state/alakazam-terminal-expert-bootstrap-no-rtp-submit-r195.json",
+    "r195_contract_sha256": "sha256:e37cf1d3e638c3aed56230c9fa970c61e6c1ed8b4bd3024de259cb9847c31e48",
+    "submission_id": 55378392,
+    "submission_message": "alakazam training milestone iter 21 copy 1/2 first 261d367e131e NO RTP",
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "checkpoint_bytes": 127914385,
+    "bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "deck_id": "alakazam-owner-rtp-pilot-r175",
+    "deck_path": "decks/archetype-samples/alakazam-owner-rtp-pilot-r175.csv",
+    "deck_cards_sha256": "sha256:660c1274aac19d88c40fd2bb52187f53dc639d944506760e386f2686b91cc247",
+    "same_checkpoint_deck_model_config_and_nonplanner_runtime_required_for_both_arms": true,
+    "policy_prior_model_must_be_the_same_checksum_bound_frozen_model": true,
+    "outcome_value_leaf_reranking_model_must_be_the_same_checksum_bound_frozen_model": true,
+    "additional_training_authorized": false,
+    "evaluation_games_training_eligible": false
+  },
+  "evaluation_design": {
+    "evaluation_id": "alakazam-r207-simulator-backed-chance-aware-inter-turn-mcts-bo1000",
+    "total_games": 1000,
+    "matched_rng_pairs": 500,
+    "games_per_pair": 2,
+    "complete_all_1000_games_without_early_best_of_stop": true,
+    "arms": [
+      "simulator_backed_chance_aware_inter_turn_mcts",
+      "no_rtp_direct_policy"
+    ],
+    "seat_balance": {
+      "mcts_as_seat_0": 500,
+      "mcts_as_seat_1": 500,
+      "no_rtp_as_seat_0": 500,
+      "no_rtp_as_seat_1": 500,
+      "swap_seats_within_every_rng_pair": true
+    },
+    "pairing": {
+      "identical_initial_rng_state_within_each_seat_swapped_pair": true,
+      "identical_deck_order_randomness_contract_within_pair": true,
+      "unique_pair_ids": true,
+      "pair_and_game_nonce_bound_receipts": true,
+      "missing_duplicate_or_crossed_pair_fails_closed": true
+    },
+    "game_parallelism": {
+      "parallel_execution_required_when_safe_capacity_exists": true,
+      "remote_workers_allowed": true,
+      "bert_elmo_and_train_hosts_allowed_only_after_safe_noninterference_preflight": true,
+      "safe_noninterference_receipt_required_per_selected_host": true,
+      "active_attempt10_host_gpu_may_be_used_before_attempt10_terminal": false,
+      "interactive_sessions_may_be_signalled_terminated_or_replaced": false,
+      "managed_or_declared_remote_evaluation_boundaries_only": true
+    }
+  },
+  "experimental_arm": {
+    "strategy_id": "simulator_backed_chance_aware_inter_turn_mcts_with_frozen_policy_priors_and_batched_frozen_outcome_value_leaf_reranking",
+    "plans_multiple_atomic_actions": true,
+    "executes_one_action_before_real_observation": true,
+    "deterministic_matching_subtree_reuse": true,
+    "realized_chance_starts_fresh_public_root": true,
+    "simple_fully_enumerated_chance_uses_exact_expectation": true,
+    "hidden_state_determinization_allowed": false,
+    "opponent_or_unresolved_private_information_is_boundary": true,
+    "max_complete_actions_per_decision": 1024,
+    "direct_policy_action_is_mandatory_candidate_and_timeout_fallback": true,
+    "partial_or_unverified_tree_has_action_authority": false,
+    "simulator": {
+      "simulator_backed_successor_state_and_exact_future_legality_required": true,
+      "simulator_transition_identity_bound_per_expanded_edge": true,
+      "simulator_terminal_result_is_exact_leaf_result": true,
+      "terminal_result_may_be_replaced_reweighted_or_reranked_by_model": false
+    },
+    "frozen_model_policy_priors": {
+      "required": true,
+      "same_checksum_bound_r195_frozen_model_required": true,
+      "policy_visible_inputs_only": true,
+      "prior_batching_allowed": true,
+      "training_gradient_optimizer_or_parameter_update_allowed": false
+    },
+    "batched_frozen_outcome_value_leaf_reranking": {
+      "required_for_nonterminal_leaf_reranking": true,
+      "same_checksum_bound_r195_frozen_model_required": true,
+      "outcome_and_value_outputs_required": true,
+      "batched_evaluation_required": true,
+      "terminal_exact_results_excluded_from_model_reranking": true,
+      "training_gradient_optimizer_or_parameter_update_allowed": false
+    }
+  },
+  "timing": {
+    "clock": "monotonic_wall_clock",
+    "max_planner_wall_seconds_per_actual_turn": 20.0,
+    "max_planner_wall_seconds_before_each_atomic_action": 5.0,
+    "values_owned_by_one_typed_config": true,
+    "automatic_extension_or_escalation_allowed": false,
+    "all_simulator_prior_leaf_batch_validation_cache_and_backup_work_charged": true,
+    "deadline_exhaustion_behavior": "discard_unverified_partial_work_and_execute_exact_no_rtp_direct_action",
+    "per_action_and_per_turn_measured_latency_receipt_required": true,
+    "remote_clock_source_and_effective_budget_identity_required": true
+  },
+  "required_per_turn_split_telemetry": {
+    "planner_turn_id": true,
+    "seat": true,
+    "turn_key": true,
+    "actions_dispatched": true,
+    "simulator_transitions_seen": true,
+    "result_or_leaf_evaluations_seen": true,
+    "unique_tree_nodes_seen": true,
+    "decision_nodes_expanded": true,
+    "terminal_exact_results_seen": true,
+    "boundary_leaf_results_seen": true,
+    "finite_chance_outcomes_evaluated": true,
+    "frozen_policy_prior_batches": true,
+    "frozen_policy_prior_evaluations": true,
+    "batched_frozen_outcome_value_leaf_reranking_batches": true,
+    "frozen_outcome_leaf_evaluations": true,
+    "frozen_value_leaf_evaluations": true,
+    "nonterminal_leaves_reranked": true,
+    "terminal_exact_results_not_reranked": true,
+    "cache_hits": true,
+    "deterministic_subtree_reuses": true,
+    "tree_rebuilds": true,
+    "turn_planner_wall_seconds": true,
+    "max_single_action_planner_wall_seconds": true,
+    "requested_tree_fully_expanded_and_backed_up_within_budget": true,
+    "tree_incomplete_reason": true,
+    "deadline_hit": true,
+    "direct_fallback_used": true,
+    "selected_action_and_legality_fingerprint": true,
+    "tree_and_config_sha256": true,
+    "split_by_mcts_seat_required": true,
+    "split_by_terminal_exact_result_vs_nonterminal_frozen_leaf_required": true,
+    "split_by_policy_prior_outcome_leaf_and_value_leaf_required": true
+  },
+  "required_report": {
+    "game_outcomes": [
+      "wins_draws_losses_by_arm",
+      "wins_draws_losses_by_mcts_seat",
+      "paired_outcome_matrix",
+      "paired_win_rate_difference",
+      "paired_confidence_interval",
+      "illegal_action_forfeit_crash_and_timeout_counts"
+    ],
+    "search_throughput": [
+      "mean_result_or_leaf_evaluations_seen_per_turn",
+      "median_result_or_leaf_evaluations_seen_per_turn",
+      "p95_result_or_leaf_evaluations_seen_per_turn",
+      "minimum_and_maximum_result_or_leaf_evaluations_seen_per_turn",
+      "same_metrics_split_by_mcts_seat",
+      "same_metrics_split_by_complete_vs_incomplete_tree",
+      "policy_prior_outcome_leaf_value_leaf_and_terminal_exact_result_splits"
+    ],
+    "tree_completion": [
+      "turns_with_fully_expanded_and_backed_up_requested_tree",
+      "turns_with_partial_tree_timeout",
+      "turns_stopped_at_chance_information_or_opponent_boundary",
+      "turns_using_deterministic_cached_subtree",
+      "turns_rebuilt_after_realized_chance_or_fingerprint_mismatch",
+      "full_tree_completion_rate_over_all_mcts_turns",
+      "full_tree_completion_rate_by_mcts_seat"
+    ],
+    "latency": [
+      "mean_median_p95_p99_planner_time_per_turn",
+      "mean_median_p95_p99_planner_time_per_action",
+      "turn_budget_breach_count",
+      "action_budget_breach_count",
+      "direct_fallback_after_deadline_count"
+    ],
+    "raw_per_game_and_per_turn_receipts_preserved": true,
+    "missing_telemetry_may_be_imputed": false
+  },
+  "launch_prerequisites": {
+    "simulator_backed_mcts_tree_builder_exists": true,
+    "information_set_safe_successor_branch_abi_receipt": true,
+    "exact_future_legality_receipt": true,
+    "exact_simple_chance_classifier_and_distribution_receipt": true,
+    "terminal_exact_result_parity_receipt": true,
+    "same_frozen_model_policy_prior_identity_and_no_training_receipt": true,
+    "batched_frozen_outcome_value_leaf_reranking_parity_and_no_training_receipt": true,
+    "monotonic_20_second_turn_and_5_second_action_enforcement_tests_pass": true,
+    "tree_digest_branch_evidence_serial_and_config_integrity_tests_pass": true,
+    "same_checkpoint_nonplanner_parity_receipt": true,
+    "local_remote_and_parallel_determinism_receipt": true,
+    "safe_noninterference_preflight_for_bert_elmo_and_train": true,
+    "new_content_addressed_source_candidate_evaluation_and_output": true,
+    "phase_1_prebuilt_tree_cache_scaffold_alone_satisfies_prerequisites": false,
+    "launch_before_every_prerequisite_is_immutable_and_valid": false
+  },
+  "authority": {
+    "offline_implementation_and_tests_authorized": true,
+    "exact_bo1000_shadow_evaluation_authorized_after_prerequisites": true,
+    "remote_evaluation_workers_authorized_after_noninterference_preflight": true,
+    "training_service_start_authorized": false,
+    "training_or_gradient_updates_authorized": false,
+    "frozen_prior_or_leaf_model_updates_authorized": false,
+    "attempt10_preemption_restart_or_mutation_authorized": false,
+    "serving_eligible": false,
+    "production_action_authority_enabled": false,
+    "selector_change_authorized": false,
+    "checkpoint_publication_authorized": false,
+    "kaggle_submission_authorized": false,
+    "promotion_authorized": false,
+    "self_promotion_authorized": false,
+    "r175_restart_authorized": false,
+    "iteration_21_collection_authorized": false
+  }
+}

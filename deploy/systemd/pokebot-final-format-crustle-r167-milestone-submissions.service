@@ -1,0 +1,12 @@
+[Unit]
+Description=Stage nonblocking final-format Crustle milestone submissions (5n+4)
+After=network-online.target pokebot-final-format-crustle-r113-h10-register.service
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/crustle-runtime-registration-v1.json
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/stage_final_format_alakazam_milestone_submissions.py --runtime-root /home/inzi/poke-bot-agent --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k --representatives /home/inzi/poke-bot-agent/outputs/state/crustle-iter4-trained-deck-representatives-r167.json --matchup-tree /home/inzi/poke-bot-agent/outputs/state/slowking-public-matchup-tree-v33.json --submission-root /home/inzi/poke-bot-agent/outputs/submissions/final-format-crustle-milestones-r167 --receipts /home/inzi/poke-bot-agent/outputs/state/final-format-crustle-milestone-submissions-r167 --queue /home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --specialist-id crustle --maximum-iteration 184 --owner-decision-revision 167
+Nice=10
+IOSchedulingClass=idle

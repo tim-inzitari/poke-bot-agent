@@ -1,0 +1,29 @@
+{
+  "gate_receipt": "/home/inzi/poke-bot-agent/outputs/state/slop-box-cox-chao-held-policy-acc-gate-r170.json",
+  "goal_revision": 170,
+  "held_split": "/home/inzi/poke-bot-agent/outputs/state/slop-box-cox-chao-held-split-pilot-map-r170.json",
+  "held_split_size_blocker": {
+    "best_aux_measured": 0.777,
+    "cox_chao_held_decisions": 1857,
+    "cox_chao_held_games": 24,
+    "expansion": {
+      "catalog_observed_acting_seat_games": 2699,
+      "elmo_out": "/mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v5-r170",
+      "jul29_aug5_projected_teal_seats": 1257,
+      "materialize_state": "running",
+      "prior_corpus_games": 1442
+    },
+    "trajectory": [
+      0.76,
+      0.771,
+      0.765
+    ]
+  },
+  "measured_cox_chao_held_policy_acc": 0.7652127086698977,
+  "note": "CE80+10x plateaued at 0.765/0.900 on 24-game held. Expanding teal corpus Jul29-Aug5 on elmo. Fusion v3 completion check patched on train. No ready/no RL.",
+  "passed": false,
+  "schema": "poke_bot.slop_box_cox_chao_gate_armed_r170/v1",
+  "status": "expanding_cox_chao_corpus_jul29_aug5",
+  "threshold": 0.9,
+  "updated_at_utc": "2026-08-06T16:48:06.147690+00:00"
+}

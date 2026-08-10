@@ -1,0 +1,68 @@
+{
+  "schema": "poke_bot.replay_model_inspector_head_and_training_weight_playground/v1",
+  "owner_decision_revision": 187,
+  "recorded_at_utc": "2026-08-08T00:13:53Z",
+  "status": "active",
+  "activated_at_utc": "2026-08-08T01:24:17Z",
+  "activation_receipt": "state/replay-model-inspector-head-influence-playground-activation-r187.json",
+  "decision_influence": {
+    "scope": "architecture_present_fused_heads_for_selected_decision",
+    "minimum_scale": 0.0,
+    "maximum_scale": 2.0,
+    "baseline_scale": 1.0,
+    "method": "exact_nonlinear_decision_fusion_recomputation",
+    "linear_sum_of_leave_one_out_effects_allowed": false,
+    "show_baseline_and_counterfactual_logits": true,
+    "show_baseline_and_counterfactual_probabilities": true,
+    "show_selected_action_change": true,
+    "label": "decision_only_hypothetical_recomputed_not_historical",
+    "training_weight_claim_allowed": false
+  },
+  "training_recipe": {
+    "scope": "source_backed_training_loss_multipliers",
+    "examples": [
+      "current_deck_guide_weight",
+      "strategic_head_loss_weights"
+    ],
+    "exact_checkpoint_bound_baseline_required": true,
+    "bounded_edits_required": true,
+    "reset_available": true,
+    "export_configuration_available": false,
+    "unknown_or_unavailable_weight_behavior": "reject_with_reason"
+  },
+  "fine_tuning": {
+    "required_for_policy_behavior_change": true,
+    "must_be_explicitly_launched": true,
+    "must_be_isolated_from_active_training": true,
+    "must_produce_new_checksum_distinct_checkpoint": true,
+    "execution_authority_in_this_revision": false,
+    "evaluation_replay_may_supply_gradients": false
+  },
+  "safety": {
+    "decision_scales_request_scoped": true,
+    "recipe_display_read_only": true,
+    "restore_cached_model_state_after_request": true,
+    "checkpoint_or_parameter_mutation": false,
+    "replay_mutation": false,
+    "training_data_mutation": false,
+    "selector_or_managed_training_authority": false,
+    "evaluation_replays_training_eligible": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_inspector_counterfactual_api_and_static_ui",
+    "may_run_during_healthy_training": true,
+    "requires_inspector_service_restart": true,
+    "required_validation": [
+      "one_x_exact_baseline_parity_test",
+      "zero_x_matches_exact_head_ablation_test",
+      "nonlinear_multi_head_recomputation_test",
+      "scale_bounds_and_unknown_head_rejection_test",
+      "cached_model_state_restoration_test",
+      "checkpoint_bound_baseline_recipe_test",
+      "guide_weight_zero_point_zero_five_display_test",
+      "decision_scale_vs_training_weight_terminology_test",
+      "evaluation_replay_training_ineligible_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-head-influence-playground-activation-r187.json"
+  }
+}

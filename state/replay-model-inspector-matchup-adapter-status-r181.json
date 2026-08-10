@@ -1,0 +1,53 @@
+{
+  "schema": "poke_bot.replay_model_inspector_matchup_adapter_status/v1",
+  "owner_decision_revision": 181,
+  "recorded_at_utc": "2026-08-07T23:48:00Z",
+  "status": "staged",
+  "decision_status": {
+    "required_states": [
+      "active_for_decision",
+      "bypassed",
+      "unavailable"
+    ],
+    "active_definition": "a decision-specific matched adapter route was actually applied to the final runtime policy",
+    "checkpoint_parameters_imply_active": false,
+    "bypass_reason_required": true,
+    "unavailable_reason_required": true
+  },
+  "active_details": {
+    "required_when_available": [
+      "matched_archetype_or_matchup",
+      "adapter_route_or_slot",
+      "route_reliability",
+      "exact_policy_effect"
+    ],
+    "policy_effect_method": "full_final_policy_minus_policy_without_matchup_adapter_route",
+    "missing_detail_behavior": "explicit_unavailable"
+  },
+  "presentation": {
+    "prominent_badge_or_card": true,
+    "plain_english": true,
+    "raw_adapter_payload_remains_available": true
+  },
+  "safety": {
+    "read_only": true,
+    "no_router_or_checkpoint_mutation": true,
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_authority": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_inspector_trace_and_ui",
+    "may_run_during_healthy_training": true,
+    "requires_inspector_service_restart": true,
+    "must_not_restart_training": true,
+    "required_validation": [
+      "adapter_active_for_decision_test",
+      "adapter_bypass_reason_test",
+      "adapter_unavailable_reason_test",
+      "installed_but_not_routed_is_not_active_test",
+      "plain_english_adapter_static_ui_test",
+      "live_adapter_status_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-matchup-adapter-status-activation-r181.json"
+  }
+}

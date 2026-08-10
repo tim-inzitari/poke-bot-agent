@@ -1,0 +1,65 @@
+--- a/State.h
++++ b/State.h
+@@ -666,13 +666,60 @@
+ 		return makeAreaRef(ref);
+ 	}
+ 
++	// V3 reads card identity only through this seam outside the excluded
++	// private Search implementation. Unknown zones default to private;
++	// explicit public zones and the controlled player's hand are the only
++	// permitted identities during an audited successor transition.
++	bool plannerCardIsPrivate(const Card& card) const {
++		if (game == nullptr || !game->plannerAudit.active || card.cardId == 0) {
++			return false;
++		}
++		const int controlledPlayer = game->plannerAudit.controlledPlayer;
++		if (card.reverse) {
++			return true;
++		}
++		switch (card.area) {
++		case AreaType::Hand:
++			return card.playerIndex != controlledPlayer;
++		case AreaType::Looking:
++			return lookingReverse ||
++				(lookingPlayer != controlledPlayer && lookingPlayer != 2);
++		case AreaType::Playing:
++			return card.preArea == AreaType::Deck ||
++				card.preArea == AreaType::DeckBottom ||
++				card.preArea == AreaType::Prize ||
++				(card.preArea == AreaType::Hand && card.playerIndex != controlledPlayer);
++		case AreaType::Active:
++		case AreaType::Bench:
++		case AreaType::Trash:
++		case AreaType::Stadium:
++		case AreaType::Energy:
++		case AreaType::Tool:
++		case AreaType::PreEvolution:
++		case AreaType::Player:
++			return false;
++		default:
++			return true;
++		}
++	}
++
++	void auditPlannerCardRead(const Card& card) const {
++		if (plannerCardIsPrivate(card)) {
++			game->plannerAudit.markPrivateCardRead();
++		}
++	}
++
+ 	Card& getCard(CardRef ref) {
+ 		assert(ref.cardIndex > 0);
+-		return allCard.at(ref.cardIndex);
++		Card& card = allCard.at(ref.cardIndex);
++		auditPlannerCardRead(card);
++		return card;
+ 	}
+ 	const Card& getCard(CardRef ref) const {
+ 		assert(ref.cardIndex > 0);
+-		return allCard.at(ref.cardIndex);
++		const Card& card = allCard.at(ref.cardIndex);
++		auditPlannerCardRead(card);
++		return card;
+ 	}
+ 
+ 	Card* checkGetCard(AreaRef area) {

@@ -117,6 +117,56 @@ def test_portable_payload_rejects_traversal(
         resolve_baseline_spec_payload(payload, require_content_identity=True)
 
 
+def test_manifest_owned_external_leaf_symlink_requires_and_verifies_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "baselines"
+    external = tmp_path / "immutable-deployment" / "example-agent"
+    external.mkdir(parents=True)
+    (external / "main.py").write_text("def agent(obs): return [0]\n")
+    (external / "deck.csv").write_text("1\n" * 60)
+    group = root / "specialists"
+    group.mkdir(parents=True)
+    installed = group / "example-agent"
+    installed.symlink_to(external, target_is_directory=True)
+    (root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "agents": [
+                    {
+                        "id": "example",
+                        "name": "Example",
+                        "dir": "example-agent",
+                        "group": "specialists",
+                        "source": "immutable-test",
+                    }
+                ]
+            }
+        )
+    )
+    _point_paths(monkeypatch, root)
+    payload = baseline_spec_payload(
+        BaselineSpec(
+            id="example",
+            name="Example",
+            dir_name="example-agent",
+            group="specialists",
+            source="immutable-test",
+            path=installed,
+        )
+    )
+
+    resolved = resolve_baseline_spec_payload(
+        payload, require_content_identity=True
+    )
+    assert resolved.path == external.resolve()
+
+    payload.pop("content_digest")
+    payload.pop("contract_schema")
+    with pytest.raises(ValueError, match="escapes local library"):
+        resolve_baseline_spec_payload(payload)
+
+
 def test_baseline_agent_cannot_leak_matchup_runtime_into_active_specialist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

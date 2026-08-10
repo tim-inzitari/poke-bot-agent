@@ -1,0 +1,71 @@
+{
+  "schema": "poke_bot.replay_model_inspector_gpu_trace_and_device_cache/v1",
+  "owner_decision_revision": 203,
+  "recorded_at_utc": "2026-08-10T14:30:00Z",
+  "status": "active",
+  "scope": {
+    "service": "pokebot-replay-model-inspector.service",
+    "host": "elmo",
+    "read_only": true,
+    "indexed_submission_count": 18,
+    "trace_ready_submission_count": 18,
+    "cached_replay_game_count": 1102,
+    "available_replay_game_count": 1102
+  },
+  "runtime": {
+    "inference_device": "cuda:0",
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "gpu_memory_mib": 12288,
+    "resident_runtime_submission_id": "55378392",
+    "resident_runtime_bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "one_model_resident": true,
+    "training_authority": false
+  },
+  "deterministic_setup_policy": {
+    "actual_runtime_semantics": "exact_deterministic_runtime_distribution_not_neural_softmax",
+    "actual_selected_probability": 1.0,
+    "actual_other_probability": 0.0,
+    "hypothetical_model_rerun_available": true,
+    "hypothetical_semantics": "fresh_archived_model_softmax_not_historical_submitted_runtime_execution"
+  },
+  "selection_and_cache": {
+    "submission_search": "client_side_partial_id_or_label",
+    "game_search": "client_side_partial_id_or_player",
+    "step_entry": "exact_recorded_step_number",
+    "native_selects_preserved": true,
+    "selected_step_priority": true,
+    "remaining_game_step_stages_prefetched_sequentially": true,
+    "cache_location": "browser_device_memory",
+    "cache_cleared_on_submission_or_game_change": true
+  },
+  "live_verification": {
+    "submission_id": "55378392",
+    "episode_id": "91468417",
+    "step_index": 15,
+    "factorized_stage": 0,
+    "policy_probability_count": 6,
+    "head_count": 19,
+    "inference_device": "cuda:0",
+    "cold_elapsed_ms": 17074,
+    "warm_elapsed_ms": 597,
+    "reproduction_status": "recomputed_not_historical"
+  },
+  "deployment": {
+    "inference_sha256": "5c019a43e91303eea075ba62883f49db10ee3103f9cda18b540581fb809d7e1c",
+    "provenance_sha256": "40af53629b71b0a82aba0ead21cadd64ee1667da499e2f58243763caa087e475",
+    "server_sha256": "7731076b704fd6dd7dc6790805e617a01656ae83a24d12e9519348e97da2fbd0",
+    "web_index_sha256": "747fb5cad6d418db5421856f30a783b343fa52e854b03bd91047885eca1caa74",
+    "web_app_sha256": "3dd057034f788e428ac2f5891c810c16d4eb5a64389deae170af6f6c290cfa23",
+    "web_styles_sha256": "6c57ebb89fdeddef445ffc372436744096585f4d4bf722b53d3b60b8563d0685",
+    "service_unit_sha256": "4004f1618c5335487975e27857eb0f6554d7fed5040e79a0ba581085def94ba3",
+    "focused_static_and_server_tests_passed": 34,
+    "service_health": "ok"
+  },
+  "safety": {
+    "checkpoint_mutated": false,
+    "submitted_bundle_mutated": false,
+    "replay_mutated": false,
+    "evaluation_replays_training_eligible": false,
+    "actual_and_hypothetical_setup_outputs_distinguished": true
+  }
+}

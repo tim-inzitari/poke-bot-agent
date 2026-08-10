@@ -1,0 +1,125 @@
+{
+  "schema": "poke_bot.alakazam_rtp_continuation_r199/v1",
+  "owner_decision_revision": 199,
+  "recorded_at_utc": "2026-08-10T13:47:46Z",
+  "status": "attempt10_in_progress_shadow_only_pending_terminal_evidence",
+  "owner_intent": "continue separately versioned receipt-backed Alakazam RTP research and development without granting production authority",
+  "provisional_abandonment_instruction": {
+    "rescinded_before_activation": true,
+    "live_prefix_is_abandonment_efficacy_promotion_or_stop_authority": false,
+    "owner_authorized_abandonment_threshold": null
+  },
+  "frozen_r198_contract": {
+    "path": "state/alakazam-rtp-realignment-r197.json",
+    "schema": "poke_bot.alakazam_rtp_realignment_r197/v1",
+    "owner_decision_revision": 198,
+    "sha256": "sha256:ea032624be23341fbae6e0b9b9debf6695a7a3b5a51613cf7294248bdba39c05",
+    "must_remain_byte_identical_for_attempt10": true
+  },
+  "attempt10": {
+    "evaluation_revision": 198,
+    "frozen": true,
+    "managed_service": "pokebot-alakazam-rtp-r198-three-arm-eval.service",
+    "invocation_id": "1aaed5eeae4349d78c27a29d80bd2441",
+    "output_root": "/home/inzi/poke-bot-agent/outputs/rtp_fleet/alakazam-r198-three-arm-eval-attempt10",
+    "evaluation_id": "r198-three-arm-6a0d99cb02d5ca02318f8725c6523517fee1b9a97d76b05aa6bb0fddfc680105",
+    "evaluation_root": "/home/inzi/poke-bot-agent/outputs/rtp_fleet/alakazam-r198-three-arm-eval-attempt10/evaluations/r198-three-arm-6a0d99cb02d5ca02318f8725c6523517fee1b9a97d76b05aa6bb0fddfc680105",
+    "evaluation_input_contract": {
+      "path": "/home/inzi/poke-bot-agent/outputs/rtp_fleet/alakazam-r198-three-arm-eval-attempt10/evaluations/r198-three-arm-6a0d99cb02d5ca02318f8725c6523517fee1b9a97d76b05aa6bb0fddfc680105/evaluation-input-contract.json",
+      "file_sha256": "sha256:b0a3e151af3ee3d66c16fc2362aa2ae462c62a61ca14e3f5a3ba4d4881b0511f",
+      "canonical_sha256": "sha256:6a0d99cb02d5ca02318f8725c6523517fee1b9a97d76b05aa6bb0fddfc680105"
+    },
+    "execution_attempt": {
+      "path": "/home/inzi/poke-bot-agent/outputs/rtp_fleet/alakazam-r198-three-arm-eval-attempt10/evaluations/r198-three-arm-6a0d99cb02d5ca02318f8725c6523517fee1b9a97d76b05aa6bb0fddfc680105/execution-attempt.json",
+      "file_sha256": "sha256:a815768c9be86b66ae23471b0196e8b99b69e971991a826ea62e2a06314b3479",
+      "canonical_sha256": "sha256:f047cdae135001a1625c8b1277f1f7ef20b5d178656ecfbc3f3bdfa85309765d"
+    },
+    "evaluation_source_snapshot": {
+      "root": "/home/inzi/poke-bot-agent-deployments/alakazam-rtp-r198-three-arm-eval-src-36a15c52a4c7",
+      "source_tree_sha256": "sha256:36a15c52a4c7c9e56cd5165b84ac297b1c2f0592835b1482e9a9b97056701ba9",
+      "manifest_sha256": "sha256:a4e20e8836702ab5abae18b7dcf3f4c1c7f1336d60f172583a0dca6ceb9c41a1",
+      "rendered_unit_sha256": "sha256:36133a5280a87184c35a754595e8bc7e2feffe7d6099cc27b751cd79ce7b8eb5"
+    },
+    "candidate": {
+      "candidate_id": "r197-bc31f860b8154549b77f3e414127139b02ad4f4905dd76c78974e599ba868e6e",
+      "candidate_contract_sha256": "sha256:bc31f860b8154549b77f3e414127139b02ad4f4905dd76c78974e599ba868e6e",
+      "snapshot_manifest_sha256": "sha256:d54d14bf62976aa875fd707a37aca34d7cce05b51ce908f7acfa80c05685560e",
+      "completion_receipt_sha256": "sha256:b0c209257ed401bf9c5fe5a1ee17be1d1cdc01a1f9780e3e0d23ce8fa5f80737",
+      "sidecar_sha256": "sha256:23eb09cbfa5e9e8d3aec3b8af4dc03a71db811ce9b7c32c6c5ece65bc3f3dc31",
+      "sidecar_receipt_sha256": "sha256:2f577d4101b7657d133eac190081ef75fca211435b83dcca8f2e2686d7597d2b",
+      "sidecar_config_sha256": "sha256:7fb0658f0358c93636524a40ddd52f9f76199de261963a85dbf5946901a9f676",
+      "parent_checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a"
+    },
+    "must_complete_to_terminal_evidence_or_fail_closed": true,
+    "preemption_allowed": false,
+    "alteration_allowed": false,
+    "retry_in_place_allowed": false,
+    "prefix_is_nonterminal": true,
+    "prefix_can_change_selector_or_authority": false
+  },
+  "terminal_evidence": {
+    "matched_cells_required_for_completed_evaluation": 1000,
+    "expected_arm_rows_for_completed_evaluation": 3000,
+    "arms": [
+      "no_rtp",
+      "direct_bridge_recursive_disabled",
+      "recursive_rtp"
+    ],
+    "immutable_evaluation_receipt_required": true,
+    "all_transcript_and_execution_receipt_bindings_required": true,
+    "paired_rng_seat_opponent_evidence_required": true,
+    "compiler_and_binding_audit_required": true,
+    "valid_compiler_statuses": [
+      "hold",
+      "ready_for_separate_promotion_review"
+    ],
+    "failed_boundary_requires_sealed_fail_closed_evidence": true,
+    "failed_boundary_is_efficacy_evidence": false,
+    "hold_or_rejection_is_abandonment_authority": false,
+    "all_terminal_evidence_must_be_preserved": true
+  },
+  "post_terminal_r_and_d": {
+    "enabled": true,
+    "receipt_bound_diagnosis_required": true,
+    "immutable_preflight_receipt_required": true,
+    "new_separately_versioned_contract_required": true,
+    "new_content_addressed_source_snapshot_required": true,
+    "new_candidate_id_required": true,
+    "new_evaluation_identity_required": true,
+    "new_output_root_required": true,
+    "reuse_or_rewrite_failed_attempt_allowed": false,
+    "gate_weakening_allowed": false
+  },
+  "inherited_r198_limits_and_gates": {
+    "action_representation": "complete_ordered_action_combinations",
+    "max_action_combos": 1024,
+    "max_neural_passes": 256,
+    "required_neural_passes_normal": 6,
+    "required_neural_passes_forced_replan": 5,
+    "automatic_budget_escalation_allowed": false,
+    "paired_three_arm_evaluation_required": true,
+    "reliability_gate_required": true,
+    "latency_gate_required": true,
+    "legality_and_forfeit_nonregression_required": true,
+    "source_excluded_recursive_over_direct_improvement_required": true,
+    "trustworthy_counterfactual_targets_required_for_action_authority": true,
+    "separate_immutable_promotion_receipt_required": true
+  },
+  "authority": {
+    "training_continuation_authorized": false,
+    "replay_collection_authorized": false,
+    "serving_eligible": false,
+    "action_authority_enabled": false,
+    "selector_change_authorized": false,
+    "checkpoint_publication_authorized": false,
+    "kaggle_submission_authorized": false,
+    "promotion_authorized": false,
+    "self_promotion_authorized": false
+  },
+  "production_boundary": {
+    "preserve_r175_and_r195": true,
+    "restart_r175_allowed": false,
+    "collect_iteration_21_allowed": false,
+    "preserve_all_prior_source_and_evaluation_attempts": true
+  }
+}

@@ -7,7 +7,7 @@ display_name: "Alakazam — final-format refresh"
 status: ready_existing_validated_guide_rebound_to_final_refresh
 guide_version: powerful-hand-v1
 teacher_module: poke_bot.alakazam_heuristics
-teacher_module_sha256: sha256:a5dfd944ad0358a0850d280bd5d7560e7c2a79713c28e4763cb3d7b102c195c9
+teacher_module_sha256: sha256:c9f8890d5751a70c9a7ce9026545823e92f8384227281f8dba168323d9a13d86
 guide_research_mode: reuse_existing_validated_evidence
 new_strategy_research_performed: false
 
@@ -124,8 +124,8 @@ strategy_sources:
 
 expert_writeup:
   path: docs/deck_guides/alakazam-final-refresh-expert-brief.txt
-  sha256: sha256:ba648e37a545adc7e6383bd962022463e58aef0b50f4318518fdf7ac6b171411
-  word_count: 1575
+  sha256: sha256:38422782224e7c24baccfd5fbc7f40c84a9b8ff37e76bf968dd8b1eb72b0151f
+  word_count: 1795
   maximum_words: 10000
   audience: world_champion_subject_matter_experts
   guide_identity: alakazam

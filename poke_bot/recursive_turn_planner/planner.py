@@ -24,6 +24,40 @@ from .types import (
 )
 
 
+class RTPNeuralPassBudgetExceeded(RuntimeError):
+    """Raised when a bounded planner would exceed its serialized pass ceiling."""
+
+    def __init__(self, *, used: int, limit: int) -> None:
+        self.used = int(used)
+        self.limit = int(limit)
+        super().__init__(f"RTP neural-pass budget exceeded ({self.limit})")
+
+
+def required_recursive_passes(
+    config: RTPConfig,
+    *,
+    force_recurse: bool = False,
+) -> int:
+    """Return the current skeleton's worst-case pass count for one full plan.
+
+    Every recursive turn proposes all root candidates.  The current candidate
+    skeleton has one subgoal at depth one; it can expand at most
+    ``max_recursion_depth - 1`` times per candidate.  The normal path also
+    spends one pass on the complexity gate, whereas a forced repair/replan
+    skips that gate.  Keep this calculation beside the implementation so a
+    serving loader can reject a configuration that can never finish a plan.
+    """
+
+    subgoal_passes_per_candidate = max(0, int(config.max_recursion_depth) - 1)
+    complexity_gate_passes = 0 if force_recurse else 1
+    root_proposal_passes = 1
+    return (
+        complexity_gate_passes
+        + root_proposal_passes
+        + int(config.num_plan_candidates) * subgoal_passes_per_candidate
+    )
+
+
 @dataclass(frozen=True)
 class PlanProposal:
     program: TurnProgram
@@ -103,6 +137,10 @@ class RecursiveTurnPlanner(nn.Module):
             "num_plan_candidates": self.config.num_plan_candidates,
             "max_recursion_depth": self.config.max_recursion_depth,
             "max_neural_passes": self.config.max_neural_passes,
+            "required_neural_passes_normal": self.required_recursive_passes(),
+            "required_neural_passes_forced_replan": self.required_recursive_passes(
+                force_recurse=True
+            ),
             "max_plan_length": self.config.max_plan_length,
             "complexity_option_threshold": self.config.complexity_option_threshold,
             "skip_trivial_decisions": self.config.skip_trivial_decisions,
@@ -128,11 +166,23 @@ class RecursiveTurnPlanner(nn.Module):
     def reset_pass_counter(self) -> None:
         self._neural_passes = 0
 
+    @property
+    def neural_passes(self) -> int:
+        """Passes consumed by the current turn's planning attempt."""
+
+        return int(self._neural_passes)
+
+    def required_recursive_passes(self, *, force_recurse: bool = False) -> int:
+        """Expose the current planner skeleton's complete-plan budget."""
+
+        return required_recursive_passes(self.config, force_recurse=force_recurse)
+
     def _consume_pass(self) -> None:
         self._neural_passes += 1
         if self._neural_passes > self.config.max_neural_passes:
-            raise RuntimeError(
-                f"RTP neural-pass budget exceeded ({self.config.max_neural_passes})"
+            raise RTPNeuralPassBudgetExceeded(
+                used=self._neural_passes,
+                limit=self.config.max_neural_passes,
             )
 
     def encode_memory(

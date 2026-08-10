@@ -1,0 +1,95 @@
+{
+  "schema": "poke_bot.alakazam_r175_terminal_projection_reconciliation/v1",
+  "goal_revision": 194,
+  "status": "activated_at_receipt_backed_terminal_boundary",
+  "created_at_utc": "2026-08-09T05:33:01Z",
+  "specialist_id": "alakazam",
+  "run_name": "final_format_alakazam_rtp_r175_i_v6_8k",
+  "terminal_authority": {
+    "completion_receipt": "/home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-completion-v1.json",
+    "completion_receipt_sha256": "sha256:34444545d40ed47504334e90e95835193c5e9ac61fbc4abe46f0dbc2b789aaca",
+    "terminal_registry": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_registry_h10_r175_iter20_terminal.json",
+    "terminal_registry_sha256": "sha256:37024aa2e25c71218295ee8bd07f924afa47eb3d4d2f386ff2af002c833fd37e",
+    "checkpoint_sha256": "sha256:87caf05bdeda3a798268905a5670841125b1797f31b9a823343c393d7f0ced65",
+    "completed_iteration": 20,
+    "forbidden_next_iteration": 21,
+    "next_iteration_collected": false,
+    "completion_authority": "explicit_owner_ceiling_acceptance",
+    "measured_gate_pass": false,
+    "failed_gate_results_preserved": true,
+    "frozen": true,
+    "registered": true
+  },
+  "train_host_activation": {
+    "host": "192.168.1.151",
+    "backup_directory": "/home/inzi/poke-bot-agent/outputs/state/metadata-reconcile-r194-20260809T0128EDT",
+    "managed_training_service": "pokebot-final-format-alakazam-rtp-r175-rl.service",
+    "service_main_pid_before": 0,
+    "service_main_pid_after": 0,
+    "service_restart_count_before": 2,
+    "service_restart_count_after": 2,
+    "service_exec_status": 143,
+    "training_restarted": false,
+    "successor_training_service_started": false,
+    "iteration_21_artifact_count": 0,
+    "artifacts": [
+      {
+        "path": "/home/inzi/poke-bot-agent/config/rl_protocol.yaml",
+        "pre_sha256": "sha256:cf3337959c48ae1799eb8622148983e5a5ffefd2529fa86014e413906f543469",
+        "post_sha256": "sha256:397057adc38120b068e5962ab763bd73edfd0b16fb4d05ad890a860a625af050"
+      },
+      {
+        "path": "/home/inzi/poke-bot-agent/state/specialists.yaml",
+        "pre_sha256": "sha256:b8b3699d1f2e6b3d47838e12c7cf93cd2b0f4441db7f661f1ab9e25323293073",
+        "post_sha256": "sha256:4092eb480c22ef341624291551a27cc2ee5be68783d919b759c48c5d015f4328"
+      },
+      {
+        "path": "/home/inzi/poke-bot-agent/ops/current_goal_requirements.json",
+        "pre_sha256": "sha256:948ea6b5ac221c0ac1e55af371752fed37aa5a4834ec1dc546c58615035dfa43",
+        "post_sha256": "sha256:a9ad05b803c8ee083141d18930791b00dd75553472f59aa8e70ef7735fdb3520"
+      },
+      {
+        "path": "/home/inzi/poke-bot-agent/scripts/dashboard_snapshot.py",
+        "pre_sha256": "sha256:6a6b20f34545d774f60b749954fb8977ca7f2428fd70da2ba0280e403b84f716",
+        "post_sha256": "sha256:d560c80926b8ea6343664560c75a05d059ee0f4e063c28b8b2310bc2ee4dcaaa"
+      },
+      {
+        "path": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/scripts/dashboard_snapshot.py",
+        "pre_sha256": "sha256:aed933f1cd406f3cd006b74abfeae73a1ac670a0cae3667d2ca525e24991ead3",
+        "post_sha256": "sha256:a7385680a62c2842dc7f6608824d00eaefeb510c489f0f8f3e43441c1ef3f42d"
+      }
+    ]
+  },
+  "dashboard_verification": {
+    "endpoint": "http://192.168.1.158:8780/api/status",
+    "source_integrity_current": true,
+    "failed_required_rows": [],
+    "training_status": "complete",
+    "training_phase": "terminal:ceiling_accepted_frozen_registered",
+    "goal_revision": 194,
+    "iteration": 20,
+    "last_completed_iteration": 20,
+    "iterations_target": 21,
+    "runtime_registry": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_registry_h10_r175_iter20_terminal.json",
+    "model_sha256": "sha256:87caf05bdeda3a798268905a5670841125b1797f31b9a823343c393d7f0ced65",
+    "terminal_line_mentions_measured_gate_failure": true,
+    "terminal_line_mentions_iteration_21_not_collected": true
+  },
+  "compatibility_projection": {
+    "revision_192_active_through_terminal_iteration": true,
+    "revision_193_large_refresh_completed": true,
+    "revision_194_second_copy_submission_id": 55362452,
+    "revision_194_second_copy_status": "COMPLETE",
+    "revision_194_second_copy_score": 600.0,
+    "original_submission_id": 55359777,
+    "original_submission_unchanged": true
+  },
+  "non_authority": {
+    "does_not_relabel_measured_gate_as_pass": true,
+    "does_not_start_iteration_21": true,
+    "does_not_restart_training": true,
+    "does_not_activate_slop_box": true,
+    "does_not_activate_crustle": true,
+    "does_not_activate_population_training": true
+  }
+}

@@ -1,0 +1,44 @@
+[Unit]
+Description=Alakazam Guide2Vec r212 isolated candidate training
+# This unit intentionally has no Wants/Requires/After/Before/Conflicts/PartOf
+# relationships.  It must never participate in the specialist selector or
+# alter the lifecycle of another managed workload.
+# Revision 226 retires this experiment.  `/` always exists, so this negated
+# condition is always false and systemd skips every ExecStartPre/ExecStart.
+ConditionPathExists=!/
+ConditionPathExists=/home/inzi/poke-bot-agent-deployments/alakazam-guide2vec-r212-SNAPSHOT/guide2vec-r212-source-snapshot-manifest.json
+ConditionPathExists=/home/inzi/poke-bot-agent-deployments/alakazam-guide2vec-r212-SNAPSHOT/scripts/stage_alakazam_guide2vec_r212_source_snapshot.py
+ConditionPathExists=/home/inzi/poke-bot-agent-deployments/alakazam-guide2vec-r212-SNAPSHOT/scripts/train_alakazam_guide2vec_r212.py
+ConditionPathExists=/home/inzi/poke-bot-agent-deployments/alakazam-guide2vec-r212-SNAPSHOT/deploy/guide2vec/alakazam-guide2vec-r212-job.json
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-guide2vec-r212-SNAPSHOT
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-guide2vec-r212-SNAPSHOT
+# Present precisely the Blackwell as logical cuda:0 to this standalone job.
+Environment=CUDA_VISIBLE_DEVICES=GPU-79cf504f-6573-0b8c-c90e-eb567b7bcfa6
+Environment=POKEBOT_GUIDE2VEC_R212_ISOLATED=1
+Environment=POKEBOT_GUIDE2VEC_R212_NO_SELECTOR_MUTATION=1
+Environment=POKEBOT_GUIDE2VEC_R212_NO_SERVING_ACTIVATION=1
+Environment=POKEBOT_GUIDE2VEC_R212_REQUIRE_CONTENT_ADDRESSED_OUTPUT=1
+Environment=POKEBOT_USE_RECURSIVE_TURN_PLANNER=0
+Environment=POKEBOT_COMBO_STATE_ROUTE_ENABLED=0
+Environment=POKEBOT_GUIDE2VEC_R212_OUTPUT_ROOT=/home/inzi/poke-bot-agent/outputs/guide2vec/alakazam-r212
+Environment=POKEBOT_GUIDE2VEC_R212_LOG_PATH=/home/inzi/poke-bot-agent/outputs/guide2vec/alakazam-r212/logs/train.log
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/stage_alakazam_guide2vec_r212_source_snapshot.py verify --published-root /home/inzi/poke-bot-agent-deployments/alakazam-guide2vec-r212-SNAPSHOT
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/train_alakazam_guide2vec_r212.py --check --config deploy/guide2vec/alakazam-guide2vec-r212-job.json --output-root /home/inzi/poke-bot-agent/outputs/guide2vec/alakazam-r212 --device cuda:0
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/train_alakazam_guide2vec_r212.py --run --config deploy/guide2vec/alakazam-guide2vec-r212-job.json --output-root /home/inzi/poke-bot-agent/outputs/guide2vec/alakazam-r212 --device cuda:0
+Restart=no
+TimeoutStartSec=infinity
+TimeoutStopSec=900
+MemoryHigh=32G
+MemoryMax=48G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/guide2vec/alakazam-r212/logs/train.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/guide2vec/alakazam-r212/logs/train.log
+
+[Install]
+WantedBy=default.target

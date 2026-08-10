@@ -302,8 +302,14 @@ def test_final_format_marnie_is_a_live_curriculum_service() -> None:
     assert dashboard_snapshot_module._is_curriculum_service_unit(
         "pokebot-final-format-alakazam-r79-h10.service"
     )
+    assert dashboard_snapshot_module._is_curriculum_service_unit(
+        "pokebot-final-format-alakazam-rtp-r175-rl.service"
+    )
     assert not dashboard_snapshot_module._is_curriculum_service_unit(
         "pokebot-final-format-marnie-r104-milestone-submissions.service"
+    )
+    assert not dashboard_snapshot_module._is_curriculum_service_unit(
+        "pokebot-final-format-alakazam-rtp-r175-milestone-submissions.service"
     )
 
 
@@ -1871,11 +1877,10 @@ def test_specialist_protocol_state_validates_roster_and_restart(
     assert "Continue live Marnie S Grimmsnarl Ex" in (
         marnie_refresh_state["next_action"]
     )
-    assert "Do not collect iteration 21" in marnie_refresh_state["next_action"]
-    assert "staged new H10 Crustle specialist" in (
+    assert "first immutable execution receipt is pending" in (
         marnie_refresh_state["next_action"]
     )
-    assert "public package remains an inference-only baseline" in (
+    assert "begin normal receipt-backed iteration tracking" in (
         marnie_refresh_state["next_action"]
     )
 
@@ -5728,6 +5733,20 @@ def test_dashboard_page_reloads_when_server_ui_version_changes() -> None:
     assert "d.dashboard_ui_version!==DASHBOARD_UI_VERSION" in html
 
 
+def test_dashboard_links_to_separate_authenticated_replay_inspector() -> None:
+    html = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
+    ).read_text(encoding="utf-8")
+
+    assert 'id="replay-inspector-link"' in html
+    assert 'href="/replay-inspector/"' in html
+    assert "mc.tsinzitari.com/replay-inspector" not in html
+    assert 'target="_blank"' in html
+    assert 'rel="noopener noreferrer"' in html
+    assert '<iframe' not in html
+    assert "fetch('/replay-inspector" not in html
+
+
 def test_dashboard_parameter_card_shows_both_alakazam_capacity_stages() -> None:
     root = Path(__file__).resolve().parents[1]
     html = (root / "dashboard/lan/index.html").read_text(encoding="utf-8")
@@ -6586,6 +6605,131 @@ def test_dashboard_source_integrity_keeps_canonical_protocol_current_while_stopp
     assert integrity["rows"]["pure"]["current"] is False
 
 
+def test_dashboard_source_integrity_accepts_receipt_backed_r175_terminal() -> None:
+    digest = "sha256:" + "a" * 64
+    source = "/state/final-format-alakazam-rtp-r175-iter20-completion-v1.json"
+    checks = {
+        "completion_contract": True,
+        "registration_contract": True,
+        "registration_receipt": True,
+        "terminal_registry": True,
+        "boundary": True,
+        "collection": True,
+        "commit": True,
+        "evaluation": True,
+        "no_iteration_21": True,
+    }
+    payload = {
+        "observed_at": time.time(),
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": False,
+            "active_state": "failed",
+            "sub_state": "failed",
+            "pid": 0,
+            "restart_count": 2,
+            "name": "pokebot-final-format-alakazam-rtp-r175-rl.service",
+        },
+        "training": {
+            "status": "complete",
+            "mode": "final_format_alakazam_rtp_r175_rl",
+            "phase": "terminal:ceiling_accepted_frozen_registered",
+            "run": "final_format_alakazam_rtp_r175_i_v6_8k",
+            "specialist_id": "alakazam",
+            "last_completed_iteration": 20,
+            "model_sha256": digest,
+        },
+        "bootstrap": {
+            "compatibility_alias": True,
+            "alias_of": "training",
+            "phase": "terminal:ceiling_accepted_frozen_registered",
+        },
+        "terminal_completion": {
+            "available": True,
+            "current": True,
+            "status": "ceiling_accepted_frozen_registered",
+            "specialist_id": "alakazam",
+            "run": "final_format_alakazam_rtp_r175_i_v6_8k",
+            "completed_iteration": 20,
+            "checkpoint_digest": digest,
+            "completion_authority": "explicit_owner_ceiling_acceptance",
+            "measured_gate_pass": False,
+            "failed_gate_results_preserved": True,
+            "frozen": True,
+            "registered": True,
+            "next_iteration_collected": False,
+            "source": source,
+            "checks": checks,
+        },
+        "curriculum": {
+            "active": False,
+            "source_current": True,
+            "run": "final_format_alakazam_rtp_r175_i_v6_8k",
+            "iteration": 20,
+            "stage": "terminal:ceiling_accepted_frozen_registered",
+            "last_completed_iteration": 20,
+            "last_committed_iteration": 20,
+            "commit_source": "/run/commits/iter_00020.json",
+            "progress_status_source": source,
+            "gate_program": {
+                "next_gate": {
+                    "available": True,
+                    "contract_valid": True,
+                    "contract_source": "/config/gate.json",
+                }
+            },
+        },
+        "specialist_protocol": {
+            "available": True,
+            "runtime_active_specialist": "alakazam",
+            "canonical_active_specialist": "alakazam",
+            "canonical_active_refresh_specialist": "alakazam",
+            "active_specialist": "",
+            "active_runtime_refresh": {
+                "active": False,
+                "specialist_id": "alakazam",
+                "run_name": "final_format_alakazam_rtp_r175_i_v6_8k",
+            },
+            "specialists": [{"id": "alakazam", "active": False}],
+            "frozen_inference_opponents": [],
+            "source": "/state/specialists.yaml",
+        },
+        "model": {
+            "active_checkpoint": "/run/checkpoints/iter_00020.pt",
+            "active_checkpoint_digest": digest,
+            "checkpoint_structure": {
+                "verified": True,
+                "checkpoint": "/run/checkpoints/iter_00020.pt",
+                "checkpoint_digest": digest,
+            },
+        },
+        "expert_refresh": {
+            "available": True,
+            "complete": True,
+            "authoritative_for_active_run": True,
+            "archive_window_ready": True,
+            "assembled_manifest_ready": True,
+            "filtered_corpus_ready": True,
+        },
+        "gpus": [{"index": 1}],
+        "fleet": {
+            "inzi": {"reachable": True, "worker": {"active": False}},
+            "elmo": {"reachable": True, "worker": {"active": True}},
+            "bert": {"reachable": True, "worker": {"active": True}},
+        },
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    integrity = payload["source_integrity"]
+    assert integrity["current"] is True
+    assert integrity["failed"] == []
+    assert integrity["rows"]["terminal"]["current"] is True
+    assert integrity["rows"]["stage"]["source"] == source
+    for card in ("stage", "progress", "bootstrap", "throughput", "curriculum", "pure"):
+        assert integrity["rows"][card]["current"] is True
+
+
 def test_dashboard_source_integrity_accepts_fresh_receipt_backed_handoff_interval() -> None:
     now = time.time()
     payload = {
@@ -7023,6 +7167,191 @@ def test_dashboard_source_integrity_accepts_receipt_backed_marnie_bootstrap() ->
     assert protocol["checks"]["specialist_roster"] is True
     assert protocol["checks"]["live_runtime_identity"] is True
     assert protocol["current"] is True
+
+
+def test_dashboard_source_integrity_accepts_receipt_backed_crustle_rl() -> None:
+    specialist = "crustle"
+    run = "final_format_crustle_r113_h10_i_v6_8k"
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": True,
+            "pid": 538332,
+            "restart_count": 0,
+            "name": "pokebot-final-format-crustle-r113-h10-rl.service",
+        },
+        "training": {
+            "mode": "final_format_crustle_h10_rl",
+            "run": run,
+            "status": "running",
+            "phase": "collect:public_mix",
+        },
+        "curriculum": {
+            "active": True,
+            "source_current": True,
+            "run": run,
+            "stage": "collect:public_mix",
+            "iteration": 5,
+            "progress_source": "/outputs/logs/final_format_crustle_r113_h10_i_v6_8k.progress.status",
+            "last_committed_iteration": 4,
+            "commit_source": "/commits/iter_00004.json",
+            "gate_program": {
+                "source": "/gate_program.json",
+                "next_gate": {
+                    "available": True,
+                    "contract_valid": True,
+                    "checkpoint_digest": "sha256:abc",
+                    "contract_source": "/gate.json",
+                },
+            },
+        },
+        "scheduler_queues": {
+            "available": True,
+            "updated_at": time.time(),
+            "source": "/scheduler",
+        },
+        "bootstrap": {
+            "compatibility_alias": True,
+            "alias_of": "training",
+            "phase": "collect:public_mix",
+        },
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": True,
+            "runtime_identity_reconciled": True,
+            "runtime_active_specialist": specialist,
+            "canonical_active_specialist": "",
+            "canonical_active_refresh_specialist": specialist,
+            "active_specialist": specialist,
+            "active_runtime_refresh": {
+                "active": True,
+                "specialist_id": specialist,
+                "run_name": run,
+                "service_state": "active/running",
+            },
+            "required_target_count": 15,
+            "specialists": [
+                {
+                    "id": sid,
+                    "active": False,
+                    "frozen": True,
+                    "public_mix_eligible": True,
+                }
+                for sid in (
+                    "hammer-pult",
+                    "teal-mask-ogerpon-ex",
+                    "dragapult-dusknoir",
+                    "alakazam",
+                    "marnie-s-grimmsnarl-ex",
+                    "garchomp",
+                    "rockets-mewtwo",
+                    "starmie",
+                    "archaludon-ex",
+                    "lucario",
+                    "thwackey",
+                    "team-rockets-spidops",
+                    "dudunsparce",
+                    "hops-trevenant",
+                )
+            ],
+            "frozen_inference_opponents": [
+                {"specialist_id": sid, "inference_only": True}
+                for sid in (
+                    "alakazam",
+                    "hops-trevenant",
+                    "starmie",
+                    "lucario",
+                    "dragapult-dusknoir",
+                    "dudunsparce",
+                    "marnie-s-grimmsnarl-ex",
+                    "garchomp",
+                    "rockets-mewtwo",
+                    "thwackey",
+                    "team-rockets-spidops",
+                    "hammer-pult",
+                    "teal-mask-ogerpon-ex",
+                    "archaludon-ex",
+                )
+            ],
+            "post_fleet_refresh": {
+                "status": "alakazam_complete_marnie_complete_crustle_rl_active",
+                "goal_revision": 113,
+            },
+            "program_progress": {
+                "completed_specialist_ids": [
+                    "hammer-pult",
+                    "teal-mask-ogerpon-ex",
+                    "dragapult-dusknoir",
+                    "alakazam",
+                    "marnie-s-grimmsnarl-ex",
+                    "garchomp",
+                    "rockets-mewtwo",
+                    "starmie",
+                    "archaludon-ex",
+                    "lucario",
+                    "thwackey",
+                    "team-rockets-spidops",
+                    "dudunsparce",
+                    "hops-trevenant",
+                ],
+                "terminal_failed_experiment_specialist_ids": ["slowking"],
+                "terminal_failed_experiment_exceptions": 1,
+            },
+            "terminal_specialist_transition": {
+                "status": "activated",
+                "terminal_disposition": "failed_experiment",
+                "specialist_id": "slowking",
+                "passing_status_granted": False,
+                "completion_credit_granted": False,
+            },
+            "source": "/state/specialists.yaml",
+        },
+        "model": {
+            "active_checkpoint": "/ckpt.pt",
+            "active_checkpoint_digest": "sha256:abc",
+            "checkpoint_structure": {
+                "verified": True,
+                "checkpoint": "/ckpt.pt",
+                "checkpoint_digest": "sha256:abc",
+                "adapter_registry_verified": True,
+                "adapter_expert_count": 14,
+            },
+        },
+        "gpus": [{"name": "gpu0"}],
+        "fleet": {
+            "inzi": {"reachable": True, "worker": {"active": True}},
+            "elmo": {
+                "reachable": True,
+                "production_active": True,
+                "worker": {"active": True, "health_current": True},
+            },
+            "bert": {
+                "reachable": True,
+                "production_active": True,
+                "worker": {"active": True, "health_current": True},
+            },
+        },
+        "expert_refresh": {
+            "available": True,
+            "archive_window_ready": True,
+            "authoritative_for_active_run": True,
+            "total_days": 20,
+            "days": [{"day": f"d{i}"} for i in range(20)],
+            "filtered_corpus_ready": True,
+            "source": "/expert",
+        },
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    integrity = payload["source_integrity"]
+    protocol = integrity["rows"]["protocol"]
+    assert protocol["checks"]["specialist_roster"] is True
+    assert protocol["checks"]["live_runtime_identity"] is True
+    assert protocol["current"] is True
+    assert integrity["rows"]["progress"]["current"] is True
+    assert "protocol" not in integrity["failed"]
+    assert "progress" not in integrity["failed"]
 
 
 def test_dashboard_source_integrity_accepts_selected_stopped_final_refresh() -> None:
@@ -9928,9 +10257,8 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
 
     protocol = specialist_protocol_state(root / "state/specialists.yaml")
     assert protocol["available"] is True, protocol.get("reason")
-    assert protocol["canonical_active_refresh_specialist"] == (
-        "marnie-s-grimmsnarl-ex"
-    )
+    assert state["post_fleet_refresh"]["active_refresh_specialist_id"] == "crustle"
+    assert protocol["canonical_active_refresh_specialist"] == "crustle"
     assert protocol["status_counts"] == {"passed_frozen": 14}
     assert protocol["program_progress"][
         "terminal_failed_experiment_specialist_ids"
@@ -11479,3 +11807,229 @@ def test_marnie_postupload_bootstrap_separates_epoch_from_rl_iteration(
     assert result["progress"]["bootstrap_epochs_completed"] == 10
     assert result["progress"]["epoch_percent"] == 37.0
     assert result["progress"]["percent"] == pytest.approx(41.48)
+
+
+def test_r175_model_projection_uses_verified_full_model_not_r79_fallback() -> None:
+    checkpoint = "/models/final-format-alakazam-rtp-r175/model.pt"
+    digest = "sha256:" + "7" * 64
+    structure = {
+        "verified": True,
+        "checkpoint": checkpoint,
+        "checkpoint_digest": digest,
+        "model_parameters": 10_750_146,
+        "model_config": {
+            "d_model": 96,
+            "n_heads": 8,
+            "spatial_layers": 7,
+            "temporal_layers": 3,
+            "option_decoder_layers": 7,
+            "ff_dim": 2496,
+            "max_context": 320,
+            "decision_context": "history",
+            "temporal_pos": "rope",
+            "kv_cache": True,
+            "combo_state_head_enabled": True,
+        },
+        "decision_fusion": {
+            "schema": "poke_bot.causal_decision_fusion/v3",
+            "available": True,
+            "verified": True,
+            "required_heads": [
+                *dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS,
+                "setup_board_outcome",
+                "combo_state",
+            ],
+        },
+        "expanded_head_training": {"verified": True},
+    }
+    active = {
+        "mode": "final_format_alakazam_rtp_r175_rl",
+        "specialist_id": "alakazam",
+        "run": "final_format_alakazam_rtp_r175_i_v6_8k",
+        "phase": "stopped:collect:public_mix",
+        "iterations_target": 301,
+        "model_path": checkpoint,
+        "model_sha256": digest,
+        "model_parameters": 10_750_146,
+        "runtime_registry": "/runtime/r175.json",
+        "hard_swap_source": "/state/r175.json",
+        "structure": structure,
+        "service": {
+            "active": False,
+            "active_state": "failed",
+            "sub_state": "failed",
+        },
+    }
+
+    projection = dashboard_snapshot_module.final_format_alakazam_rtp_r175_model_override(
+        active
+    )
+
+    assert projection["active_checkpoint"] == checkpoint
+    assert projection["active_checkpoint_digest"] == digest
+    assert projection["trainable_parameters"] == 10_750_146
+    assert projection["architecture"] == "Alakazam RTP r175 H10-I full-model RL"
+    assert projection["heads"]["policy"]["enabled"] is True
+    assert projection["heads"]["setup_board_outcome"]["enabled"] is True
+    assert projection["heads"]["guide_strategic_directional_v2"]["enabled"] is True
+    assert projection["heads"]["combo_state"] == {
+        "enabled": False,
+        "loss_weight": 0.0,
+        "architecture_present": True,
+        "reason": "owner r175 disables combo-state learning",
+    }
+    assert projection["decision_fusion"]["r175_full_model_training"] is True
+    assert projection["training_schedule"]["rtp_enabled"] is True
+    assert projection["runtime_identity"]["service_active"] is False
+
+
+def test_r175_model_projection_fails_closed_on_checkpoint_mismatch() -> None:
+    projection = dashboard_snapshot_module.final_format_alakazam_rtp_r175_model_override(
+        {
+            "mode": "final_format_alakazam_rtp_r175_rl",
+            "specialist_id": "alakazam",
+            "model_path": "/models/r175.pt",
+            "model_sha256": "sha256:" + "8" * 64,
+            "model_parameters": 10_750_146,
+            "structure": {
+                "verified": True,
+                "checkpoint": "/models/r175.pt",
+                "checkpoint_digest": "sha256:" + "9" * 64,
+                "model_parameters": 10_750_146,
+            },
+        }
+    )
+
+    assert projection == {}
+
+    parameter_mismatch = dashboard_snapshot_module.final_format_alakazam_rtp_r175_model_override(
+        {
+            "mode": "final_format_alakazam_rtp_r175_rl",
+            "specialist_id": "alakazam",
+            "model_path": "/models/r175.pt",
+            "model_sha256": "sha256:" + "8" * 64,
+            "model_parameters": 10_750_146,
+            "structure": {
+                "verified": True,
+                "checkpoint": "/models/r175.pt",
+                "checkpoint_digest": "sha256:" + "8" * 64,
+                "model_parameters": 10_750_145,
+            },
+        }
+    )
+
+    assert parameter_mismatch == {}
+
+
+def test_r192_activated_projection_is_not_reintroduced_as_staged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.setattr(
+        dashboard_server_module,
+        "GOAL_PROJECTION",
+        root / "ops/current_goal_requirements.json",
+    )
+    payload = {
+        "specialist_protocol": {
+            "active_specialist": "alakazam",
+            "specialists": [
+                {
+                    "id": "alakazam",
+                    "active": True,
+                    "status": "rl_training",
+                }
+            ],
+            "frozen_inference_opponents": [],
+            "retained_non_specialist_opponents": [],
+        }
+    }
+
+    SnapshotCache._apply_goal_projection(payload)
+
+    projection = json.loads(
+        (root / "ops/current_goal_requirements.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    override = projection["current_owner_overrides"][
+        "alakazam_marnie_splusplus_opponent"
+    ]
+    assert override["status"] == "activated_iteration_17_runtime_dispatch_verified"
+    assert override["activation"]["activation_receipt"]
+    assert override["activation"]["activated_collection_iteration"] == 17
+
+    protocol = payload["specialist_protocol"]
+    assert protocol.get("staged_opponent_changes") in (None, [])
+    assert protocol["specialists"][0]["active"] is True
+    assert protocol["frozen_inference_opponents"] == []
+
+
+def test_r192_marnie_splusplus_projection_fails_closed_on_early_receipt() -> None:
+    root = Path(__file__).resolve().parents[1]
+    projection = json.loads(
+        (root / "ops/current_goal_requirements.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    candidate = dict(
+        projection["current_owner_overrides"][
+            "alakazam_marnie_splusplus_opponent"
+        ]
+    )
+    candidate["activation"] = dict(candidate["activation"])
+    candidate["activation"]["activation_receipt"] = "/unexpected.json"
+
+    assert SnapshotCache._staged_alakazam_marnie_splusplus_opponent(candidate) is None
+
+    candidate = dict(
+        projection["current_owner_overrides"][
+            "alakazam_marnie_splusplus_opponent"
+        ]
+    )
+    candidate["activation"] = dict(candidate["activation"])
+    candidate["activation"]["boundary_design_migration_reason"] = "generic"
+
+    assert SnapshotCache._staged_alakazam_marnie_splusplus_opponent(candidate) is None
+
+    candidate = dict(
+        projection["current_owner_overrides"][
+            "alakazam_marnie_splusplus_opponent"
+        ]
+    )
+    candidate["transport"] = dict(candidate["transport"])
+    candidate["transport"]["pack4_attested_for_activation_group"] = True
+
+    assert SnapshotCache._staged_alakazam_marnie_splusplus_opponent(candidate) is None
+
+    candidate = dict(
+        projection["current_owner_overrides"][
+            "alakazam_marnie_splusplus_opponent"
+        ]
+    )
+    candidate["activation"] = dict(candidate["activation"])
+    candidate["activation"][
+        "managed_restart_during_verified_post_iteration5_hard_pause_allowed"
+    ] = True
+
+    assert SnapshotCache._staged_alakazam_marnie_splusplus_opponent(candidate) is None
+
+    candidate = dict(
+        projection["current_owner_overrides"][
+            "alakazam_marnie_splusplus_opponent"
+        ]
+    )
+    candidate["activation"] = dict(candidate["activation"])
+    candidate["activation"]["automatic_managed_restart_armed"] = True
+
+    assert SnapshotCache._staged_alakazam_marnie_splusplus_opponent(candidate) is None
+
+    candidate = dict(
+        projection["current_owner_overrides"][
+            "alakazam_marnie_splusplus_opponent"
+        ]
+    )
+    candidate["collection_contract"] = dict(candidate["collection_contract"])
+    candidate["collection_contract"]["strong_public_practice_games"] = 4585
+
+    assert SnapshotCache._staged_alakazam_marnie_splusplus_opponent(candidate) is None

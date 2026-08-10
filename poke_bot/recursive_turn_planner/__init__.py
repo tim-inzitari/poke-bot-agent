@@ -14,51 +14,75 @@ Sizing is profile-bound:
 - ``pure_rl`` → d_model=96, dynamics_width=192
 """
 
-from .agent_bridge import (
-    RTPAgentBridge,
-    RTPBridgeDiagnostics,
-    resolve_rtp_config_for_model,
-    turn_key_from_obs,
-)
-from .pipeline import (
-    ArchetypeRTPJob,
-    ArchetypeRTPResult,
-    example_registry_jobs,
-    load_archetype_registry,
-    run_archetype_rtp_pipeline,
-    run_registry,
-)
-from .config import RTPConfig
-from .dynamics import LatentTransitionDynamics, LookaheadBackedDynamics
-from .executor import PlanExecutor, PlanStepResult
-from .legality import TypedLegalityVerifier
-from .memory import PersistentTurnMemory
-from .planner import PlanProposal, RecursiveTurnPlanner, TurnDecision
-from .profiles import (
-    GLOBAL_TRANSFORMER,
-    PURE_RL,
-    UNIT_TEST,
-    VERIFY_ABLATONS,
-    get_profile,
-    profile_inventory,
-)
-from .types import (
-    NodeKind,
-    ObservationPredicate,
-    PlanNode,
-    SubgoalKind,
-    TurnProgram,
-)
+# Keep every public export lazy.  Besides avoiding the historical PokeRLM/RTP
+# training import cycle, this lets the isolated revision-202 tree validator be
+# imported on a CPU-only worker without importing Torch, the policy bridge, or
+# the legacy executor merely because Python initialized this parent package.
+_EXPORT_MODULES = {
+    "RTPAgentBridge": "agent_bridge",
+    "RTPBridgeDiagnostics": "agent_bridge",
+    "resolve_rtp_config_for_model": "agent_bridge",
+    "turn_key_from_obs": "agent_bridge",
+    "RTP_MAX_AUTHORIZED_NEURAL_PASSES": "config",
+    "RTPConfig": "config",
+    "LatentTransitionDynamics": "dynamics",
+    "LookaheadBackedDynamics": "dynamics",
+    "PlanExecutor": "executor",
+    "PlanStepResult": "executor",
+    "TypedLegalityVerifier": "legality",
+    "PersistentTurnMemory": "memory",
+    "PlanProposal": "planner",
+    "RecursiveTurnPlanner": "planner",
+    "RTPNeuralPassBudgetExceeded": "planner",
+    "TurnDecision": "planner",
+    "required_recursive_passes": "planner",
+    "GLOBAL_TRANSFORMER": "profiles",
+    "PURE_RL": "profiles",
+    "PURE_RL_R197": "profiles",
+    "PURE_RL_R197_MAX_ACTION_COMBOS": "profiles",
+    "UNIT_TEST": "profiles",
+    "VERIFY_ABLATONS": "profiles",
+    "get_profile": "profiles",
+    "profile_inventory": "profiles",
+    "NodeKind": "types",
+    "ObservationPredicate": "types",
+    "PlanNode": "types",
+    "SubgoalKind": "types",
+    "TurnProgram": "types",
+    "ArchetypeRTPJob": "pipeline",
+    "ArchetypeRTPResult": "pipeline",
+    "example_registry_jobs": "pipeline",
+    "load_archetype_registry": "pipeline",
+    "run_archetype_rtp_pipeline": "pipeline",
+    "run_registry": "pipeline",
+}
+
+
+def __getattr__(name: str) -> object:
+    """Resolve public exports without importing heavyweight modules eagerly."""
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is not None:
+        from importlib import import_module
+
+        value = getattr(import_module(f"{__name__}.{module_name}"), name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
+    "GLOBAL_TRANSFORMER",
+    "PURE_RL",
+    "PURE_RL_R197",
+    "PURE_RL_R197_MAX_ACTION_COMBOS",
+    "RTP_MAX_AUTHORIZED_NEURAL_PASSES",
+    "UNIT_TEST",
+    "VERIFY_ABLATONS",
     "ArchetypeRTPJob",
     "ArchetypeRTPResult",
-    "GLOBAL_TRANSFORMER",
     "LatentTransitionDynamics",
     "LookaheadBackedDynamics",
     "NodeKind",
     "ObservationPredicate",
-    "PURE_RL",
     "PersistentTurnMemory",
     "PlanExecutor",
     "PlanNode",
@@ -67,17 +91,17 @@ __all__ = [
     "RTPAgentBridge",
     "RTPBridgeDiagnostics",
     "RTPConfig",
+    "RTPNeuralPassBudgetExceeded",
     "RecursiveTurnPlanner",
     "SubgoalKind",
     "TurnDecision",
     "TurnProgram",
     "TypedLegalityVerifier",
-    "UNIT_TEST",
-    "VERIFY_ABLATONS",
     "example_registry_jobs",
     "get_profile",
     "load_archetype_registry",
     "profile_inventory",
+    "required_recursive_passes",
     "resolve_rtp_config_for_model",
     "run_archetype_rtp_pipeline",
     "run_registry",

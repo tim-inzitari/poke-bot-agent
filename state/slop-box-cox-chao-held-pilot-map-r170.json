@@ -1,0 +1,7231 @@
+{
+  "created_at_utc": "2026-08-06T15:34:11.287475+00:00",
+  "extraction_source": "ptcgreplay_supabase_matches",
+  "owner_decision_revision": 170,
+  "requested_rows": 1442,
+  "resolved_rows": 1442,
+  "rows": [
+    {
+      "episode_id": "87870470",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87870694",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87871236",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87872050",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87872874",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87874475",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87875003",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87875540",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87876048",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87876588",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87877126",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87877653",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87878172",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87878689",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87884587",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87886431",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87887418",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87889688",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87894236",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87905228",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87914251",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87917090",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87921494",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87924262",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87925038",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87926211",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87928612",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87928641",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87929250",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87934284",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87934887",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87935525",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87936737",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87939695",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87939723",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87940358",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87941481",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87942034",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87942043",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87942064",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87942615",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87942637",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87944479",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87945746",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87947014",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87947146",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87947158",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87947166",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87947698",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87947713",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87947738",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87948225",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87948757",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87949225",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87949294",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87949870",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87950379",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87950396",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87950401",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87950989",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87952041",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87952109",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87952670",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87953201",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87953213",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87953219",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87953756",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87953773",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87954802",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87954853",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87956127",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87957237",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87957249",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87958222",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87959543",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87962231",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87963319",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87963340",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87965520",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87968493",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87968554",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87969239",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87970675",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87977689",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87981813",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87982404",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87985159",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87990886",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87991982",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "87993043",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88000270",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88000325",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88001268",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88002119",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88010930",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88013332",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88013910",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88017961",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88020031",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88029457",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88031281",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88031395",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88033165",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88034294",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88035547",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88036902",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88037983",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88040488",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88042293",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88042886",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88042997",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88043528",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88044100",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88045298",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88046997",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88048794",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88048802",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88048841",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88049407",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88050009",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88050639",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88051247",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88051835",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88051855",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88051869",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88052461",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88053085",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88053710",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88053729",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88054215",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88054325",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88054937",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88055547",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88055554",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88056166",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88056776",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88057395",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88057398",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88058009",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88058014",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88058624",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88059159",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88059834",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88059841",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88060445",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88060462",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88061061",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88061661",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88062271",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88062771",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88062881",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88062992",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88063466",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88063479",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88064081",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88064700",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88065301",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88065926",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88065939",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88066534",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88066539",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88066633",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88066897",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88067137",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88067758",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88067764",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88068372",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88068971",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88069575",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88070809",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88071428",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88071445",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88072049",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88072657",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88073286",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88073947",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88080254",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88091225",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88094897",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88099447",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88100071",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88101249",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88104899",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88105045",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88109349",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88110128",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88113234",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88113557",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88113866",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88114418",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88114992",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88115456",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88115976",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88116012",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88116463",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88116503",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88116983",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88117053",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88117523",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88118558",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88118661",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88119075",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88119602",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88119611",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88120115",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88120145",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88120664",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88121167",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88121675",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88121714",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88122183",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88122206",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88122709",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88122731",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88123234",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88123239",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88123745",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88123773",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88123780",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88124163",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88124261",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88124767",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88124774",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88125290",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88125825",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88126349",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88127381",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88127426",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88127773",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88127898",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88127908",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88127927",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88127960",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88128413",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88129058",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88129453",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88129967",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88130492",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88131007",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88131519",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88132035",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88132564",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88132566",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88132586",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88133091",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88133543",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88133613",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88133617",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88134112",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88134120",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88134647",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88134671",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88134688",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88135168",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88135716",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88135718",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88136229",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88136254",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88136286",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88136757",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88136771",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88137273",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88137794",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88137797",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88137804",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88138323",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88138839",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88139351",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88139876",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88139877",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88139889",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88140397",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88140434",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88140934",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88141449",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88141464",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88141972",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88142495",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88143033",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88143558",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88143603",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88144074",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88144116",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88145165",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88145186",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88145696",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88146212",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88146254",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88146741",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88147217",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88147227",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88147250",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88147363",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88148312",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88148861",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88149380",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88149406",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88149906",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88150415",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88150457",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88150991",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88151595",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88151623",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88152149",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88152679",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88152688",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88152709",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88152754",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88153214",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88153250",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88153746",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88153752",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88153778",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88154164",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88154272",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88154299",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88154307",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88154813",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88154837",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88155340",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88155374",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88155875",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88155891",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88156412",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88156442",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88156991",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88157025",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88157530",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88157556",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88158059",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88158070",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88158589",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88158604",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88158620",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88158686",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88159120",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88159639",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88159644",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88159696",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88160170",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88160735",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88160770",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88161275",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88161795",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88162321",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88162332",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88162860",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88162865",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88163392",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88163921",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88164482",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88164488",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88165020",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88165558",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88165561",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88165994",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88166077",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88166600",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88167140",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88168191",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88168755",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88169290",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88169837",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88170328",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88170890",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88171404",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88171910",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88172479",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88173006",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88173532",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88174034",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88174082",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88174620",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88175064",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88175597",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88176116",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88177158",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88177671",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88177730",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88179274",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88181984",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88182485",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88183912",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88184062",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88184143",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88184620",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88185126",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88185612",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88185640",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88186192",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88186670",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88187227",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88187237",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88187742",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88187747",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88188276",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88188798",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88189335",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88189874",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88190414",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88190927",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88191436",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88191464",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88191506",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88191958",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88192496",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88193068",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88193105",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88193496",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88193595",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88194158",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88194661",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88195221",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88195680",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88195731",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88196259",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88196812",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88197316",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88197829",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88197855",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88199483",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88200027",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88200529",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88202097",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88202129",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88202656",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88203061",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88203168",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88203191",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88203680",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88204229",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88204232",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88204771",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88205184",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88205283",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88205717",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88205803",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88206352",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88206818",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88207355",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88207887",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88208966",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88209472",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88209993",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88210517",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88211042",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88211566",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88211861",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88212110",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88212501",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88212635",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88213164",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88213695",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88214255",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88214806",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88215335",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88215883",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88216447",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88216709",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88216960",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88217476",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88220136",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88223249",
+      "seat": 1,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88227555",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88230489",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88231083",
+      "seat": 0,
+      "team_name": "zoroark190"
+    },
+    {
+      "episode_id": "88233128",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88235276",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88235726",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88239095",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88241784",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88243841",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88244571",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88245949",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88246482",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88247030",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88247537",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88248042",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88248549",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88249086",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88249590",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88250109",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88250644",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88251191",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88251717",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88252245",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88252299",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88252305",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88252759",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88253272",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88253796",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88254317",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88254832",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88255361",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88255899",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88256424",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88256965",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88257491",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88258549",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88259089",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88259161",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88259621",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88260140",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88260674",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88261201",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88261733",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88262271",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88262783",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88263330",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88263861",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88264404",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88264972",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88271328",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88274852",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88276480",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88276527",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88278632",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88281833",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88283792",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88285383",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88286429",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88286928",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88287988",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88289166",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88292817",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88295016",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88295910",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88297470",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88298570",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88299092",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88300124",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88300892",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88301384",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88301901",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88302205",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88302388",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88302795",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88302837",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88303309",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88303789",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88303829",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88304352",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88304411",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88304445",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88304942",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88305454",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88305974",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88306484",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88307005",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88307517",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88308041",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88308139",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88308566",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88309080",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88309178",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88309179",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88309580",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88309597",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88309604",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88309616",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88310113",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88310631",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88310633",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88310744",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88311151",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88311159",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88311189",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88311214",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88311676",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88311748",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88312239",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88312291",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88312754",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88312768",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88312819",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88313279",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88313284",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88313362",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88313792",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88313841",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88314283",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88314332",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88314822",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88314836",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88315322",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88315352",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88315833",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88315866",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88316352",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88316379",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88316858",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88316892",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88316893",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88317400",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88317415",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88317895",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88318412",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88318427",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88318921",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88318930",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88318969",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88319434",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88319452",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88319466",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88319943",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88319970",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88319981",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88320023",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88320466",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88320502",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88320987",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88321016",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88321502",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88321534",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88322026",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88322037",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88322041",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88322061",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88322598",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88322636",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88322640",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88323120",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88323155",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88323640",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88323677",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88324164",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88324168",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88324675",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88324706",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88324711",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88325205",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88325207",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88325221",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88325239",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88325724",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88326275",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88326284",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88326763",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88326786",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88326802",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88327275",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88327301",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88327781",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88327808",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88327826",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88328299",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88328306",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88328334",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88328383",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88328847",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88328855",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88328874",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88329372",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88329417",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88329892",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88329904",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88329922",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88330445",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88330952",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88331469",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88331502",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88331998",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88332010",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88332011",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88332017",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88332022",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88332027",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88332509",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88332531",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88333027",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88333040",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88333049",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88333079",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88333532",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88333561",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88333594",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88334071",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88334118",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88334573",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88334606",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88335123",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88335145",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88335169",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88335645",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88336165",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88336179",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88336194",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88336694",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88336695",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88336697",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88336707",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88336751",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88337215",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88337222",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88337228",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88337258",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88337737",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88337762",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88338278",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88338284",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88338292",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88338804",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88338814",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88339243",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88339325",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88339332",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88339341",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88339852",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88339858",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88339868",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88339873",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88340365",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88340391",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88340399",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88340907",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88340918",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88341046",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88341485",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88341490",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88342017",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88342033",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88342557",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88342569",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88343084",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88343094",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88343113",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88343129",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88343625",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88343631",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88344149",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88344151",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88344160",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88344162",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88344669",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88344676",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88345190",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88345208",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88345729",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88345731",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88345737",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88346248",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88346262",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88346783",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88346797",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88346804",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88347310",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88347315",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88347317",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88347836",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88347851",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88347855",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88348350",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88348366",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88348370",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88348890",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88349417",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88349419",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88349940",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88349960",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88350490",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88350995",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88350996",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88351008",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88351010",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88351512",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88351515",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88351536",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88351537",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88351544",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88352053",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88352060",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88352574",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88352583",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88352592",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88353114",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88353116",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88353122",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88353640",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88353643",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88353652",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88354156",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88354176",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88354675",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88354699",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88355216",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88355251",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88355734",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88355742",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88355779",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88356257",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88356325",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88356779",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88356792",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88357341",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88357602",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88357610",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88357838",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88357853",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88357902",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88358391",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88358414",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88360306",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88362047",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88364643",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88365506",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88366908",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88369789",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88370287",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88370728",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88374061",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88374446",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88375113",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88376979",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88377712",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88378166",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88379229",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88381619",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88382925",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88383353",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88390225",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88390697",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88390749",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88392016",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88393280",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88393798",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88394412",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88394806",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88394918",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88395441",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88395520",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88396127",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88396543",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88396629",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88397105",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88397619",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88398132",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88398634",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88398965",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88399147",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88399231",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88399665",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88400185",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88400712",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88401246",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88401247",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88401315",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88401755",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88401756",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88401847",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88402278",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88402816",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88402820",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88403320",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88403333",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88403405",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88403839",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88403849",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88404354",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88404374",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88404470",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88404879",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88404882",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88404961",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88405396",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88405460",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88405470",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88405921",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88405950",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88406447",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88406486",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88406972",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88406979",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88407506",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88407515",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88407997",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88408013",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88408016",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88408021",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88408542",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88408544",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88409071",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88409083",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88409586",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88409643",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88409682",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88410047",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88410098",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88410102",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88410181",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88410631",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88410734",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88411150",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88411163",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88411167",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88411214",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88411729",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88412189",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88412191",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88412253",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88412739",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88413254",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88413781",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88413785",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88414897",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88414905",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88414993",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88415423",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88415930",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88415934",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88416450",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88416458",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88417004",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88417511",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88419625",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88419675",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88420611",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88420618",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88420723",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88422258",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88423315",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88424896",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88425199",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88425313",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88425852",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88426134",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88428462",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88429496",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88430629",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88431581",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88431589",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88434199",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88435755",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88436278",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88439982",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88440582",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88441527",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88442583",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88443996",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88445297",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88445736",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88445842",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88448372",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88451656",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88455984",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88456983",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88459878",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88464833",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88468075",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88469031",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88471631",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88472175",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88472877",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88479001",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88480623",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88481284",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88484273",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88485226",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88490227",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88490239",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88490721",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88493239",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88493912",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88494357",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88494729",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88494735",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88495128",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88495199",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88495513",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88495624",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88495692",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88496025",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88496138",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88496174",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88496462",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88496474",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88496910",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88496916",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88496923",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88496933",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88497362",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88497366",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88497804",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88497808",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88498221",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88498383",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88498643",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88499123",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88499137",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88499142",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88499576",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88499585",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88500023",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88500026",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88500044",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88500060",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88500302",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88500465",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88500468",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88500478",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88500915",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88500916",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88501341",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88501356",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88501482",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88501866",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88501875",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88501886",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88502475",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88502476",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88502480",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88503067",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88503078",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88503669",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88503671",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88503675",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88503690",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88504185",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88504197",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88504203",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88504618",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88504726",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88504727",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88504735",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88505248",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88505259",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88505688",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88505788",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88505791",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88505795",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88505802",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88506008",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88506319",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88506328",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88506346",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88506794",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88506860",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88506865",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88507389",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88507395",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88507922",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88507933",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88507998",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88508458",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88508459",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88508466",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88508988",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88508989",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88508994",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88508995",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88509516",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88509523",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88509594",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88510034",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88510041",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88510047",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88510569",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88510577",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88511093",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88511613",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88511616",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88511618",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88511630",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88511641",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88512143",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88512149",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88512153",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88512666",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88512671",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88512677",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88513208",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88513220",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88513737",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88513787",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88514270",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88514282",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88514794",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88514798",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88514825",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88514970",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88515335",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88515336",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88515376",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88515874",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88515884",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88516407",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88516938",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88516948",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88517493",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88517496",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88517529",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88518071",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88518611",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88519145",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88519146",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88519148",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88519675",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88519686",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88519687",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88520208",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88520246",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88520737",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88520744",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88521275",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88521278",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88521284",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88521805",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88522342",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88522346",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88522883",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88522886",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88523408",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88523423",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88523428",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88523955",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88523956",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88524483",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88524486",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88524497",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88525107",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88525108",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88525714",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88525715",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88525717",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88526321",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88526330",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88526938",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88526941",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88527559",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88527566",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88527704",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88528157",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88528193",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88528204",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88528768",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88528778",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88529425",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88529428",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88529432",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88530049",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88530059",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88530072",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88530078",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88530659",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88530662",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88530667",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88531246",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88531259",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88531266",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88531268",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88531269",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88531281",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88531832",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88532416",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88532417",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88532418",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88533000",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88533001",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88533571",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88533576",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88533604",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88534147",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88534706",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88534716",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88534718",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88535285",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88535291",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88535861",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88535862",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88536445",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88539237",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88546589",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88547973",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88555527",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88556074",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88560085",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88562555",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88564012",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88565104",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88568242",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88568575",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88569581",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88570005",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88571045",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88571475",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88572903",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88575641",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88576595",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88578111",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88578156",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88580433",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88582344",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88582873",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88584196",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88584278",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88584748",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88585212",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88585674",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88586196",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88586653",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88587126",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88588533",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88589543",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88590924",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88593348",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88593786",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88595695",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88597140",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88597144",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88597297",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88599040",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88599537",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88601912",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88602391",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88602772",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88602833",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88603282",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88603308",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88604200",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88605122",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88605151",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88605220",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88607426",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88607944",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88609778",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88610414",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88611359",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88612320",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88612760",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88612773",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88613246",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88613733",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88614116",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88614213",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88614666",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88615150",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88615678",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88616344",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88618041",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88619008",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88621834",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88623159",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88623236",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88627510",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88629395",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88631760",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88633691",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88636558",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88641293",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88642893",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88644382",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88651689",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88652495",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88652992",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88655909",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88659275",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88659602",
+      "seat": 0,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88661558",
+      "seat": 1,
+      "team_name": "James Cox"
+    },
+    {
+      "episode_id": "88664753",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88667719",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88667863",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88669410",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88671502",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88672061",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88672511",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88672605",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88672796",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88672980",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88673197",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88673228",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88673255",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88673278",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88673445",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88673627",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88673910",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88674098",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88674115",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88674369",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88674528",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88674826",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88674991",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88675290",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88675444",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88675899",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88675902",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88675990",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88676223",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88676385",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88676699",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88677166",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88677245",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88677288",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88677309",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88677624",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88677700",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88677759",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88677765",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88678573",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88678685",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88678691",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88679036",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88679121",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88679145",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88679155",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88679501",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88679592",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88679613",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88679616",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88679991",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88680085",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88680446",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88680535",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88680541",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88680914",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88680990",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88681008",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88681386",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88681451",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88681467",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88681856",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88681924",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88682332",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88682395",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88682397",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88682793",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88682858",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88683250",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88683723",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88683778",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88683800",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88684194",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88684269",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88684646",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88685112",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88685190",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88685581",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88685651",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88685669",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88686058",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88686121",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88686154",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88686570",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88686590",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88686773",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88686989",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88687045",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88687047",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88687090",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88687449",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88687509",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88687512",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88687536",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88687910",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88687961",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88687979",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88688025",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88688381",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88688426",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88688852",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88688876",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88688889",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88688897",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88689321",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88689364",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88689377",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88689381",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88689792",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88689823",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88690260",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88690281",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88690285",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88690335",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88690759",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88691223",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88691243",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88691690",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88691699",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88691711",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88692156",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88692161",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88692180",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88692182",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88692647",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88693106",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88693115",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88693116",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88693125",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88693583",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88693604",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88693609",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88693630",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88694056",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88694077",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88694533",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88694538",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88694548",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88694998",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695010",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695018",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695463",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695468",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695480",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695936",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695937",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695942",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695945",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695946",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88696411",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88696419",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88696888",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88696896",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88697356",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88697365",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88697369",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88697833",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88698325",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88698327",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88698332",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88698359",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88698792",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88698793",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88698805",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88698823",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88698929",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88699271",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88699276",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88699300",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88699357",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88699745",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88699750",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88699758",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88700214",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88700218",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88700699",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88700702",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88701169",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88701171",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88701642",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88701651",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88701657",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88702130",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88702131",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88702132",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    }
+  ],
+  "schema": "poke_bot.expert_pilot_map/v1",
+  "source_archives": [
+    {
+      "method": "ptcgreplay_matches_table_team0_team1_join",
+      "note": "TeamNames-equivalent acting-seat join for expert corpus episode_ids; public meta preferred over slow NFS archive scan",
+      "source": "https://ptcgreplay.netlify.app/",
+      "table": "matches"
+    }
+  ],
+  "targets_sha256": "sha256:c4a2381c03763a3c6b0fe3e98ac157bca5a9f69b86f4832b6efb8c118bad6e74",
+  "unverifiable": [],
+  "unverifiable_rows": 0
+}

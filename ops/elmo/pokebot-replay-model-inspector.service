@@ -1,0 +1,39 @@
+[Unit]
+Description=Read-only Replay Model Inspector container (loopback only)
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+ConditionPathIsDirectory=/mnt/Main/main/poke-bot-agent/archive/submission-replays
+ConditionPathIsDirectory=/mnt/Main/main/poke-bot-agent/replay-model-inspector-r176
+ConditionPathIsDirectory=/mnt/Main/main/poke-bot-agent/archive/replay-model-inspector/artifacts/runtimes/sha256-8f71eee9d0000a31d316a8b6d7148dce8161f38028aded1b797071135e2aa134/package
+ConditionPathExists=/mnt/Main/main/poke-bot-agent/archive/replay-model-inspector/provenance/submissions-v1.json
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/test -r /mnt/Main/main/poke-bot-agent/archive/replay-model-inspector/artifacts/bundles/sha256-8f71eee9d0000a31d316a8b6d7148dce8161f38028aded1b797071135e2aa134/submission.tar.gz
+ExecStartPre=/usr/bin/test -r /mnt/Main/main/poke-bot-agent/archive/replay-model-inspector/artifacts/checkpoints/sha256-261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a/model.pt
+ExecStartPre=/usr/bin/test -r /mnt/Main/main/poke-bot-agent/archive/replay-model-inspector/artifacts/runtimes/sha256-8f71eee9d0000a31d316a8b6d7148dce8161f38028aded1b797071135e2aa134/package/poke_bot/train.py
+ExecStartPre=/usr/bin/test -r /mnt/Main/main/poke-bot-agent/replay-model-inspector-r176/ops/elmo/replay-model-inspector-config-r176.json
+ExecStart=/usr/bin/docker run --rm --runtime=nvidia --name pokebot-replay-model-inspector-r176 --label poke_bot.managed_service=pokebot-replay-model-inspector --user 950:950 --group-add 3000 --network host --read-only --workdir /data/submitted-runtime --tmpfs /tmp:rw,nosuid,nodev,noexec,size=256m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 128 --memory 4g --memory-swap 4g --cpus 2 --ulimit nofile=1024:4096 --stop-timeout 20 -e NVIDIA_VISIBLE_DEVICES=all -e CUDA_VISIBLE_DEVICES=0 -e POKEBOT_REPLAY_INSPECTOR_DEVICE=cuda -e PYTHONUNBUFFERED=1 -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/data/submitted-runtime:/inspector -e CG_LIB_PATH=/data/submitted-runtime -e OMP_NUM_THREADS=2 -e MKL_NUM_THREADS=2 --mount type=bind,src=/mnt/Main/main/poke-bot-agent/replay-model-inspector-r176,dst=/inspector,readonly --mount type=bind,src=/mnt/Main/main/poke-bot-agent/archive/submission-replays,dst=/data/replays,readonly --mount type=bind,src=/mnt/Main/main/poke-bot-agent/archive/submission-replay-rollouts,dst=/data/rollouts,readonly --mount type=bind,src=/mnt/Main/main/poke-bot-agent/archive/replay-model-inspector,dst=/data/inspector,readonly --mount type=bind,src=/mnt/Main/main/poke-bot-agent/archive/replay-model-inspector/artifacts/checkpoints,dst=/data/checkpoints,readonly --mount type=bind,src=/mnt/Main/main/poke-bot-agent/archive/replay-model-inspector/artifacts/runtimes/sha256-8f71eee9d0000a31d316a8b6d7148dce8161f38028aded1b797071135e2aa134/package,dst=/data/submitted-runtime,readonly --entrypoint /usr/local/bin/python poke-bot-truenas-worker:r125-checkpoint-digest-verify-v2 /inspector/scripts/start_replay_model_inspector.py --config /inspector/ops/elmo/replay-model-inspector-config-r176.json --host 127.0.0.1 --port 8791
+ExecStop=/usr/bin/docker stop --time 20 pokebot-replay-model-inspector-r176
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=240
+TimeoutStopSec=30
+Nice=15
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

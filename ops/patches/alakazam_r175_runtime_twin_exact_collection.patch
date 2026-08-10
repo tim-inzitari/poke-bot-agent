@@ -1,0 +1,273 @@
+diff --git a/scripts/train_pure_rl.py b/scripts/train_pure_rl.py
+--- a/scripts/train_pure_rl.py
++++ b/scripts/train_pure_rl.py
+@@ -8115,6 +8115,22 @@ def _replacement_schedule_contract_from_result(
+     }
+ 
+ 
++_PUBLIC_MIX_TARGETED_REPLACEMENT_ROUNDS = 32
++
++
++def _targeted_replacement_seed_offset(retry_round: int) -> int:
++    """Return a bounded retry seed lane disjoint from primary collection."""
++
++    if retry_round < 0 or retry_round >= _PUBLIC_MIX_TARGETED_REPLACEMENT_ROUNDS:
++        raise ValueError(
++            "targeted replacement retry_round must be in "
++            f"[0, {_PUBLIC_MIX_TARGETED_REPLACEMENT_ROUNDS - 1}]"
++        )
++    if retry_round < 4:
++        return 60_000 + (10_000 * int(retry_round))
++    return 1_000_000_000 + (10_000 * (int(retry_round) - 4))
++
++
+ def _targeted_replacement_jobs(
+     primary_jobs: list[dict[str, Any]],
+     *,
+@@ -8130,8 +8146,7 @@ def _targeted_replacement_jobs(
+     assigned to the original missing cell and uses a disjoint seed.
+     """
+ 
+-    if retry_round < 0 or retry_round > 3:
+-        raise ValueError("targeted replacement retry_round must be in [0, 3]")
++    seed_offset = _targeted_replacement_seed_offset(retry_round)
+     by_index = {int(job.get("job_index", -1)): job for job in primary_jobs}
+     by_contract: dict[str, list[dict[str, Any]]] = {}
+     for job in primary_jobs:
+@@ -8148,7 +8163,6 @@ def _targeted_replacement_jobs(
+         raise RuntimeError(
+             f"missing replacement source jobs: {absent[:16]}"
+         )
+-    seed_offset = 60_000 + (10_000 * int(retry_round))
+     out: list[dict[str, Any]] = []
+     for offset, source_index in enumerate(missing):
+         target = by_index[source_index]
+@@ -9825,7 +9840,7 @@ def _collect_wave(
+             + 1
+             + int(stats.get("targeted_self_play_retry_attempts", 0))
+         )
+-        for retry_round in range(4):
++        for retry_round in range(_PUBLIC_MIX_TARGETED_REPLACEMENT_ROUNDS):
+             if not missing_public:
+                 break
+             retry_jobs = _targeted_replacement_jobs(
+diff --git a/scripts/train_round_robin.py b/scripts/train_round_robin.py
+--- a/scripts/train_round_robin.py
++++ b/scripts/train_round_robin.py
+@@ -602,14 +602,18 @@ def _worker_play(job: dict) -> dict:
+ 
+         # Remote GPU leaf-eval server active? Then OUR net forwards run on the
+         # server (this worker stays CPU-only and holds NO local model — it only
+-        # featurizes + searches on CPU). Otherwise fall back to a local model.
++        # featurizes + searches on CPU). Otherwise fall back to a local model.
++        # RTP requires a local parent encoder (leaf-only model=None never arms).
++        from poke_bot.pure_rl.leaf_self_play import rtp_requires_local_model
++
+         leaf_backend = batched_infer.remote_leaf_backend_from_worker()
+-        if leaf_backend is not None:
++        force_rtp_local = rtp_requires_local_model()
++        if leaf_backend is not None and not force_rtp_local:
+             model = None
+         else:
+             ckpt = job["checkpoint"]
+             device = job["device"]
+-            key = f"{ckpt}|{device}"
++            key = f"{ckpt}|{device}|rtp={int(force_rtp_local)}"
+             if _WORKER_STATE.get("key") != key:
+                 _WORKER_STATE["model"] = load_model_from_checkpoint(
+                     ckpt, device=torch.device(device)
+@@ -618,6 +622,8 @@ def _worker_play(job: dict) -> dict:
+                 )
+                 _WORKER_STATE["key"] = key
+             model = _WORKER_STATE["model"]
++            if force_rtp_local:
++                leaf_backend = None
+ 
+         try:
+             spec = resolve_baseline_spec_payload(
+@@ -1058,5 +1064,5 @@ def _build_selfplay_record(
+             "target_source": "belief_mcts",
+             "trusted": True,
+         }
+-    elif target_source != "history_policy":
++    elif target_source not in ("history_policy", "recursive_turn_planner"):
+         raise ValueError(f"untrusted target source {target_source!r}")
+@@ -1099,4 +1105,14 @@ def _build_selfplay_record(
+             pol = [float(p) for p in (recorded.get("policy") or [])]
+             if not pol and len(combos) == 1:
+                 pol = [1.0]
++            if (
++                not pol
++                and target_source == "recursive_turn_planner"
++                and 0 <= int(target_index) < len(combos)
++            ):
++                # RTP hard action without stage soft targets becomes one-hot BC.
++                pol = [
++                    1.0 if index == int(target_index) else 0.0
++                    for index in range(len(combos))
++                ]
+             if len(pol) != len(combos) or sum(pol) <= 0.0:
+@@ -1139,21 +1155,24 @@ def _build_selfplay_record(
+         "opponent_id": str(opp_id),
+         "opponent_archetype_id": opponent_archetype_id,
+         "expanded_strategic_targets": strategic_contract,
+     }
++    if target_source == "belief_mcts":
++        record_source = "trusted_belief_mcts_round_robin"
++    elif target_source == "recursive_turn_planner":
++        record_source = "trusted_rtp_round_robin"
++    else:
++        record_source = "trusted_policy_round_robin"
++
+     return {
+         "episode_id": f"rl-{archetype}-{opp_id}-{our_seat}-{seed}",
+         "seat": int(our_seat),
+         "archetype": archetype,
+         "opp_archetype": opponent_archetype_id,
+         "deck": list(our_deck),
+         "value": float(value),
+         "steps": steps,
+         "policy_targets": [None] * len(steps),
+         "factorized_policy_targets": factorized_policy_targets,
+         "info_set_ok": True,
+-        "source": (
+-            "trusted_belief_mcts_round_robin"
+-            if target_source == "belief_mcts"
+-            else "trusted_policy_round_robin"
+-        ),
++        "source": record_source,
+         "target_provenance": target_provenance,
+
+diff --git a/scripts/train_pure_rl.py b/scripts/train_pure_rl.py
+--- a/scripts/train_pure_rl.py
++++ b/scripts/train_pure_rl.py
+@@ -8435,6 +8435,18 @@ def _consume_results(
+             except Exception:
+                 parsed = None
+             if isinstance(parsed, dict):
+                 records.append(parsed)
++        if practice_contract is not None and not records:
++            # A completed simulation without a usable trajectory is a missing
++            # schedule cell, not an iteration-fatal schema event. Leave it
++            # unretained so the exact per-cell replacement loop can repair it.
++            if practice_successful_indices is not None:
++                practice_successful_indices.discard(int(practice_job_index))
++            stats["strong_public_practice_recordless_results"] = int(
++                stats.get("strong_public_practice_recordless_results", 0)
++            ) + 1
++            if progress is not None:
++                progress.tick(decisions=writer.n_decisions)
++            continue
+         if practice_contract is not None and len(records) != 1:
+             raise RuntimeError(
+
+diff --git a/poke_bot/baselines_runtime.py b/poke_bot/baselines_runtime.py
+--- a/poke_bot/baselines_runtime.py
++++ b/poke_bot/baselines_runtime.py
+@@ -176,10 +176,28 @@ def resolve_baseline_spec_payload(
+             f"{manifest_spec.group}/{manifest_spec.dir_name}"
+         )
+ 
+-    local_path = (paths.BASELINES_DIR / group / dir_name).resolve()
+     base = paths.BASELINES_DIR.resolve()
++    group_path = paths.BASELINES_DIR / group
++    if group_path.resolve().parent != base:
++        raise ValueError(f"baseline group escapes local library: {group_path}")
++    lexical_path = group_path / dir_name
++    manifest_path = Path(manifest_spec.path)
++    if lexical_path.absolute() != manifest_path.absolute():
++        raise ValueError(
++            f"baseline manifest path mismatch for {baseline_id}: {manifest_path}"
++        )
++    local_path = lexical_path.resolve()
+     if base not in local_path.parents:
+-        raise ValueError(f"baseline path escapes local library: {local_path}")
++        # Frozen specialist packages may be installed as manifest-owned leaf
++        # symlinks into an immutable deployment tree. Admit only that exact
++        # lexical manifest entry and only when the portable job binds its
++        # bytes; arbitrary traversal and unbound external symlinks stay closed.
++        if (
++            not require_content_identity
++            or not lexical_path.is_symlink()
++            or not expected_digest
++        ):
++            raise ValueError(f"baseline path escapes local library: {local_path}")
+     if expected_digest:
+         actual_digest = baseline_content_digest(local_path)
+         if actual_digest != expected_digest:
+
+diff --git a/poke_bot/remote_jobs.py b/poke_bot/remote_jobs.py
+--- a/poke_bot/remote_jobs.py
++++ b/poke_bot/remote_jobs.py
+@@ -727,11 +727,13 @@ def client_self_play_multi_pack(
+ ) -> int:
+     """Return pack size when this endpoint should receive ``self_play_multi``.
+ 
+-    Owner LAN override packs both ``self_play`` and public-mix ``play``
+-    into one Libcg multi socket job when workers advertise ``self_play_multi``.
++    Only true self-play is safe to pack. Public baseline agents use the
++    process-global ``cg.game`` singleton and must keep the ordinary one-game
++    ``play`` path even when a worker advertises ``self_play_multi``. Remotes
++    remain engaged; this changes only the per-socket public-play packing.
+     """
+-    if str(kind) not in {"self_play", "play"}:
++    if str(kind) != "self_play":
+         return 0
+     pack = remote_self_play_multi_games()
+     if pack <= 1:
+@@ -2214,7 +2216,53 @@ class RemoteJobClient:
+                     "remote self_play_multi result count mismatch: "
+                     f"expected={len(jobs)} got={len(rows)}"
+                 )
+-            return [require_remote_result_success(row) for row in rows]
++            expected_by_index: dict[int, dict[str, Any]] = {}
++            for job in jobs:
++                job_index = int(job.get("job_index", -1))
++                if job_index < 0 or job_index in expected_by_index:
++                    raise RemoteJobsError(
++                        "self_play_multi request has invalid child job indexes"
++                    )
++                expected_by_index[job_index] = job
++            checked_by_index: dict[int, dict[str, Any]] = {}
++            for position, row in enumerate(rows):
++                if not isinstance(row, dict):
++                    raise RemoteJobsError(
++                        "remote self_play_multi child is not an object: "
++                        f"position={position}"
++                    )
++                job_index = int(row.get("job_index", -1))
++                if job_index in checked_by_index:
++                    raise RemoteJobsError(
++                        "remote self_play_multi returned a duplicate child: "
++                        f"job_index={job_index}"
++                    )
++                job = expected_by_index.get(job_index)
++                if job is None:
++                    raise RemoteJobsError(
++                        "remote self_play_multi returned an unknown child: "
++                        f"job_index={job_index}"
++                    )
++                expected_identity = (
++                    job_index,
++                    str(job.get("opponent_id") or "self"),
++                    int(job.get("our_seat", 0)),
++                )
++                actual_identity = (
++                    int(row.get("job_index", -1)),
++                    str(row.get("opponent_id") or "self"),
++                    int(row.get("our_seat", 0)),
++                )
++                if actual_identity != expected_identity:
++                    raise RemoteJobsError(
++                        "remote self_play_multi child identity mismatch: "
++                        f"position={position} expected={expected_identity!r} "
++                        f"actual={actual_identity!r}"
++                    )
++                checked_by_index[job_index] = require_remote_result_success(row)
++            if set(checked_by_index) != set(expected_by_index):
++                raise RemoteJobsError(
++                    "remote self_play_multi result child set mismatch"
++                )
++            return [checked_by_index[int(job["job_index"])] for job in jobs]
+         assert last_exc is not None
+         raise last_exc

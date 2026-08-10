@@ -1,0 +1,45 @@
+{
+  "schema": "poke_bot.r207_v3.private_engine_patchset/v1",
+  "description": "V3 dynamic transition provenance: public deterministic successors, exact terminals, and one explicitly armed fair coin; hidden or unresolved paths remain audit-required.",
+  "allowed_targets": [
+    "CardMove.h",
+    "EffectInstant.h",
+    "EffectProc.h",
+    "Game.h",
+    "SelectProc.h",
+    "State.h",
+    "TargetList.h"
+  ],
+  "patches": [
+    {
+      "target": "CardMove.h",
+      "preimage_sha256": "sha256:7252d27c63c539c30899e3c7136e34506e9b3be3f09e974cfc4b2f3139e26a0d",
+      "patch": "patches/CardMove.h.patch"
+    },
+    {
+      "target": "EffectInstant.h",
+      "preimage_sha256": "sha256:31da884f26f9d7820d37770dfaa9a54229cd15d1185b41e20d718437fed3f217",
+      "patch": "patches/EffectInstant.h.patch"
+    },
+    {
+      "target": "EffectProc.h",
+      "preimage_sha256": "sha256:8af16c8d0fdb3a046060a2b6603a61f6568d5292e6528218da0fb49a73822964",
+      "patch": "patches/EffectProc.h.patch"
+    },
+    {
+      "target": "Game.h",
+      "preimage_sha256": "sha256:1dd43b6a46f225ff2a238d92e8d718cf0d7414773bfe52388f5325bf02b0a097",
+      "patch": "patches/Game.h.patch"
+    },
+    {
+      "target": "SelectProc.h",
+      "preimage_sha256": "sha256:cefae973a571d00a7c34a94f613e27c5048080c371ee62824dca390519099c46",
+      "patch": "patches/SelectProc.h.patch"
+    },
+    {
+      "target": "State.h",
+      "preimage_sha256": "sha256:f0cb7139225855ede8f460e2fb337b9238689a5af578f50debffe1f3c85b3e94",
+      "patch": "patches/State.h.patch"
+    }
+  ]
+}

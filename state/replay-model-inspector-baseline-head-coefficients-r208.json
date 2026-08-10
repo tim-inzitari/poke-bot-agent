@@ -1,0 +1,62 @@
+{
+  "schema": "poke_bot.replay_model_inspector_baseline_head_coefficients/v1",
+  "owner_decision_revision": 208,
+  "recorded_at_utc": "2026-08-10T15:26:48Z",
+  "status": "active",
+  "scope": "read_only_replay_model_inspector",
+  "baseline_coefficient": {
+    "source_scale_baseline": 1.0,
+    "formula": "shared_total_delta_cap * learned_route_multiplier / shared_active_route_count",
+    "components_displayed": [
+      "shared_total_delta_cap",
+      "learned_route_multiplier",
+      "shared_active_route_count",
+      "nominal_policy_coefficient"
+    ],
+    "pre_nonlinearity_scalar": true,
+    "fixed_percent_contribution_claim": false,
+    "exact_policy_effect_source": "exact_nonlinear_decision_recomputation"
+  },
+  "safety": {
+    "read_only": true,
+    "checkpoint_or_parameter_mutation": false,
+    "training_authority": false,
+    "submission_authority": false,
+    "ab_analysis_authority": false,
+    "evaluation_replays_training_eligible": false
+  },
+  "activation": {
+    "managed_service": "pokebot-replay-model-inspector.service",
+    "required_validation": [
+      "exact_runtime_decision_influence_tests",
+      "one_x_baseline_parity",
+      "nominal_coefficient_formula_test",
+      "static_ui_contract_test",
+      "live_api_payload_check"
+    ],
+    "activated_at_utc": "2026-08-10T15:29:11Z",
+    "source_sha256": {
+      "replay_inspector/inference.py": "a0bd98afd483627e87494f937c4ee06d08fb85ae7fd05a0679432f331cca7ab7",
+      "replay_inspector/web/app.js": "bb8c833c21d76ec20e07a9e529bd6d929880896557421ee796f215e9a9f99bc2",
+      "replay_inspector/web/styles.css": "7c76ed857405b054c66dedcea92bbbc756d43c3b21e2d179402a831ab92f2f08"
+    },
+    "service_state": "active_running",
+    "health_status": "ok",
+    "validation": {
+      "exact_runtime_tests": "16_passed",
+      "static_ui_tests": "14_passed",
+      "one_x_matches_runtime_baseline": true
+    },
+    "live_sample": {
+      "submission_id": "55378392",
+      "episode_id": "91468417",
+      "step": 15,
+      "factorized_stage": 0,
+      "head": "action_type",
+      "shared_total_delta_cap": 1.0,
+      "learned_route_multiplier": 0.25,
+      "shared_active_route_count": 18,
+      "nominal_policy_coefficient": 0.013888888888888888
+    }
+  }
+}

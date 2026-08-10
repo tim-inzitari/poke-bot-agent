@@ -6,6 +6,10 @@ from dataclasses import dataclass
 
 
 RTP_SCHEMA = "poke_bot.recursive_turn_planner/v1"
+# A future, separately checksum-bound serving profile may raise its ceiling up
+# to this value after measured latency and required-pass evidence.  Runtime
+# code must never auto-escalate a planner beyond the serialized profile.
+RTP_MAX_AUTHORIZED_NEURAL_PASSES = 256
 
 
 @dataclass(frozen=True)
@@ -28,6 +32,8 @@ class RTPConfig:
     dynamics_width: int = 512
     num_plan_candidates: int = 4
     max_recursion_depth: int = 2
+    #: Legacy/default ceiling. Serving candidates select an explicit,
+    #: checksum-bound sizing profile rather than changing historical behavior.
     max_neural_passes: int = 4
     max_plan_length: int = 12
     #: Shared with SearchConfig.complex_option_threshold / mcts.planned_sims.
@@ -67,6 +73,11 @@ class RTPConfig:
             raise ValueError("max_recursion_depth cannot be negative")
         if self.max_neural_passes < 1:
             raise ValueError("max_neural_passes must be positive")
+        if self.max_neural_passes > RTP_MAX_AUTHORIZED_NEURAL_PASSES:
+            raise ValueError(
+                "max_neural_passes exceeds the authorized hard ceiling "
+                f"({RTP_MAX_AUTHORIZED_NEURAL_PASSES})"
+            )
         if self.max_plan_length < 1:
             raise ValueError("max_plan_length must be positive")
         if self.complexity_option_threshold < 1:

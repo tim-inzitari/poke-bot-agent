@@ -1,0 +1,232 @@
+{
+  "schema": "poke_bot.alakazam_simple_belief_mcts_bo1000_r214/v1",
+  "owner_decision_revision": 214,
+  "recorded_at_utc": "2026-08-10T17:27:36Z",
+  "status": "authorized_implementation_preflight_and_exact_bo1000_shadow_evaluation_pending_prerequisites",
+  "owner_intent": "run one simple, training-free BO1000 mirror that compares the exact r195 NO-RTP frozen package directly against public-history root-sampled BeliefMCTS wrapped around that same complete package, with the trained Matchup Adapter enabled on both arms",
+  "relationship_to_existing_work": {
+    "separate_from_r202_r205_r207_exact_chance_research": true,
+    "supersedes_r202_r205_or_r207": false,
+    "r207_research_and_typed_contract_must_be_preserved": true,
+    "r207_exact_chance_or_inter_turn_cache_claimed_by_this_experiment": false,
+    "legacy_recursive_rtp_abandoned_under_r210": true,
+    "legacy_rtp_sidecar_executor_corpus_or_partial_receipt_allowed": false,
+    "r212_guide2vec_training_or_runtime_component_allowed": false,
+    "r206_or_other_guide_logit_runtime_allowed": false
+  },
+  "frozen_r195_package": {
+    "r195_contract_path": "state/alakazam-terminal-expert-bootstrap-no-rtp-submit-r195.json",
+    "r195_contract_sha256": "sha256:e37cf1d3e638c3aed56230c9fa970c61e6c1ed8b4bd3024de259cb9847c31e48",
+    "submission_id": 55378392,
+    "submission_message": "alakazam training milestone iter 21 copy 1/2 first 261d367e131e NO RTP",
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "checkpoint_bytes": 127914385,
+    "bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "deck_id": "alakazam-owner-rtp-pilot-r175",
+    "deck_path": "decks/archetype-samples/alakazam-owner-rtp-pilot-r175.csv",
+    "deck_cards_sha256": "sha256:660c1274aac19d88c40fd2bb52187f53dc639d944506760e386f2686b91cc247",
+    "same_checkpoint_bundle_deck_model_config_and_non_experimental_runtime_required_for_both_arms": true,
+    "base_checkpoint_or_parameter_mutation_allowed": false,
+    "additional_training_authorized": false,
+    "evaluation_games_training_eligible": false,
+    "disabled_runtime_components": {
+      "recursive_turn_planner_rtp": true,
+      "legacy_rtp_sidecar_or_executor": true,
+      "guide_linear_additive_logit_layer": true,
+      "guide_logit_bonus": true,
+      "guide2vec": true,
+      "new_learned_head_or_adapter_training": true
+    }
+  },
+  "matchup_adapter": {
+    "required_on_both_arms": true,
+    "frozen_trained_adapter_bank_required": true,
+    "runtime_enabled_required": true,
+    "exact_r195_public_matchup_tree_sha256": "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe0194c9049",
+    "same_tree_bank_runtime_graph_and_route_resolution_required_for_both_arms": true,
+    "adapter_disabled_shadow_only_or_different_tree_allowed": false,
+    "matchup_adapter_is_inside_the_frozen_whole_model_path": true
+  },
+  "evaluation_design": {
+    "evaluation_id": "alakazam-r214-simple-belief-mcts-bo1000",
+    "output_root": "/home/inzi/poke-bot-agent/outputs/evaluations/alakazam-simple-belief-mcts-r214-bo1000",
+    "total_games": 1000,
+    "matched_rng_pairs": 500,
+    "games_per_pair": 2,
+    "complete_all_1000_games_without_early_best_of_stop": true,
+    "arms": [
+      "frozen_r195_no_rtp_direct_policy_with_matchup_adapter",
+      "public_history_root_sampled_belief_mcts_wrapping_same_frozen_r195_package_with_matchup_adapter"
+    ],
+    "seat_balance": {
+      "belief_mcts_as_seat_0": 500,
+      "belief_mcts_as_seat_1": 500,
+      "direct_policy_as_seat_0": 500,
+      "direct_policy_as_seat_1": 500,
+      "swap_seats_within_every_rng_pair": true
+    },
+    "actual_turn_order_balance": {
+      "belief_mcts_actual_first": 500,
+      "belief_mcts_actual_second": 500,
+      "direct_policy_actual_first": 500,
+      "direct_policy_actual_second": 500,
+      "initial_actor_is_explicit_sealed_pair_material_not_inferred_from_seat": true,
+      "missing_duplicate_crossed_or_unbalanced_pair_fails_closed": true
+    },
+    "pairing": {
+      "identical_initial_rng_and_deck_order_material_within_pair": true,
+      "unique_pair_ids_and_pair_game_nonces_required": true,
+      "same_frozen_package_and_matchup_adapter_runtime_required": true,
+      "only_experimental_runtime_graph_difference_is_belief_mcts_wrapping_action_selection": true
+    },
+    "parallelism": {
+      "parallel_execution_required_when_safe_capacity_exists": true,
+      "remote_workers_allowed_after_safe_noninterference_preflight": true,
+      "bert_elmo_and_train_allowed_only_after_per_host_safe_noninterference_preflight": true,
+      "existing_protected_workload_stop_restart_reconfigure_or_worker_reduction_allowed": false,
+      "interactive_sessions_may_be_signalled_terminated_or_replaced": false,
+      "content_addressed_output_required": true
+    }
+  },
+  "experimental_arm": {
+    "strategy_id": "public_history_root_sampled_belief_mcts_whole_frozen_model_wrapper",
+    "implementation": {
+      "module": "poke_bot.belief_mcts",
+      "class": "BeliefMCTS",
+      "search_semantics": "public_history_root_sampled_information_set_mcts",
+      "tree_is_real_search_tree_not_prebuilt_cache_or_direct_policy_alias": true,
+      "policy_visible_information_only": true,
+      "root_sampled_hidden_particles_required": true,
+      "fresh_libcg_search_world_per_simulation_required": true,
+      "shared_tree_key": "acting_player_public_action_observation_history",
+      "particle_identity_may_key_a_tree_node": false,
+      "strategy_fusion_by_per_particle_action_selection_allowed": false,
+      "tree_reuse_between_actual_decisions": false,
+      "r207_inter_turn_deterministic_cache_reuse_required": false
+    },
+    "whole_frozen_model_wrapper": {
+      "all_policy_value_fusion_and_matchup_adapter_inference_comes_from_exact_frozen_r195_package": true,
+      "frozen_model_policy_priors_required": true,
+      "frozen_model_leaf_values_required": true,
+      "matchup_adapter_route_is_used_in_root_and_simulated_model_forwards": true,
+      "standalone_reranker_or_partial_model_substitution_allowed": false,
+      "gradient_optimizer_parameter_update_or_calibration_training_allowed": false,
+      "direct_arm_uses_the_same_complete_frozen_model_path_without_search": true
+    },
+    "chance_and_information_label": {
+      "root_sampled_hidden_particles": true,
+      "explicit_coin_behavior": "sampled_uniform_coin_outcome_in_each_simulation",
+      "r207_exact_finite_chance_probability_weighted_expectation_claimed": false,
+      "r207_exact_terminal_or_future_legality_receipt_reused": false,
+      "required_report_label": "root_sampled_belief_mcts_non_r207_exact_chance",
+      "sampled_hidden_or_coin_outcome_may_be_described_as_exact_chance": false
+    },
+    "action_execution": {
+      "executes_only_the_selected_next_legal_atomic_action": true,
+      "complete_ordered_legal_action_space_or_exact_factorized_equivalent_required": true,
+      "direct_policy_action_is_a_search_candidate": true,
+      "missing_illegal_incomplete_or_untrusted_search_result_behavior": "execute_exact_frozen_r195_direct_policy_action"
+    }
+  },
+  "timing": {
+    "configuration_surface": "config/rl_protocol.yaml#/alakazam_simple_belief_mcts_bo1000_r214/timing",
+    "clock": "monotonic_wall_clock",
+    "max_planner_wall_seconds_per_actual_turn": 20.0,
+    "max_planner_wall_seconds_before_each_atomic_action": 5.0,
+    "values_owned_by_one_easy_to_change_typed_object": true,
+    "all_particle_sampling_simulator_prior_leaf_adapter_validation_backup_and_receipt_work_charged": true,
+    "per_atomic_action_deadline_is_also_charged_to_its_actual_turn_budget": true,
+    "automatic_extension_or_escalation_allowed": false,
+    "deadline_or_minimum_trusted_simulation_failure_behavior": "execute_exact_frozen_r195_direct_policy_action",
+    "effective_budget_identity_required_in_every_game_and_turn_receipt": true
+  },
+  "required_per_turn_telemetry": {
+    "planner_turn_id": true,
+    "seat": true,
+    "actual_turn_id": true,
+    "sims_requested": true,
+    "sims_run": true,
+    "sims_per_second": true,
+    "leaf_evaluations": true,
+    "unique_nodes": true,
+    "unique_expanded_nodes": true,
+    "root_visits": true,
+    "max_depth": true,
+    "mean_depth": true,
+    "mean_branching": true,
+    "particle_bank_size": true,
+    "particles_sampled": true,
+    "unique_particles": true,
+    "particle_support_modes": true,
+    "particle_support_repairs": true,
+    "chance_samples": true,
+    "complete_ordered_action_count": true,
+    "action_space_mode": true,
+    "search_stop_reason": true,
+    "requested_simulation_target_completed_within_budget": true,
+    "full_finite_tree_completion_metric": "not_applicable_root_sampled_stochastic_belief_tree",
+    "planner_turn_wall_seconds": true,
+    "max_atomic_action_planner_wall_seconds": true,
+    "deadline_hit": true,
+    "direct_policy_fallback_used": true,
+    "matchup_adapter_enabled_and_route_receipt": true,
+    "tree_config_and_frozen_package_identity_sha256": true
+  },
+  "required_report": {
+    "outcome_summary": [
+      "wins_draws_losses_by_arm",
+      "wins_draws_losses_by_belief_mcts_seat",
+      "wins_draws_losses_by_actual_first_second",
+      "paired_outcome_matrix",
+      "paired_win_rate_difference_and_confidence_interval",
+      "illegal_action_forfeit_crash_and_timeout_counts"
+    ],
+    "search_summary": [
+      "mean_median_p95_minimum_and_maximum_sims_run_per_turn",
+      "mean_median_p95_minimum_and_maximum_leaf_evaluations_per_turn",
+      "mean_median_p95_minimum_and_maximum_unique_nodes_per_turn",
+      "requested_simulation_target_completion_rate_overall_and_by_seat",
+      "full_finite_tree_completion_reported_as_not_applicable_for_root_sampled_stochastic_belief_tree",
+      "particle_and_coin_sampling_counts_and_support_modes",
+      "direct_fallback_and_deadline_counts"
+    ],
+    "latency_summary": [
+      "mean_median_p95_p99_planner_time_per_actual_turn",
+      "mean_median_p95_p99_planner_time_per_atomic_action",
+      "turn_budget_breach_count",
+      "action_budget_breach_count"
+    ],
+    "raw_per_game_pair_and_turn_receipts_preserved": true,
+    "missing_telemetry_may_be_imputed": false,
+    "plain_english_result_table_required": true
+  },
+  "launch_prerequisites": {
+    "belief_mcts_root_sampled_public_history_information_set_tests_pass": true,
+    "real_search_tree_and_non_direct_action_selection_receipt": true,
+    "exact_r195_frozen_checkpoint_bundle_deck_and_full_model_parity_receipt": true,
+    "exact_r195_matchup_adapter_tree_bank_runtime_graph_and_route_parity_receipt": true,
+    "rtp_guide_linear_guide_logit_and_guide2vec_absence_receipt": true,
+    "monotonic_20_second_turn_and_5_second_action_enforcement_tests_pass": true,
+    "pair_schedule_seat_first_second_and_rng_deck_order_integrity_tests_pass": true,
+    "local_remote_and_parallel_determinism_receipt": true,
+    "safe_noninterference_preflight_for_each_selected_host": true,
+    "new_content_addressed_source_and_evaluation_output_identity": true,
+    "launch_before_every_prerequisite_is_immutable_and_valid": false
+  },
+  "authority": {
+    "offline_implementation_and_tests_authorized": true,
+    "exact_bo1000_shadow_evaluation_authorized_after_prerequisites": true,
+    "remote_evaluation_workers_authorized_after_noninterference_preflight": true,
+    "training_service_start_authorized": false,
+    "training_or_gradient_updates_authorized": false,
+    "frozen_model_or_matchup_adapter_updates_authorized": false,
+    "serving_eligible": false,
+    "production_action_authority_enabled": false,
+    "selector_change_authorized": false,
+    "checkpoint_publication_authorized": false,
+    "kaggle_submission_authorized": false,
+    "promotion_authorized": false,
+    "r175_restart_authorized": false,
+    "iteration_21_collection_authorized": false
+  }
+}

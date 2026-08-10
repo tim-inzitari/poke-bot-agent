@@ -1,4 +1,5 @@
 # Slop Box H10 + RTP lineage guide (separately versioned from historical Teal).
+# Cox/Chao north-star distillation for owner review (GOAL.md revision 170).
 # Training-only strategic_directional_v2 curriculum. No fusion/serving/action
 # authority. RTP sidecar must not consume guide labels.
 schema_version: poke_bot.current_deck_guide/v1
@@ -11,16 +12,28 @@ secondary_search_alias: "Raging Bolt Ogerpon"
 competitive_family_alias: "Raging Bolt Ogerpon"
 ptcgreplay_public_archetype_id: 67
 ptcgreplay_public_archetype_name: "Slop Box"
-status: h10_rtp_activation_r170_guide_draft
-guide_version: slop-box-h10-rtp-north-star-v1
+status: h10_rtp_cox_chao_north_star_matchup_conditional_r170
+# Bound to the protected expert corpus ready receipt (must match guide_version there).
+guide_version: teal-mask-ogerpon-ex-slop-box-north-star-v3
 teacher_module: poke_bot.teal_mask_ogerpon_heuristics
-implementation_status: cox_chao_distillation_pending_strategic_directional_v2
+# Updated for matchup-conditional Cox/Chao distillation (owner feedback r170).
+teacher_module_sha256: sha256:57c0d03e15f4bc4d2357f7f4e24cd736238a4e5df7431a671a75b118ccc0d004
+implementation_status: sparse_causal_teacher_matchup_conditional_bootstrap_intensify_r170
 deck_complexity: nonlinear
 
 lineage:
   owner_goal_revision: 170
   separately_versioned_from_historical_teal: true
+  h10_rtp_identity_label: slop-box-h10-rtp-north-star-v1
   historical_guide_version_immutable: teal-mask-ogerpon-ex-slop-box-north-star-v3
+  corpus_bound_guide_version: teal-mask-ogerpon-ex-slop-box-north-star-v3
+  historical_full_contract: config/deck_guides/teal-mask-ogerpon-ex.yaml
+  expert_brief: docs/deck_guides/teal-mask-ogerpon-ex-expert-brief.txt
+  bootstrap_immutable_thin_contract_sha256: sha256:26357bc9f39356a0ab8422b01e058d18fd82e401449e14448b00555f9aa03948
+  bootstrap_immutable_thin_contract_note: >-
+    Expert bootstrap ready receipt immutably bound the thin r170 shell. This
+    audited review package expands that shell for owner review and does not
+    rewrite the completed bootstrap receipt.
 
 guide_authors:
   primary:
@@ -35,27 +48,381 @@ guide_authors:
     - supplementary_distillation_and_practice_evidence
 
 policy_target:
-  type: strategic_directional_v2
+  type: sparse_causal_curriculum_with_pairwise_route_direction
+  training_mode: strategic_directional_v2
   parameterized_head: false
+  target_logits: none
+  direct_policy_cross_entropy_allowed: false
+  guide_preference_index_role: selected_causal_route_pairwise_direction_only
+  guide_preference_index_may_affect_loss_or_gradient: true
+  guide_pairwise_route_heads:
+    - action_q
+    - action_resource
+    - action_utility
+    - setup_board_outcome
+    - combo_state
+  final_policy_logits_are_guide_targets: false
+  observed_target_authority:
+    - expanded_strategic_targets
+    - setup_board_outcome
   serving_authority: false
+  runtime_input_allowed: false
+  runtime_action_logit_route_allowed: false
   override_authoritative_policy: false
   fusion_authority: false
+  rtp_sidecar_may_consume_guide: false
+
+strategic_curriculum:
+  owner_design_revisions: [51, 55, 56, 104, 169, 170]
+  training_mode: strategic_directional_v2
+  # Owner r170 intensity + GOAL r42 empty-bench precedent: hold a materially
+  # useful guide plateau (0.25) through intensified bootstrap CE epochs.
+  initial_guide_loss_weight: 0.25
+  bootstrap_intensify_schedule:
+    ramp_epochs: [1, 5]
+    ramp_start_weight: 0.05
+    ramp_end_weight: 0.25
+    hold_through_epoch: 80
+    maximum_loss_weight: 0.25
+    setup_board_outcome_loss_weight: 0.05
+    expert_policy_ce: always_on_via_supervised_rehearsal_policy_loss
+    cox_chao_train_upweight: full_archetype_corpus_with_cox_chao_sample_emphasis
+  guide_weight_scope: observed_targets_plus_selected_pairwise_route_direction
+  guide_preference_index_may_affect_loss_or_gradient: true
+  final_policy_logits_are_guide_targets: false
+  every_learned_head_has_distinct_bounded_option_conditioned_fusion_route: true
+  guide_is_only_no_route_exception: true
+  serving_bias: exact_zero
+  runtime_authority: none
   rtp_sidecar_may_consume_guide: false
 
 project_representative_binding:
   primary_submission_team: "James Cox & Henry Chao"
   primary_submission_id: 55188658
-  exact_60_card_digest: null
-  exact_60_card_status: fail_closed_until_materialized
-  interim_historical_deck_hash: bcfc7b778a72d895
+  ptcgreplay_archetype_id: 67
+  ptcgreplay_archetype_name: "Slop Box"
+  ptcgreplay_rank_snapshot_r135: 24
+  exact_60_card_status: bound
+  exact_60_card_digest_receipt: state/slop-box-cox-chao-60-card-digest-r170.json
+  deck_hash: bcfc7b778a72d895
+  cards_sha256: sha256:10857495cddc95416052ff3b60e8686d2291da31de23ef064128534eb87cff28
+  terminal_multiset_sha256: sha256:f50fa3a23cdf21be7cf7d3f558b8ff0b82e8d4e7ba8f61b7b4cacc1a0080c16a
+  deck_csv: state/slop-box-cox-chao-55188658.deck.csv
+  deck_csv_sha256: sha256:6c115a5f06facc35dbd7df4b710a777ddf8930338f189a285d0c017e9ccdeecb
   multi_deck_family_training: true
+  secondary_observed_variant_deck_hash: b934c6c2f248aadc
+  secondary_variant_note: >-
+    Aug-5 Cox/Chao variant (3→5 Basic Energy swap); primary representative
+    remains modal bcfc7b778a72d895 for submission 55188658.
+
+deck_signature:
+  minimum_card_counts:
+    63: 2    # Raging Bolt ex
+    96: 3    # Teal Mask Ogerpon ex
+    108: 1   # Wellspring Mask Ogerpon ex
+    272: 1   # Lillie's Clefairy ex
+    756: 3   # Mega Kangaskhan ex
+    1071: 3  # Meowth ex
+    1116: 4  # Energy Switch
+    1250: 4  # Area Zero Underdepths
+  maximum_card_counts:
+    63: 2
+    96: 3
+    756: 3
+    1071: 3
+  representative_supporting_card_ids:
+    1: Basic Grass Energy
+    3: Basic Water Energy
+    4: Basic Lightning Energy
+    5: Basic Psychic Energy
+    6: Basic Fighting Energy
+    63: Raging Bolt ex
+    140: Fezandipiti ex
+    184: Latias ex
+    978: Passimian
+    1097: Night Stretcher
+    1098: Glass Trumpet
+    1121: Ultra Ball
+    1182: "Boss's Orders"
+    1197: Cyrano
+    1198: Crispin
+    1205: "Xerosic's Machinations"
+  positive_family_rule: >-
+    Require the Slop Box core: two Raging Bolt ex, three each of Mega
+    Kangaskhan ex, Meowth ex, and Teal Mask Ogerpon ex, plus Wellspring,
+    Clefairy, four Energy Switch, and four Area Zero.
+  prohibited_cross_archetype_capture:
+    - legacy-ogerpon-box
+    - hydrapple
+    - ogerpon-meganium
+    - mega-venusaur
+    - clefairy-ogerpon
+    - tera-box
+    - cornerstone-ogerpon
+    - mega-kangaskhan-ex
+  exact_deck_checksum_overrides_display_name: true
+  fuzzy_display_name_matching_allowed: false
 
 strategy_sources:
   - title: "James Cox & Henry Chao PTCGReplay Slop Box submission"
     evidence_role: primary_heuristic_guide_and_list_source
     submission_id: 55188658
     reviewed_at_utc: 2026-08-06T14:50:00Z
+  - title: "Cox/Chao modal 60-card digest bound from public meta"
+    evidence_role: exact_primary_submission_list_checksum
+    digest_receipt: state/slop-box-cox-chao-60-card-digest-r170.json
+    reviewed_at_utc: 2026-08-06T15:14:39Z
   - title: "MissingNo. PTCGReplay neural Slop Box signal"
     evidence_role: secondary_supplementary_only
     submission_id: 55196701
     reviewed_at_utc: 2026-08-06T14:50:00Z
+  - title: "Slop Box expert brief (historical Teal shell, same list checksum)"
+    evidence_role: practical_pilot_writeup_retained_under_cox_chao_list_binding
+    path: docs/deck_guides/teal-mask-ogerpon-ex-expert-brief.txt
+    reviewed_at_utc: 2026-07-29T17:15:00Z
+
+expert_writeup:
+  path: docs/deck_guides/teal-mask-ogerpon-ex-expert-brief.txt
+  sha256: sha256:82bd9e9cebfb6ef8b85aee55e78cc707c484558c9be398d9a429da0a296ac564
+  word_count: 1820
+  maximum_words: 10000
+  audience: world_champion_subject_matter_experts
+  guide_identity: teal-mask-ogerpon-ex
+  cites_same_strategy_source_set: true
+  primary_document_type: practical_human_deck_pilot_guide
+  author_priority_note: >-
+    Writeup remains the practical shell brief; Cox/Chao are the primary
+    distillation authors and the ≥90% held policy_acc gate focus under r170.
+
+what_the_deck_is_trying_to_do: >-
+  Convert a wide Basic-Pokemon bench and typed Basic Energy into the attacker,
+  pivot, or prize route that is best on the public board now. Teal Mask supplies
+  Grass acceleration and cards; Energy Switch consolidates distributed Energy;
+  Crispin / Glass Trumpet / Night Stretcher keep non-Grass types and discard
+  resources alive; Area Zero creates bench space without forcing a turn-one
+  whole-game commitment. Raging Bolt is the scalable damage branch; Mega
+  Kangaskhan is the durable setup/attack branch; support pieces earn bench
+  slots only through a current or mapped job.
+
+high_confidence_principles:
+  - treat_Cox_Chao_setup_preferences_as_matchup_conditional_defaults_not_a_rigid_script
+  - establish_multiple_Teal_Mask_engines_only_when_Grass_and_public_board_support_them
+  - prefer_Mega_Kangaskhan_blind_opener_but_Teal_when_public_board_demands_acceleration
+  - skip_second_Teal_when_opponent_public_board_is_sparse_or_prize_race_is_ahead
+  - bench_matchup_tools_only_for_observed_public_jobs_Clefairy_Wellspring_Bolt_ready
+  - decline_further_setup_benching_once_current_public_jobs_are_covered
+  - never_bench_Latias_or_Meowth_before_a_Teal_Mask_engine_exists
+  - prefer_legal_Teal_Dance_Run_Errand_or_Flip_the_Script_when_ability_origin_is_exact
+  - route_only_Basic_Energy_with_Energy_Switch
+  - preserve_distinct_Basic_Energy_types_for_Crispin_and_attack_requirements
+  - use_Raging_Bolt_discard_math_only_from_current_attached_Energy
+  - use_deterministic_Kangaskhan_200_damage_floor_not_future_coin_heads
+  - preserve_Latias_mobility_when_it_enables_the_current_pivot
+  - name_Area_Zero_bench_collapse_before_removing_the_Stadium
+  - use_only_public_prize_counts_and_current_prize_values
+  - keep_attack_target_recovery_Bolt_KO_timing_and_Wellspring_pump_under_the_fused_policy
+
+cox_chao_distillation_focus:
+  schema: poke_bot.cox_chao_matchup_conditional_focus/v1
+  linearity: less_linear_matchup_conditional
+  gate_note: >-
+    The ≥90% Cox/Chao held policy_acc gate still uses acting-seat accuracy
+    (MissingNo. excluded from the denominator). Gate labels must not force one
+    setup path in every matchup; sparse teacher preferences branch on public
+    state and mask when the matchup is unknown or the margin is below 0.25.
+  defaults_when_matchup_unknown_or_opponent_public_sparse:
+    setup_active: prefer_Mega_Kangaskhan_ex_then_Teal_Mask_over_support_basics
+    setup_bench: establish_one_Teal_engine_then_stop_do_not_force_second_Teal_or_Latias_Meowth
+    main_abilities: prefer_legal_Teal_Dance_Run_Errand_Flip_the_Script
+    energy_engine: five_type_Basic_Energy_with_Crispin_Energy_Switch_Glass_Trumpet_discipline
+    attackers_fused_policy_only: Raging_Bolt_scalable_KO_vs_Kangaskhan_stable_floor_vs_Wellspring_spread
+  branches_on_public_state:
+    - when: opponent_public_spread_or_dragapult_pressure
+      setup_active: prefer_Teal_Mask_opener_for_acceleration_over_Kangaskhan
+      setup_bench: keep_up_to_two_Teal_then_job_tools_Latias_Meowth_Wellspring
+    - when: opponent_public_clef_job_Darkness_Psychic_visible
+      setup_bench: prefer_unique_Lillies_Clefairy_ex_over_generic_Latias_Meowth
+    - when: opponent_public_spread_job_wide_bench
+      setup_bench: prefer_Wellspring_ready_slot_when_legal
+      attackers_fused_policy_only: Wellspring_spread_vs_single_target_compare_on_public_board
+    - when: public_prize_behind
+      setup_bench: keep_second_Teal_and_Bolt_ready_slot_when_legal
+      attackers_fused_policy_only: favor_Bolt_KO_timing_when_attached_Energy_math_is_exact
+    - when: public_prize_ahead_or_opponent_public_sparse
+      setup_bench: skip_second_Teal_and_decline_speculative_support_benching
+  masked_until_exact_public_inputs:
+    - Bolt_Energy_discard_source_and_KO_timing
+    - Wellspring_Torrential_Pump_bench_target
+    - Kangaskhan_coin_bonus_damage
+    - attack_selection_or_damage_target
+    - hidden_opponent_archetype_label_when_board_exposes_no_signature
+  note: >-
+    Sparse teacher labels only complete legal stages with exact public inputs.
+    Cox/Chao acting-seat play remains the ≥90% gate focus; MissingNo. is
+    supplementary evidence and is excluded from the held policy_acc denominator.
+    Defaults above are blind-safe scaffolding, not a universal Cox/Chao script.
+
+causal_heuristic_contract:
+  schema_version: poke_bot.causal_deck_guide_heuristics/v1
+  stage_completeness_rule: score_every_supplied_legal_combo_or_mask_entire_stage
+  minimum_preference_margin: 0.25
+  matchup_conditioning: public_opponent_board_and_public_prize_counts_only
+  supported_predicates:
+    - id: exact_initial_Slop_Box_active
+      supported_stages: [initial_setup_active]
+      exact_inputs:
+        - select.context
+        - exact_current_legal_options
+        - current_combo_card_ids
+        - opponent_public_active_and_bench_card_ids
+        - public_remaining_prize_counts
+      preference: matchup_conditional_Kangaskhan_default_or_Teal_when_public_engines_demanded
+      abstain_if:
+        - any_legal_option_unresolved
+        - legal_combo_set_incomplete
+        - preference_margin_below_0_25
+    - id: exact_initial_Slop_Box_bench
+      supported_stages: [initial_setup_bench]
+      exact_inputs:
+        - select.context
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+        - opponent_public_active_and_bench_card_ids
+        - public_remaining_prize_counts
+      preference: matchup_conditional_Teal_engines_then_public_job_tools_then_stop
+      abstain_if:
+        - any_legal_option_unresolved
+        - legal_combo_set_incomplete
+        - preference_margin_below_0_25
+        - matchup_specific_tool_without_public_job_tag
+    - id: exact_current_legal_draw_or_acceleration_ability
+      supported_stages: [legal_main_ability_action]
+      exact_inputs:
+        - exact_current_legal_options
+        - exact_ability_origin_card_id
+      preference: prefer_legal_Teal_Dance_Run_Errand_or_Flip_the_Script
+      abstain_if:
+        - ability_origin_unresolved
+        - any_legal_option_unresolved
+
+masked_targets:
+  - Teal_Dance_attachment_if_the_legal_action_does_not_expose_exact_target
+  - Energy_Switch_source_or_destination
+  - Crispin_type_pair_and_Energy_Switch_route
+  - attack_selection_or_damage_target
+  - Raging_Bolt_Energy_discard_source_or_damage_target
+  - Kangaskhan_coin_result_or_bonus_damage
+  - Wellspring_Torrential_Pump_bench_target
+  - Glass_Trumpet_recovery_target
+  - Area_Zero_future_bench_or_collapse_target
+  - Supporter_search_discard_or_recovery_choice
+  - face_down_prize_identity
+  - opponent_hidden_hand_deck_or_prize_contents
+  - future_draw_or_future_opponent_response
+  - unknown_prompt_origin
+  - unresolved_option_or_malformed_legal_combo
+  - score_margin_below_0_25
+
+target_safety:
+  causal_current_and_past_state_only: true
+  exact_current_legal_options_only: true
+  publicly_visible_board_discard_counters_and_logs_only: true
+  own_hidden_hand_or_deck_content_allowed: false
+  opponent_hidden_information_allowed: false
+  future_information_allowed: false
+  outcome_conditioned_labels_allowed: false
+  complete_legal_stage_scoring_required: true
+  complete_stage_failure_behavior: mask_entire_stage
+  minimum_preference_margin: 0.25
+  ambiguous_or_low_margin_behavior: mask
+  missing_label_behavior: mask_not_zero
+  runtime_action_override_allowed: false
+  runtime_authority: none
+  guide_may_override_fused_policy: false
+
+nonlinear_decision_support:
+  schema: poke_bot.nonlinear_specialist_decision_support/v1
+  required: true
+  authoritative_action_path: fused_policy
+  sparse_guide_role: causal_auxiliary_scaffolding_only
+  sparse_guide_alone_is_sufficient: false
+  unsupported_exact_guide_targets: mask_not_zero
+  hidden_or_future_information_allowed: false
+  validation_receipt: state/teal_mask_ogerpon_nonlinear_systems_validation_v1.json
+  required_branch_systems:
+    branching_setup_and_pivot:
+      guide_scaffold: [exact_initial_Slop_Box_active, exact_initial_Slop_Box_bench]
+    attacker_and_engine_preservation:
+      guide_scaffold: [exact_current_legal_draw_or_acceleration_ability]
+    typed_energy_and_resource_planning:
+      guide_scaffold: []
+    attack_target_and_prize_routing:
+      guide_scaffold: []
+    stochastic_disruption_timing:
+      guide_scaffold: []
+    bench_and_recovery_routing:
+      guide_scaffold: [exact_initial_Slop_Box_bench]
+    guide_weight_annealing:
+      guide_scaffold: [all_supported_sparse_predicates]
+
+corpus_and_gate_binding:
+  train_corpus_scope: all_acting_seat_teal-mask-ogerpon-ex_archetype_games
+  train_corpus_not_cox_chao_only: true
+  protected_expert_corpus_ready: >-
+    data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/teal-mask-ogerpon-ex/CURRENT_DECK_GUIDE_CORPUS_READY.json
+  protected_records: 1442
+  protected_decisions: 97762
+  protected_guide_rows: 8672
+  protected_guide_row_coverage: 0.0887
+  cox_chao_policy_accuracy_gate:
+    metric_id: cox_chao_held_policy_acc
+    threshold: 0.9
+    fail_closed: true
+    missingno_not_in_gate_denominator: true
+    training_rows_remain_full_archetype: true
+  audit_receipt: state/slop-box-h10-rtp-cox-chao-guide-audit-r170.json
+
+validation:
+  yaml_parse_required: true
+  teacher_module_present: true
+  strategic_curriculum_validation_status: validated
+  strategic_curriculum_validation_receipt: state/slop-box-strategic-curriculum-validation-r170.json
+  nonlinear_systems_validation_receipt: state/teal_mask_ogerpon_nonlinear_systems_validation_v1.json
+  cox_chao_60_card_digest_status: bound
+  full_archetype_guide_adherence_receipt: state/teal-guide-adherence-iter12-bounded2048-v1.json
+  unresolved_evidence_gaps:
+    - cox_chao_held_split_TeamNames_join_not_yet_materialized_for_90pct_gate
+    - bootstrap_validation_policy_acc_is_full_archetype_not_cox_chao_only
+    - setup_board_outcome_cpu_pack_select_context_all_unknown_needs_repack
+    - MissingNo_supplementary_signal_not_separately_audited_in_this_package
+    - no_world_champion_SME_approval_yet
+  combo_state_targets:
+    schema: poke_bot.slop_box_combo_state_targets/v1
+    head_width: 32
+    width_remap: false
+    fits_retained_h10_combo_head: true
+    builder: poke_bot/slop_box_combo_targets.py
+    attach_paths:
+      - convert_record
+      - pure_rl_compaction
+      - authoritative_visual_trace
+      - scripts/rematerialize_slop_box_combo_labels.py
+    ordinary_rl_loss_weight: 0.025
+    note: >-
+      Real Slop Box combo labels (Teal Dance / Crispin / Glass Trumpet /
+      Energy Switch / engine continuity) map into the existing 32-d H10
+      combo_state head. Expert trajectory rematerialization is required before
+      expert-pack CE can show nonzero combo loss; live RL attach is wired.
+  recommended_additional_heads_and_aids:
+    implement_now:
+      - matchup_conditional_cox_chao_distillation_focus_and_teacher_tags
+      - setup_bench_teacher_empty_stop_and_engine_order
+      - raise_bootstrap_guide_loss_weight_to_0_25_through_epoch_40
+      - continue_expert_policy_CE_epochs_26_to_40_from_completed_epoch_25
+      - rtp_cut_full_42453_trajectory_games_not_512_subsample
+      - setup_board_outcome_loss_weight_0_05_when_select_context_repacked
+      - rematerialize_slop_box_combo_labels_on_expert_trajectory_and_rebuild_cpu_pack
+    needs_owner_design:
+      - rebuild_expert_cpu_pack_with_real_select_context_for_setup_board_outcome
+      - richer_prize_race_and_resource_forecast_guide_directional_emphasis
+      - Cox_Chao_held_TeamNames_join_for_exact_90pct_gate_measurement

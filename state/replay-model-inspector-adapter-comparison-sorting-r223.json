@@ -1,0 +1,56 @@
+{
+  "schema": "poke_bot.replay_model_inspector_adapter_comparison_sorting/v1",
+  "owner_decision_revision": 223,
+  "recorded_at_utc": "2026-08-10T19:49:40Z",
+  "status": "implemented_pending_live_activation",
+  "surface": "matchup_adapter_on_off_legal_action_comparison",
+  "sorting": {
+    "columns": [
+      "legal_action",
+      "adapter_on_chance",
+      "adapter_off_chance",
+      "adapter_change",
+      "chosen"
+    ],
+    "default_order": "archived_legal_option_order",
+    "legal_action_first_direction": "natural_case_insensitive_ascending",
+    "numeric_first_direction": "descending",
+    "adapter_change_is_signed": true,
+    "adapter_change_sign_convention": "adapter_on_minus_adapter_off",
+    "chosen_first_direction": "both_then_on_then_off_then_neither",
+    "repeat_click_reverses_direction": true,
+    "missing_values": "always_last",
+    "stable_tie_breakers": [
+      "source_position_ascending",
+      "source_array_index_ascending"
+    ],
+    "mutates_source_payload": false
+  },
+  "accessibility": {
+    "button_in_each_column_header": true,
+    "aria_sort_on_header": true,
+    "visible_direction_indicator": true,
+    "keyboard_focus_visible": true
+  },
+  "safety": {
+    "client_side_only": true,
+    "server_or_api_change": false,
+    "probability_or_choice_values_changed": false,
+    "replay_or_provenance_mutation": false,
+    "training_or_selector_authority": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_inspector_static_ui",
+    "requires_inspector_service_restart": false,
+    "activation_receipt": null,
+    "required_validation": [
+      "all_five_headers_sort",
+      "ascending_descending_toggle",
+      "signed_numeric_change_sort",
+      "chosen_rank_sort",
+      "missing_values_last",
+      "stable_tie_break",
+      "keyboard_and_aria_sort"
+    ]
+  }
+}

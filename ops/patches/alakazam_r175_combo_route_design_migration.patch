@@ -1,0 +1,81 @@
+diff --git a/scripts/train_pure_rl.py b/scripts/train_pure_rl.py
+--- a/scripts/train_pure_rl.py
++++ b/scripts/train_pure_rl.py
+@@ -2954,6 +2954,11 @@ _DECISION_FUSION_RUNTIME_MIGRATION_PATHS = frozenset(
+ )
+ 
+ 
++_ALAKAZAM_COMBO_ROUTE_DISABLE_MIGRATION_PATHS = frozenset(
++    {"learner.profile.combo_state_route_enabled"}
++)
++
++
+ _CURRENT_DECK_GUIDE_WEIGHT_MIGRATION_PATHS = frozenset(
+     {
+         "learner.alakazam_guide_loss_weight",
+@@ -3445,6 +3450,39 @@ def _safe_decision_fusion_runtime_migration(
+     )
+ 
+ 
++def _safe_alakazam_combo_route_disable_migration(
++    *,
++    stored: dict[str, Any],
++    current: dict[str, Any],
++    changed: Sequence[str],
++    reason: Optional[str],
++) -> bool:
++    """Authorize only Alakazam's owner-required combo-route shutdown.
++
++    The legacy r175 design receipts predate the separately serialized runtime
++    route gate, so a missing value means the resident combo route was active.
++    Keep the H10 architecture/head present while allowing exactly that one
++    route to become inactive at the empty iter-0 recovery boundary.
++    """
++    if str(reason or "").strip() != "receipt_backed_completed_collection_resume_v1":
++        return False
++    non_source = {path for path in changed if not path.startswith("source.")}
++    if non_source != _ALAKAZAM_COMBO_ROUTE_DISABLE_MIGRATION_PATHS:
++        return False
++    before = dict(stored.get("learner") or {})
++    after = dict(current.get("learner") or {})
++    before_profile = dict(before.get("profile") or {})
++    after_profile = dict(after.get("profile") or {})
++    return bool(
++        before.get("current_deck_guide_archetype") == "alakazam"
++        and after.get("current_deck_guide_archetype") == "alakazam"
++        and before_profile.get("combo_state_head_enabled") is True
++        and after_profile.get("combo_state_head_enabled") is True
++        and before_profile.get("combo_state_route_enabled") in (None, True)
++        and after_profile.get("combo_state_route_enabled") is False
++    )
++
++
+ def _changed_design_paths(before: Any, after: Any, prefix: str = "") -> set[str]:
+     if isinstance(before, dict) and isinstance(after, dict):
+         changed: set[str] = set()
+@@ -3584,6 +3622,14 @@ def _validate_or_migrate_design_fingerprint(
+         changed=changed,
+         reason=migration_reason,
+     )
++    safe_alakazam_combo_route_disable = (
++        _safe_alakazam_combo_route_disable_migration(
++            stored=stored,
++            current=current,
++            changed=changed,
++            reason=migration_reason,
++        )
++    )
+     safe_current_deck_guide_weight = (
+         _safe_current_deck_guide_weight_migration(
+             stored=stored,
+@@ -3651,6 +3697,10 @@ def _validate_or_migrate_design_fingerprint(
+             safe_decision_fusion_runtime
+             and path in _DECISION_FUSION_RUNTIME_MIGRATION_PATHS
+         )
++        and not (
++            safe_alakazam_combo_route_disable
++            and path in _ALAKAZAM_COMBO_ROUTE_DISABLE_MIGRATION_PATHS
++        )
+         and not (
+             safe_current_deck_guide_weight
+             and path in _CURRENT_DECK_GUIDE_WEIGHT_MIGRATION_PATHS

@@ -6,6 +6,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 # Load the module file directly so this test does not require torch (pure_rl
 # package __init__ imports model_profile → torch).
 _PATH = Path(__file__).resolve().parents[1] / "poke_bot" / "pure_rl" / "leaf_self_play.py"
@@ -16,9 +18,11 @@ sys.modules[_SPEC.name] = _mod
 _SPEC.loader.exec_module(_mod)
 expected_leaf_share = _mod.expected_leaf_share
 plan_self_play_leaf_wiring = _mod.plan_self_play_leaf_wiring
+rtp_requires_local_model = _mod.rtp_requires_local_model
 
 
-def test_cpu_local_when_no_leaf_channel() -> None:
+def test_cpu_local_when_no_leaf_channel(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("POKEBOT_USE_RECURSIVE_TURN_PLANNER", raising=False)
     plan = plan_self_play_leaf_wiring(
         us_checkpoint="/ckpt/a.pt",
         them_checkpoint="/ckpt/a.pt",
@@ -30,7 +34,8 @@ def test_cpu_local_when_no_leaf_channel() -> None:
     assert expected_leaf_share(plan) == 0.0
 
 
-def test_gpu_leaf_both_when_same_checkpoint() -> None:
+def test_gpu_leaf_both_when_same_checkpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("POKEBOT_USE_RECURSIVE_TURN_PLANNER", raising=False)
     plan = plan_self_play_leaf_wiring(
         us_checkpoint="/ckpt/a.pt",
         them_checkpoint="/ckpt/a.pt",
@@ -42,7 +47,10 @@ def test_gpu_leaf_both_when_same_checkpoint() -> None:
     assert expected_leaf_share(plan) == 1.0
 
 
-def test_gpu_leaf_us_only_when_opponent_pool_differs() -> None:
+def test_gpu_leaf_us_only_when_opponent_pool_differs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("POKEBOT_USE_RECURSIVE_TURN_PLANNER", raising=False)
     plan = plan_self_play_leaf_wiring(
         us_checkpoint="/ckpt/champ.pt",
         them_checkpoint="/ckpt/recent.pt",
@@ -52,3 +60,22 @@ def test_gpu_leaf_us_only_when_opponent_pool_differs() -> None:
     assert plan.use_leaf_for_us and not plan.use_leaf_for_them
     assert not plan.load_us_local and plan.load_them_local
     assert expected_leaf_share(plan) == 0.5
+
+
+def test_armed_rtp_forces_cpu_local_despite_leaf_channel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ckpt = tmp_path / "rtp_shadow_planner.pt"
+    ckpt.write_bytes(b"rtp")
+    monkeypatch.setenv("POKEBOT_USE_RECURSIVE_TURN_PLANNER", "1")
+    monkeypatch.setenv("POKEBOT_RTP_CHECKPOINT", str(ckpt))
+    assert rtp_requires_local_model() is True
+    plan = plan_self_play_leaf_wiring(
+        us_checkpoint="/ckpt/a.pt",
+        them_checkpoint="/ckpt/a.pt",
+        leaf_channel_active=True,
+    )
+    assert plan.mode == "rtp-cpu-local"
+    assert plan.load_us_local and plan.load_them_local
+    assert not plan.use_leaf_for_us and not plan.use_leaf_for_them
+    assert expected_leaf_share(plan) == 0.0

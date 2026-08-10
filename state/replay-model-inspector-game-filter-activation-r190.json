@@ -1,0 +1,44 @@
+{
+  "schema": "poke_bot.replay_model_inspector_game_filter_activation/v1",
+  "owner_decision_revision": 190,
+  "created_at_utc": "2026-08-08T01:47:00Z",
+  "status": "active_read_only",
+  "surface": {
+    "url": "http://bert:8780/replay-inspector/",
+    "search_control": "Find game",
+    "native_select_retained": true,
+    "client_side_only": true,
+    "auto_selection_debounce_ms": 250
+  },
+  "live_browser_validation": {
+    "viewport": "mobile_390x844",
+    "submission_id_text": "55217604",
+    "total_games": 79,
+    "partial_id_query": "60007",
+    "partial_id_matches": 1,
+    "partial_id_selected_game": "89760007",
+    "player_query": "kura",
+    "player_matches": 1,
+    "no_match_query": "no-such-game",
+    "no_match_message": "No games match",
+    "clear_restored_all_games": true
+  },
+  "deployed_assets": {
+    "index_html_sha256": "sha256:08f9a35981d827b4797276353306d538f8131ed92ad2804dca5e5e55e73c7003",
+    "app_js_sha256": "sha256:470c415705ea04732c45a3eec8365c49dcc15163a61521d59e65eb576369d69a",
+    "styles_css_sha256": "sha256:9c06fd57ec904443b71927c0706ff88b773bd696ea1457860bfd9f32fbfcee97",
+    "source_backup": "/mnt/Main/main/poke-bot-agent/replay-model-inspector-r176.pre-r190-20260808T013429Z"
+  },
+  "validation": {
+    "full_exact_runtime_inspector_tests_passed_before_final_display_only_patch": 88,
+    "final_static_ui_tests_passed": 10,
+    "javascript_syntax": "passed",
+    "gateway_asset_sha256_matches_live": true,
+    "service_health": "ok"
+  },
+  "safety": {
+    "replay_or_provenance_mutation": false,
+    "decision_visibility_changed": false,
+    "training_or_selector_service_control_invoked": false
+  }
+}

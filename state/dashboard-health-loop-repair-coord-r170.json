@@ -1,0 +1,15 @@
+{
+  "schema": "poke_bot.dashboard_health_loop_repair_coord/v1",
+  "goal_revision": 170,
+  "created_at_utc": "2026-08-06T15:48:58.116050+00:00",
+  "agent": "dashboard_health_15m_loop",
+  "coordinate_with": "426334f7",
+  "scope": "dashboard-only stage/progress/source_current + LaunchAgent reload",
+  "slop_box_training_touched": false,
+  "crustle_data_touched": false,
+  "loop_armed": true,
+  "validation": {
+    "source_integrity_current": true,
+    "failed": []
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "agent_id": "d001aba2",
+  "canonical_archive_root": "/mnt/Main/main/poke-bot-agent/archive/episode-days",
+  "canonical_latest20_receipt_elmo": "/mnt/Main/main/poke-bot-agent/archive/expert-latest20/current.json",
+  "canonical_latest20_receipt_train": "/home/inzi/poke-bot-agent/outputs/state/expert-latest20-current.json",
+  "failures": [
+    "bert_ssh_publickey_denied",
+    "kaggle_index_overcounts_for_2026-08-03_04_05_bound_as_source_discrepancies"
+  ],
+  "gaps_filled": [
+    {
+      "day": "2026-08-03",
+      "index_episodes": 4724,
+      "sha256": "sha256:909cbd205f3afcfde6031ae93ef9625b796e8a0c2edf66eeb6edc88469273a04",
+      "validated_episodes": 4720
+    },
+    {
+      "day": "2026-08-04",
+      "index_episodes": 4816,
+      "sha256": "sha256:17cd9cd92f4ae3b293ee3fab3452657316362af134c6d4a7b5dbfda99c3d3d42",
+      "validated_episodes": 4811
+    },
+    {
+      "day": "2026-08-05",
+      "index_episodes": 4743,
+      "sha256": "sha256:ab961e0d98984b611cc4091801b618606cb03cab4413ab7908d3f8c6312030e3",
+      "validated_episodes": 4740
+    }
+  ],
+  "latest20_window": [
+    "2026-07-17",
+    "2026-08-05"
+  ],
+  "note": "Slop Box corpus build may consume window_end=2026-08-05. 2026-08-06 not published on Kaggle yet.",
+  "notify_sibling": "68c721f2",
+  "previous_local_newest": "2026-08-02",
+  "published_newest_day": "2026-08-05",
+  "schema": "poke_bot.public_episode_day_sync_coordination/v1",
+  "status": "ready",
+  "total_episodes": 91188,
+  "updated_at": "2026-08-06T15:11:56.885847+00:00",
+  "versioned_receipt": "/mnt/Main/main/poke-bot-agent/archive/expert-latest20/windows/2026-07-17_2026-08-05.json"
+}

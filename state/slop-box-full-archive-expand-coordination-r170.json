@@ -1,0 +1,24 @@
+{
+  "schema": "poke_bot.slop_box_full_archive_expand_coordination_r170/v1",
+  "updated_at_utc": "2026-08-06T17:32:00+00:00",
+  "owner_order": "all valid archive days; stop Jul29-Aug5-only; defer to cd90d21d",
+  "ownership": {
+    "full_archive_rematerialize_all_valid_days": "cd90d21d",
+    "jul29_aug5_only_stopped": "7cbdccac",
+    "exp_a_maps_and_boundary_start": "7cbdccac",
+    "deep_ce": "leave_alone_until_clean_boundary"
+  },
+  "7cbdccac_status": {
+    "jul29_aug5_only_rematerialize": "stopped",
+    "parent_pid_was": 2499278,
+    "deferred_full_archive_to": "cd90d21d",
+    "exp_a_contract": "full_corpus_train_plus_chao_upweight_not_filter"
+  },
+  "train_contract": {
+    "full_archetype_all_games": true,
+    "chao_only_filter": false,
+    "cox_chao_upweight_only": true
+  },
+  "no_ready": true,
+  "no_rl": true
+}

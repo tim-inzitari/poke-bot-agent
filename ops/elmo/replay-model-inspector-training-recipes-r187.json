@@ -1,0 +1,105 @@
+{
+  "schema": "poke_bot.replay_model_inspector_training_recipe_registry/v1",
+  "version": 1,
+  "records": [
+    {
+      "checkpoint_sha256": "sha256:7480d81c54b1b98955108401fc04c82e93b6afe626a70c1b52fd467cc0cb704b",
+      "status": "verified",
+      "recipe": {
+        "scope": "source_backed_training_loss_multipliers",
+        "training_only": true,
+        "fine_tune_execution_authority": false,
+        "evaluation_replays_training_eligible": false,
+        "checkpoint_selection_epoch": 15,
+        "training_mode": "strategic_directional_v2",
+        "source_summary": "r175 Alakazam all-non-combo-heads-live CE bootstrap recipe; guide reaches and holds 0.05 by epoch 5. These are loss multipliers, never submitted-runtime forward scales.",
+        "policy_behavior_change_requires": "explicit isolated fine_tune_and_new_checksum_distinct_checkpoint",
+        "loss_weights": {
+          "policy_cross_entropy": 1.0,
+          "value": 1.0,
+          "archetype": 0.05,
+          "opponent_hand": 0.05,
+          "opponent_remainder": 0.05,
+          "lethal_threat": 0.025,
+          "prize_race": 0.025,
+          "guide_strategic_directional_v2": 0.05,
+          "setup_board_outcome": 0.025,
+          "combo_state": 0.0,
+          "action_q": 0.1,
+          "action_type": 0.05,
+          "action_target": 0.025,
+          "action_resource": 0.025,
+          "action_utility": 0.05,
+          "tactical_outcome": 0.05,
+          "opponent_response": 0.05,
+          "resource_forecast": 0.025,
+          "game_phase": 0.025,
+          "outcome_distribution": 0.05,
+          "remaining_turns": 0.025
+        },
+        "strategic_head_loss_weights": {
+          "action_q": 0.1,
+          "action_type": 0.05,
+          "action_target": 0.025,
+          "action_resource": 0.025,
+          "action_utility": 0.05,
+          "tactical_outcome": 0.05,
+          "opponent_response": 0.05,
+          "resource_forecast": 0.025,
+          "game_phase": 0.025,
+          "outcome_distribution": 0.05,
+          "remaining_turns": 0.025
+        },
+        "guide": {
+          "loss_weight": 0.05,
+          "training_mode": "strategic_directional_v2",
+          "runtime_action_logit_route": false,
+          "direct_policy_cross_entropy_allowed": false
+        },
+        "head_status": {
+          "all_non_combo_heads_live_from_epoch_1": true,
+          "combo_state_architecture_present": true,
+          "combo_state_training_and_route_disabled": true
+        }
+      },
+      "evidence": [
+        {
+          "path": "ops/elmo/replay-model-inspector-provenance-r176.json",
+          "sha256": "sha256:706ccb6b7910b5e22b714c2e33bf2acc9cbacdb758022727839dc5ed3271b2f5",
+          "pointer": "/records[submission_id=55315274]/checkpoint",
+          "role": "checksum_bound_submission_checkpoint_provenance"
+        },
+        {
+          "path": "state/alakazam-rtp-owner-hard-swap-r175.json",
+          "sha256": "sha256:ef054e7958ce72ae728e374856e99fb1b41af8b3ac0f2c72df1a9aa7d7b7987c",
+          "pointer": "/heads",
+          "role": "r175_owner_training_contract"
+        },
+        {
+          "path": "config/rl_protocol.yaml",
+          "sha256": "sha256:cf3337959c48ae1799eb8622148983e5a5ffefd2529fa86014e413906f543469",
+          "pointer": "/specialist_training/expanded_strategic_heads/heads",
+          "role": "canonical_strategic_head_loss_weights"
+        },
+        {
+          "path": "scripts/run_starmie_expert_bootstrap.py",
+          "sha256": "sha256:c8c6a9386cca2305fc705c19ef9718f20a75a4480f9ad92f6ead2c20d14c14b4",
+          "pointer": "/specialist_bootstrap_guide_weight_and_rehearsal_kwargs",
+          "role": "r175_bootstrap_schedule_and_auxiliary_loss_wiring"
+        },
+        {
+          "path": "config/deck_guides/alakazam-final-refresh.yaml",
+          "sha256": "sha256:f2ce4dfc255ec634e76f8b04b943aecebdd95aad5318bbcd7eab369f938d6798",
+          "pointer": "/policy_target,/strategic_curriculum",
+          "role": "guide_training_mode_and_held_weight_contract"
+        },
+        {
+          "path": "state/replay-model-inspector-head-influence-playground-r187.json",
+        "sha256": "sha256:4e82b2972c8c02781f487c71a3ef9c62e25e9be644103e6ea9012d801f54feb2",
+          "pointer": "/training_recipe,/fine_tuning,/safety",
+          "role": "r187_read_only_training_recipe_boundary"
+        }
+      ]
+    }
+  ]
+}

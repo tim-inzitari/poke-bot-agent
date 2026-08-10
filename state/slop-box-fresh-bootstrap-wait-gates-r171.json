@@ -1,0 +1,57 @@
+{
+  "agent": "7bc394c0",
+  "blockers": [
+    "schema8_not_sealed_cpu_pack_not_bound",
+    "combo_state_labels_not_attached"
+  ],
+  "fresh_bootstrap_started": false,
+  "gate_1_ready": true,
+  "gate_1_signaled_at_utc": "2026-08-06T20:42:30+00:00",
+  "gates": {
+    "1_self_play_equivalent_markup": {
+      "evidence": "markup complete on elmo container pokebot-slop-box-markup-r171 Exit 0; receipt synced to train; marked_games=1982 marked_decisions=134696; corpus usable at outputs/bootstrap/slop-box-h10-rtp/expert-matchup-marked-selfplay-equiv-r171 (7 feature shards, MARKUP_READY.json, ticket_index.jsonl); receipt_digest=sha256:ca157f972ef5b50c3e75599814c72a05824ced8e592e81a367968da4606e122d",
+      "marked_corpus": "/home/inzi/poke-bot-agent/outputs/bootstrap/slop-box-h10-rtp/expert-matchup-marked-selfplay-equiv-r171",
+      "marked_decisions": 134696,
+      "marked_games": 1982,
+      "owner": "b90dbf9e",
+      "ready": true,
+      "receipt_digest": "sha256:ca157f972ef5b50c3e75599814c72a05824ced8e592e81a367968da4606e122d",
+      "required_receipt": "/home/inzi/poke-bot-agent/outputs/state/slop-box-h10-rtp-expert-matchup-markup-r171.json",
+      "service_exit": {
+        "elmo_docker": "pokebot-slop-box-markup-r171 Exited (0)",
+        "train_systemd": "pokebot-slop-box-expert-matchup-markup-r171.service inactive Result=success ExecMainStatus=0"
+      }
+    },
+    "2_schema8_seal_and_cpu_pack": {
+      "cpu_pack_schema8_bound": false,
+      "note": "existing train CPU packs are pre-schema8; do not bootstrap on them",
+      "owner": "f163b865",
+      "progress_receipt": "/home/inzi/poke-bot-agent/outputs/state/slop-box-schema8-setup-board-activation-progress-r170.json",
+      "ready": false,
+      "remat_active_on_elmo": true,
+      "setup_board_labels_yet": false,
+      "side_dir": "/mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v5-r170-schema8-jul24-30",
+      "window": "2026-07-24..2026-07-30"
+    },
+    "3_combo_state_labels": {
+      "combo_loss_weight": 0.025,
+      "labels_on_corpus": false,
+      "note": "builder/tests present (slop_box_combo_targets.py); smoke500 receipt only; full remat attach pending",
+      "owner": "f93685e2",
+      "ready": false,
+      "setup_loss_weight": 0.025,
+      "weight_bind_receipt": "/home/inzi/poke-bot-agent/outputs/state/slop-box-h10-combo-setup-weight-bind-r170.json",
+      "weights_bound": true
+    }
+  },
+  "no_crustle_deletes": true,
+  "owner_order": "WAIT for full markup + schema8 seal/CPU pack + combo labels if ready; then wipe + fresh bootstrap; do not fresh-start on schema-6 empty setup_board",
+  "rl_held": true,
+  "rl_hold_dropin": "/home/inzi/.config/systemd/user/pokebot-final-format-slop-box-h10-rtp-rl.service.d/99-owner-fresh-bootstrap-hold-r171.conf",
+  "schema": "poke_bot.slop_box_fresh_bootstrap_wait_gates_r171/v1",
+  "status": "waiting_remaining_gates_gate1_ready",
+  "updated_at_utc": "2026-08-06T20:42:30+00:00",
+  "wipe_already_performed_early": true,
+  "wipe_note": "Learned Slop Box CE/Chao/protected weights already quarantined under _rejected; fresh bootstrap still BLOCKED until gates below pass",
+  "wipe_receipt": "/home/inzi/poke-bot-agent/outputs/state/slop-box-learned-weights-wipe-r171.json"
+}

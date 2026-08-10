@@ -196,50 +196,42 @@ def pause(
             raced_iteration = int(_read_json(runtime_path).get("iteration", -1))
         except (TypeError, ValueError):
             raced_iteration = next_iteration
-    _publish(
-        status_path,
-        status="paused",
-        unit=unit,
-        commit=str(commit_path),
-        commit_digest=_sha256(commit_path),
-        checkpoint=str(checkpoint),
-        checkpoint_digest=digest,
-        completed_iteration=completed_iteration,
-        next_iteration=next_iteration,
-        uncommitted_next_iteration_started=bool(
-            raced_iteration is not None and raced_iteration >= next_iteration
-        ),
-        recovery_required=bool(
-            raced_iteration is not None and raced_iteration >= next_iteration
-        ),
-        service_active_state=_service_value(unit, "ActiveState"),
-    )
+    raced = bool(raced_iteration is not None and raced_iteration >= next_iteration)
+    paused_values = {
+        "unit": unit,
+        "commit": str(commit_path),
+        "commit_digest": _sha256(commit_path),
+        "checkpoint": str(checkpoint),
+        "checkpoint_digest": digest,
+        "completed_iteration": completed_iteration,
+        "next_iteration": next_iteration,
+        "uncommitted_next_iteration_started": raced,
+        "recovery_required": raced,
+        "service_active_state": _service_value(unit, "ActiveState"),
+    }
     if next_unit:
+        # Publish the final checksum-stable handoff receipt before asking
+        # systemd to launch the successor.  The successor may start
+        # immediately, so rewriting this receipt after start would race its
+        # source-identity checksum.
+        _publish(
+            status_path,
+            status="paused_successor_start_requested",
+            **paused_values,
+            successor_unit=next_unit,
+            successor_start_requested=True,
+        )
         started = _systemctl("start", "--no-block", next_unit)
         if started.returncode:
             raise RuntimeError(
                 f"could not start boundary successor {next_unit}: "
                 f"{started.stdout.strip()}"
             )
+    else:
         _publish(
             status_path,
-            status="paused_successor_started",
-            unit=unit,
-            commit=str(commit_path),
-            commit_digest=_sha256(commit_path),
-            checkpoint=str(checkpoint),
-            checkpoint_digest=digest,
-            completed_iteration=completed_iteration,
-            next_iteration=next_iteration,
-            uncommitted_next_iteration_started=bool(
-                raced_iteration is not None and raced_iteration >= next_iteration
-            ),
-            recovery_required=bool(
-                raced_iteration is not None and raced_iteration >= next_iteration
-            ),
-            service_active_state=_service_value(unit, "ActiveState"),
-            successor_unit=next_unit,
-            successor_start_requested=True,
+            status="paused",
+            **paused_values,
         )
 
 

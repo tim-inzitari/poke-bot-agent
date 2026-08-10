@@ -82,6 +82,7 @@ from poke_bot.pure_rl.expert_rehearsal import (  # noqa: E402
     commit_rehearsal_receipt,
     recover_rehearsal,
     rehearsal_due,
+    rehearsal_epochs_for_iteration,
     rehearsal_paths,
     resolve_expert_manifest,
 )
@@ -100,6 +101,10 @@ from poke_bot.pure_rl.guide_weight_review import (  # noqa: E402
     emit_review_request,
 )
 from poke_bot.process_memory import close_mp_queue, release_process_heap  # noqa: E402
+from poke_bot.slop_box_combo_targets import (  # noqa: E402
+    attach_slop_box_combo_state_labels,
+    is_slop_box_combo_deck,
+)
 from poke_bot.slowking_combo_targets import (  # noqa: E402
     attach_slowking_combo_state_labels,
     is_exact_slowking_deck,
@@ -607,8 +612,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             os.environ.get("PURE_RL_COMBO_STATE_LOSS_WEIGHT", "0")
         ),
         help=(
-            "Ordinary observed-target weight for the Slowking-only causal "
-            "combo-state head. This must remain zero for every other specialist."
+            "Ordinary observed-target weight for the causal combo-state head. "
+            "Required at 0.025 for Slowking and H10 specialists that retain "
+            "the head (Alakazam/Marnie/Crustle/Slop Box); zero elsewhere. "
+            "Missing labels remain masked."
         ),
     )
     p.add_argument(
@@ -1034,6 +1041,27 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=int(os.environ.get("PURE_RL_EXPERT_REHEARSAL_EPOCHS", "1")),
     )
     p.add_argument(
+        "--expert-rehearsal-one-time-before",
+        type=int,
+        default=int(
+            os.environ.get("PURE_RL_EXPERT_REHEARSAL_ONE_TIME_BEFORE", "-1")
+        ),
+        help=(
+            "Use the one-time expert epoch override before this exact "
+            "iteration; the ordinary cadence remains unchanged (-1=off)."
+        ),
+    )
+    p.add_argument(
+        "--expert-rehearsal-one-time-epochs",
+        type=int,
+        default=int(
+            os.environ.get("PURE_RL_EXPERT_REHEARSAL_ONE_TIME_EPOCHS", "0")
+        ),
+        help=(
+            "Expert epochs for --expert-rehearsal-one-time-before (0=off)."
+        ),
+    )
+    p.add_argument(
         "--expert-rehearsal-lr",
         type=float,
         default=float(os.environ.get("PURE_RL_EXPERT_REHEARSAL_LR", "2e-5")),
@@ -1343,7 +1371,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     combo_weight = float(args.combo_state_loss_weight)
     if not math.isfinite(combo_weight) or combo_weight < 0.0:
         p.error("--combo-state-loss-weight must be finite and nonnegative")
-    combo_required_specialists = {"slowking", "marnie-s-grimmsnarl-ex"}
+    # Combo-state CE weight 0.025 is required for Slowking, Marnie, and Slop Box
+    # H10. Alakazam/Crustle H10 may still carry legacy zero from older
+    # registries; authorize 0.025 there without forcing a healthy-run restart.
+    combo_required_specialists = {
+        "slowking",
+        "marnie-s-grimmsnarl-ex",
+        "teal-mask-ogerpon-ex",
+    }
+    combo_optional_h10_specialists = {"alakazam", "crustle"}
     if specialist in combo_required_specialists:
         if not math.isclose(
             combo_weight,
@@ -1355,10 +1391,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 f"{specialist} requires --combo-state-loss-weight 0.025 during "
                 "ordinary RL and scheduled expert rehearsal"
             )
+    elif specialist in combo_optional_h10_specialists:
+        if combo_weight != 0.0 and not math.isclose(
+            combo_weight,
+            COMBO_STATE_BASE_LOSS_WEIGHT,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            p.error(
+                f"{specialist} combo-state loss weight must be 0.0 (legacy) or "
+                "exactly 0.025"
+            )
     elif combo_weight != 0.0:
         p.error(
             "--combo-state-loss-weight is authorized only for Slowking and "
-            "Marnie's Grimmsnarl ex"
+            "H10 specialists that retain the combo-state head "
+            "(Alakazam, Marnie, Crustle, Slop Box / teal-mask-ogerpon-ex)"
         )
     guide_training_mode = str(args.current_deck_guide_training_mode)
     if guide_training_mode not in GUIDE_TRAINING_MODES:
@@ -2135,9 +2183,41 @@ def _checkpoint_contract(
     actual.setdefault("decision_fusion_enabled", False)
     actual.setdefault("decision_fusion_runtime_enabled", False)
     actual.setdefault("decision_fusion_width", 16)
+    # This is a non-architectural, process-resolved route gate.  A pinned H10
+    # checkpoint can therefore run with combo's tensors resident but its route
+    # disabled; do not reject that explicit operator control as a profile
+    # migration.  In the absence of an override, missing historical config
+    # preserves the route's original enabled behavior.
+    actual.setdefault("combo_state_route_enabled", True)
     expected_cfg = pure_rl_model_config(**({"dropout": 0.0} if smoke else {}))
     expected = model_config_dict(expected_cfg)
     expected.setdefault("matchup_adapters_enabled", False)
+    combo_route_scope = os.environ.get(
+        "POKEBOT_COMBO_STATE_ROUTE_SPECIALIST", ""
+    ).strip().casefold()
+    checkpoint_specialist = str(
+        payload.get("archetype_id") or ""
+    ).strip().casefold()
+    route_checkpoint_digest = os.environ.get(
+        "POKEBOT_COMBO_STATE_ROUTE_CHECKPOINT_DIGEST", ""
+    ).strip().casefold()
+    route_digest_matches = bool(
+        route_checkpoint_digest
+        and checkpoint.checkpoint_digest(path).casefold()
+        == route_checkpoint_digest
+    )
+    combo_route_override_applies = (
+        "POKEBOT_COMBO_STATE_ROUTE_ENABLED" in os.environ
+        and (
+            not combo_route_scope
+            or checkpoint_specialist == combo_route_scope
+            or (not checkpoint_specialist and route_digest_matches)
+        )
+    )
+    if combo_route_override_applies:
+        actual["combo_state_route_enabled"] = expected[
+            "combo_state_route_enabled"
+        ]
     changed = sorted(
         key
         for key in set(actual) | set(expected)
@@ -2392,6 +2472,7 @@ def _design_contract(
     collect_specs: list[Any],
     research_control_specs: list[Any],
     practice_specs: list[Any],
+    practice_minimum_games: Optional[dict[str, int]],
     heldout_specs: list[Any],
     research_control_registry: dict[str, Any],
     frozen_specialist_registry: dict[str, Any],
@@ -2542,6 +2623,10 @@ def _design_contract(
             "every_iterations": int(args.expert_rehearsal_every),
             "before_first_iteration": bool(args.expert_rehearsal_before_first),
             "epochs": int(args.expert_rehearsal_epochs),
+            "one_time_override": {
+                "before_iteration": int(args.expert_rehearsal_one_time_before),
+                "epochs": int(args.expert_rehearsal_one_time_epochs),
+            },
             "learning_rate": float(args.expert_rehearsal_lr),
             "requested_batch_size": int(args.expert_rehearsal_batch_size),
             "minimum_decisions": int(args.expert_min_decisions),
@@ -2728,6 +2813,11 @@ def _design_contract(
                 "training_eligible": True,
                 "formal_eval": False,
                 "roster": _opponent_specs_contract(practice_specs),
+                "minimum_games_by_opponent": (
+                    dict(practice_minimum_games)
+                    if practice_minimum_games is not None
+                    else None
+                ),
                 "seed_contract": dict(seed_namespace_contract),
             },
             "research_control_phase": {
@@ -2951,6 +3041,16 @@ _DECISION_FUSION_WARMUP_MIGRATION_PATHS = frozenset(
 
 _DECISION_FUSION_RUNTIME_MIGRATION_PATHS = frozenset(
     {"learner.profile.decision_fusion_runtime_enabled"}
+)
+
+
+_ALAKAZAM_COMBO_ROUTE_DISABLE_MIGRATION_PATHS = frozenset(
+    {"learner.profile.combo_state_route_enabled"}
+)
+
+
+_ALAKAZAM_R193_LARGE_REFRESH_MIGRATION_PATHS = frozenset(
+    {"expert_rehearsal.one_time_override"}
 )
 
 
@@ -3445,6 +3545,70 @@ def _safe_decision_fusion_runtime_migration(
     )
 
 
+def _safe_alakazam_combo_route_disable_migration(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Authorize only Alakazam's owner-required combo-route shutdown.
+
+    The legacy r175 design receipts predate the separately serialized runtime
+    route gate, so a missing value means the resident combo route was active.
+    Keep the H10 architecture/head present while allowing exactly that one
+    route to become inactive at the empty iter-0 recovery boundary.
+    """
+    if str(reason or "").strip() != "receipt_backed_completed_collection_resume_v1":
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    if non_source != _ALAKAZAM_COMBO_ROUTE_DISABLE_MIGRATION_PATHS:
+        return False
+    before = dict(stored.get("learner") or {})
+    after = dict(current.get("learner") or {})
+    before_profile = dict(before.get("profile") or {})
+    after_profile = dict(after.get("profile") or {})
+    return bool(
+        before.get("current_deck_guide_archetype") == "alakazam"
+        and after.get("current_deck_guide_archetype") == "alakazam"
+        and before_profile.get("combo_state_head_enabled") is True
+        and after_profile.get("combo_state_head_enabled") is True
+        and before_profile.get("combo_state_route_enabled") in (None, True)
+        and after_profile.get("combo_state_route_enabled") is False
+    )
+
+
+def _safe_alakazam_r193_large_refresh_migration(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Authorize only the owner-r193 one-time 25-epoch Alakazam refresh."""
+    if str(reason or "").strip() != (
+        "owner_r193_large_expert_refresh_resubmit_post_iteration14"
+    ):
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    if non_source != _ALAKAZAM_R193_LARGE_REFRESH_MIGRATION_PATHS:
+        return False
+    before = dict(stored.get("expert_rehearsal") or {})
+    after = dict(current.get("expert_rehearsal") or {})
+    learner = dict(current.get("learner") or {})
+    override = dict(after.get("one_time_override") or {})
+    return bool(
+        learner.get("current_deck_guide_archetype") == "alakazam"
+        and int(before.get("every_iterations") or -1) == 5
+        and int(after.get("every_iterations") or -1) == 5
+        and int(before.get("epochs") or -1) == 5
+        and int(after.get("epochs") or -1) == 5
+        and "one_time_override" not in before
+        and int(override.get("before_iteration") or -1) == 15
+        and int(override.get("epochs") or -1) == 25
+    )
+
+
 def _changed_design_paths(before: Any, after: Any, prefix: str = "") -> set[str]:
     if isinstance(before, dict) and isinstance(after, dict):
         changed: set[str] = set()
@@ -3584,6 +3748,22 @@ def _validate_or_migrate_design_fingerprint(
         changed=changed,
         reason=migration_reason,
     )
+    safe_alakazam_combo_route_disable = (
+        _safe_alakazam_combo_route_disable_migration(
+            stored=stored,
+            current=current,
+            changed=changed,
+            reason=migration_reason,
+        )
+    )
+    safe_alakazam_r193_large_refresh = (
+        _safe_alakazam_r193_large_refresh_migration(
+            stored=stored,
+            current=current,
+            changed=changed,
+            reason=migration_reason,
+        )
+    )
     safe_current_deck_guide_weight = (
         _safe_current_deck_guide_weight_migration(
             stored=stored,
@@ -3650,6 +3830,14 @@ def _validate_or_migrate_design_fingerprint(
         and not (
             safe_decision_fusion_runtime
             and path in _DECISION_FUSION_RUNTIME_MIGRATION_PATHS
+        )
+        and not (
+            safe_alakazam_combo_route_disable
+            and path in _ALAKAZAM_COMBO_ROUTE_DISABLE_MIGRATION_PATHS
+        )
+        and not (
+            safe_alakazam_r193_large_refresh
+            and path in _ALAKAZAM_R193_LARGE_REFRESH_MIGRATION_PATHS
         )
         and not (
             safe_current_deck_guide_weight
@@ -4560,12 +4748,28 @@ def _commit_expert_rehearsal_seat_split_receipts(
     }
     if index_path.is_file():
         existing_index = json.loads(index_path.read_text(encoding="utf-8"))
-        if {
+        existing_immutable = {
             key: value
             for key, value in existing_index.items()
             if key != "issued_at_utc"
-        } != immutable_index:
-            raise RuntimeError("immutable rehearsal seat index changed")
+        }
+        if existing_immutable != immutable_index:
+            # A checksum-gated source repair can legitimately advance the
+            # loop design fingerprint after this exact CPU pack and its three
+            # immutable seat stages were committed.  Preserve the original
+            # receipt in that recovery case; every gradient-bearing identity
+            # still has to match byte-for-byte.
+            existing_without_design = dict(existing_immutable)
+            current_without_design = dict(immutable_index)
+            existing_design = str(
+                existing_without_design.pop("design_fingerprint", "")
+            )
+            current_without_design.pop("design_fingerprint", None)
+            if not (
+                existing_design.startswith("sha256:")
+                and existing_without_design == current_without_design
+            ):
+                raise RuntimeError("immutable rehearsal seat index changed")
     else:
         _write_json_exclusive(
             index_path,
@@ -6504,18 +6708,28 @@ class _TqdmProgress:
 def _record_to_compact_game(record: dict[str, Any]) -> Optional[CompactGame]:
     """Strip soft behavior π; keep selected_index + observation for AWR."""
     steps = list(record.get("steps") or [])
-    if not steps:
+    # Trajectory shards may use `decisions` instead of `steps`.
+    acting_rows = steps if steps else list(record.get("decisions") or [])
+    if not acting_rows:
         return None
     deck = [int(x) for x in (record.get("deck") or [])]
     combo_coverage: Optional[dict[str, int]] = None
+    combo_provenance_key: Optional[str] = None
     if is_exact_slowking_deck(deck):
         combo_coverage = attach_slowking_combo_state_labels(
-            steps,
+            acting_rows,
             deck=deck,
         )
+        combo_provenance_key = "slowking_combo_state_targets"
+    elif is_slop_box_combo_deck(deck):
+        combo_coverage = attach_slop_box_combo_state_labels(
+            acting_rows,
+            deck=deck,
+        )
+        combo_provenance_key = "slop_box_combo_state_targets"
     soft = list(record.get("factorized_policy_targets") or [])
     decisions: list[CompactDecision] = []
-    for i, step in enumerate(steps):
+    for i, step in enumerate(acting_rows):
         sel = 0
         n_opt = 1
         if i < len(soft) and soft[i]:
@@ -6524,6 +6738,9 @@ def _record_to_compact_game(record: dict[str, Any]) -> Optional[CompactGame]:
                 sel = int(row0.get("selected_index", 0))
                 combos = row0.get("action_combos") or []
                 n_opt = max(len(combos), sel + 1, 1)
+        elif step.get("selected_index") is not None:
+            sel = int(step.get("selected_index") or 0)
+            n_opt = max(int(step.get("n_options") or 0), sel + 1, 1)
         decisions.append(
             CompactDecision(
                 env_step=int(step.get("env_step", i)),
@@ -6536,6 +6753,13 @@ def _record_to_compact_game(record: dict[str, Any]) -> Optional[CompactGame]:
         )
     if not decisions:
         return None
+    provenance = {
+        **dict(record.get("target_provenance") or {}),
+        "pure_rl": True,
+        "soft_policy_targets": False,
+    }
+    if combo_coverage is not None and combo_provenance_key is not None:
+        provenance[combo_provenance_key] = combo_coverage
     return CompactGame(
         episode_id=str(record.get("episode_id") or f"pure-rl-{time.time_ns()}"),
         seat=int(record.get("seat") or 0),
@@ -6545,16 +6769,7 @@ def _record_to_compact_game(record: dict[str, Any]) -> Optional[CompactGame]:
         value=float(record.get("value") or 0.0),
         decisions=decisions,
         source="pure_rl",
-        target_provenance={
-            **dict(record.get("target_provenance") or {}),
-            "pure_rl": True,
-            "soft_policy_targets": False,
-            **(
-                {"slowking_combo_state_targets": combo_coverage}
-                if combo_coverage is not None
-                else {}
-            ),
-        },
+        target_provenance=provenance,
     )
 
 
@@ -7423,6 +7638,55 @@ def _planned_collection_group_counts(
     return result
 
 
+def _strong_public_practice_minimum_games(
+    *,
+    active_gate: dict[str, Any],
+    expected_practice_games: int,
+    minimum_share: float,
+) -> dict[str, int]:
+    """Reserve explicit gate-row floors without starving the other gate rows.
+
+    Ordinary gates retain their established weighted scheduler. Once a gate
+    declares an explicit practice floor, every row receives at least the normal
+    share floor and the named row receives the larger explicit value. The
+    remaining slots are the only ones available to adaptive Hamilton weights.
+    """
+    roster = list(active_gate.get("roster") or [])
+    ids = tuple(str(row.get("opponent_id") or "") for row in roster)
+    if not ids or "" in ids or len(set(ids)) != len(ids):
+        raise RuntimeError("active practice roster IDs must be non-empty and unique")
+    generic_floor = math.floor(
+        int(expected_practice_games) * float(minimum_share)
+    )
+    if generic_floor < 0:
+        raise RuntimeError("strong-public practice minimum share is invalid")
+    explicit: dict[str, int] = {}
+    for row, opponent_id in zip(roster, ids):
+        raw = row.get("strong_public_practice_floor_games")
+        if raw is None:
+            continue
+        if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
+            raise RuntimeError(
+                "strong-public practice floor must be a positive integer: "
+                f"{opponent_id}={raw!r}"
+            )
+        explicit[opponent_id] = int(raw)
+    if not explicit:
+        return {}
+    floors = {
+        opponent_id: max(generic_floor, explicit.get(opponent_id, 0))
+        for opponent_id in ids
+    }
+    reserved = sum(floors.values())
+    if reserved > int(expected_practice_games):
+        raise RuntimeError(
+            "strong-public practice floors exceed the fixed quota: "
+            f"reserved={reserved} quota={int(expected_practice_games)} "
+            f"minimum_share={float(minimum_share)} floors={floors}"
+        )
+    return floors
+
+
 def _active_archetype_family_training_contract(
     *, specialist_archetype: str,
 ) -> Optional[dict[str, Any]]:
@@ -7624,6 +7888,7 @@ def _assert_strong_public_practice_jobs(
     formal_games: int,
     minimum_share: float,
     practice_temperature: float,
+    minimum_games_by_opponent: Optional[dict[str, int]] = None,
 ) -> dict[str, Any]:
     """Audit the training-only active-roster slice before any game launches."""
     from collections import Counter
@@ -7674,10 +7939,33 @@ def _assert_strong_public_practice_jobs(
 
     counts = Counter(str(job["opponent_id"]) for job in practice_jobs)
     seat_counts: dict[str, dict[str, int]] = {}
-    quota_floor = math.floor(int(expected_practice_games) * float(minimum_share))
+    if minimum_games_by_opponent is None:
+        quota_floors = {
+            opponent_id: math.floor(
+                int(expected_practice_games) * float(minimum_share)
+            )
+            for opponent_id in roster_ids
+        }
+    else:
+        if set(minimum_games_by_opponent) != set(roster_ids):
+            raise RuntimeError(
+                "strong-public practice minimums must cover the exact active roster"
+            )
+        quota_floors = {}
+        for opponent_id in roster_ids:
+            value = minimum_games_by_opponent[opponent_id]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise RuntimeError(
+                    "strong-public practice minimum must be a nonnegative integer: "
+                    f"{opponent_id}={value!r}"
+                )
+            quota_floors[opponent_id] = int(value)
+        if sum(quota_floors.values()) > int(expected_practice_games):
+            raise RuntimeError("strong-public practice minimums exceed the quota")
     gate_id = str(active_gate.get("id") or "")
     for opponent_id in roster_ids:
         rows = [job for job in practice_jobs if str(job["opponent_id"]) == opponent_id]
+        quota_floor = quota_floors[opponent_id]
         if int(counts[opponent_id]) < quota_floor:
             raise RuntimeError(
                 f"practice opponent {opponent_id} is below its minimum quota"
@@ -7710,6 +7998,12 @@ def _assert_strong_public_practice_jobs(
                     f"practice archetype mismatch for {opponent_id}: "
                     f"{job.get('opp_archetype')} != {archetypes[opponent_id]}"
                 )
+            if minimum_games_by_opponent is not None and int(
+                provenance.get("strong_public_practice_floor_games", -1)
+            ) != quota_floor:
+                raise RuntimeError(
+                    f"practice floor provenance mismatch for {opponent_id}"
+                )
             if not math.isclose(
                 float(job.get("action_temperature", -1.0)),
                 float(practice_temperature),
@@ -7741,9 +8035,11 @@ def _assert_strong_public_practice_jobs(
         "formal_seed_namespace": "eval/strong-public-fixed-manifest-v1",
         "seed_disjoint": True,
         "games": len(practice_jobs),
+        "minimum_games_by_opponent": dict(quota_floors),
         "per_opponent": {
             opponent_id: {
                 "games": int(counts[opponent_id]),
+                "minimum_games": int(quota_floors[opponent_id]),
                 **seat_counts[opponent_id],
                 "archetype_id": archetypes[opponent_id],
             }
@@ -7761,6 +8057,7 @@ def _interleaved_opponent_schedule(
     seed: int,
     iteration: int,
     priority_weights: Optional[dict[str, float]] = None,
+    priority_minimum_games: Optional[dict[str, int]] = None,
     priority_group: str = "official_target",
 ) -> tuple[tuple[Any, str], ...]:
     """Build an exact, evenly interleaved practice/diverse training schedule.
@@ -7810,21 +8107,49 @@ def _interleaved_opponent_schedule(
     p_offset = _rotation(priority, priority_label)
     d_offset = _rotation(diverse, "diverse_public")
     priority_sequence: list[Any] = []
-    if priority_weights is not None and n_priority > 0:
+    if (
+        (priority_weights is not None or priority_minimum_games is not None)
+        and n_priority > 0
+    ):
         ids = [str(spec.id) for spec in priority]
         if len(set(ids)) != len(ids):
             raise ValueError("weighted official target specs must be unique")
-        if set(priority_weights) != set(ids):
-            raise ValueError("official target weights must cover the exact roster")
-        raw = [float(priority_weights[opponent_id]) for opponent_id in ids]
+        if priority_weights is None:
+            raw = [1.0] * len(ids)
+        else:
+            if set(priority_weights) != set(ids):
+                raise ValueError("official target weights must cover the exact roster")
+            raw = [float(priority_weights[opponent_id]) for opponent_id in ids]
         if any(not math.isfinite(value) or value < 0.0 for value in raw):
             raise ValueError("official target weights must be finite and nonnegative")
         raw_total = sum(raw)
         if raw_total <= 0.0:
             raise ValueError("official target weights must contain positive mass")
-        ideals = [n_priority * value / raw_total for value in raw]
-        quotas = [int(math.floor(value)) for value in ideals]
-        remaining = n_priority - sum(quotas)
+        if priority_minimum_games is None:
+            floor_by_id = {opponent_id: 0 for opponent_id in ids}
+        else:
+            if set(priority_minimum_games) != set(ids):
+                raise ValueError("priority minimums must cover the exact roster")
+            floor_by_id = {}
+            for opponent_id in ids:
+                value = priority_minimum_games[opponent_id]
+                if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                    raise ValueError(
+                        "priority minimum games must be nonnegative integers"
+                    )
+                floor_by_id[opponent_id] = int(value)
+        quotas = [floor_by_id[opponent_id] for opponent_id in ids]
+        reserved = sum(quotas)
+        if reserved > n_priority:
+            raise ValueError(
+                "priority minimum games exceed the fixed priority quota: "
+                f"reserved={reserved} quota={n_priority}"
+            )
+        remaining_slots = n_priority - reserved
+        ideals = [remaining_slots * value / raw_total for value in raw]
+        increments = [int(math.floor(value)) for value in ideals]
+        quotas = [quota + increment for quota, increment in zip(quotas, increments)]
+        remaining = remaining_slots - sum(increments)
         tie_rank = {
             (p_offset + index) % len(priority): index
             for index in range(len(priority))
@@ -7832,7 +8157,7 @@ def _interleaved_opponent_schedule(
         remainder_order = sorted(
             range(len(priority)),
             key=lambda index: (
-                -(ideals[index] - quotas[index]),
+                -(ideals[index] - increments[index]),
                 tie_rank[index],
             ),
         )
@@ -7962,6 +8287,7 @@ def _build_collect_jobs(
     priority_specs: Optional[list[Any]] = None,
     priority_frac: float = 0.0,
     priority_weights: Optional[dict[str, float]] = None,
+    priority_minimum_games: Optional[dict[str, int]] = None,
     priority_group: str = "official_target",
     priority_temperature: Optional[float] = None,
     priority_archetypes: Optional[dict[str, str]] = None,
@@ -8093,6 +8419,7 @@ def _build_collect_jobs(
             seed=int(seed),
             iteration=int(iteration),
             priority_weights=priority_weights,
+            priority_minimum_games=priority_minimum_games,
             priority_group=str(priority_group),
         )
     # Portable baseline identity hashing walks each installed source tree.
@@ -8358,6 +8685,18 @@ def _build_collect_jobs(
                             if is_priority
                             and priority_weights is not None
                             else None
+                        ),
+                        **(
+                            {
+                                "strong_public_practice_floor_games": int(
+                                    priority_minimum_games[str(spec.id)]
+                                )
+                            }
+                            if is_priority
+                            and str(priority_group)
+                            == STRONG_PUBLIC_PRACTICE_GROUP
+                            and priority_minimum_games is not None
+                            else {}
                         ),
                         "opponent_schedule": (
                             "adaptive_exact_gate_gap_tier_weighted_v1"
@@ -9178,6 +9517,18 @@ def _consume_results(
                 parsed = None
             if isinstance(parsed, dict):
                 records.append(parsed)
+        if practice_contract is not None and not records:
+            # A completed simulation without a usable trajectory is a missing
+            # schedule cell, not an iteration-fatal schema event. Leave it
+            # unretained so the exact per-cell replacement loop can repair it.
+            if practice_successful_indices is not None:
+                practice_successful_indices.discard(int(practice_job_index))
+            stats["strong_public_practice_recordless_results"] = int(
+                stats.get("strong_public_practice_recordless_results", 0)
+            ) + 1
+            if progress is not None:
+                progress.tick(decisions=writer.n_decisions)
+            continue
         if practice_contract is not None and len(records) != 1:
             raise RuntimeError(
                 "strong-public practice result must contain exactly one record: "
@@ -12203,6 +12554,18 @@ def run_full_loop(args: argparse.Namespace) -> int:
         raise ValueError("--expert-manifest is required when expert rehearsal is enabled")
     if int(args.expert_rehearsal_epochs) <= 0:
         raise ValueError("--expert-rehearsal-epochs must be positive")
+    one_time_before = int(args.expert_rehearsal_one_time_before)
+    one_time_epochs = int(args.expert_rehearsal_one_time_epochs)
+    if one_time_before < -1:
+        raise ValueError(
+            "--expert-rehearsal-one-time-before must be -1 or nonnegative"
+        )
+    if (one_time_before == -1) != (one_time_epochs == 0):
+        raise ValueError(
+            "one-time expert rehearsal requires both an iteration and positive epochs"
+        )
+    if one_time_epochs < 0:
+        raise ValueError("--expert-rehearsal-one-time-epochs cannot be negative")
     if float(args.expert_rehearsal_lr) <= 0.0:
         raise ValueError("--expert-rehearsal-lr must be positive")
     if int(args.expert_rehearsal_batch_size) <= 0:
@@ -12375,6 +12738,18 @@ def run_full_loop(args: argparse.Namespace) -> int:
         self_play_fraction=float(config.PURE_RL.self_play_frac),
         strong_public_fraction_of_public=float(args.official_collect_frac),
         research_control_games=int(args.research_control_games_per_iter),
+    )
+    practice_minimum_games = (
+        _strong_public_practice_minimum_games(
+            active_gate=active_gate,
+            expected_practice_games=int(
+                collection_group_plan[STRONG_PUBLIC_PRACTICE_GROUP]
+            ),
+            minimum_share=float(args.official_adaptive_min_share),
+        )
+        if active_gate is not None
+        and float(args.official_collect_frac) > 0.0
+        else {}
     )
 
     hw = full_hardware_profile()
@@ -12843,6 +13218,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
         collect_specs=collect_specs,
         research_control_specs=research_control_specs,
         practice_specs=practice_specs,
+        practice_minimum_games=(practice_minimum_games or None),
         heldout_specs=heldout_specs,
         research_control_registry=research_control_registry_identity,
         frozen_specialist_registry=frozen_specialist_registry_identity,
@@ -13465,6 +13841,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 ),
                 priority_frac=effective_practice_fraction,
                 priority_weights=official_target_weights,
+                priority_minimum_games=(practice_minimum_games or None),
                 priority_group=(
                     STRONG_PUBLIC_PRACTICE_GROUP
                     if active_gate is not None
@@ -13565,6 +13942,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     practice_temperature=float(
                         args.strong_public_practice_temperature
                     ),
+                    minimum_games_by_opponent=(practice_minimum_games or None),
                 )
                 practice_plan["adaptive_weights"] = dict(
                     official_target_weights or {}
@@ -13792,6 +14170,20 @@ def run_full_loop(args: argparse.Namespace) -> int:
         ) -> tuple[Any, dict[str, Any]]:
             """Recover or run the immutable ladder complement pass."""
             from poke_bot import checkpoint as checkpoint_mod
+
+            rehearsal_epochs = rehearsal_epochs_for_iteration(
+                it,
+                ordinary_epochs=int(args.expert_rehearsal_epochs),
+                one_time_before=int(args.expert_rehearsal_one_time_before),
+                one_time_epochs=int(args.expert_rehearsal_one_time_epochs),
+            )
+            if rehearsal_epochs != int(args.expert_rehearsal_epochs):
+                print(
+                    "[pure_rl] OWNER_ONE_TIME_EXPERT_REFRESH "
+                    f"before_iter={it} epochs={rehearsal_epochs} "
+                    f"ordinary_epochs={int(args.expert_rehearsal_epochs)}",
+                    flush=True,
+                )
 
             adapter_rehearsal_record: Optional[dict[str, Any]] = None
             if args.expert_matchup_adapter_manifest is not None:
@@ -14024,7 +14416,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 run_dir,
                 before_iteration=it,
                 parent_digest=parent.digest,
-                epochs=int(args.expert_rehearsal_epochs),
+                epochs=rehearsal_epochs,
                 learning_rate=float(args.expert_rehearsal_lr),
                 manifest_identity=manifest_identity,
                 loss_weights=loss_weights,
@@ -14064,7 +14456,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         run_dir,
                         before_iteration=it,
                         parent_digest=parent.digest,
-                        epochs=int(args.expert_rehearsal_epochs),
+                        epochs=rehearsal_epochs,
                         learning_rate=float(args.expert_rehearsal_lr),
                         manifest_identity=manifest_identity,
                         loss_weights=loss_weights,
@@ -14096,7 +14488,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     parent_digest=parent.digest,
                     rehearsal_iteration=it,
                     manifest_identity=manifest_identity.as_dict(),
-                    epochs=int(args.expert_rehearsal_epochs),
+                    epochs=rehearsal_epochs,
                     lr=float(args.expert_rehearsal_lr),
                     requested_batch_size=int(args.expert_rehearsal_batch_size),
                     seed=args.seed + 5_100_000 + it,
@@ -14155,7 +14547,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     before_iteration=it,
                     parent_digest=parent.digest,
                     manifest=manifest_identity,
-                    epochs=int(args.expert_rehearsal_epochs),
+                    epochs=rehearsal_epochs,
                     learning_rate=float(args.expert_rehearsal_lr),
                     loss_weights=loss_weights,
                     corpus_split_seed=corpus_split_seed,

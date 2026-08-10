@@ -16,6 +16,7 @@ from poke_bot.pure_rl.expert_rehearsal import (
     canonical_checkpoint_rehearsal_loss_weights,
     canonical_expanded_rehearsal_contract,
     canonical_rehearsal_loss_weights,
+    rehearsal_epochs_for_iteration,
     resolve_expert_manifest,
 )
 from poke_bot.strategic_heads import (
@@ -49,6 +50,37 @@ def _loss_weights() -> dict[str, float]:
         "prize_race": 0.025,
         "alakazam_guide": 0.05,
     }
+
+
+def test_one_time_large_refresh_preserves_ordinary_cadence() -> None:
+    assert rehearsal_epochs_for_iteration(
+        15,
+        ordinary_epochs=5,
+        one_time_before=15,
+        one_time_epochs=25,
+    ) == 25
+    assert rehearsal_epochs_for_iteration(
+        20,
+        ordinary_epochs=5,
+        one_time_before=15,
+        one_time_epochs=25,
+    ) == 5
+
+
+@pytest.mark.parametrize(
+    ("target", "epochs"),
+    [(-1, 25), (15, 0), (-2, 25), (15, -1)],
+)
+def test_one_time_large_refresh_requires_complete_positive_binding(
+    target: int, epochs: int
+) -> None:
+    with pytest.raises(ValueError, match="one-time expert rehearsal"):
+        rehearsal_epochs_for_iteration(
+            15,
+            ordinary_epochs=5,
+            one_time_before=target,
+            one_time_epochs=epochs,
+        )
 
 
 def _protected_manifest(tmp_path: Path) -> tuple[Path, ExpertManifestIdentity]:

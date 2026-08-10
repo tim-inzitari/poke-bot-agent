@@ -1,0 +1,32 @@
+{
+  "chao_hard_left_alone": true,
+  "created_at_utc": "2026-08-06T19:27:51.498917+00:00",
+  "current_ceiling_family_left_for_sibling_wipe": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/final-format-slop-box-h10-rtp-expert-bootstrap-v1",
+  "deferred_to_sibling": "7bc394c0",
+  "do_not_delete_crustle_games_or_quarantine": true,
+  "owner_order": "delete current Slop Box learned weights; fresh bootstrap after markup; STOP starting RL on current weights",
+  "partial_rl_run_dirs_left_for_sibling_wipe": [
+    "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_slop_box_h10_rtp_i_v6_8k",
+    "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/outputs/pure_rl/final_format_slop_box_h10_rtp_i_v6_8k"
+  ],
+  "preserved_crustle_s_tier": {
+    "frozen": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/ops/frozen_specialist_registry_slop_box_r172_crustle_h10_s.json",
+    "frozen_sha256": "sha256:88134fcfc354b80bac2ae34e28aa31ad5ce6955f118400c9580b8e0452052da7",
+    "gate": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/runtime/final_format_slop_box_gate_r172_crustle_h10_s.json",
+    "gate_sha256": "sha256:8bcaf7e934078760bbd6c80f808c84985a1bbd8a3f0ea6ae1fe9a489ab6ca37a",
+    "opponent_id": "specialist-crustle-final-format-h10-7efd8d4113e7",
+    "receipt": "/home/inzi/poke-bot-agent/outputs/state/slop-box-crustle-h10-s-tier-holdout-r172.json",
+    "receipt_sha256": "sha256:4da54b3ffdcc803f6d6a840e0e2603c8852c36bd0a0caee77782e11fc8a4249a",
+    "tier": "S",
+    "weight": 2.0
+  },
+  "quarantine_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/_rejected/slop-box-learned-weights-wipe-r171-20260806T192936Z",
+  "rl_start_blocked": true,
+  "rl_unit": "pokebot-final-format-slop-box-h10-rtp-rl.service",
+  "schema": "poke_bot.slop_box_fresh_bootstrap_hold_r171/v1",
+  "status": "weights_quarantined_awaiting_markup_then_fresh_bootstrap",
+  "updated_at_utc": "2026-08-06T19:30:04.371990+00:00",
+  "wipe_performed_by_this_agent": true,
+  "wipe_receipt": "/home/inzi/poke-bot-agent/outputs/state/slop-box-learned-weights-wipe-r171.json",
+  "wipe_receipt_sha256": "sha256:823dc10ccd94da780d1893e377ecfc85fd2783531dce43d0cd5d485c22c53cb6"
+}

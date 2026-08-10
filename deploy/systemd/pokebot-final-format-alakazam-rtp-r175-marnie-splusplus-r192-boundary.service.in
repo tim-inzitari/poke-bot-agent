@@ -1,0 +1,24 @@
+[Unit]
+Description=Validate staged-only Marnie S++ r192 candidate (automatic activation unarmed)
+ConditionPathExists=@STAGE_RECEIPT@
+ConditionPathExists=@LAUNCH_ACTIVE_SPECIALIST@
+ConditionPathExists=@ACTIVATION_CONTROLLER@
+ConditionPathExists=@DROPIN_TEMPLATE@
+ConditionPathExists=@STOP_BUDGET_TEMPLATE@
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent
+# This unit is intentionally a template and is never enabled by the repo.
+# Install/start it only after r192's deployment-input receipt has passed.  The
+# Current r175 has no trainer-owned pre-collect fence. This unit is therefore
+# validation-only and performs no systemctl stop/start/restart or drop-in write.
+ExecStart=@PYTHON@ -u @ACTIVATION_CONTROLLER@ --stage-receipt @STAGE_RECEIPT@
+TimeoutStartSec=5m
+TimeoutStopSec=30
+Nice=10
+
+[Install]
+WantedBy=default.target

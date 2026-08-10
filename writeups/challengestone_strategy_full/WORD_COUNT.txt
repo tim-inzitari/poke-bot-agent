@@ -1,0 +1,16 @@
+This is the intentionally unrestricted-length technical companion. The
+official 2,000-word Strategy-track cap applies only to the separate compact
+draft.
+
+Final extracted-text count: 7,214 tokens matching
+
+    [A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*
+
+across all 14 PDF pages with pypdf 6.1.1. This deliberately includes front
+matter, contents, headings, tables, references, page numbers, and repeated
+draft headers/footers.
+
+TeX source: main.tex
+PDF pages: 14
+Compiler used for the delivered PDF: Tectonic 0.17.0
+Count recorded: 2026-08-08 (America/New_York)

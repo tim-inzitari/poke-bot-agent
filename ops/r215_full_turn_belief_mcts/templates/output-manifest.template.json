@@ -1,0 +1,47 @@
+{
+  "schema": "poke_bot.alakazam_local_approximate_belief_mcts_bo1000_r216_output_template/v1",
+  "kind": "content_addressed_evaluation_output_template",
+  "description": "Template only. Each actual output directory is named from the immutable output identity and contains append-only progress JSONL.",
+  "evaluation": {
+    "evaluation_id": "alakazam-r216-local-approximate-belief-mcts-bo1000",
+    "matched_rng_pairs": 500,
+    "games_per_pair": 2,
+    "total_games": 1000,
+    "complete_all_games_without_early_stop": true,
+    "pair_first_player_seal_required_before_each_pair": true
+  },
+  "seeded_engine": {
+    "real_game_pairing_overlay_sha256": "sha256:b77afbd363fe80de968c7cf20a0bbf5eb616fefcacbeab7eeeda94213fad9ea6",
+    "battle_start_seeded_required": true,
+    "same_verified_overlay_for_both_arms": true
+  },
+  "timing": {
+    "total_game_clock_seconds": 600.0,
+    "reserve_seconds": 30.0,
+    "default_actual_turn_pool_seconds": 20.0,
+    "dynamic_actual_turn_pool_formula": "min(20.0, max(0.0, (remaining_game_seconds - 30.0) / 8.0))",
+    "operation_ceiling_seconds": 5.0,
+    "deadline_fallback_continues_game": true
+  },
+  "identities": {
+    "source_identity_sha256": "@SOURCE_IDENTITY_SHA256@",
+    "output_identity_sha256": "@OUTPUT_IDENTITY_SHA256@",
+    "schedule_sha256": "@SCHEDULE_SHA256@"
+  },
+  "receipts": {
+    "runtime_preflight": "runtime-preflight.json",
+    "canary_acceptance": "canary-acceptance.json",
+    "bo1000_completion": "bo1000-completion.json",
+    "progress_jsonl": "progress.jsonl"
+  },
+  "authority": {
+    "evaluation_only": true,
+    "training_authority": false,
+    "submission_authority": false,
+    "external_submission_api_authority": false,
+    "external_submission_queue_authority": false,
+    "external_submission_upload_authority": false,
+    "selector_authority": false,
+    "promotion_authority": false
+  }
+}

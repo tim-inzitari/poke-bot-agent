@@ -1,0 +1,129 @@
+{
+  "schema": "poke_bot.replay_model_inspector_lan_gateway_fix_activation/v1",
+  "owner_decision_revision": 178,
+  "created_at_utc": "2026-08-07T23:47:37Z",
+  "status": "active_local_and_external_read_only_gateway",
+  "problem_verified": {
+    "public_hostname": "mc.tsinzitari.com",
+    "public_ipv4": "70.143.63.122",
+    "lan_public_hostname_result_before_fix": "timeout_nat_hairpin_unavailable",
+    "direct_dashboard_prefix_status_before_fix": 404,
+    "external_caddy_prefix_was_healthy": true,
+    "bert_loopback_tunnel_was_healthy": true
+  },
+  "dashboard": {
+    "host": "bert",
+    "manager": "launchd",
+    "label": "com.pokebot.training-dashboard",
+    "listener": "0.0.0.0:8780",
+    "pid_before": 73779,
+    "pid_after": 66636,
+    "runs_after": 49,
+    "state_after": "running",
+    "local_url": "http://192.168.1.158:8780/replay-inspector/",
+    "link_href": "/replay-inspector/",
+    "link_target": "_blank",
+    "link_rel": "noopener noreferrer",
+    "source_index": "dashboard/lan/index.html",
+    "source_index_sha256": "sha256:da7cdd973c69a0b5ca709792f8c4af5ac8feef1d6b99b03b108e622d59cb933c",
+    "live_index": "/Users/tsinzitari/pokebot-dashboard/v1/index.html",
+    "live_index_sha256": "sha256:da7cdd973c69a0b5ca709792f8c4af5ac8feef1d6b99b03b108e622d59cb933c",
+    "source_server": "dashboard/lan/server.py",
+    "source_server_sha256": "sha256:d34e118df0c2e66f4c251fa55353d597111c93c89ef6bfa038d6cf66f9c79de2",
+    "live_server": "/Users/tsinzitari/pokebot-dashboard/v1/server.py",
+    "live_server_sha256": "sha256:855cdff2deababdb0e901ddd2acd046b51066ab8edd0482fe838d2e7ba7905e9",
+    "source_live_difference": "three pre-existing live-only Slop Box Chao-hard projection clauses were preserved and were not part of this deployment",
+    "pre_activation_server_backup": "/Users/tsinzitari/pokebot-dashboard/v1/server.py.pre-replay-inspector-r178",
+    "pre_activation_server_sha256": "sha256:2639fa0fd99eabd01888a7a929630d58fe861af40dd32388ddee17c1a7ff707d",
+    "pre_activation_index_backup": "/Users/tsinzitari/pokebot-dashboard/v1/index.html.pre-replay-inspector-r178",
+    "pre_activation_index_sha256": "sha256:06b355fab44d98c25cbefcf0459a67b27de287a35a33a03c91753fba0261edb3"
+  },
+  "lan_gateway": {
+    "route_prefix": "/replay-inspector/",
+    "upstream": "127.0.0.1:8792",
+    "upstream_host_header": "127.0.0.1:8791",
+    "allowed_methods": [
+      "GET"
+    ],
+    "private_or_loopback_clients_only": true,
+    "local_host_and_origin_validation": true,
+    "cross_site_fetch_rejection": true,
+    "browser_credentials_and_origin_stripped": true,
+    "unsafe_path_rejection": true,
+    "response_limit_bytes": 8388608,
+    "upstream_timeout_seconds": 60,
+    "upstream_redirects_followed": false
+  },
+  "transport": {
+    "manager": "launchd",
+    "label": "com.pokebot.replay-model-inspector-tunnel",
+    "state": "running",
+    "runs": 1,
+    "pid": 7957,
+    "last_exit_code": null,
+    "listener": "127.0.0.1:8792",
+    "remote_target": "elmo:127.0.0.1:8791",
+    "lan_or_public_tunnel_listener_present": false
+  },
+  "external_gateway": {
+    "url": "https://mc.tsinzitari.com/replay-inspector/",
+    "caddy_source_sha256": "sha256:5c6c2be7b34091e97a87e0506b18807723ba4377e0ed19558f7a1b29453c1e7d",
+    "caddy_live_sha256": "sha256:5c6c2be7b34091e97a87e0506b18807723ba4377e0ed19558f7a1b29453c1e7d",
+    "configuration_changed_by_revision_178": false,
+    "loopback_forced_root_status": 200,
+    "external_access_policy_unchanged": true
+  },
+  "validation": {
+    "focused_gateway_and_existing_static_tests": {
+      "passed": 9,
+      "failed": 0
+    },
+    "additional_focused_link_and_gateway_tests": {
+      "passed": 7,
+      "failed": 0,
+      "deselected": 239
+    },
+    "python_compile": "passed",
+    "scoped_ruff": "passed",
+    "live_preflight": {
+      "inspector_root": 200,
+      "inspector_health": 200,
+      "slash_redirect": 308,
+      "non_get": 405,
+      "cross_site": 403,
+      "dashboard_status": 200
+    },
+    "live_loopback_gateway": {
+      "root": 200,
+      "javascript": 200,
+      "health": 200,
+      "real_trace": 200,
+      "trace_head_count": 19,
+      "trace_reproduction_status": "recomputed_not_historical",
+      "post": 405,
+      "head": 405,
+      "unsafe_encoded_separator": 400,
+      "cross_site": 403,
+      "nonlocal_host": 403,
+      "dashboard_status": 200,
+      "dashboard_health_after_first_sample": 200
+    },
+    "live_lan_gateway": {
+      "address": "192.168.1.158:8780",
+      "root": 200,
+      "javascript": 200,
+      "health": 200
+    }
+  },
+  "safety": {
+    "inspector_service_remains_separate": true,
+    "direct_inspector_lan_or_public_bind": false,
+    "tunnel_lan_or_public_bind": false,
+    "dashboard_model_or_service_authority": false,
+    "training_service_control_invoked": false,
+    "inspector_service_restart_invoked": false,
+    "caddy_reload_invoked": false,
+    "evaluation_replays_training_eligible": false,
+    "checkpoint_or_replay_mutation": false
+  }
+}

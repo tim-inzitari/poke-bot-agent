@@ -13,8 +13,10 @@ The strategy contract comes from current Powerful Hand / Dudunsparce guides:
   chain; stop spending/drawing once the required KO hand is reached.
 * Keep a replacement Alakazam line and a Dudunsparce recovery route, and never
   draw the deck to zero.
-* Boss, Enhanced Hammer, and Nighttime Mine are conditional tools, not cards to
-  fire merely because they are legal.
+* Boss, Enhanced Hammer, and Xerosic's Machinations are conditional tools, not
+  cards to fire merely because they are legal. Matchup notes in the pilot
+  brief cover Rocky Fighting / Mist Energy Hammer, mirror Xerosic, Shaymin,
+  and Battle Cage vs Froslass / Munkidori.
 
 References (reviewed 2026-07-20):
   https://www.tcgplayer.com/content/article/Alakazam-Deck-Guide-Pok%C3%A9mon-TCG/7eb46b82-9dc5-40d8-adf9-28cca05f070f/
@@ -344,8 +346,7 @@ def _minimum_attack_cost(card_id: int) -> Optional[int]:
         costs = [cost for cost in costs if cost > 0]
         return min(costs) if costs else None
     except Exception:
-        # Dragapult ex is the exact high-value Nighttime Mine matchup in the
-        # installed official/ladder pool.
+        # Dragapult ex fallback attack-cost probe in the installed pool.
         return 3 if int(card_id) == 121 else None
 
 

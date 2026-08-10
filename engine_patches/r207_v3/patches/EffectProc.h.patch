@@ -1,0 +1,10 @@
+--- a/EffectProc.h
++++ b/EffectProc.h
+@@ -694,6 +694,7 @@
+ 		}
+ 
+ 		if (effect.randomSelect) {
++			state.game->plannerAudit.markNonCoinRandom();
+ 			std::shuffle(targetList.begin(), targetList.end(), state.game->rng);
+ 			targetList.resize(selectMax);
+ 			ActivateEffect2(state);

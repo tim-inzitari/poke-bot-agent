@@ -1,0 +1,65 @@
+{
+  "schema": "poke_bot.replay_model_inspector_new_submission_reproduction/v1",
+  "owner_revision": 211,
+  "status": "active",
+  "effective_date": "2026-08-10",
+  "requirements": {
+    "automatic_exact_runtime_attestation_for_archived_submissions": true,
+    "package_local_guide_decision_policy_is_runtime_authority": true,
+    "preserve_neural_only_policy_for_comparison": true,
+    "apply_same_guide_bonus_to_counterfactual_comparisons": true,
+    "fail_closed_without_exact_runtime": true,
+    "historical_logits_claimed": false,
+    "checkpoint_or_replay_mutation": false,
+    "training_authority": false,
+    "ab_outcome_analysis_authority": false
+  },
+  "activation_receipt": {
+    "activated_at_utc": "2026-08-10T16:26:00Z",
+    "service": "pokebot-replay-model-inspector.service",
+    "indexed_submission_count": 20,
+    "verified_provenance_record_count": 15,
+    "lan_gateway_timeout_seconds": 300,
+    "browser_validation": {
+      "submission_id": "55410425",
+      "selector_status": "Dynamic decision trace available",
+      "trace_status": "RE-EVALUATION LOADED",
+      "guide_status": "Production guide checked - exact neural fallback",
+      "gateway_502_after_fix": false
+    },
+    "new_submission_checks": [
+      {
+        "submission_id": "55410353",
+        "status": "trace_ready",
+        "guide_logit_weight": 0.05,
+        "trace": {
+          "episode_id": "91686428",
+          "step_index": 13,
+          "factorized_stage": 0,
+          "package_policy_authority": true,
+          "guide_bonus_applied": true,
+          "maximum_probability_change": 0.000844120979309082
+        }
+      },
+      {
+        "submission_id": "55410425",
+        "status": "trace_ready",
+        "guide_logit_weight": 0.1,
+        "trace": {
+          "episode_id": "91687352",
+          "step_index": 19,
+          "factorized_stage": 0,
+          "package_policy_authority": true,
+          "guide_bonus_applied": false,
+          "exact_fallback_reason": "guide_not_unique"
+        }
+      }
+    ],
+    "focused_tests": {
+      "local": "59 passed",
+      "exact_archived_guide_runtime": "36 passed"
+    },
+    "historical_logits_claimed": false,
+    "checkpoint_or_replay_mutation": false
+  }
+}

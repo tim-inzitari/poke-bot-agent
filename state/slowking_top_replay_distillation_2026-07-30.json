@@ -1,0 +1,68 @@
+{
+  "schema": "poke_bot.slowking_top_replay_distillation/v1",
+  "status": "research_only_no_training_or_runtime_authority",
+  "source": {
+    "date": "2026-07-30",
+    "archive": "/Users/tsinzitari/Documents/poke-agent-codex/data/episodes/raw/pokemon-tcg-ai-battle-episodes-2026-07-30.zip",
+    "archive_sha256": "sha256:bff4c800225fab906e367390a7926f8e1077d0eb4ac0e39fa79d2cf4afcbadde",
+    "archive_json_members": 4384,
+    "manifest_episode_count": 4384,
+    "manifest_minus_archive_members": 0,
+    "episodes_scanned": 4384
+  },
+  "identity": {
+    "unique_deck_lists": 0,
+    "unique_team_names": [],
+    "decks": []
+  },
+  "outcomes": {
+    "games": 0,
+    "wins": 0,
+    "losses": 0,
+    "draws": 0,
+    "win_rate": null,
+    "turn_order": {
+      "first": {
+        "games": 0,
+        "wins": 0,
+        "win_rate": null
+      },
+      "second": {
+        "games": 0,
+        "wins": 0,
+        "win_rate": null
+      },
+      "unknown": {
+        "games": 0,
+        "wins": 0,
+        "win_rate": null
+      }
+    },
+    "by_opponent_team": []
+  },
+  "behavior": {
+    "initial_active": [],
+    "initial_bench": [],
+    "main_action_types": [],
+    "played_cards": [],
+    "attached_energy": [],
+    "attachment_targets": [],
+    "evolved_cards": [],
+    "ability_sources": [],
+    "academy_targets": [],
+    "effect_selected_cards": {},
+    "seek_sources": [],
+    "seek_copied_attack_ids": [],
+    "attack_users": [],
+    "top_turn_bigrams": [],
+    "top_turn_trigrams": []
+  },
+  "card_moves": {},
+  "games": [],
+  "limitations": [
+    "Observational replay evidence cannot identify unchosen counterfactual actions.",
+    "Opponent team names are not equivalent to normalized deck archetypes.",
+    "Win rate is conditional on this public daily opponent mix, not a formal paired gate.",
+    "Repeated deterministic actions may reflect simulator or policy implementation artifacts."
+  ]
+}

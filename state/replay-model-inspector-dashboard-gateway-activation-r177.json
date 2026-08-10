@@ -1,0 +1,165 @@
+{
+  "schema": "poke_bot.replay_model_inspector_dashboard_gateway_activation/v1",
+  "owner_decision_revision": 177,
+  "created_at_utc": "2026-08-07T23:24:53Z",
+  "status": "active_authenticated_read_only_gateway",
+  "product": {
+    "external_url": "https://mc.tsinzitari.com/replay-inspector/",
+    "dashboard_link_label": "Replay inspector",
+    "opens_separate_page": true,
+    "inspector_service_remains_separate": true,
+    "dashboard_api_integration": false
+  },
+  "edge": {
+    "host": "bert",
+    "implementation": "caddy_existing_dashboard_https_edge",
+    "route_prefix": "/replay-inspector/",
+    "access_policy": "existing_dashboard_edge_policy",
+    "external_clients_require_existing_http_basic_authentication": true,
+    "lan_and_tailscale_behavior_unchanged": true,
+    "allowed_methods": [
+      "GET"
+    ],
+    "route_prefix_stripped_before_upstream": true,
+    "browser_authorization_stripped_before_upstream": true,
+    "browser_cookie_stripped_before_upstream": true,
+    "browser_origin_and_referrer_stripped_before_upstream": true,
+    "forwarding_headers_stripped_before_upstream": true,
+    "upstream_host_header": "127.0.0.1:8791",
+    "source_config": "deploy/caddy/Caddyfile",
+    "source_config_sha256": "sha256:5c6c2be7b34091e97a87e0506b18807723ba4377e0ed19558f7a1b29453c1e7d",
+    "live_config": "/opt/homebrew/etc/Caddyfile",
+    "live_config_sha256": "sha256:5c6c2be7b34091e97a87e0506b18807723ba4377e0ed19558f7a1b29453c1e7d",
+    "pre_activation_config_backup": "/opt/homebrew/etc/Caddyfile.pre-replay-inspector-r177",
+    "pre_activation_config_sha256": "sha256:51c82bbf9544147e687cd4f56e9b275cc88464d05a9ecea992455192090ca4c6",
+    "caddy_pid_before_and_after_reload": 8831
+  },
+  "encrypted_transport": {
+    "host": "bert",
+    "manager": "launchd",
+    "label": "com.pokebot.replay-model-inspector-tunnel",
+    "source_plist": "deploy/launchd/com.pokebot.replay-model-inspector-tunnel.plist",
+    "source_plist_sha256": "sha256:29262335c3a960d28fb16239633c7880f09ad2c2382e9d15eb0207cbe132638d",
+    "live_plist": "/Users/tsinzitari/Library/LaunchAgents/com.pokebot.replay-model-inspector-tunnel.plist",
+    "state": "running",
+    "runs": 1,
+    "pid": 7957,
+    "last_exit_code": null,
+    "local_bind": "127.0.0.1:8792",
+    "remote": "admin@192.168.1.143",
+    "remote_target": "127.0.0.1:8791",
+    "strict_host_key_checking": true,
+    "exit_on_forward_failure": true,
+    "gateway_ports": false
+  },
+  "inspector": {
+    "host": "elmo",
+    "managed_service": "pokebot-replay-model-inspector.service",
+    "active_state": "active",
+    "sub_state": "running",
+    "main_pid": 2528660,
+    "restart_count": 0,
+    "listener": "127.0.0.1:8791",
+    "lan_or_public_listener_present": false,
+    "index_html_sha256": "sha256:6a3b87d4a8001f67b401983104e2a2a221dd7b2a66fb35c2ca7547f45e48d042",
+    "app_js_sha256": "sha256:187b9b7c7f0e823fa57a5f370d3869cd534ed0e38f53f24396e88504519fb63d",
+    "prefix_relative_assets_and_api": true
+  },
+  "dashboard": {
+    "host": "bert",
+    "live_listener": "0.0.0.0:8780",
+    "server_pid_before_and_after_activation": 73779,
+    "link_is_presentation_only": true,
+    "link_target": "_blank",
+    "link_rel": "noopener noreferrer",
+    "iframe_or_api_polling_added": false,
+    "source_index_sha256": "sha256:06b355fab44d98c25cbefcf0459a67b27de287a35a33a03c91753fba0261edb3",
+    "live_index_sha256": "sha256:06b355fab44d98c25cbefcf0459a67b27de287a35a33a03c91753fba0261edb3",
+    "ui_version": "06b355fab44d98c2",
+    "pre_activation_index_backup": "/Users/tsinzitari/pokebot-dashboard/v1/index.html.pre-replay-inspector-r177",
+    "pre_activation_index_sha256": "sha256:448da701c328dd8f61fd542da1ae3c7893ca9ffe531ced077ff6f5b4c08f20a5"
+  },
+  "validation": {
+    "caddy_config_validation": "passed",
+    "caddy_route_order_audit": "passed",
+    "launchd_plist_validation": "passed",
+    "javascript_syntax": "passed",
+    "ruff_check": "passed",
+    "ruff_format_check": "passed_after_final_format",
+    "inspector_test_suite": {
+      "passed": 31,
+      "failed": 0
+    },
+    "focused_gateway_and_dashboard_tests": {
+      "passed": 8,
+      "failed": 0
+    },
+    "full_dashboard_regression_sweep": {
+      "passed": 236,
+      "skipped": 2,
+      "known_unrelated_failures": [
+        "test_specialist_protocol_state_validates_roster_and_restart",
+        "test_dashboard_renders_owner_pinned_post_spidops_goal_contract"
+      ],
+      "gateway_code_paths_implicated": false
+    },
+    "goal_gateway_regression_sweep": {
+      "passed": 19,
+      "known_unrelated_failure": "test_post_fleet_refresh_is_ordered_versioned_and_non_intrusive",
+      "failure_reason": "mutable completed-refresh state has advanced beyond the older expected projection",
+      "gateway_code_paths_implicated": false
+    },
+    "live_statuses": {
+      "dashboard_root": 200,
+      "dashboard_api_status": 200,
+      "inspector_slash_redirect": 308,
+      "inspector_root": 200,
+      "inspector_css": 200,
+      "inspector_javascript": 200,
+      "inspector_health": 200,
+      "inspector_submissions": 200,
+      "inspector_unknown_route": 404,
+      "inspector_post": 405,
+      "inspector_post_without_slash": 405
+    },
+    "browser_header_sanitization_probe": {
+      "supplied_origin": "https://example.invalid",
+      "supplied_sec_fetch_site": "cross-site",
+      "proxied_health_status": 200
+    },
+    "independent_external_unauthenticated_probe": {
+      "provider": "check-host.net",
+      "request_id": "46b6563ek369",
+      "report": "https://check-host.net/check-report/46b6563ek369",
+      "resolved_ipv4": "70.143.63.122",
+      "node_results": {
+        "Dallas_US": 401,
+        "Isfahan_IR": 401,
+        "Shiraz_IR": 401
+      },
+      "expected_result": "existing_dashboard_basic_auth_challenge"
+    },
+    "real_trace_through_gateway": {
+      "submission_id": 55315274,
+      "episode_id": 90620383,
+      "step": 2,
+      "stage": 0,
+      "status": 200,
+      "model_available": true,
+      "head_count": 19,
+      "fusion_route_count": 19,
+      "reproduction_status": "recomputed_not_historical"
+    }
+  },
+  "safety": {
+    "direct_inspector_lan_or_public_bind": false,
+    "browser_credentials_reach_inspector": false,
+    "dashboard_model_or_service_authority": false,
+    "training_service_control_invoked": false,
+    "active_training_service": "pokebot-final-format-alakazam-rtp-r175-rl.service",
+    "active_training_pid_observed": 406749,
+    "active_training_restart_count_observed": 0,
+    "evaluation_replays_training_eligible": false,
+    "checkpoint_or_replay_mutation": false
+  }
+}

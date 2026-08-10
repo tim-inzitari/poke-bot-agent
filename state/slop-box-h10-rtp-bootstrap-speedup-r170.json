@@ -1,0 +1,95 @@
+{
+  "context": "Slop Box H10+RTP CE intensify toward Cox/Chao held policy_acc 0.90; not public-data sync or dash loop",
+  "contracts_preserved": {
+    "cox_chao_held_gate_threshold": 0.9,
+    "crustle_untouched": true,
+    "full_archetype_train": true,
+    "gate_not_declared_ready": true,
+    "guide_dual_pipeline": true,
+    "rtp_neural_only": true
+  },
+  "created_at_utc": "2026-08-06T15:55:00Z",
+  "expected_bottleneck_after": "full-shard RTP cut on 3080 Ti (42453 games x 8 epochs); H10 CE epochs 26-40 remain minutes-scale at ~6.3k samples/s",
+  "goal_revision": 170,
+  "live_continue": {
+    "batch_size": 2048,
+    "blackwell_util_pct_sample": 83,
+    "gate_threshold": 0.9,
+    "note": "prep oneshot TERM via Conflicts when combined unit started; combined --rtp-parallel owns cuda:0 overlap",
+    "observed_batch_per_s": 3.1,
+    "observed_samples_per_s": 6349,
+    "parallel_rtp_child": true,
+    "phase": "ce_epochs_26_to_40_plus_parallel_rtp_full_cut",
+    "ready_declared": false,
+    "status": "activating",
+    "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service"
+  },
+  "owner_ask": "can we go faster",
+  "prior_bootstrap_baseline": {
+    "approx_samples_per_s": 6366,
+    "approx_train_epoch_s": 16,
+    "batch_size": 2048,
+    "cox_chao_held_policy_acc": 0.7603661820140011,
+    "cuda_free_after_fit_gib_approx": 12.0,
+    "cuda_total_gib": 47.27,
+    "device": "cuda:1",
+    "epochs": 25,
+    "fit_test_peak_allocated_gib": 33.91,
+    "mean_batch_per_s": 3.109,
+    "rtp_prior": {
+      "device": "cuda:0",
+      "epochs": 4,
+      "max_games": 512,
+      "n_batches_reported": 42214
+    },
+    "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+    "wall_time_s": 1490
+  },
+  "safe_speedups_applied": {
+    "bf16_tf32": {
+      "status": "already_enabled_in_train_path",
+      "systemd_env": [
+        "ALLOW_TF32=1",
+        "NVIDIA_TF32_OVERRIDE=1"
+      ]
+    },
+    "ce_batch_size": {
+      "from": 2048,
+      "reason": "device fit-test already peaks at ~33.9 GiB / 47.3 GiB at 2048; larger CE batches are not VRAM-safe without a new fit receipt",
+      "to": 2048,
+      "unchanged": true
+    },
+    "ce_epochs": {
+      "from": 25,
+      "mode": "resume_from_state_history_epoch_26",
+      "to": 40
+    },
+    "dataloader_workers_prefetch": {
+      "note": "expert CE packs to Blackwell-resident corpus; not CPU DataLoader bound",
+      "status": "n_a_device_resident_corpus"
+    },
+    "parallel_rtp_full_cut": {
+      "h10_device": "cuda:1",
+      "mechanism": [
+        "--rtp-parallel in combined bootstrap unit",
+        "pokebot-slop-box-h10-rtp-fullcut-prep.service --rtp-only for overlap before/during CE",
+        "reuse checksum-bound full-cut receipt when parent/shard/epochs/max_games match"
+      ],
+      "rtp_device": "cuda:0",
+      "rtp_epochs": 8,
+      "rtp_max_games": 42453,
+      "status": "applied"
+    },
+    "skip_redundant_validation": {
+      "reason": "per-epoch val is ~0.7s vs ~16s train and drives patience; gate metric remains separate Cox/Chao held eval",
+      "status": "not_applied"
+    }
+  },
+  "schema": "poke_bot.slop_box_h10_rtp_bootstrap_speedup_r170/v1",
+  "status": "applied_for_ce_intensify_continue",
+  "units": {
+    "ce_continue": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+    "rtp_prep": "pokebot-slop-box-h10-rtp-fullcut-prep.service"
+  },
+  "updated_at_utc": "2026-08-06T15:55:56.557672+00:00"
+}

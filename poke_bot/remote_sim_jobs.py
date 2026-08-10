@@ -12,6 +12,7 @@ cleanly under spawn.
 
 from __future__ import annotations
 
+import gc
 import importlib.util
 import hashlib
 import json
@@ -23,6 +24,339 @@ from typing import Any
 _RR = None
 _MODULE_NAME = "train_round_robin_remote"
 _CONTROLLER_MATCHUP_RUNTIME_KEY = "_controller_matchup_runtime"
+_MULTI_ENV_CACHE_FAMILIES = frozenset(
+    {
+        # ``multi_env`` remains accepted for direct/legacy callers.
+        "multi_env",
+        # The two runtime transports use incompatible cache-key forms:
+        # raw paths for self-play and pipe-delimited paths for public play.
+        "multi_env_self_play",
+        "multi_env_play",
+    }
+)
+_CHECKPOINT_SCOPED_WORKER_CACHE_KEYS = (
+    # Single-game public/self-play local-parent caches.
+    "key",
+    "model",
+    "self_play_key",
+    "self_play_us",
+    "self_play_them",
+    # Promotion keeps two local parents while a packet is active.
+    "promotion_key",
+    "candidate_model",
+    "parent_model",
+)
+
+
+def _checkpoint_scope_tokens(jobs: list[dict[str, Any]]) -> tuple[str, ...]:
+    """Return the immutable model identities reachable from one worker task.
+
+    Remote children live through many trainer checkpoint reloads.  Each task is
+    stamped by the controller, so these fields are the safe boundary at which
+    a child may drop model-keyed caches from an earlier champion.  Include a
+    path when a legacy caller lacks a digest; that still prevents an unbounded
+    cache keyed by successive checkpoint filenames.
+    """
+
+    tokens: set[str] = set()
+    for job in jobs:
+        for key in (
+            "checkpoint_digest",
+            "checkpoint",
+            "opponent_checkpoint_digest",
+            "opponent_checkpoint",
+            "candidate_digest",
+            "candidate_checkpoint",
+            "parent_digest",
+            "parent_checkpoint",
+        ):
+            value = job.get(key)
+            if value is not None and str(value):
+                tokens.add(f"{key}={value}")
+    return tuple(sorted(tokens))
+
+
+def _primary_checkpoint_identity(jobs: list[dict[str, Any]]) -> tuple[str, ...]:
+    """Return the controller-stamped active checkpoint identity for a packet."""
+
+    tokens: set[str] = set()
+    for job in jobs:
+        for key in ("checkpoint_digest", "checkpoint"):
+            value = job.get(key)
+            if value is not None and str(value):
+                tokens.add(f"{key}={value}")
+    if not tokens:
+        # Promotion has two explicit parents rather than a server-stamped
+        # ``checkpoint`` field. Its candidate is the active model identity for
+        # cache invalidation, so a same-path/new-digest promotion cannot reuse
+        # an old in-process candidate.
+        for job in jobs:
+            for key in ("candidate_digest", "candidate_checkpoint"):
+                value = job.get(key)
+                if value is not None and str(value):
+                    tokens.add(f"{key}={value}")
+    return tuple(sorted(tokens))
+
+
+def _required_checkpoint_paths(jobs: list[dict[str, Any]]) -> set[str]:
+    """Return models a current packet can legitimately reference."""
+
+    paths: set[str] = set()
+    for job in jobs:
+        for key in (
+            "checkpoint",
+            "opponent_checkpoint",
+            "candidate_checkpoint",
+            "parent_checkpoint",
+        ):
+            value = job.get(key)
+            if value is not None and str(value):
+                paths.add(str(value))
+    return paths
+
+
+def _cache_key_mentions_path(key: object, path: str) -> bool:
+    """Match the established raw and pipe-delimited worker cache key forms."""
+
+    raw = str(key)
+    return raw == path or raw.startswith(f"{path}|") or f"|{path}|" in raw
+
+
+def _drop_state_entries(state: dict[str, Any], keys: tuple[str, ...]) -> int:
+    removed = 0
+    for key in keys:
+        if key in state:
+            state.pop(key, None)
+            removed += 1
+    return removed
+
+
+def _is_multi_env_cache_family(cache_family: str) -> bool:
+    return str(cache_family) in _MULTI_ENV_CACHE_FAMILIES
+
+
+def _prune_multi_env_model_cache(
+    state: dict[str, Any],
+    *,
+    required_paths: set[str],
+) -> int:
+    """Retain only current-packet models in the multi-env cache."""
+
+    model_cache = state.get("multi_env_models")
+    if not isinstance(model_cache, dict):
+        return 0
+    evicted = 0
+    for key in list(model_cache):
+        if not any(_cache_key_mentions_path(key, path) for path in required_paths):
+            model_cache.pop(key, None)
+            evicted += 1
+    return evicted
+
+
+def _drop_multi_env_model_cache(state: dict[str, Any]) -> int:
+    """Release every multi-env model when another task family becomes active."""
+
+    model_cache = state.get("multi_env_models")
+    if not isinstance(model_cache, dict):
+        return 0
+    evicted = len(model_cache)
+    model_cache.clear()
+    return evicted
+
+
+def _prune_single_game_model_caches(
+    state: dict[str, Any],
+    *,
+    required_paths: set[str],
+) -> int:
+    """Prune single-game/promotion caches without disrupting a current packet."""
+
+    evicted = 0
+    key = str(state.get("key") or "")
+    if key and not any(_cache_key_mentions_path(key, path) for path in required_paths):
+        evicted += _drop_state_entries(state, ("key", "model"))
+
+    self_key = str(state.get("self_play_key") or "")
+    if self_key:
+        parts = self_key.split("|")
+        # Established form: self|us_checkpoint|them_checkpoint|device|mode.
+        keep_self = (
+            len(parts) >= 3
+            and parts[0] == "self"
+            and parts[1] in required_paths
+            and parts[2] in required_paths
+        )
+        if not keep_self:
+            evicted += _drop_state_entries(
+                state,
+                ("self_play_key", "self_play_us", "self_play_them"),
+            )
+
+    promotion_key = str(state.get("promotion_key") or "")
+    if promotion_key:
+        parts = promotion_key.split("|")
+        # Established form: promotion|candidate_checkpoint|parent_checkpoint|device.
+        keep_promotion = (
+            len(parts) >= 3
+            and parts[0] == "promotion"
+            and parts[1] in required_paths
+            and parts[2] in required_paths
+        )
+        if not keep_promotion:
+            evicted += _drop_state_entries(
+                state,
+                ("promotion_key", "candidate_model", "parent_model"),
+            )
+    return evicted
+
+
+def _drop_inactive_worker_cache_families(
+    state: dict[str, Any],
+    *,
+    active_family: str,
+) -> int:
+    """Prevent one child from retaining duplicate models across job transports."""
+
+    evicted = 0
+    if not _is_multi_env_cache_family(active_family):
+        evicted += _drop_multi_env_model_cache(state)
+    if active_family != "play":
+        evicted += _drop_state_entries(state, ("key", "model"))
+    if active_family != "self_play":
+        evicted += _drop_state_entries(
+            state,
+            ("self_play_key", "self_play_us", "self_play_them"),
+        )
+    if active_family != "promotion":
+        evicted += _drop_state_entries(
+            state,
+            ("promotion_key", "candidate_model", "parent_model"),
+        )
+    return evicted
+
+
+def _advance_remote_worker_checkpoint_scope(
+    state: dict[str, Any],
+    jobs: list[dict[str, Any]],
+    *,
+    active_cache_family: str,
+) -> bool:
+    """Bound a long-lived child's model caches to its current checkpoint scope.
+
+    ``_WORKER_STATE`` is intentionally process-local and persists across all
+    remote requests. Prior multi-env code stored models under every seen
+    checkpoint key, and the single-game/multi-env paths retained duplicate
+    copies of the same parent. Keep exactly one active task-family cache and,
+    for a packed task, only its current parent plus models reachable by that
+    packet. A fresh controller checkpoint identity flushes all path-keyed
+    entries before the new weights can be loaded.
+    """
+
+    scope = _checkpoint_scope_tokens(jobs)
+    if not scope:
+        # Direct unit callers may omit an identity.  Do not evict a known good
+        # cache merely because that legacy test/job cannot prove a replacement.
+        return False
+    previous_raw = state.get("_remote_worker_checkpoint_scope")
+    previous = (
+        tuple(str(value) for value in previous_raw)
+        if isinstance(previous_raw, (list, tuple))
+        else ()
+    )
+    primary = _primary_checkpoint_identity(jobs)
+    previous_primary_raw = state.get("_remote_worker_primary_checkpoint_identity")
+    previous_primary = (
+        tuple(str(value) for value in previous_primary_raw)
+        if isinstance(previous_primary_raw, (list, tuple))
+        else ()
+    )
+    scope_changed = previous != scope
+    previous_family = str(state.get("_remote_worker_cache_family") or "")
+    family_changed = previous_family != str(active_cache_family)
+    if not scope_changed and not family_changed:
+        return False
+
+    required_paths = _required_checkpoint_paths(jobs)
+    if primary != previous_primary:
+        # A reloaded active digest may legitimately reuse a stable filename.
+        # Path-only cache keys cannot prove byte identity, so drop all model
+        # references at that checkpoint boundary before loading the new one.
+        model_cache = state.get("multi_env_models")
+        evicted = len(model_cache) if isinstance(model_cache, dict) else 0
+        if isinstance(model_cache, dict):
+            model_cache.clear()
+        evicted += _drop_state_entries(state, _CHECKPOINT_SCOPED_WORKER_CACHE_KEYS)
+    else:
+        evicted = _drop_inactive_worker_cache_families(
+            state,
+            active_family=active_cache_family,
+        )
+        if family_changed and _is_multi_env_cache_family(active_cache_family):
+            # ``run_self_play_multi`` caches raw checkpoint paths whereas
+            # ``run_play_multi`` decorates its key with device/RTP state.
+            # Never leave either representation resident when the transport
+            # switches; the next task loads exactly the representation it uses.
+            evicted += _drop_multi_env_model_cache(state)
+        # Same champion, different self-play opponent packet: retain only the
+        # active current model plus the at-most-four opponent models reachable
+        # from this LibcgMultiEnv packet.  This is the bounded current+needed
+        # policy; it does not reload the active parent on every packet.
+        if _is_multi_env_cache_family(active_cache_family):
+            evicted += _prune_multi_env_model_cache(
+                state,
+                required_paths=required_paths,
+            )
+        else:
+            evicted += _prune_single_game_model_caches(
+                state,
+                required_paths=required_paths,
+            )
+    state["_remote_worker_checkpoint_scope"] = scope
+    state["_remote_worker_primary_checkpoint_identity"] = primary
+    state["_remote_worker_cache_family"] = str(active_cache_family)
+    lifecycle = state.setdefault("_remote_worker_memory_lifecycle", {})
+    if isinstance(lifecycle, dict):
+        lifecycle["scope_rotations"] = int(lifecycle.get("scope_rotations", 0)) + 1
+        lifecycle["cache_entries_evicted"] = int(
+            lifecycle.get("cache_entries_evicted", 0)
+        ) + int(evicted)
+        if family_changed:
+            lifecycle["cache_family_transitions"] = int(
+                lifecycle.get("cache_family_transitions", 0)
+            ) + 1
+    # The removed values can include model↔agent cycles created by RTP bridges.
+    # Collect at the receipt-safe task boundary, never while a game is active.
+    gc.collect()
+    return True
+
+
+def _collect_remote_worker_game_cycles(state: dict[str, Any]) -> int:
+    """Collect unreachable per-game RTP/agent cycles after result serialization."""
+
+    collected = int(gc.collect())
+    lifecycle = state.setdefault("_remote_worker_memory_lifecycle", {})
+    if isinstance(lifecycle, dict):
+        lifecycle["post_job_gc_runs"] = int(lifecycle.get("post_job_gc_runs", 0)) + 1
+        lifecycle["post_job_gc_collected"] = int(
+            lifecycle.get("post_job_gc_collected", 0)
+        ) + collected
+    return collected
+
+
+def _prepare_remote_worker_job_scope(
+    jobs: list[dict[str, Any]],
+    *,
+    cache_family: str,
+) -> dict[str, Any]:
+    """Return the long-lived child state after safe checkpoint-scope pruning."""
+
+    state = load_round_robin_module()._WORKER_STATE
+    _advance_remote_worker_checkpoint_scope(
+        state,
+        jobs,
+        active_cache_family=cache_family,
+    )
+    return state
 
 
 def _repo_root() -> Path:
@@ -104,13 +438,21 @@ def _bind_controller_matchup_runtime(job: dict[str, Any]) -> None:
 def remote_play_job(job: dict[str, Any]) -> dict[str, Any]:
     """Whole-game collection job (importable; safe to ``Pool.apply``)."""
     _bind_controller_matchup_runtime(job)
-    return load_round_robin_module()._worker_play(job)
+    state = _prepare_remote_worker_job_scope([job], cache_family="play")
+    try:
+        return load_round_robin_module()._worker_play(job)
+    finally:
+        _collect_remote_worker_game_cycles(state)
 
 
 def remote_promotion_job(job: dict[str, Any]) -> dict[str, Any]:
     """Promotion evaluation job (importable; safe to ``Pool.apply``)."""
     _bind_controller_matchup_runtime(job)
-    return load_round_robin_module()._worker_promotion(job)
+    state = _prepare_remote_worker_job_scope([job], cache_family="promotion")
+    try:
+        return load_round_robin_module()._worker_promotion(job)
+    finally:
+        _collect_remote_worker_game_cycles(state)
 
 
 def remote_matchup_runtime_probe(_job: dict[str, Any]) -> dict[str, Any]:
@@ -159,26 +501,120 @@ def remote_matchup_runtime_probe(_job: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def remote_self_play_multi_job(batch: dict[str, Any]) -> list[dict[str, Any]]:
-    """Batch self-play via in-process ``LibcgMultiEnv`` (spawn-safe).
+def _remote_self_play_multi_job_impl(batch: dict[str, Any]) -> list[dict[str, Any]]:
+    """Batch self-play or r182-authorized public play via ``LibcgMultiEnv``.
 
-    ``batch`` is ``{"jobs": [job, ...]}``. Used when pure-RL enables
-    ``--multi-env-per-worker`` / ``POKEBOT_MULTI_ENV`` so one OS worker owns
-    many official libcg handles. GPU leaf wiring matches
-    :func:`remote_self_play_job`.
+    ``batch`` is ``{"jobs": [job, ...]}``. Self-play jobs use NN vs NN;
+    public jobs use our policy vs package opponents only after every child
+    passes the immutable r182 id+digest+group+provenance allowlist.  Unrecognized
+    and legacy packages stay on the ordinary one-game ``play`` transport.
     """
-    from poke_bot.pure_rl.multi_env_self_play import run_self_play_multi
+    jobs = list(batch.get("jobs") or [])
+    if not jobs:
+        return []
+    if not 1 <= len(jobs) <= 4:
+        raise ValueError("self_play_multi packet must contain 1..4 children")
+    play_flags = [
+        isinstance(job, dict) and isinstance(job.get("spec"), dict)
+        for job in jobs
+    ]
+    if any(play_flags) and not all(play_flags):
+        raise ValueError("self_play_multi batch mixes play and self-play jobs")
+    play_jobs = all(play_flags)
+    if play_jobs and not 2 <= len(jobs) <= 4:
+        # A public packet is the exact r182 LibcgMultiEnv transport unit, not
+        # a generic batch envelope.  Keep singleton public jobs on ordinary
+        # ``play`` and reject any oversized forged packet before importing or
+        # entering the shared multi-env process.  Pure self-play intentionally
+        # retains its established generic batch behavior below.
+        raise ValueError(
+            "public self_play_multi packet must contain 2..4 children"
+        )
+    from poke_bot.pure_rl.multi_env_self_play import (
+        run_play_multi,
+        run_self_play_multi,
+    )
+
+    # Match single-game remote_self_play_job: privileged exact hidden zones
+    # require the training-fork libcg. Official competition libcg on Bert/Elmo
+    # has no GetHiddenSnapshot; keep packing and leave belief labels masked.
+    if not os.environ.get("POKEBOT_LIBCG_PATH", "").strip():
+        jobs = [
+            {**job, "collect_privileged_belief": False}
+            if isinstance(job, dict)
+            else job
+            for job in jobs
+        ]
+    if play_jobs:
+        # Defense in depth: client-side batching is default-deny, but a remote
+        # endpoint must independently reject a forged/mixed packet before it
+        # can reach the shared LibcgMultiEnv process.
+        from poke_bot.public_multi_env_safety import (
+            require_public_multi_env_safe_job,
+        )
+
+        for job in jobs:
+            require_public_multi_env_safe_job(job)
+        return run_play_multi(jobs)
+    if len(jobs) == 1:
+        return [_remote_self_play_job_impl(jobs[0])]
+    return run_self_play_multi(jobs)
+
+
+def _remote_self_play_cache_family(job: dict[str, Any]) -> str:
+    """Return the cache family used by one self-play job's actual code path."""
+
+    if bool(job.get("collect_privileged_belief", False)) and os.environ.get(
+        "POKEBOT_LIBCG_PATH", ""
+    ).strip():
+        return "multi_env_self_play"
+    return "self_play"
+
+
+def _remote_self_play_multi_cache_family(jobs: list[dict[str, Any]]) -> str:
+    """Return the cache family used by a validated multi-endpoint packet.
+
+    The endpoint also accepts a one-game self-play tail.  Unless that tail
+    explicitly needs the private multi-env hidden-zone path, it runs through
+    ``_remote_self_play_job_impl`` and therefore owns the ordinary self-play
+    cache, not ``multi_env_models``.  Classifying the actual execution path
+    keeps a prior packed task from retaining a duplicate H10 model.
+    """
+
+    play_flags = [isinstance(job.get("spec"), dict) for job in jobs]
+    if any(play_flags) and not all(play_flags):
+        raise ValueError("self_play_multi batch mixes play and self-play jobs")
+    if all(play_flags):
+        if not 2 <= len(jobs) <= 4:
+            raise ValueError(
+                "public self_play_multi packet must contain 2..4 children"
+            )
+        return "multi_env_play"
+    if len(jobs) != 1:
+        return "multi_env_self_play"
+    return _remote_self_play_cache_family(jobs[0])
+
+
+def remote_self_play_multi_job(batch: dict[str, Any]) -> list[dict[str, Any]]:
+    """Run one bounded r182 LibcgMultiEnv packet with post-result cleanup."""
 
     jobs = list(batch.get("jobs") or [])
     if not jobs:
         return []
+    if not all(isinstance(job, dict) for job in jobs):
+        raise ValueError("self_play_multi job.jobs entries must be objects")
+    if not 1 <= len(jobs) <= 4:
+        raise ValueError("self_play_multi packet must contain 1..4 children")
+    cache_family = _remote_self_play_multi_cache_family(jobs)
     _bind_controller_matchup_runtime(jobs[0])
-    if len(jobs) == 1:
-        return [remote_self_play_job(jobs[0])]
-    return run_self_play_multi(jobs)
+    state = _prepare_remote_worker_job_scope(jobs, cache_family=cache_family)
+    try:
+        return _remote_self_play_multi_job_impl({**batch, "jobs": jobs})
+    finally:
+        _collect_remote_worker_game_cycles(state)
 
 
-def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
+def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
     """Pure self-play: current policy vs recent-self / itself (spawn-safe).
 
     Primary Stage A collect path (Abhyuday: millions of self-play variations).
@@ -188,7 +624,6 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
     GPU leaves for same-checkpoint games (``gpu-leaf-both``); recent-self
     opponents stay CPU-local on the opp seat (``gpu-leaf-us-only``).
     """
-    _bind_controller_matchup_runtime(job)
     # Exact hidden-zone targets require the explicit private training engine.
     # Route even a single game through the multi-handle adapter when that ABI
     # is configured; hosts using the official engine continue normally and
@@ -521,3 +956,17 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
         }
     except BaseException as exc:  # noqa: BLE001
         return _base(our_failed=True, error=f"{type(exc).__name__}: {exc}")
+
+
+def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
+    """Run one game with checkpoint-scoped caches and post-result collection."""
+
+    _bind_controller_matchup_runtime(job)
+    state = _prepare_remote_worker_job_scope(
+        [job],
+        cache_family=_remote_self_play_cache_family(job),
+    )
+    try:
+        return _remote_self_play_job_impl(job)
+    finally:
+        _collect_remote_worker_game_cycles(state)

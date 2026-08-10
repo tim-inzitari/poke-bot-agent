@@ -1,0 +1,92 @@
+{
+  "schema": "poke_bot.alakazam_guide_logit_ab_submissions_r206/v1",
+  "owner_decision_revision": 206,
+  "recorded_at_utc": "2026-08-10T15:10:00Z",
+  "status": "submitted_observation_window",
+  "competition": "pokemon-tcg-ai-battle",
+  "specialist_id": "alakazam",
+  "exact_submission_count": 2,
+  "base": {
+    "source_revision": 195,
+    "bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "deck_sha256": "sha256:1705f0f4db0c54b32f297fc9292a417b0c3abc9fdb6edf6a5370af6a635efe65",
+    "matchup_tree_sha256": "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe0194c9049",
+    "turn_order_preference": "first_if_allowed",
+    "rtp_enabled": false
+  },
+  "guide_policy": {
+    "schema": "poke_bot.submission_guide_decision_policy/v1",
+    "mode": "guide_logit_bonus",
+    "guide_id": "alakazam",
+    "guide_version": "powerful-hand-v1",
+    "score_normalization": "per_factorized_stage_min_max_0_to_1",
+    "unavailable_or_tied_behavior": "exact_model_fallback",
+    "model_parameters_mutated": false,
+    "training_loss_weight": false,
+    "variants": [
+      {
+        "copy_number": 1,
+        "guide_logit_weight": 0.05,
+        "label_suffix": "NO RTP GUIDE 0.05"
+      },
+      {
+        "copy_number": 2,
+        "guide_logit_weight": 0.1,
+        "label_suffix": "NO RTP GUIDE 0.10"
+      }
+    ]
+  },
+  "activation": {
+    "method": "existing_receipt_backed_kaggle_submission_queue",
+    "daily_limit": 5,
+    "minimum_hours_between_submissions": 4,
+    "do_not_claim_submitted_without_upload_receipt": true,
+    "packaging_receipt": "/home/inzi/poke-bot-agent/outputs/state/alakazam-guide-logit-ab-submissions-r206.json",
+    "queue_entries": [
+      {
+        "copy_number": 1,
+        "bundle_sha256": "sha256:8f71eee9d0000a31d316a8b6d7148dce8161f38028aded1b797071135e2aa134",
+        "guide_logit_weight": 0.05,
+        "label": "alakazam guide logit A/B iter 21 copy 1/2 first 261d367e131e NO RTP GUIDE 0.05"
+      },
+      {
+        "copy_number": 2,
+        "bundle_sha256": "sha256:ace69ec2f41f1e1d34c08bcca88c2dafd2d0b2dd866156d2df64574167b209b5",
+        "guide_logit_weight": 0.1,
+        "label": "alakazam guide logit A/B iter 21 copy 2/2 first 261d367e131e NO RTP GUIDE 0.10"
+      }
+    ],
+    "submissions": [
+      {
+        "copy_number": 1,
+        "submission_id": "55410353",
+        "guide_logit_weight": 0.05,
+        "kaggle_status": "COMPLETE",
+        "public_score": 540.5,
+        "score_is_provisional": true
+      },
+      {
+        "copy_number": 2,
+        "submission_id": "55410425",
+        "guide_logit_weight": 0.1,
+        "kaggle_status": "COMPLETE",
+        "public_score": 600.0,
+        "score_is_provisional": true
+      }
+    ],
+    "observation_policy": {
+      "allow_more_games_before_comparison": true,
+      "promote_from_initial_score": false,
+      "mutate_or_replace_while_observing": false
+    }
+  },
+  "non_regression": {
+    "historical_checkpoint_mutated": false,
+    "historical_bundle_mutated": false,
+    "historical_submission_mutated": false,
+    "rtp_enabled": false,
+    "training_state_mutated": false,
+    "evaluation_replays_training_eligible": false
+  }
+}

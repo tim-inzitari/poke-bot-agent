@@ -1,0 +1,38 @@
+{
+  "agent_ops": {
+    "do_not_hammer_dashboard_refresh": true,
+    "preferred_poll_seconds": 300,
+    "runtime_truth": [
+      "outputs/state/slop-box-h10-rtp-ce-intensify-live-r170.json",
+      "state/goalmd_loop_heartbeat_slop_box_r170.json",
+      "systemctl --user status pokebot-final-format-slop-box-h10-rtp-bootstrap.service"
+    ]
+  },
+  "cox_chao_gate_threshold": 0.95,
+  "created_at_utc": "2026-08-06T16:09:51.321270+00:00",
+  "crustle": {
+    "no_deletes": true,
+    "untouched": true
+  },
+  "epochs": {
+    "from": 40,
+    "resume_from": 41,
+    "same_run_dir": true,
+    "to": 80
+  },
+  "goal_revision": 170,
+  "manager": "systemd --user",
+  "message_for_other_agents": "Slop Box H10 RTP bootstrap is the active trainer. Extend past 40 to 80 epochs with in-loop non-guide head weight optimization and full joint-model training. Cox/Chao held policy_acc gate is 0.95. Do not raise guide reliance. Poll runtime receipts every >=5 minutes; do not rapidly refresh the dashboard.",
+  "receipt_sha256": "sha256:b8cff761545499b66d352006af80b964df92d4312e6cb2611e17ff2256493ad9",
+  "schema": "poke_bot.slop_box_h10_rtp_bootstrap_epoch_extend_r170/v1",
+  "specialist": "teal-mask-ogerpon-ex",
+  "status": "owner_active",
+  "training": {
+    "batch_size": 2048,
+    "guide_max_loss_weight": 0.25,
+    "joint_full_model": true,
+    "no_additional_guide_reliance": true,
+    "optimize_non_guide_head_weights_in_bootstrap_loop": true
+  },
+  "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service"
+}

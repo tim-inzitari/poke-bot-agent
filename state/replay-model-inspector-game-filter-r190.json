@@ -1,0 +1,43 @@
+{
+  "schema": "poke_bot.replay_model_inspector_game_filter/v1",
+  "owner_decision_revision": 190,
+  "recorded_at_utc": "2026-08-08T01:29:28Z",
+  "status": "active",
+  "activated_at_utc": "2026-08-08T01:34:29Z",
+  "activation_receipt": "state/replay-model-inspector-game-filter-activation-r190.json",
+  "filter": {
+    "surface": "game_selector",
+    "control": "mobile_friendly_search_input",
+    "matches": [
+      "full_exact_decimal_game_id",
+      "partial_exact_decimal_game_id",
+      "available_player_name_case_insensitive"
+    ],
+    "native_select_remains_final_chooser": true,
+    "reports_matching_and_total_counts": true,
+    "explicit_no_match_state": true,
+    "selection_behavior": "preserve_if_matching_else_first_match",
+    "submission_change_behavior": "clear_filter"
+  },
+  "authority": {
+    "presentation_only": true,
+    "server_side_catalog_filtering": false,
+    "replay_or_provenance_mutation": false,
+    "decision_visibility_change": false,
+    "training_or_selector_authority": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_inspector_static_ui",
+    "may_run_during_healthy_training": true,
+    "requires_inspector_service_restart": true,
+    "required_validation": [
+      "partial_game_id_filter_test",
+      "player_name_filter_test",
+      "no_match_state_test",
+      "first_matching_game_selection_test",
+      "submission_change_clears_filter_test",
+      "mobile_browser_visual_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-game-filter-activation-r190.json"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "schema": "poke_bot.replay_model_inspector_owner_design/v1",
+  "owner_decision_revision": 176,
+  "status": "implemented_active_read_only",
+  "product": {
+    "name": "Replay Model Inspector",
+    "surface": "standalone_localhost_website",
+    "separate_from_training_dashboard": true,
+    "default_bind_host": "127.0.0.1",
+    "default_port": 8791
+  },
+  "sources": {
+    "replay_cache": "elmo_checksum_backed_kaggle_submission_replay_cache",
+    "submission_identity": "submission_id_plus_checksum_bound_bundle_and_checkpoint_provenance",
+    "checkpoint_policy": "immutable_read_only_checksum_verified",
+    "evaluation_replays_training_eligible": false
+  },
+  "selection": [
+    "submission",
+    "game",
+    "acting_seat",
+    "decision_step"
+  ],
+  "step_inspection": {
+    "required": [
+      "replay_event_and_causal_observation",
+      "legal_options_and_recorded_action",
+      "checkpoint_and_bundle_identity",
+      "architecture_present_heads",
+      "head_raw_values_and_masks",
+      "head_normalized_values_when_defined",
+      "fusion_route_reliabilities",
+      "per_route_per_option_logit_contributions",
+      "base_and_final_policy_logits",
+      "policy_probabilities",
+      "model_selected_action",
+      "recorded_vs_model_action_comparison"
+    ],
+    "missing_data_policy": "explicit_unavailable_reason_never_fabricate",
+    "determinism": "evaluation_mode_no_grad_checksum_bound_inputs"
+  },
+  "parameter_inspection": {
+    "required": [
+      "parameter_name",
+      "shape",
+      "dtype",
+      "element_count",
+      "finite_count",
+      "minimum",
+      "maximum",
+      "mean",
+      "standard_deviation",
+      "l1_norm",
+      "l2_norm",
+      "zero_fraction",
+      "bounded_histogram",
+      "bounded_tensor_slice"
+    ],
+    "full_tensor_response_allowed": false,
+    "checkpoint_mutation_allowed": false
+  },
+  "resource_and_safety": {
+    "read_only": true,
+    "max_resident_models": 1,
+    "lazy_checkpoint_load": true,
+    "default_inference_device": "cpu",
+    "remote_checkpoint_reload_allowed": false,
+    "path_access": "configured_roots_only_no_symlink_escape",
+    "training_selector_authority": false,
+    "managed_service_authority": false,
+    "dashboard_mutation_allowed": false,
+    "network_default": "loopback_only"
+  },
+  "activation": {
+    "status": "active",
+    "receipt": {
+      "path": "state/replay-model-inspector-activation-r176.json",
+      "sha256": "sha256:83ee6683cce172ed3a95647d93ba8aa4d6ab1f3138c1a81cf6736b3ec2f96d52"
+    },
+    "boundary": "independent_read_only_tooling",
+    "may_run_during_healthy_training": true,
+    "must_not_restart_training": true,
+    "validation_required": [
+      "cache_index_fixture",
+      "submission_checkpoint_provenance_fixture",
+      "per_step_trace_fixture",
+      "all_head_and_fusion_payload_fixture",
+      "parameter_summary_and_slice_bounds_fixture",
+      "configured_root_and_symlink_escape_tests",
+      "localhost_bind_test",
+      "standalone_ui_build_or_static_asset_test"
+    ]
+  }
+}

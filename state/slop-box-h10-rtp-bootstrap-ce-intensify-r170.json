@@ -1,0 +1,141 @@
+{
+  "cox_chao_gate": {
+    "labels_must_not_force_one_path_setup": true,
+    "missingno_not_in_denominator": true,
+    "threshold": 0.95,
+    "training_rows_remain_full_archetype": true,
+    "unchanged_metric_definition": true
+  },
+  "created_at_utc": "2026-08-06T15:45:00Z",
+  "crustle": {
+    "no_deletes": true,
+    "untouched": true
+  },
+  "goal_revision": 170,
+  "guide_contract_sha256": "sha256:cc52544ebe34498327c09774ee5aced3dca37d957f20c7438655d3adec25fd5b",
+  "intensity_changes": {
+    "batch_size": {
+      "from": 2048,
+      "to": 2048,
+      "unchanged": true,
+      "vram_note": "fit-test peaks ~33.9/47.3 GiB at 2048; do not raise without new fit receipt (see speedup receipt)"
+    },
+    "expert_policy_ce": {
+      "from": "on",
+      "note": "policy_loss already CE; no under-sampling of the 1442-game protected feature corpus",
+      "to": "on_aggressive_more_epochs"
+    },
+    "guide_loss_weight_hold": {
+      "from": 0.05,
+      "hold_through_epoch": 80,
+      "no_additional_guide_reliance": true,
+      "to": 0.25
+    },
+    "h10_expert_bootstrap_epochs": {
+      "from": 40,
+      "mode": "continue_from_epoch_41_same_run_dir",
+      "to": 80
+    },
+    "parallel_rtp_full_cut": {
+      "overlap_with_h10_ce": true,
+      "rtp_device": "cuda:0",
+      "rtp_epochs": 8,
+      "rtp_max_games": 42453
+    },
+    "rtp_epochs": {
+      "from": 4,
+      "to": 8
+    },
+    "rtp_max_games": {
+      "from": 512,
+      "note": "full expert_trajectory_shard.jsonl",
+      "to": 42453
+    },
+    "sample_rates": {
+      "expert_feature_corpus": "full_1442_no_undersample",
+      "rtp_trajectory_shard": "full_42453_no_undersample"
+    },
+    "setup_board_outcome_loss_weight": {
+      "effective_until_select_context_repack": "still_zero_eligible_rows",
+      "from": "0.025_default",
+      "to": 0.05
+    },
+    "speedup_receipt": "state/slop-box-h10-rtp-bootstrap-speedup-r170.json"
+  },
+  "joint_full_model": true,
+  "live": {
+    "ActiveState": "activating",
+    "MainPID": 1140068,
+    "epochs_completed": 28,
+    "receipt": "outputs/state/slop-box-h10-rtp-ce-intensify-live-r170.json"
+  },
+  "matchup_conditional_alignment": {
+    "aligned_to_sibling_0b4cb046_yaml": true,
+    "cox_chao_distillation_focus_schema": "poke_bot.cox_chao_matchup_conditional_focus/v1",
+    "guide_contract": "config/deck_guides/slop-box-h10-rtp-north-star-v1.yaml",
+    "guide_contract_sha256": "sha256:cc52544ebe34498327c09774ee5aced3dca37d957f20c7438655d3adec25fd5b",
+    "no_linear_two_teal_latias_meowth_script": true,
+    "sibling_coordination": "0b4cb046 owns matchup-focus revision; this receipt keeps CE intensify aligned to the yaml contract",
+    "teacher_module": "poke_bot/teal_mask_ogerpon_heuristics.py",
+    "teacher_module_sha256": "sha256:57c0d03e15f4bc4d2357f7f4e24cd736238a4e5df7431a671a75b118ccc0d004"
+  },
+  "non_guide_weight_optimization_in_loop": true,
+  "prior_bootstrap": {
+    "best_checkpoint_digest": "sha256:754e0961ac105a8926d217b4761694a6a4b00430a434fcd3189e593e00d34e8c",
+    "combo_state_loss": 0.0,
+    "epochs_completed": 25,
+    "epochs_max_prior": 25,
+    "expert_corpus_decisions": 97762,
+    "expert_corpus_games": 1442,
+    "guide_max_weight_prior": 0.05,
+    "held_full_archetype_policy_acc": 0.7661422642602066,
+    "policy_ce": "always_on_via_supervised_rehearsal_policy_loss",
+    "ready_receipt_archived_as": "outputs/state/final-format-slop-box-h10-rtp-bootstrap-ready.epoch25-complete-r170.json",
+    "rtp_epochs_prior": 4,
+    "rtp_max_games_prior": 512,
+    "setup_board_outcome_eligible_rows": 0,
+    "setup_board_outcome_loss": 0.0,
+    "status_at_audit": "inactive/success",
+    "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service"
+  },
+  "recommended_additional_heads_and_aids": {
+    "implement_now": [
+      "matchup_conditional_cox_chao_distillation_focus",
+      "setup_bench_teacher_job_bearing_empty_stop_not_linear_shell",
+      "raise_bootstrap_guide_loss_weight_to_0_25_through_epoch_40",
+      "continue_expert_policy_CE_epochs_26_to_40",
+      "rtp_cut_full_42453_trajectory_games",
+      "setup_board_outcome_loss_weight_0_05_wired"
+    ],
+    "needs_owner_design": [
+      "rebuild_expert_cpu_pack_with_real_select_context_for_setup_board_outcome",
+      "non_zero_combo_state_CE_for_retained_H10_head_without_Slowking_flag",
+      "causal_energy_attachment_and_Energy_Switch_route_labels",
+      "Teal_Dance_timing_target_beyond_ability_origin_preference",
+      "prize_race_and_resource_forecast_guide_directional_emphasis",
+      "Cox_Chao_held_TeamNames_join_for_exact_90pct_gate_measurement",
+      "expand_clef_job_public_id_coverage_beyond_Munkidori_Pecharunt_Grimmsnarl"
+    ]
+  },
+  "schema": "poke_bot.slop_box_h10_rtp_bootstrap_ce_intensify_r170/v1",
+  "service_action": {
+    "justification": "prior oneshot complete at epoch 25; intensity/hyperparams cannot hot-bind; archive ready then systemd continuation for epochs 26-40 + full-shard RTP",
+    "leave_healthy_mid_run_alone": true,
+    "manager": "systemd --user",
+    "no_kill_signals": true,
+    "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service"
+  },
+  "setup_bench_teacher_repair": {
+    "changes": [
+      "sibling_0b4cb046_matchup_conditional_yaml_contract",
+      "public_opponent_board_and_prize_tags",
+      "soft_defaults_when_sparse_or_prize_ahead",
+      "clef_spread_dragapult_bolt_branches"
+    ],
+    "root_cause": "linear shell disagreed with experts; owner requires matchup-conditional public-state labels",
+    "teacher_module_sha256": "sha256:57c0d03e15f4bc4d2357f7f4e24cd736238a4e5df7431a671a75b118ccc0d004"
+  },
+  "status": "owner_extend_epochs_40_to_80",
+  "teacher_module_sha256": "sha256:57c0d03e15f4bc4d2357f7f4e24cd736238a4e5df7431a671a75b118ccc0d004",
+  "updated_at_utc": "2026-08-06T16:09:51.321684+00:00"
+}

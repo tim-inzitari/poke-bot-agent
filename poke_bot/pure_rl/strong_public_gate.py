@@ -1,9 +1,9 @@
 """Exact strong-public specialist gate contract and aggregation.
 
 The established eight public opponents plus every frozen completed specialist
-are the active gate. Frozen specialists are S+ and count in the S-tier safety
-mean. The original four baselines are a separately audited, zero-weight
-research control.
+are the active gate. Frozen specialists at S+ and above count in the S-tier
+safety mean and premium individual-floor check. The original four baselines
+are a separately audited, zero-weight research control.
 """
 
 from __future__ import annotations
@@ -22,6 +22,29 @@ GATE_RESULT_SCHEMA = "poke_bot.public_agent_gate_result/v1"
 LEGACY_ORIGINAL_FOUR = frozenset(
     {"iono", "dragapult-ex", "mega-abomasnow-ex", "mega-lucario-ex"}
 )
+S_TIER_TIERS = frozenset({"S", "S+", "S++"})
+PREMIUM_TIERS = frozenset({"S+", "S++"})
+R192_SPLUSPLUS_SEMANTICS_KEY = "exact_additional_splusplus_specialist"
+R192_MARNIE_H10_OPPONENT_ID = (
+    "specialist-marnie-final-format-h10-f20efb20f5c3"
+)
+R192_MARNIE_H10_CHECKPOINT_DIGEST = (
+    "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381"
+)
+R192_MARNIE_H10_CONTENT_DIGEST = (
+    "sha256:f7c25cfd0bba674ceb4c2156a6e2fef87a3ff9effc74ed41b33fbb17fd627787"
+)
+R192_HISTORICAL_MARNIE_OPPONENT_ID = (
+    "specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98"
+)
+R192_MARNIE_SPLUSPLUS_SEMANTICS = {
+    "opponent_id": R192_MARNIE_H10_OPPONENT_ID,
+    "checkpoint_digest": R192_MARNIE_H10_CHECKPOINT_DIGEST,
+    "content_digest": R192_MARNIE_H10_CONTENT_DIGEST,
+    "tier": "S++",
+    "weight": 4.0,
+    "strong_public_practice_floor_games": 1024,
+}
 
 
 def materialize_fallback_gate_contract(
@@ -90,6 +113,58 @@ def materialize_fallback_gate_contract(
     derived["activated_fallback_transition"] = copy.deepcopy(fallback)
     derived.pop("fallback_transition", None)
     return derived
+
+
+def _validate_r192_marnie_splusplus_roster(
+    *,
+    roster: list[dict[str, Any]],
+    semantics: dict[str, Any],
+) -> None:
+    """Authorize S++ only for the checksum-bound additional r192 Marnie row."""
+
+    splusplus_rows = [row for row in roster if row.get("tier") == "S++"]
+    binding = semantics.get(R192_SPLUSPLUS_SEMANTICS_KEY)
+    if binding is None and not splusplus_rows:
+        return
+    if (
+        binding != R192_MARNIE_SPLUSPLUS_SEMANTICS
+        or type(
+            dict(binding).get("strong_public_practice_floor_games")
+        ) is not int
+        or len(splusplus_rows) != 1
+    ):
+        raise ValueError("invalid exact additional S++ specialist semantics")
+
+    h10 = splusplus_rows[0]
+    historical = next(
+        (
+            row
+            for row in roster
+            if row.get("opponent_id") == R192_HISTORICAL_MARNIE_OPPONENT_ID
+        ),
+        None,
+    )
+    if (
+        h10.get("opponent_id") != R192_MARNIE_H10_OPPONENT_ID
+        or h10.get("content_digest") != R192_MARNIE_H10_CONTENT_DIGEST
+        or h10.get("frozen_checkpoint_digest")
+        != R192_MARNIE_H10_CHECKPOINT_DIGEST
+        or h10.get("frozen_specialist") is not True
+        or (h10.get("tier"), float(h10.get("weight") or 0.0)) != ("S++", 4.0)
+        or h10.get("strong_public_practice_floor_games") != 1024
+        or type(h10.get("strong_public_practice_floor_games")) is not int
+        or not isinstance(historical, dict)
+        or historical.get("frozen_specialist") is not True
+        or not str(historical.get("content_digest") or "")
+        or historical.get("content_digest") == R192_MARNIE_H10_CONTENT_DIGEST
+        or any(
+            (row.get("tier"), float(row.get("weight") or 0.0)) != ("S+", 2.0)
+            for row in roster
+            if row.get("frozen_specialist") is True
+            and row.get("opponent_id") != R192_MARNIE_H10_OPPONENT_ID
+        )
+    ):
+        raise ValueError("invalid exact additional S++ specialist roster")
 
 
 def load_active_gate_contract(path: Path) -> dict[str, Any]:
@@ -184,6 +259,9 @@ def load_active_gate_contract(path: Path) -> dict[str, Any]:
         raise ValueError("research controls must be exact, both-seat, and zero-weight")
 
     semantics = contract.get("active_gate_semantics") or {}
+    if not isinstance(semantics, dict):
+        raise ValueError("active_gate_semantics must be an object")
+    _validate_r192_marnie_splusplus_roster(roster=roster, semantics=semantics)
     if semantics and (
         int(semantics.get("gate_roster_size") or 0) != len(roster)
         or int(semantics.get("games_per_opponent") or 0) != games_per_opponent
@@ -433,13 +511,40 @@ def _s_plus_floor_check(
     allowance = int(criteria.get("s_plus_below_floor_allowance", 0))
     if not 0.0 <= floor <= 1.0 or allowance < 0:
         raise ValueError("invalid S+ matchup floor contract")
+    # Keep the established result-field names for compatibility, while treating
+    # S++ as the same premium floor class as S+.
     below = sorted(
         str(row["opponent_id"])
         for row in roster
-        if row.get("tier") == "S+"
+        if row.get("tier") in PREMIUM_TIERS
         and float(by_id[str(row["opponent_id"])]["wr"]) < floor
     )
     return len(below) <= allowance, below, floor, allowance
+
+
+def _s_tier_mean(
+    roster: list[dict[str, Any]],
+    by_id: dict[str, dict[str, Any]],
+    *,
+    fallback: float,
+) -> float:
+    """Return the tier-S-or-higher weighted matchup mean.
+
+    Gate weights already determine the primary strength metric.  Preserve that
+    meaning for the S-tier safety metric so an explicit S++/4.0 opponent has
+    its declared premium influence rather than being silently flattened.
+    """
+
+    s_rows = [row for row in roster if row.get("tier") in S_TIER_TIERS]
+    if not s_rows:
+        return fallback
+    total_weight = sum(float(row["weight"]) for row in s_rows)
+    if total_weight <= 0.0:
+        raise ValueError("S-tier opponents must have positive total weight")
+    return sum(
+        float(by_id[str(row["opponent_id"])]["wr"]) * float(row["weight"])
+        for row in s_rows
+    ) / total_weight
 
 
 def build_active_gate_result(
@@ -483,16 +588,7 @@ def build_active_gate_result(
     else:
         weighted_wr = lower = upper = 0.0
     by_id = {str(row["opponent_id"]): row for row in matchups}
-    s_ids = [
-        str(row["opponent_id"])
-        for row in roster
-        if row.get("tier") in {"S", "S+"}
-    ]
-    s_mean = (
-        statistics.fmean(float(by_id[key]["wr"]) for key in s_ids)
-        if s_ids
-        else weighted_wr
-    )
+    s_mean = _s_tier_mean(roster, by_id, fallback=weighted_wr)
     minimum_wr = min((float(row["wr"]) for row in matchups), default=0.0)
     s_plus_ok, s_plus_below, s_plus_floor, s_plus_allowance = (
         _s_plus_floor_check(roster, by_id, criteria)
@@ -619,12 +715,7 @@ def build_strong_public_gate_result(
     else:
         weighted_wr = lower = upper = 0.0
     by_id = {str(row["opponent_id"]): row for row in matchups}
-    s_ids = [
-        str(row["opponent_id"])
-        for row in roster
-        if row.get("tier") in {"S", "S+"}
-    ]
-    s_mean = statistics.fmean(float(by_id[key]["wr"]) for key in s_ids)
+    s_mean = _s_tier_mean(roster, by_id, fallback=weighted_wr)
     minimum_wr = min(float(row["wr"]) for row in matchups)
     s_plus_ok, s_plus_below, s_plus_floor, s_plus_allowance = (
         _s_plus_floor_check(roster, by_id, criteria)

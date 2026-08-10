@@ -1,0 +1,99 @@
+{
+  "schema": "poke_bot.replay_model_inspector_provenance/v1",
+  "version": 1,
+  "generated_at_utc": "2026-08-07T22:00:00Z",
+  "records": [
+    {
+      "submission_id": 55315274,
+      "status": "verified",
+      "label": "alakazam training milestone iter 0 copy 1/1 first 7480d81c54b1",
+      "identity": {
+        "label": {
+          "value": "alakazam training milestone iter 0 copy 1/1 first 7480d81c54b1",
+          "availability": "available",
+          "unavailable_reason": null,
+          "evidence": [
+            {
+              "path": "/home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json",
+              "sha256": "sha256:01862af5d4e43b82472e8cc3a473796a06b8087c53386e489eb24cc7d8e502b3",
+              "pointer": "/queue/30",
+              "role": "evidence",
+              "key": "label"
+            }
+          ]
+        }
+      },
+      "checkpoint": {
+        "path": "/data/checkpoints/model.7480d81c54b1b989.pt",
+        "sha256": "sha256:7480d81c54b1b98955108401fc04c82e93b6afe626a70c1b52fd467cc0cb704b"
+      },
+      "bundle": {
+        "path": "/data/inspector/artifacts/bundles/sha256-335d91c0f3f239d885c153a154531c0a43f33a9199e63a285be15deed55c0c5b/submission.tar.gz",
+        "sha256": "sha256:335d91c0f3f239d885c153a154531c0a43f33a9199e63a285be15deed55c0c5b"
+      },
+      "runtime_package": {
+        "path": "/data/inspector/artifacts/bundles/sha256-335d91c0f3f239d885c153a154531c0a43f33a9199e63a285be15deed55c0c5b/submission.tar.gz",
+        "sha256": "sha256:335d91c0f3f239d885c153a154531c0a43f33a9199e63a285be15deed55c0c5b"
+      },
+      "runtime_parity_receipt": {
+        "path": "/data/inspector/provenance/runtime-parity-55315274-r176.json",
+        "sha256": "sha256:843bfcffb9c30f7f148ece04590a231bb450737deef326787b8945cb51d35669"
+      },
+      "matchup_tree": {
+        "path": "/data/submitted-runtime/matchup_tree.json",
+        "sha256": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588"
+      },
+      "replay": {
+        "games": [],
+        "game_count": 0,
+        "available_game_count": 0
+      }
+    },
+    {
+      "submission_id": 55324802,
+      "status": "verified",
+      "label": "alakazam training milestone iter 0 copy 2/2 first 7480d81c54b1",
+      "identity": {
+        "label": {
+          "value": "alakazam training milestone iter 0 copy 2/2 first 7480d81c54b1",
+          "availability": "available",
+          "unavailable_reason": null,
+          "evidence": [
+            {
+              "path": "/home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json",
+              "sha256": "sha256:01862af5d4e43b82472e8cc3a473796a06b8087c53386e489eb24cc7d8e502b3",
+              "pointer": "/queue/31",
+              "role": "evidence",
+              "key": "label"
+            }
+          ]
+        }
+      },
+      "checkpoint": {
+        "path": "/data/checkpoints/model.7480d81c54b1b989.pt",
+        "sha256": "sha256:7480d81c54b1b98955108401fc04c82e93b6afe626a70c1b52fd467cc0cb704b"
+      },
+      "bundle": {
+        "path": "/data/inspector/artifacts/bundles/sha256-335d91c0f3f239d885c153a154531c0a43f33a9199e63a285be15deed55c0c5b/submission.tar.gz",
+        "sha256": "sha256:335d91c0f3f239d885c153a154531c0a43f33a9199e63a285be15deed55c0c5b"
+      },
+      "runtime_package": {
+        "path": "/data/inspector/artifacts/bundles/sha256-335d91c0f3f239d885c153a154531c0a43f33a9199e63a285be15deed55c0c5b/submission.tar.gz",
+        "sha256": "sha256:335d91c0f3f239d885c153a154531c0a43f33a9199e63a285be15deed55c0c5b"
+      },
+      "runtime_parity_receipt": {
+        "path": "/data/inspector/provenance/runtime-parity-55324802-r176.json",
+        "sha256": "sha256:c7a5684727d35e5a3c5195e4aa21df596f87e07d8a318a8aa42cdbbe57067298"
+      },
+      "matchup_tree": {
+        "path": "/data/submitted-runtime/matchup_tree.json",
+        "sha256": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588"
+      },
+      "replay": {
+        "games": [],
+        "game_count": 0,
+        "available_game_count": 0
+      }
+    }
+  ]
+}

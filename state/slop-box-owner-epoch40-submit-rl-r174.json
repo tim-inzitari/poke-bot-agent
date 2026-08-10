@@ -1,0 +1,37 @@
+{
+  "schema": "poke_bot.slop_box_owner_epoch40_submit_rl_r174/v1",
+  "goal_revision": 174,
+  "created_at_utc": "2026-08-06T21:40:00Z",
+  "status": "armed_watching_live_ce",
+  "agent": "7bc394c0",
+  "directive": {
+    "cap_outer_epochs": 40,
+    "after_epoch40": ["kaggle_submit_first_if_allowed_cox_chao_55188658", "self_play_public_mix_rl"],
+    "do_not_kill_mid_epoch": true,
+    "prefer_systemd_stop_at_boundary": true,
+    "do_not_restart_now_to_change_max_epochs": true,
+    "rl_hold_until_preflight": true,
+    "no_crustle_deletes": true
+  },
+  "live": {
+    "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+    "MainPID_at_arm": 1706695,
+    "orchestrator": "scripts/watch_slop_box_epoch40_submit_rl_r174.py",
+    "progress_receipt": "outputs/state/slop-box-epoch40-orchestrator-progress-r174.json"
+  },
+  "kaggle": {
+    "preference": "first_if_allowed",
+    "deck_lineage_submission_id": 55188658,
+    "deck_csv": "/home/inzi/poke-bot-agent/outputs/submissions/slop-box-h10-rtp-cox-chao-55188658/pinned-teal-mask-ogerpon-ex.deck.csv"
+  },
+  "adapters": {
+    "ce_current_run_n_matchup_adapter_rows": 0,
+    "reason": "relaunch argv omitted --expert-matchup-adapter-*; marked corpus ready (receipt ca157f97…)",
+    "staged_for_rl_and_next_ce_resume": true,
+    "marked_corpus": "outputs/bootstrap/slop-box-h10-rtp/expert-matchup-marked-selfplay-equiv-r171"
+  },
+  "heads_audit_at_epoch5": {
+    "all_heads_training": false,
+    "summary": "Primary policy/value/aux/combo/setup learning; six expanded strategic heads present but weight=0 / gradient_enabled=false this epoch (schedule shadow)"
+  }
+}

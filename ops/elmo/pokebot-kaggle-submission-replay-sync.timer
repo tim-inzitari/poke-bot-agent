@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly-on-the-hour Kaggle submission-replay archive sync on Elmo
+
+[Timer]
+OnCalendar=hourly
+AccuracySec=1min
+Persistent=true
+Unit=pokebot-kaggle-submission-replay-sync.service
+
+[Install]
+WantedBy=timers.target

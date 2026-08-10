@@ -25,6 +25,7 @@ from poke_bot.model import (
     SETUP_BOARD_OUTCOME_HEAD_OUTPUTS,
     build_model,
 )
+from poke_bot.strategic_losses import guide_pairwise_route_ranking_loss
 from poke_bot.train import load_model_from_checkpoint
 
 
@@ -35,6 +36,7 @@ def _cfg(
     fusion_runtime: bool = False,
     setup_board_outcome: bool = False,
     combo_state: bool = False,
+    combo_state_route_enabled: bool = True,
     dedicated_routes: bool = False,
     dedicated_routes_runtime: bool = False,
     typed_output_centered_routes: bool = False,
@@ -54,6 +56,7 @@ def _cfg(
         expanded_heads_enabled=enabled,
         setup_board_outcome_head_enabled=setup_board_outcome,
         combo_state_head_enabled=combo_state,
+        combo_state_route_enabled=combo_state_route_enabled,
         decision_fusion_enabled=fusion,
         decision_fusion_runtime_enabled=fusion_runtime,
         decision_fusion_dedicated_routes_enabled=dedicated_routes,
@@ -79,6 +82,7 @@ def _model(
     fusion_runtime: bool = False,
     setup_board_outcome: bool = False,
     combo_state: bool = False,
+    combo_state_route_enabled: bool = True,
     dedicated_routes: bool = False,
     dedicated_routes_runtime: bool = False,
     typed_output_centered_routes: bool = False,
@@ -91,6 +95,7 @@ def _model(
             fusion_runtime=fusion_runtime,
             setup_board_outcome=setup_board_outcome,
             combo_state=combo_state,
+            combo_state_route_enabled=combo_state_route_enabled,
             dedicated_routes=dedicated_routes,
             dedicated_routes_runtime=dedicated_routes_runtime,
             typed_output_centered_routes=typed_output_centered_routes,
@@ -161,6 +166,109 @@ def test_slowking_combo_state_head_has_exact_scoped_capacity_and_route() -> None
     )
     option_hidden = torch.randn(2, 3, 16)
     assert model.combo_state_logits(option_hidden).shape == (2, 3, 32)
+
+
+def test_combo_route_gate_keeps_tensors_but_excludes_policy_and_guide_gradients() -> None:
+    """An H10-compatible combo module may be physically present but inactive."""
+
+    model = _model(
+        enabled=True,
+        fusion=True,
+        fusion_runtime=True,
+        setup_board_outcome=True,
+        combo_state=True,
+        combo_state_route_enabled=False,
+        dedicated_routes=True,
+        dedicated_routes_runtime=True,
+        typed_output_centered_routes=True,
+    )
+    fusion = model.decision_fusion
+    assert fusion is not None
+    assert model.combo_state_head is not None
+    assert model.combo_state_route_enabled is False
+    # The architecture (including the V3 reliability scalar) stays loadable.
+    assert "combo_state" in fusion.dedicated_routes
+    assert "combo_state" in fusion.dedicated_route_log_reliability
+    assert any(
+        key.startswith("combo_state_head.") for key in model.state_dict()
+    )
+    assert any(
+        key.startswith("decision_fusion.dedicated_routes.combo_state.")
+        for key in model.state_dict()
+    )
+    assert (
+        "decision_fusion.dedicated_route_log_reliability.combo_state"
+        in model.state_dict()
+    )
+
+    assert "combo_state" in fusion.required_heads
+    assert "combo_state" not in fusion.active_required_heads
+    fusion_inventory = model.decision_fusion_inventory()["dedicated_routes"]
+    assert "combo_state" in fusion_inventory["route_names"]
+    assert "combo_state" not in fusion_inventory["active_route_names"]
+    assert fusion_inventory["disabled_route_names"] == ["combo_state"]
+    assert fusion_inventory["combo_state_route_enabled"] is False
+    heads_inventory = model.expanded_head_inventory()
+    assert COMBO_STATE_HEAD_NAME in heads_inventory["runtime_disabled_heads"]
+    assert COMBO_STATE_HEAD_NAME not in heads_inventory["runtime_enabled_heads"]
+
+    # Make active routes observably live before constructing either policy or
+    # directional-guide autograd graphs.
+    model.train()
+    with torch.no_grad():
+        for name, route in fusion.dedicated_routes.items():
+            if name == "combo_state":
+                continue
+            route.network[-1].weight.fill_(0.05)
+            route.network[-1].bias.zero_()
+    option_hidden = torch.randn(2, 4, model.d_model)
+    state_vec = torch.randn(2, model.d_model)
+    state_sources, option_sources = model.decision_fusion_sources(
+        option_hidden,
+        state_vec,
+    )
+    assert "combo_state" not in option_sources
+    route_deltas = fusion.dedicated_route_deltas(
+        option_hidden,
+        state_sources=state_sources,
+        option_sources=option_sources,
+    )
+    assert "combo_state" not in route_deltas
+    guide_loss, guide_metrics = guide_pairwise_route_ranking_loss(
+        route_deltas=route_deltas,
+        guide_target_indices=torch.tensor([0, 1]),
+        guide_confidences=torch.ones(2),
+        option_counts=torch.tensor([4, 4]),
+    )
+    assert "combo_state" not in guide_metrics["heads"]
+
+    # With combo's direct loss at zero, an ordinary policy plus directional
+    # guide update must leave all combo tensors without a gradient.
+    logits = model.decode_options(
+        [_options(4), _options(4)],
+        torch.randn(2, features.NUM_BOARD_TOKENS, model.d_model),
+        torch.randn(2, model.d_model),
+        n_options=[4, 4],
+    )
+    (
+        torch.nn.functional.cross_entropy(logits, torch.tensor([0, 1]))
+        + guide_loss
+    ).backward()
+    combo_parameters = (
+        *model.combo_state_head.parameters(),
+        *fusion.dedicated_routes["combo_state"].parameters(),
+        fusion.dedicated_route_log_reliability["combo_state"],
+    )
+    assert all(
+        parameter.grad is None
+        or not bool(torch.count_nonzero(parameter.grad).item())
+        for parameter in combo_parameters
+    )
+    assert any(
+        parameter.grad is not None
+        and bool(torch.count_nonzero(parameter.grad).item())
+        for parameter in fusion.dedicated_routes["action_q"].parameters()
+    )
 
 
 def test_expanded_heads_are_strictly_opt_in() -> None:

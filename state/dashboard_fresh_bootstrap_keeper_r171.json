@@ -1,0 +1,25 @@
+{
+  "schema": "poke_bot.dashboard_health_loop_resident/v1",
+  "updated_at_utc": "2026-08-06T21:47:44Z",
+  "loop_pid": 12301,
+  "override_keeper_pid": 12297,
+  "health15_pid": 12301,
+  "legacy_ce_oriented_loop_pid": 83940,
+  "legacy_note": "83940 still ticks but prompt mentions continue60 CE; corrected fresh-bootstrap keepers supersede for bind truth",
+  "loop_alive": true,
+  "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+  "MainPID": 1706695,
+  "run_dir": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_slop_box_h10_rtp_fresh_r171",
+  "log": "/home/inzi/poke-bot-agent/outputs/final_format_slop_box_h10_rtp/logs/bootstrap-fresh-r171.log",
+  "override": "/Users/tsinzitari/pokebot-dashboard/v1/local_training_override.json",
+  "forbid": [
+    "CE intensify",
+    "chao-hard",
+    "ce_intensify"
+  ],
+  "trainer_restarted": false,
+  "exit_policy": "stay_resident_until_user_stops",
+  "legacy_stopped": true,
+  "legacy_stop_method": "SIGTERM exact PID after identity match AGENT_LOOP_TICK_dashboard_health+continue60 CE; no launchd unit",
+  "legacy_stopped_at_utc": "2026-08-06T21:48:21Z"
+}

@@ -1,0 +1,146 @@
+{
+  "schema": "poke_bot.alakazam_gpu_turn_planner_r200/v1",
+  "owner_decision_revision": 200,
+  "recorded_at_utc": "2026-08-10T14:03:37Z",
+  "status": "superseded_before_implementation_by_revision_201",
+  "owner_intent": "improve RTP with a separately versioned conservative GPU turn-planning strategy",
+  "supersession": {
+    "owner_decision_revision": 201,
+    "recorded_at_utc": "2026-08-10T14:10:43Z",
+    "reason": "owner clarified that the planner must cover one full turn with multiple atomic steps, not one decision step",
+    "module_candidate_service_or_runtime_implemented": false,
+    "authority_activated": false,
+    "preserve_as_design_audit": true,
+    "implementation_under_revision_200_allowed": false
+  },
+  "frozen_predecessors": {
+    "r198_contract": {
+      "path": "state/alakazam-rtp-realignment-r197.json",
+      "sha256": "sha256:ea032624be23341fbae6e0b9b9debf6695a7a3b5a51613cf7294248bdba39c05",
+      "owner_decision_revision": 198,
+      "must_remain_byte_identical": true
+    },
+    "r199_continuation": {
+      "path": "state/alakazam-rtp-continuation-r199.json",
+      "sha256": "sha256:9de3cce02940bec190dd5d7028036e6943511889c85164d165a40c979d9f7869",
+      "owner_decision_revision": 199,
+      "must_remain_byte_identical": true
+    },
+    "attempt10": {
+      "evaluation_id": "r198-three-arm-6a0d99cb02d5ca02318f8725c6523517fee1b9a97d76b05aa6bb0fddfc680105",
+      "invocation_id": "1aaed5eeae4349d78c27a29d80bd2441",
+      "output_root": "/home/inzi/poke-bot-agent/outputs/rtp_fleet/alakazam-r198-three-arm-eval-attempt10",
+      "must_continue_unchanged_to_terminal_or_fail_closed": true,
+      "preemption_restart_retarget_or_retry_allowed": false
+    }
+  },
+  "strategy": {
+    "strategy_id": "conservative_batched_one_turn_complete_action_gpu_reranker",
+    "separately_versioned_from_recursive_rtp": true,
+    "decision_scope": "current_decision_only",
+    "complete_ordered_actions_required": true,
+    "max_complete_ordered_actions": 1024,
+    "stale_multi_action_program_execution_allowed": false,
+    "recursive_program_executor_used": false,
+    "base_policy_action_is_default": true,
+    "base_policy_tie_break_is_stable": true,
+    "over_cap_behavior": "retain_base_factorized_policy_and_record_planner_ineligible",
+    "planner_override_without_all_gates_allowed": false,
+    "planner_override_gates": [
+      "trusted_action_space_bound_counterfactual_training_receipt",
+      "source_excluded_heldout_ranking_evidence",
+      "calibrated_value_and_uncertainty_receipt",
+      "in_distribution_support_gate",
+      "positive_value_margin_after_compute_cost",
+      "exact_action_legality",
+      "latency_and_reliability_gate"
+    ]
+  },
+  "gpu_execution_contract": {
+    "score_all_current_legal_actions_in_one_batch_or_equivalent_microbatches": true,
+    "full_batch_and_microbatch_numerical_equivalence_required": true,
+    "candidate_order_invariance_required": true,
+    "cpu_reference_parity_required": true,
+    "autograd_during_inference_allowed": false,
+    "candidate_state_cache_or_rng_mutation_allowed": false,
+    "bounded_memory_receipt_required": true,
+    "measured_neural_pass_budget_receipt_required": true,
+    "absolute_neural_pass_ceiling": 256,
+    "automatic_budget_escalation_allowed": false,
+    "attempt10_gpu_or_service_interference_allowed": false
+  },
+  "counterfactual_target_contract": {
+    "current_r197_trusted_candidate_return_target_count": 0,
+    "current_r197_trusted_candidate_ranking_pair_count": 0,
+    "current_r197_trusted_candidate_calibration_target_count": 0,
+    "current_r197_targets_may_be_relabelled_or_fabricated": false,
+    "new_target_schema_and_evaluator_receipt_required": true,
+    "action_space_fingerprint_binding_required": true,
+    "paired_common_random_numbers_across_candidate_actions_required": true,
+    "source_excluded_whole_game_split_required": true,
+    "evaluation_or_kaggle_games_training_eligible": false,
+    "model_input_must_be_policy_visible_information_only": true,
+    "hidden_opponent_state_as_model_input_allowed": false,
+    "simulator_internal_state_may_only_drive_honest_outcome_labels": true,
+    "unavailable_or_partial_targets_behavior": "mask_and_retain_base_policy_authority",
+    "complete_candidate_target_coverage_required_for_action_authority": true
+  },
+  "implementation_boundary": {
+    "new_module_and_unit_tests_authorized": false,
+    "offline_cpu_reference_tests_authorized": false,
+    "superseded_design_implementation_allowed": false,
+    "local_or_leased_gpu_benchmark_requires_noninterference_preflight": true,
+    "active_attempt10_source_or_runtime_edit_allowed": false,
+    "active_attempt10_output_write_allowed": false,
+    "managed_service_control_authorized": false,
+    "new_content_addressed_source_snapshot_required": true,
+    "new_sidecar_and_candidate_identity_required": true,
+    "new_evaluation_identity_and_output_root_required": true,
+    "in_place_retry_or_reuse_allowed": false
+  },
+  "required_evidence_before_any_runtime_attachment": {
+    "unit_and_property_tests": [
+      "base_policy_exact_parity_without_receipted_calibration",
+      "complete_action_order_permutation_invariance",
+      "full_batch_microbatch_and_cpu_score_parity",
+      "empty_action_and_all_legal_action_shapes",
+      "over_cap_base_policy_fallback",
+      "no_state_cache_or_rng_mutation",
+      "nan_inf_shape_and_digest_fail_closed",
+      "no_override_without_support_uncertainty_and_margin"
+    ],
+    "offline_receipts": [
+      "trusted_counterfactual_target_generation",
+      "whole_game_source_excluded_split",
+      "heldout_candidate_ranking_and_calibration",
+      "gpu_memory_latency_and_pass_budget",
+      "artifact_and_source_closure"
+    ],
+    "shadow_evaluation_arms": [
+      "no_rtp",
+      "direct_bridge_recursive_disabled",
+      "recursive_rtp_r198_evidence_only",
+      "conservative_gpu_one_turn_planner"
+    ],
+    "true_rng_matched_cells_required": true,
+    "zero_new_illegal_actions_or_forfeits_required": true,
+    "source_excluded_gpu_planner_over_direct_improvement_required": true,
+    "owner_latency_slo_required_before_promotion": true,
+    "separate_immutable_promotion_receipt_required": true,
+    "owner_performance_or_abandonment_threshold_invented": false
+  },
+  "authority": {
+    "training_service_start_authorized": false,
+    "evaluation_service_start_authorized": false,
+    "replay_collection_authorized": false,
+    "serving_eligible": false,
+    "action_authority_enabled": false,
+    "selector_change_authorized": false,
+    "checkpoint_publication_authorized": false,
+    "kaggle_submission_authorized": false,
+    "promotion_authorized": false,
+    "self_promotion_authorized": false,
+    "r175_restart_authorized": false,
+    "iteration_21_collection_authorized": false
+  }
+}

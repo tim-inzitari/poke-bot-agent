@@ -42,6 +42,9 @@ def _spawn_load_checkpoint(path: str) -> dict[str, object]:
         "combo_state_head_enabled": bool(
             loaded.cfg.combo_state_head_enabled
         ),
+        "combo_state_route_enabled": bool(
+            loaded.cfg.combo_state_route_enabled
+        ),
         "decision_fusion_dedicated_routes_enabled": bool(
             loaded.cfg.decision_fusion_dedicated_routes_enabled
         ),
@@ -71,6 +74,100 @@ def test_checkpoint_reconstructs_saved_model_config(tmp_path: Path) -> None:
     assert loaded.aux_head[-1].out_features == 3
     assert loaded.cfg.decision_context == "history"
     assert checkpoint.assert_trusted_policy_checkpoint(path)["decision_context"] == "history"
+
+
+def test_combo_route_env_override_keeps_h10_compatible_checkpoint_tensors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("POKEBOT_COMBO_STATE_ROUTE_ENABLED", raising=False)
+    cfg = _config()
+    cfg.expanded_heads_enabled = True
+    cfg.setup_board_outcome_head_enabled = True
+    cfg.combo_state_head_enabled = True
+    cfg.combo_state_route_enabled = True
+    cfg.decision_fusion_enabled = True
+    cfg.decision_fusion_runtime_enabled = True
+    cfg.decision_fusion_dedicated_routes_enabled = True
+    cfg.decision_fusion_dedicated_routes_runtime_enabled = True
+    cfg.decision_fusion_typed_output_centered_routes_enabled = True
+    model = build_model(
+        cfg,
+        aux_archetype_classes=3,
+        encoder_vocab=37,
+        decoder_vocab=41,
+        belief_card_vocab=32,
+    )
+    payload = checkpoint.build_checkpoint(model=model, model_config=cfg)
+    # This field was added after the existing H10 checkpoint family.
+    payload["model_config"].pop("combo_state_route_enabled")
+    payload["archetype_id"] = "alakazam"
+    path = checkpoint.atomic_torch_save(payload, tmp_path / "h10-combo.pt")
+
+    historical_default = load_model_from_checkpoint(path, device=torch.device("cpu"))
+    assert historical_default.cfg.combo_state_route_enabled is True
+
+    monkeypatch.setenv("POKEBOT_COMBO_STATE_ROUTE_ENABLED", "0")
+    monkeypatch.setenv("POKEBOT_COMBO_STATE_ROUTE_SPECIALIST", "alakazam")
+    route_disabled = load_model_from_checkpoint(path, device=torch.device("cpu"))
+    assert route_disabled.cfg.combo_state_head_enabled is True
+    assert route_disabled.cfg.combo_state_route_enabled is False
+    assert route_disabled.combo_state_head is not None
+    assert route_disabled.decision_fusion is not None
+    assert "combo_state" in route_disabled.decision_fusion.dedicated_routes
+    assert "combo_state" in route_disabled.decision_fusion.required_heads
+    assert (
+        "combo_state"
+        not in route_disabled.decision_fusion.active_required_heads
+    )
+    state = route_disabled.state_dict()
+    assert any(key.startswith("combo_state_head.") for key in state)
+    assert any(
+        key.startswith("decision_fusion.dedicated_routes.combo_state.")
+        for key in state
+    )
+    assert (
+        "decision_fusion.dedicated_route_log_reliability.combo_state" in state
+    )
+
+    payload["archetype_id"] = "marnie-s-grimmsnarl-ex"
+    other_path = checkpoint.atomic_torch_save(
+        payload,
+        tmp_path / "h10-combo-opponent.pt",
+    )
+    scoped_opponent = load_model_from_checkpoint(
+        other_path,
+        device=torch.device("cpu"),
+    )
+    assert scoped_opponent.cfg.combo_state_route_enabled is True
+
+    # The immutable r175 seed predates archetype_id.  Its route override is
+    # therefore authorized only by an exact checkpoint digest; a different
+    # unlabeled checkpoint remains on its serialized/default route behavior.
+    payload["archetype_id"] = None
+    unlabeled_path = checkpoint.atomic_torch_save(
+        payload,
+        tmp_path / "h10-combo-unlabeled.pt",
+    )
+    monkeypatch.setenv(
+        "POKEBOT_COMBO_STATE_ROUTE_CHECKPOINT_DIGEST",
+        checkpoint.checkpoint_digest(unlabeled_path),
+    )
+    digest_bound = load_model_from_checkpoint(
+        unlabeled_path,
+        device=torch.device("cpu"),
+    )
+    assert digest_bound.cfg.combo_state_route_enabled is False
+
+    monkeypatch.setenv(
+        "POKEBOT_COMBO_STATE_ROUTE_CHECKPOINT_DIGEST",
+        "sha256:" + ("0" * 64),
+    )
+    digest_mismatch = load_model_from_checkpoint(
+        unlabeled_path,
+        device=torch.device("cpu"),
+    )
+    assert digest_mismatch.cfg.combo_state_route_enabled is True
 
 
 def test_stateless_policy_checkpoint_is_trusted_without_oracle_state(
@@ -170,6 +267,7 @@ def test_historical_checkpoint_ignores_ambient_future_head_flags(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("POKEBOT_COMBO_STATE_ROUTE_ENABLED", raising=False)
     cfg = _config()
     model = build_model(
         cfg,
@@ -181,6 +279,7 @@ def test_historical_checkpoint_ignores_ambient_future_head_flags(
     for field in (
         "setup_board_outcome_head_enabled",
         "combo_state_head_enabled",
+        "combo_state_route_enabled",
         "decision_fusion_dedicated_routes_enabled",
         "decision_fusion_dedicated_routes_runtime_enabled",
     ):
@@ -202,6 +301,7 @@ def test_historical_checkpoint_ignores_ambient_future_head_flags(
 
     assert result["setup_board_outcome_head_enabled"] is False
     assert result["combo_state_head_enabled"] is False
+    assert result["combo_state_route_enabled"] is True
     assert result["decision_fusion_dedicated_routes_enabled"] is False
     assert (
         result["decision_fusion_dedicated_routes_runtime_enabled"] is False

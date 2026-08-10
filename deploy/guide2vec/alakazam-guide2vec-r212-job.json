@@ -1,0 +1,165 @@
+{
+  "schema": "poke_bot.alakazam_guide2vec_r212_job/v1",
+  "kind": "deployment_local_immutable_job_configuration",
+  "status": "source_snapshot_input_only",
+  "experiment_id": "alakazam-r212-guide2vec-no-mcts",
+  "specialist_id": "alakazam",
+  "owner_contract_reference": {
+    "path": "state/alakazam-guide2vec-no-mcts-bo1000-r212.json",
+    "sha256": "sha256:aa9c7b8158c91d183c092b92bab3047c7bd7af705d539c68cdd3e9c206c0c2b9",
+    "authoritative_for_owner_intent": true,
+    "this_file_is_not_an_owner_contract": true
+  },
+  "frozen_base": {
+    "r195_contract": {
+      "path": "state/alakazam-terminal-expert-bootstrap-no-rtp-submit-r195.json",
+      "sha256": "sha256:e37cf1d3e638c3aed56230c9fa970c61e6c1ed8b4bd3024de259cb9847c31e48"
+    },
+    "submission_id": 55378392,
+    "submission_message": "alakazam training milestone iter 21 copy 1/2 first 261d367e131e NO RTP",
+    "checkpoint": {
+      "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_terminal_expert_bootstrap_no_rtp_r195/checkpoints/expert_before_iter_00021.pt",
+      "sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+      "bytes": 127914385
+    },
+    "model_structure": {
+      "parameter_count": 10750146,
+      "d_model": 96,
+      "max_context": 320
+    },
+    "bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "deck": {
+      "id": "alakazam-owner-rtp-pilot-r175",
+      "path": "decks/archetype-samples/alakazam-owner-rtp-pilot-r175.csv",
+      "cards_sha256": "sha256:660c1274aac19d88c40fd2bb52187f53dc639d944506760e386f2686b91cc247"
+    },
+    "matchup_tree": {
+      "path": "/home/inzi/poke-bot-agent/outputs/submissions/alakazam-terminal-expert-bootstrap-r195-runtime-comparison/pinned-checkpoint-compatible-matchup-tree-v2.json",
+      "sha256": "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe0194c9049"
+    },
+    "runtime_code": {
+      "submission_bundle": {
+        "path": "/home/inzi/poke-bot-agent/outputs/submissions/alakazam-terminal-expert-bootstrap-r195-runtime-comparison/build-no-rtp/submission.tar.gz",
+        "sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145"
+      },
+      "submission_entrypoint": {
+        "member": "./main.py",
+        "sha256": "sha256:02b6ea8b565e0bb66aed14719cc80636c388742d3af40408a3eb458baa4bd8d7"
+      },
+      "public_matchup_router": {
+        "member": "./poke_bot/public_matchup_router.py",
+        "sha256": "sha256:98b1f6cc871ea56f295aaed9c1fbaad46fbe64036f1ae12d2de31f0f787c4a6a"
+      }
+    },
+    "base_model_trainable": false,
+    "base_hidden_state_trainable": false,
+    "base_checkpoint_mutation_allowed": false
+  },
+  "guide_teacher": {
+    "guide_id": "alakazam",
+    "guide_version": "powerful-hand-v1",
+    "guide_contract": {
+      "path": "config/deck_guides/alakazam-final-refresh.yaml",
+      "sha256": "sha256:f2ce4dfc255ec634e76f8b04b943aecebdd95aad5318bbcd7eab369f938d6798"
+    },
+    "teacher_module": {
+      "path": "poke_bot/alakazam_heuristics.py",
+      "sha256": "sha256:c9f8890d5751a70c9a7ce9026545823e92f8384227281f8dba168323d9a13d86"
+    },
+    "source_ready_receipt": {
+      "path": "state/final_format_alakazam_guide_ready_r79.json",
+      "sha256": "sha256:634c9db8bd3ff636c277d0ae2c8b8aa1508b7ac9e66b774da383f30f8ca7df84"
+    }
+  },
+  "source_corpus": {
+    "protected_pointer": {
+      "path": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/alakazam/PROTECTED_EXPERT_CORPUS.json",
+      "sha256": "sha256:e9d9182eea543e7bfe12ad5c2e7a1784fefa4866059ed153965dfffd12c7da1a"
+    },
+    "manifest": {
+      "path": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/alakazam/manifest.json",
+      "sha256": "sha256:3836852129511fdffd2767f6701dcc562d1723bb0c345c3cf5068ad9774b9acb"
+    },
+    "acting_archetype": "alakazam",
+    "acting_seat_only": true,
+    "teacher_compatible_exact_alakazam_deck_required": true,
+    "guide_rows_expected": 3162936,
+    "source_date_start": "2026-07-04",
+    "source_date_end": "2026-07-23",
+    "public_route_reconstruction": {
+      "raw_archive_root": "/home/inzi/poke-bot-agent/data/episodes/raw",
+      "sidecar_manifest": {
+        "path": "/home/inzi/poke-bot-agent/outputs/guide2vec/alakazam-r212-inputs/public-routes-010fd81ca714/r212-public-route-sidecar-manifest-010fd81ca7142a0705c836a9b98ffd058db6d3117998e2b12f2c82efb2101d56.json",
+        "sha256": "sha256:010fd81ca7142a0705c836a9b98ffd058db6d3117998e2b12f2c82efb2101d56"
+      }
+    }
+  },
+  "split": {
+    "schema": "poke_bot.guide2vec_data_split_r212/v1",
+    "builder": "poke_bot.guide2vec_data.build_r212_guide2vec_split",
+    "policy": "fixed_calendar_day_whole_episode",
+    "train_dates": [
+      "2026-07-04",
+      "2026-07-05",
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-08",
+      "2026-07-09",
+      "2026-07-10",
+      "2026-07-11",
+      "2026-07-12",
+      "2026-07-13",
+      "2026-07-14",
+      "2026-07-15",
+      "2026-07-16",
+      "2026-07-17",
+      "2026-07-18",
+      "2026-07-19"
+    ],
+    "validation_dates": [
+      "2026-07-20",
+      "2026-07-21"
+    ],
+    "test_dates": [
+      "2026-07-22",
+      "2026-07-23"
+    ],
+    "heldout_partition": "test",
+    "whole_episode_disjoint": true,
+    "whole_source_day_disjoint": true,
+    "cross_partition_episode_overlap": "fail_closed",
+    "cross_partition_deck_fingerprint": "record_only",
+    "heldout_used_for_model_selection_or_threshold_tuning": false
+  },
+  "training": {
+    "epochs": 5,
+    "seed": 21220260810,
+    "device": "cuda:0",
+    "strategy_id": "frozen_hidden_state_option_conditioned_guide2vec_ranker",
+    "objective": "confidence_weighted_listwise_cross_entropy_over_current_legal_stage_options",
+    "base_model_trainable": false,
+    "only_guide2vec_head_parameters_receive_gradients": true,
+    "parameter_count_min": 100000,
+    "parameter_count_max": 500000,
+    "selection_metric": "validation_confidence_weighted_listwise_cross_entropy",
+    "heldout_teacher_agreement_minimum": 0.9,
+    "heldout_teacher_agreement_scope": "teacher_labeled_legal_stages_only"
+  },
+  "output": {
+    "root": "/home/inzi/poke-bot-agent/outputs/guide2vec/alakazam-r212",
+    "log_path": "/home/inzi/poke-bot-agent/outputs/guide2vec/alakazam-r212/logs/train.log",
+    "candidate_identity": "content_addressed_from_job_source_and_head_state",
+    "candidate_publication": "atomic_no_clobber_content_addressed_child_only",
+    "overwrite_allowed": false,
+    "base_checkpoint_or_submission_mutation_allowed": false
+  },
+  "authority": {
+    "guide2vec_head_gradient_updates_authorized": true,
+    "base_model_gradient_updates_authorized": false,
+    "selector_change_authorized": false,
+    "serving_or_production_action_authority": false,
+    "kaggle_submission_authorized": false,
+    "bo1000_rows_training_eligible": false,
+    "evaluation_or_submission_replay_rows_training_eligible": false
+  }
+}

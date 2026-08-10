@@ -282,6 +282,14 @@ def convert_record(
     # Construct them before selecting the model context window; doing this
     # afterwards silently turns valid events beyond the window into negatives.
     from .blackwell_heads import attach_blackwell_strategy_labels
+    from .slop_box_combo_targets import (
+        attach_slop_box_combo_state_labels,
+        is_slop_box_combo_deck,
+    )
+    from .slowking_combo_targets import (
+        attach_slowking_combo_state_labels,
+        is_exact_slowking_deck,
+    )
     from .strategic_heads import (
         StrategicTargetContractError,
         attach_expanded_strategic_labels,
@@ -302,6 +310,17 @@ def convert_record(
         )
     except StrategicTargetContractError:
         return None, "malformed_strategic_targets", details
+    combo_coverage = None
+    if is_exact_slowking_deck(deck):
+        combo_coverage = attach_slowking_combo_state_labels(
+            original_steps,
+            deck=deck,
+        )
+    elif is_slop_box_combo_deck(deck):
+        combo_coverage = attach_slop_box_combo_state_labels(
+            original_steps,
+            deck=deck,
+        )
 
     start = max(0, len(original_steps) - max_ctx)
     steps = original_steps[start:]
@@ -333,6 +352,11 @@ def convert_record(
 
     target_provenance = dict(record.get("target_provenance") or {})
     target_provenance["expanded_strategic_targets"] = strategic_contract
+    if combo_coverage is not None:
+        if is_exact_slowking_deck(deck):
+            target_provenance["slowking_combo_state_targets"] = combo_coverage
+        else:
+            target_provenance["slop_box_combo_state_targets"] = combo_coverage
     return GameSequence(
         episode_id=str(record.get("episode_id", "")),
         seat=int(record.get("seat", 0)),

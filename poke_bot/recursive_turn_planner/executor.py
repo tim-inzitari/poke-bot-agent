@@ -190,11 +190,24 @@ class PlanExecutor:
                     self.repairs_used += 1
                     self.active_program = repaired_program
                     self.cursor = repaired_program.root
-                    return self.next_action(memory, observations=None)
+                    repaired_step = self.next_action(memory, observations=None)
+                    return PlanStepResult(
+                        action=repaired_step.action,
+                        done=repaired_step.done,
+                        repaired=True,
+                        reason=repaired_step.reason,
+                        observations_applied=repaired_step.observations_applied,
+                        remaining_root=repaired_step.remaining_root,
+                    )
                 return PlanStepResult(
                     action=None,
                     done=True,
-                    repaired=True,
+                    # An illegal extraction can follow sequence validation
+                    # that kept a later legal child while leaving the cursor
+                    # unchanged.  With no callback invocation this is an
+                    # abort, not a repair; callers use the distinction to
+                    # enter their explicit, telemetry-visible replan path.
+                    repaired=repaired,
                     reason="extracted_action_illegal",
                 )
         return PlanStepResult(

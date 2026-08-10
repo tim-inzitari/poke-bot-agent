@@ -14,7 +14,7 @@ import socket
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -107,6 +107,17 @@ FINAL_FORMAT_ALAKAZAM_H10_PROGRESS_STATUS = (
 FINAL_FORMAT_ALAKAZAM_H10_RUN_DIR = (
     ROOT
     / "outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k"
+)
+FINAL_FORMAT_ALAKAZAM_RTP_R175_RUN_DIR = (
+    ROOT / "outputs/pure_rl/final_format_alakazam_rtp_r175_i_v6_8k"
+)
+FINAL_FORMAT_ALAKAZAM_RTP_R175_COMPLETION = (
+    ROOT
+    / "outputs/state/final-format-alakazam-rtp-r175-iter20-completion-v1.json"
+)
+FINAL_FORMAT_ALAKAZAM_RTP_R175_REGISTRATION = (
+    ROOT
+    / "outputs/state/final-format-alakazam-rtp-r175-iter20-registration-v1.json"
 )
 FINAL_FORMAT_ALAKAZAM_H10_REGISTRY = (
     FINAL_FORMAT_ALAKAZAM_ROOT
@@ -4531,11 +4542,24 @@ def final_format_crustle_progress() -> dict[str, Any]:
         if not rl_active:
             last_phase = f"stopped:{last_phase}"
             latest_line = f"STOPPED · last progress: {latest_line or '—'}"
-        phase_fresh_window_s = (
-            20 * 60
-            if progress.get("stage") == "heldout:checkpoint_staging"
-            else 30
-        )
+        stage_name = str(progress.get("stage") or "")
+        if stage_name == "heldout:checkpoint_staging":
+            phase_fresh_window_s = 20 * 60
+        elif stage_name.startswith("collect:"):
+            # Remote public-mix/self-play drains can pause status writes across
+            # multiple slow in-flight games while the managed service stays healthy.
+            rate = progress.get("rate")
+            rate_unit = str(progress.get("rate_unit") or "")
+            if (
+                rate_unit.endswith("/game")
+                and isinstance(rate, (int, float))
+                and float(rate) > 0
+            ):
+                phase_fresh_window_s = max(15 * 60, float(rate) * 12.0)
+            else:
+                phase_fresh_window_s = 15 * 60
+        else:
+            phase_fresh_window_s = 30
         return {
             "available": True,
             "authoritative": True,
@@ -5763,6 +5787,170 @@ def final_format_alakazam_progress() -> dict[str, Any]:
     }
 
 
+def final_format_alakazam_rtp_r175_model_override(
+    active_final_refresh: dict[str, Any],
+) -> dict[str, Any]:
+    """Return the verified full-model projection for the owner r175 RTP loop.
+
+    RTP changes rollout planning, not the learner identity.  The r175 progress
+    projection carries its own checksum-bound checkpoint structure, whereas the
+    ordinary r79 inventory is historical fallback data.  Only replace that
+    fallback when every identity field agrees so an incomplete r175 start can
+    never be presented as a current model.
+    """
+
+    if (
+        active_final_refresh.get("mode") != "final_format_alakazam_rtp_r175_rl"
+        or active_final_refresh.get("specialist_id") != "alakazam"
+    ):
+        return {}
+
+    structure = dict(
+        active_final_refresh.get("structure")
+        or active_final_refresh.get("checkpoint_structure")
+        or {}
+    )
+    checkpoint = (
+        active_final_refresh.get("model_path")
+        or active_final_refresh.get("checkpoint")
+        or structure.get("checkpoint")
+    )
+    digest = (
+        active_final_refresh.get("model_sha256")
+        or active_final_refresh.get("checkpoint_digest")
+        or structure.get("checkpoint_digest")
+    )
+    if digest and not str(digest).startswith("sha256:"):
+        digest = f"sha256:{digest}"
+    model_parameters = int(
+        active_final_refresh.get("model_parameters")
+        or structure.get("model_parameters")
+        or 0
+    )
+    structure_checkpoint = structure.get("checkpoint")
+    structure_digest = structure.get("checkpoint_digest")
+    structure_parameters = int(structure.get("model_parameters") or 0)
+    if (
+        structure.get("verified") is not True
+        or not checkpoint
+        or not digest
+        or model_parameters <= 0
+        or (structure_checkpoint and str(structure_checkpoint) != str(checkpoint))
+        or (structure_digest and str(structure_digest) != str(digest))
+        or (
+            structure_parameters > 0
+            and structure_parameters != model_parameters
+        )
+    ):
+        return {}
+
+    model_config = dict(structure.get("model_config") or {})
+    decision_fusion = dict(structure.get("decision_fusion") or {})
+    expanded_heads = dict(structure.get("expanded_head_training") or {})
+    service = dict(active_final_refresh.get("service") or {})
+    r175_heads: dict[str, dict[str, Any]] = {
+        "policy": {"enabled": True},
+        **{
+            name: {"enabled": True}
+            for name in DECISION_FUSION_REQUIRED_HEADS
+        },
+        "setup_board_outcome": {"enabled": True, "loss_weight": 0.025},
+        "guide_strategic_directional_v2": {
+            "enabled": True,
+            "loss_weight": 0.05,
+            "training_only": True,
+            "action_authority": False,
+        },
+        "combo_state": {
+            "enabled": False,
+            "loss_weight": 0.0,
+            "architecture_present": bool(
+                model_config.get("combo_state_head_enabled")
+            ),
+            "reason": "owner r175 disables combo-state learning",
+        },
+    }
+    decision_fusion.update(
+        {
+            "r175_full_model_training": True,
+            "r175_rtp_enabled": True,
+            "r175_training_heads": [
+                name for name, details in r175_heads.items() if details["enabled"]
+            ],
+            "combo_state_loss_weight": 0.0,
+            "guide_training_only": True,
+        }
+    )
+
+    return {
+        "implementation": "TemporalCabtTransformer",
+        "architecture": "Alakazam RTP r175 H10-I full-model RL",
+        "run": active_final_refresh.get("run"),
+        "profile_id": "H10-I/r175",
+        "profile": {
+            "d_model": model_config.get("d_model"),
+            "n_heads": model_config.get("n_heads"),
+            "spatial_layers": model_config.get("spatial_layers"),
+            "temporal_layers": model_config.get("temporal_layers"),
+            "option_decoder_layers": model_config.get("option_decoder_layers"),
+            "ff_dim": model_config.get("ff_dim"),
+            "max_context": model_config.get("max_context"),
+            "decision_context": model_config.get("decision_context"),
+            "temporal_pos": model_config.get("temporal_pos"),
+            "kv_cache": model_config.get("kv_cache"),
+        },
+        "heads": r175_heads,
+        "trainable_parameters": model_parameters,
+        "active_checkpoint": checkpoint,
+        "active_checkpoint_digest": digest,
+        "parameter_source": active_final_refresh.get("runtime_registry"),
+        "parameter_breakdown": {
+            "optimizer_active_current": model_parameters,
+            "current_non_active": 0,
+            "staged_non_active": 0,
+            "current_checkpoint_total": model_parameters,
+            "staged_architecture_total": model_parameters,
+        },
+        "checkpoint_structure": structure,
+        "dormant_modules": [],
+        "matchup_adapter_v6": {
+            "active": bool(model_config.get("matchup_adapters_enabled")),
+            "format": 6,
+            "physical_slot_capacity": 64,
+        },
+        "expanded_head_training": expanded_heads,
+        "training_schedule": {
+            "phase": active_final_refresh.get("phase") or "collect",
+            "games_per_iteration": 8196,
+            "self_play_games": 1024,
+            "public_mix_games": 7172,
+            "maximum_iterations": int(
+                active_final_refresh.get("iterations_target") or 301
+            ),
+            "guide_loss_weight": 0.05,
+            "setup_board_outcome_loss_weight": 0.025,
+            "combo_state_loss_weight": 0.0,
+            "rtp_enabled": True,
+        },
+        "decision_fusion": decision_fusion,
+        "runtime_identity": {
+            "active_learner": "alakazam-rtp-r175",
+            "runtime_build": "final-format-alakazam-rtp-r175",
+            "runtime_root": str(ROOT),
+            "service_active": service.get("active") is True,
+            "service_state": (
+                f"{service.get('active_state')}/{service.get('sub_state')}"
+            ),
+            "frozen_inference_opponents": [],
+        },
+        "rtp": {
+            "enabled": True,
+            "planner": "recursive_turn_planner",
+            "contract_source": active_final_refresh.get("hard_swap_source"),
+        },
+    }
+
+
 def final_format_alakazam_model_inventory() -> dict[str, Any]:
     """Project the live ordinary checkpoint and validated H10 target."""
 
@@ -6806,6 +6994,13 @@ def system_state() -> dict[str, Any]:
             ) / total_delta
     except (OSError, ValueError, IndexError):
         pass
+    swap_total = mem.get("SwapTotal")
+    swap_free = mem.get("SwapFree")
+    swap_used = (
+        max(0, swap_total - swap_free)
+        if swap_total is not None and swap_free is not None
+        else None
+    )
     return {
         "hostname": socket.gethostname(),
         "cpu_count": os.cpu_count(),
@@ -6815,6 +7010,9 @@ def system_state() -> dict[str, Any]:
         "load_15m": loads[2],
         "memory_total_bytes": mem.get("MemTotal"),
         "memory_available_bytes": mem.get("MemAvailable"),
+        "swap_total_bytes": swap_total,
+        "swap_used_bytes": swap_used,
+        "swap_free_bytes": swap_free,
     }
 
 
@@ -6869,6 +7067,20 @@ def scheduler_queue_state(
         )
     )
     if not matches:
+        # Additive mid_iter dispatch (r124+) logs scheduler=mid_iter /
+        # mid_iter_scheduler=on and never emits endpoint_owned_queues.
+        # That is not the legacy scheduler path.
+        if re.search(
+            r"(?:scheduler=mid_iter\b|mid_iter_scheduler=on\b)",
+            raw,
+        ):
+            return {
+                "available": True,
+                "mode": "mid_iter",
+                "endpoint_owned_queue_contract": False,
+                "dispatch": "additive_mid_iter",
+                "source": str(log_path),
+            }
         return {"available": False, "mode": "legacy_or_starting"}
     latest = matches[-1]
     try:
@@ -8382,6 +8594,1942 @@ def read_json(path: Path) -> dict[str, Any]:
         return value if isinstance(value, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def _r216_number(value: object) -> int | float | None:
+    """Return one finite non-negative telemetry number without coercing junk."""
+
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number) or number < 0:
+        return None
+    return int(number) if number.is_integer() else number
+
+
+def _r216_first_number(source: dict[str, Any], *keys: str) -> int | float | None:
+    for key in keys:
+        value = _r216_number(source.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _r216_timestamp(value: object) -> float | None:
+    """Accept epoch seconds or the ISO timestamps used by evaluation receipts."""
+
+    numeric = _r216_number(value)
+    if numeric is not None:
+        return float(numeric)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+def _r216_merged_payload(raw: dict[str, Any]) -> dict[str, Any]:
+    """Merge common launcher wrappers while keeping top-level fields primary."""
+
+    merged = dict(raw)
+    for key in ("summary", "aggregate", "snapshot", "progress"):
+        nested = raw.get(key)
+        if isinstance(nested, dict):
+            merged = {**nested, **merged}
+    return merged
+
+
+def _r216_progress_tail(path: Path) -> tuple[dict[str, Any], int]:
+    """Read the most recent complete JSONL snapshot without writing the output root."""
+
+    raw = read_tail(path, 2_000_000)
+    if not raw:
+        return {}, 0
+    latest: dict[str, Any] = {}
+    completed_ids: set[str] = set()
+    completed_events = 0
+    for line in raw.splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(value, dict):
+            continue
+        candidate = _r216_merged_payload(value)
+        if candidate:
+            latest = candidate
+        event = str(value.get("event") or value.get("type") or "").lower()
+        is_complete = event in {
+            "game_complete",
+            "game_completed",
+            "completed_game",
+            "result",
+        }
+        if not is_complete:
+            continue
+        game_id = value.get("game_id", value.get("game_index", value.get("game")))
+        if game_id is None:
+            completed_events += 1
+            continue
+        completed_ids.add(str(game_id))
+    return latest, len(completed_ids) or completed_events
+
+
+def _r216_arm_payload(
+    payload: dict[str, Any],
+    aliases: tuple[str, ...],
+) -> dict[str, Any]:
+    for key in aliases:
+        nested = payload.get(key)
+        if isinstance(nested, dict):
+            return nested
+    arms = payload.get("arms")
+    if isinstance(arms, dict):
+        for key in aliases:
+            nested = arms.get(key)
+            if isinstance(nested, dict):
+                return nested
+    if isinstance(arms, list):
+        for row in arms:
+            if not isinstance(row, dict):
+                continue
+            arm_id = str(row.get("id") or row.get("name") or row.get("arm") or "")
+            if arm_id in aliases:
+                return row
+    return {}
+
+
+def _r216_wdl(
+    payload: dict[str, Any],
+    arm: dict[str, Any],
+    prefixes: tuple[str, ...],
+) -> dict[str, int | None]:
+    def value(*suffixes: str) -> int | None:
+        arm_value = _r216_first_number(arm, *suffixes)
+        if arm_value is not None:
+            return int(arm_value)
+        aliases = tuple(
+            f"{prefix}_{suffix}" for prefix in prefixes for suffix in suffixes
+        )
+        top_level = _r216_first_number(payload, *aliases)
+        return int(top_level) if top_level is not None else None
+
+    return {
+        "wins": value("wins", "win", "won"),
+        "draws": value("draws", "draw", "tied", "ties"),
+        "losses": value("losses", "loss", "lost"),
+    }
+
+
+def _r216_worker_count(value: object) -> int | None:
+    number = _r216_number(value)
+    if number is not None:
+        return int(number)
+    if isinstance(value, dict):
+        number = _r216_first_number(value, "active", "count", "workers", "total")
+        return int(number) if number is not None else None
+    if isinstance(value, list):
+        return sum(
+            1
+            for row in value
+            if not isinstance(row, dict) or row.get("active", True) is not False
+        )
+    return None
+
+
+def r216_local_approximate_belief_mcts_state() -> dict[str, Any]:
+    """Project the local r216 BO1000 as read-only dashboard telemetry.
+
+    The launcher owns immutable receipts and the two telemetry files.  This
+    projection never starts, stops, uploads, or otherwise controls evaluation.
+    It deliberately accepts a small family of compatible field names so a
+    partial launcher receipt remains visible instead of making the dashboard
+    pretend there is no evaluation.
+    """
+
+    output_root = (
+        ROOT
+        / "outputs/evaluations/alakazam-local-approximate-belief-mcts-r216-bo1000"
+    )
+    summary_paths = (
+        output_root / "summary.json",
+        output_root / "live_summary.json",
+        output_root / "status.json",
+    )
+    progress_path = output_root / "progress.jsonl"
+    summary: dict[str, Any] = {}
+    source_path: Path | None = None
+    for path in summary_paths:
+        candidate = read_json(path)
+        if candidate:
+            summary = _r216_merged_payload(candidate)
+            source_path = path
+            break
+    progress, progress_completed = _r216_progress_tail(progress_path)
+    if not summary and progress:
+        summary = progress
+        source_path = progress_path
+    elif progress:
+        # A running launcher can expose a newer JSONL heartbeat before it
+        # atomically replaces summary.json.  Prefer that current progress only
+        # for keys the summary has not written yet.
+        summary = {**progress, **summary}
+
+    observed_paths = [
+        path
+        for path in (*summary_paths, progress_path)
+        if path.is_file()
+    ]
+    updated_at = max(
+        (path.stat().st_mtime for path in observed_paths),
+        default=None,
+    )
+    if not summary and not output_root.exists():
+        return {
+            "available": False,
+            "status": "awaiting_launch",
+            "total_games": 1000,
+            "completed_games": 0,
+            "output_root": str(output_root),
+            "labels": [
+                "local_approximate_belief_mcts_non_exact",
+                "root_sampled_belief_mcts_non_r207_exact_chance",
+                "non_promotion_exploratory_result",
+            ],
+            "no_kaggle": True,
+            "training_eligible": False,
+            "source": "awaiting launcher output",
+        }
+
+    completed = _r216_first_number(
+        summary,
+        "completed_games",
+        "games_completed",
+        "completed",
+        "games_done",
+    )
+    if completed is None:
+        completed = progress_completed
+    total = _r216_first_number(summary, "total_games", "games_total", "target_games")
+    if total is None:
+        total = 1000
+    completed = min(int(completed), int(total))
+
+    experimental = _r216_arm_payload(
+        summary,
+        ("experimental", "mcts", "belief_mcts", "search", "candidate"),
+    )
+    direct = _r216_arm_payload(
+        summary,
+        ("direct", "control", "baseline", "no_mcts"),
+    )
+    mcts_wdl = _r216_wdl(
+        summary,
+        experimental,
+        ("experimental", "mcts", "belief_mcts", "candidate"),
+    )
+    direct_wdl = _r216_wdl(
+        summary,
+        direct,
+        ("direct", "control", "baseline", "no_mcts"),
+    )
+    simulations = _r216_first_number(
+        summary,
+        "simulations_total",
+        "simulation_total",
+        "simulations",
+        "mcts_simulations_total",
+        "total_simulations",
+    )
+    if simulations is None:
+        simulations = _r216_first_number(
+            experimental,
+            "simulations_total",
+            "simulation_total",
+            "simulations",
+            "total_simulations",
+        )
+    genuine_mcts_turns = _r216_first_number(
+        summary,
+        "genuine_mcts_turns",
+        "mcts_turns",
+        "searched_turns",
+        "turns_searched",
+    )
+    if genuine_mcts_turns is None:
+        genuine_mcts_turns = _r216_first_number(
+            experimental,
+            "genuine_mcts_turns",
+            "mcts_turns",
+            "searched_turns",
+            "turns_searched",
+        )
+    avg_depth = _r216_first_number(
+        summary,
+        "average_depth",
+        "avg_depth",
+        "mean_depth",
+        "mcts_average_depth",
+    )
+    if avg_depth is None:
+        avg_depth = _r216_first_number(
+            experimental, "average_depth", "avg_depth", "mean_depth"
+        )
+    max_depth = _r216_first_number(
+        summary, "max_depth", "maximum_depth", "mcts_max_depth"
+    )
+    if max_depth is None:
+        max_depth = _r216_first_number(
+            experimental, "max_depth", "maximum_depth"
+        )
+    fallbacks = _r216_first_number(
+        summary,
+        "fallback_count",
+        "fallbacks",
+        "mcts_fallback_count",
+        "direct_fallbacks",
+    )
+    if fallbacks is None:
+        fallbacks = _r216_first_number(
+            experimental, "fallback_count", "fallbacks", "direct_fallbacks"
+        )
+    active_workers = _r216_worker_count(
+        summary.get("active_workers", summary.get("workers"))
+    )
+    if active_workers is None:
+        active_workers = _r216_worker_count(summary.get("worker_status"))
+
+    started_at = _r216_timestamp(
+        summary.get("started_at", summary.get("started_at_utc"))
+    )
+    reported_updated_at = _r216_timestamp(
+        summary.get("updated_at", summary.get("updated_at_utc"))
+    )
+    if reported_updated_at is not None:
+        updated_at = max(updated_at or 0.0, reported_updated_at)
+    elapsed_seconds = (
+        max(0.0, (updated_at or time.time()) - started_at)
+        if started_at is not None
+        else None
+    )
+    games_per_hour = _r216_first_number(
+        summary, "games_per_hour", "throughput_games_per_hour"
+    )
+    if games_per_hour is None:
+        games_per_second = _r216_first_number(
+            summary, "games_per_second", "throughput_games_per_second", "gps"
+        )
+        if games_per_second is not None:
+            games_per_hour = games_per_second * 3600.0
+    if games_per_hour is None and elapsed_seconds and elapsed_seconds > 0:
+        games_per_hour = completed * 3600.0 / elapsed_seconds
+    eta_seconds = _r216_first_number(summary, "eta_seconds", "eta_s")
+    if eta_seconds is None and games_per_hour and games_per_hour > 0:
+        eta_seconds = max(0.0, (int(total) - completed) * 3600.0 / games_per_hour)
+
+    status = str(summary.get("status") or summary.get("state") or "starting")
+    labels = summary.get("labels")
+    if not isinstance(labels, list):
+        labels = []
+    required_labels = [
+        "local_approximate_belief_mcts_non_exact",
+        "root_sampled_belief_mcts_non_r207_exact_chance",
+        "non_promotion_exploratory_result",
+    ]
+    labels = [str(label) for label in labels]
+    for label in required_labels:
+        if label not in labels:
+            labels.append(label)
+
+    return {
+        "available": bool(summary or output_root.exists()),
+        "status": status,
+        "completed_games": completed,
+        "total_games": int(total),
+        "percent": 100.0 * completed / int(total) if total else None,
+        "active_workers": active_workers,
+        "mcts": mcts_wdl,
+        "direct": direct_wdl,
+        "fallbacks": int(fallbacks) if fallbacks is not None else None,
+        "simulations_total": int(simulations) if simulations is not None else None,
+        "genuine_mcts_turns": (
+            int(genuine_mcts_turns) if genuine_mcts_turns is not None else None
+        ),
+        "average_depth": avg_depth,
+        "max_depth": max_depth,
+        "games_per_hour": games_per_hour,
+        "eta_seconds": eta_seconds,
+        "started_at": started_at,
+        "updated_at": updated_at,
+        "source": str(source_path or output_root),
+        "output_root": str(output_root),
+        "labels": labels,
+        "no_kaggle": True,
+        "training_eligible": False,
+        "local_only": True,
+    }
+
+
+def _local_turn_pool_mcts_output_root() -> Path:
+    """Locate the current separately-versioned local turn-pool evaluation root.
+
+    The r218 first attempt is deliberately excluded: it is preserved failed
+    evidence, not live progress.  The named attempt-2 root remains the stable
+    default until a newer r219+ content-addressed run publishes a receipt.
+    This is a read-only discovery helper; it never creates or repairs a run
+    directory.
+    """
+
+    evaluations = ROOT / "outputs/evaluations"
+    attempt2 = (
+        evaluations
+        / "alakazam-local-first-decision-belief-mcts-r218-bo1000-attempt2"
+    )
+    candidates: list[tuple[int, float, Path]] = []
+    if evaluations.is_dir():
+        for candidate in evaluations.glob("alakazam-local-*belief-mcts-r2*"):
+            if not candidate.is_dir():
+                continue
+            if not any(marker in candidate.name.lower() for marker in ("bo1000", "canary10")):
+                continue
+            contracts = [candidate / "run-contract.json"]
+            shards = candidate / "shards"
+            if shards.is_dir():
+                contracts.extend(sorted(shards.glob("*/run-contract.json")))
+            contract_paths = [path for path in contracts if path.is_file()]
+            if not contract_paths:
+                continue
+            contract: dict[str, Any] = {}
+            for contract_path in contract_paths:
+                candidate_contract = read_json(contract_path)
+                if candidate_contract:
+                    contract = candidate_contract
+                    break
+            revision = _r216_first_number(contract, "owner_decision_revision")
+            if revision is None or int(revision) < 218:
+                continue
+            # r218 attempt 1 is intentionally retained but must never become
+            # the dashboard's live evaluation just because it has newer files.
+            if int(revision) == 218 and candidate != attempt2:
+                continue
+            receipt_paths = [candidate / "summary.json", candidate / "progress.jsonl"]
+            if shards.is_dir():
+                receipt_paths.extend(sorted(shards.glob("*/summary.json")))
+                receipt_paths.extend(sorted(shards.glob("*/progress.jsonl")))
+            evidence_paths = contract_paths + [
+                path for path in receipt_paths if path.is_file()
+            ]
+            latest = max(path.stat().st_mtime for path in evidence_paths)
+            candidates.append((int(revision), latest, candidate))
+    if candidates:
+        # A newer decision revision wins; within one revision prefer the most
+        # recently receipt-backed root.
+        return max(candidates, key=lambda row: (row[0], row[1]))[2]
+    return attempt2
+
+
+def _mcts_boolean(source: dict[str, Any], *keys: str) -> bool | None:
+    """Read an explicitly recorded boolean without turning strings into facts."""
+
+    for key in keys:
+        value = source.get(key)
+        if isinstance(value, bool):
+            return value
+    return None
+
+
+def _mcts_progress_metrics(path: Path) -> dict[str, Any]:
+    """Read completed game rows from one shard's append-only JSONL receipt."""
+
+    raw = read_tail(path, 8_000_000)
+    if not raw:
+        return {
+            "completed_games": 0,
+            "valid_games": 0,
+            "invalid_games": 0,
+            "depth_samples": 0,
+            "finite_chance_enumerations": None,
+            "unforceable_random_branch_boundaries": None,
+            "receipt_rows": 0,
+            "latest_payload": {},
+        }
+    rows: dict[str, dict[str, Any]] = {}
+    anonymous = 0
+    receipt_rows = 0
+    latest_payload: dict[str, Any] = {}
+    for line in raw.splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(value, dict):
+            continue
+        receipt_rows += 1
+        latest_payload = _r216_merged_payload(value)
+        if str(value.get("kind") or "") != "game":
+            continue
+        identity = value.get("game_number")
+        if identity is None:
+            pair = value.get("pair_index")
+            game = value.get("game_index")
+            identity = f"{pair}:{game}" if pair is not None and game is not None else None
+        if identity is None:
+            anonymous += 1
+            identity = f"anonymous:{anonymous}"
+        rows[str(identity)] = value
+
+    def total(*keys: str) -> int:
+        return int(
+            sum(
+                _r216_first_number(row, *keys) or 0
+                for row in rows.values()
+            )
+        )
+
+    def optional_total(*keys: str) -> int | None:
+        if not any(any(key in row for key in keys) for row in rows.values()):
+            return None
+        return total(*keys)
+
+    depths = [
+        _r216_first_number(row, "average_depth", "avg_depth", "max_depth")
+        for row in rows.values()
+    ]
+    depth_values = [float(value) for value in depths if value is not None]
+    return {
+        "completed_games": len(rows),
+        "valid_games": sum(row.get("valid") is True for row in rows.values()),
+        "invalid_games": sum(row.get("valid") is False for row in rows.values()),
+        "mcts_selected_decisions": total(
+            "mcts_selected_decisions",
+            "mcts_search_decisions",
+            "searched_decisions",
+        ),
+        "fallbacks": total("fallbacks", "fallback_count", "direct_fallbacks"),
+        "simulations": total("mcts_simulations", "simulations", "simulation_total"),
+        "converged_searches": total("converged_searches", "stable_root_convergences"),
+        "finite_chance_enumerations": optional_total(
+            "finite_chance_enumerations",
+            "exact_finite_enumerations",
+            "exact_chance_enumerations",
+        ),
+        "unforceable_random_branch_boundaries": optional_total(
+            "unforceable_random_branch_boundaries",
+            "unforceable_random_boundaries",
+            "random_branch_boundaries",
+        ),
+        "max_depth": max(depth_values, default=None),
+        "average_depth": (
+            sum(depth_values) / len(depth_values) if depth_values else None
+        ),
+        "depth_samples": len(depth_values),
+        "receipt_rows": receipt_rows,
+        "latest_payload": latest_payload,
+    }
+
+
+def _mcts_receipt_revision(*payloads: dict[str, Any]) -> int | None:
+    """Read the newest explicit rNNN identity from immutable receipt fields."""
+
+    revisions = [
+        int(match)
+        for payload in payloads
+        if isinstance(payload, dict)
+        for key in ("schema", "evaluation_id")
+        for match in re.findall(
+            r"(?:^|[^a-z0-9])r(\d{3})(?:[^0-9]|$)",
+            str(payload.get(key) or "").lower(),
+        )
+    ]
+    return max(revisions) if revisions else None
+
+
+def _mcts_receipt_phase(*payloads: dict[str, Any]) -> str | None:
+    """Return only the canary10/BO1000 phase named by an r219+ receipt."""
+
+    if (_mcts_receipt_revision(*payloads) or 0) < 219:
+        return None
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        for key in (
+            "evaluation_phase",
+            "run_phase",
+            "phase",
+            "stage",
+            "evaluation_id",
+            "mode",
+        ):
+            value = str(payload.get(key) or "").strip().lower()
+            if not value:
+                continue
+            if "canary" in value:
+                return "canary10"
+            if "bo1000" in value or "bo_1000" in value:
+                return "bo1000"
+    return None
+
+
+def _mcts_r222_runtime_identity(
+    *payloads: dict[str, Any],
+) -> tuple[str | None, str | None]:
+    """Project only explicit r222 stock-runtime and unmatched-RNG receipt facts."""
+
+    runtime_values: list[str] = []
+    rng_values: list[str] = []
+    stock_attested = False
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        for key in (
+            "runtime_transport_identity",
+            "runtime_engine",
+            "libcg_runtime",
+            "engine_runtime",
+            "runtime_label",
+            "runtime_transport",
+        ):
+            value = payload.get(key)
+            if isinstance(value, str):
+                runtime_values.append(value.lower())
+        for key in (
+            "exact_stock_libcg_archived_in_r195",
+            "exact_stock_libcg_archived_in_r195_required",
+            "stock_r195_libcg",
+        ):
+            if payload.get(key) is True:
+                stock_attested = True
+        for nested_key in ("runtime", "runtime_transport"):
+            nested = payload.get(nested_key)
+            if not isinstance(nested, dict):
+                continue
+            for key in ("identity", "engine", "label", "libcg_runtime"):
+                value = nested.get(key)
+                if isinstance(value, str):
+                    runtime_values.append(value.lower())
+            if nested.get("exact_stock_libcg_archived_in_r195") is True:
+                stock_attested = True
+        for key in (
+            "pair_rng_streams",
+            "rng_pairing",
+            "pair_rng_mode",
+            "rng_mode",
+        ):
+            value = payload.get(key)
+            if isinstance(value, str):
+                rng_values.append(value.lower())
+        pairing = payload.get("pairing")
+        if isinstance(pairing, dict):
+            for key in ("pair_rng_streams", "rng_pairing", "rng_mode"):
+                value = pairing.get(key)
+                if isinstance(value, str):
+                    rng_values.append(value.lower())
+    runtime_text = " ".join(runtime_values)
+    rng_text = " ".join(rng_values)
+    runtime_label = (
+        "stock r195 libcg"
+        if stock_attested
+        or all(marker in runtime_text for marker in ("stock", "r195", "libcg"))
+        else None
+    )
+    rng_label = (
+        "independent/unmatched"
+        if "independent" in rng_text and "unmatched" in rng_text
+        else None
+    )
+    return runtime_label, rng_label
+
+
+def _mcts_r222_shared_tree_projection(
+    summary: dict[str, Any], latest_progress: dict[str, Any]
+) -> dict[str, Any]:
+    """Project only explicitly emitted shared-tree/lane receipt telemetry."""
+
+    sources: list[dict[str, Any]] = []
+    for payload in (summary, latest_progress):
+        if not isinstance(payload, dict):
+            continue
+        for key in (
+            "shared_tree_lane_telemetry",
+            "shared_tree_search",
+            "shared_tree",
+            "lanes",
+        ):
+            nested = payload.get(key)
+            if isinstance(nested, dict):
+                sources.append(nested)
+        sources.append(payload)
+
+    def number(*keys: str) -> float | None:
+        for source in sources:
+            value = _r216_first_number(source, *keys)
+            if value is not None:
+                return value
+        return None
+
+    def text_value(*keys: str) -> str | None:
+        for source in sources:
+            for key in keys:
+                value = source.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        return None
+
+    requested = number("requested_lane_count", "requested_trajectory_lanes", "requested")
+    active = number("active_lane_count", "active_trajectory_lanes", "active")
+    if active is None:
+        for source in sources:
+            values = source.get("active_values")
+            if not isinstance(values, list):
+                continue
+            numeric = {
+                int(value)
+                for value in values
+                if isinstance(value, (int, float)) and not isinstance(value, bool)
+            }
+            if len(numeric) == 1:
+                active = float(next(iter(numeric)))
+                break
+
+    microbatch_sizes: list[float] | None = None
+    for source in sources:
+        values = source.get("leaf_microbatch_sizes")
+        if isinstance(values, list) and all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            for value in values
+        ):
+            microbatch_sizes = [float(value) for value in values]
+            break
+    microbatch_count = number("leaf_microbatch_count")
+    microbatch_mean = number("leaf_microbatch_mean_size", "leaf_microbatch_mean")
+    microbatch_p95 = number("leaf_microbatch_p95_size", "leaf_microbatch_p95")
+    microbatch_max = number("leaf_microbatch_max_size", "leaf_microbatch_max")
+    if microbatch_sizes is not None:
+        ordered = sorted(microbatch_sizes)
+        if microbatch_count is None:
+            microbatch_count = float(len(ordered))
+        if ordered and microbatch_mean is None:
+            microbatch_mean = sum(ordered) / len(ordered)
+        if ordered and microbatch_p95 is None:
+            microbatch_p95 = ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)]
+        if ordered and microbatch_max is None:
+            microbatch_max = ordered[-1]
+
+    lane_rows: dict[int, dict[str, Any]] = {}
+    raw_lane_rows: Any = None
+    for source in sources:
+        if isinstance(source.get("lane_trajectories"), (list, dict)):
+            raw_lane_rows = source["lane_trajectories"]
+            break
+    if isinstance(raw_lane_rows, dict):
+        iterable = [
+            {"lane_id": key, **(value if isinstance(value, dict) else {})}
+            for key, value in raw_lane_rows.items()
+        ]
+    elif isinstance(raw_lane_rows, list):
+        iterable = [value for value in raw_lane_rows if isinstance(value, dict)]
+    else:
+        iterable = []
+    for row in iterable:
+        lane_id = _r216_first_number(row, "lane_id", "lane")
+        if lane_id is None or int(lane_id) < 0:
+            continue
+        trajectories = _r216_first_number(
+            row,
+            "trajectory_count",
+            "trajectories",
+            "lane_trajectory_count",
+        )
+        backups = _r216_first_number(
+            row,
+            "backup_count",
+            "backups",
+            "lane_backup_count",
+            "completed_backed_simulations",
+        )
+        lane_rows[int(lane_id)] = {
+            "lane_id": int(lane_id),
+            "trajectories": int(trajectories) if trajectories is not None else None,
+            "backups": int(backups) if backups is not None else None,
+        }
+    for source in sources:
+        trajectory_counts = source.get("lane_trajectory_counts")
+        backup_counts = source.get("lane_backup_counts")
+        keys = set()
+        if isinstance(trajectory_counts, dict):
+            keys.update(trajectory_counts)
+        if isinstance(backup_counts, dict):
+            keys.update(backup_counts)
+        for raw_lane_id in keys:
+            try:
+                lane_id = int(raw_lane_id)
+            except (TypeError, ValueError):
+                continue
+            row = lane_rows.setdefault(
+                lane_id,
+                {"lane_id": lane_id, "trajectories": None, "backups": None},
+            )
+            if isinstance(trajectory_counts, dict):
+                value = trajectory_counts.get(raw_lane_id)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    row["trajectories"] = int(value)
+            if isinstance(backup_counts, dict):
+                value = backup_counts.get(raw_lane_id)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    row["backups"] = int(value)
+
+    viability_ratio = number("throughput_ratio_eight_over_one")
+    if viability_ratio is None:
+        for payload in (summary, latest_progress):
+            comparison = payload.get("throughput_comparison")
+            if not isinstance(comparison, dict):
+                continue
+            eight_vs_one = comparison.get("eight_lane_vs_one_lane")
+            if isinstance(eight_vs_one, dict):
+                viability_ratio = _r216_first_number(
+                    eight_vs_one,
+                    "backed_simulations_per_second_ratio",
+                )
+                if viability_ratio is not None:
+                    break
+
+    result = {
+        "requested_lane_count": int(requested) if requested is not None else None,
+        "active_lane_count": int(active) if active is not None else None,
+        "shared_logical_tree_id": text_value(
+            "shared_logical_tree_id", "shared_tree_id", "tree_id"
+        ),
+        "shared_root_visits": (
+            int(value) if (value := number("shared_root_visits")) is not None else None
+        ),
+        "shared_root_backups": (
+            int(value)
+            if (
+                value := number(
+                    "shared_root_backups", "completed_backed_simulations"
+                )
+            )
+            is not None
+            else None
+        ),
+        "backed_simulations_per_second": number(
+            "backed_simulations_per_second", "simulations_per_second"
+        ),
+        "outstanding_reservations": (
+            int(value)
+            if (value := number("outstanding_reservations")) is not None
+            else None
+        ),
+        "outstanding_virtual_loss": (
+            int(value)
+            if (value := number("outstanding_virtual_loss", "virtual_loss"))
+            is not None
+            else None
+        ),
+        "leaf_microbatch_count": (
+            int(microbatch_count) if microbatch_count is not None else None
+        ),
+        "leaf_microbatch_mean_size": microbatch_mean,
+        "leaf_microbatch_p95_size": microbatch_p95,
+        "leaf_microbatch_max_size": microbatch_max,
+        "throughput_ratio_eight_over_one": viability_ratio,
+        "lanes": [lane_rows[key] for key in sorted(lane_rows)],
+    }
+    result["available"] = any(
+        value is not None and value != []
+        for key, value in result.items()
+        if key != "available"
+    )
+    return result
+
+
+def _mcts_timing_projection(contract: dict[str, Any]) -> dict[str, Any]:
+    """Project the evaluation timing contract without inventing a search rule."""
+
+    timing = contract.get("timing") if isinstance(contract.get("timing"), dict) else {}
+    shared_pool = _r216_first_number(
+        timing,
+        "shared_turn_pool_seconds",
+        "default_turn_pool_seconds",
+        "turn_pool_seconds",
+        "planner_pool_seconds",
+    )
+    segment_cap = _r216_first_number(
+        timing,
+        "meaningful_search_segment_seconds",
+        "search_segment_cap_seconds",
+        "first_search_cap_seconds",
+        "first_decision_search_seconds",
+    )
+    later_residual = _mcts_boolean(
+        timing,
+        "later_residual_search_allowed",
+        "later_boundary_search_allowed",
+        "later_meaningful_search_segment_allowed",
+        "later_decision_fresh_search_allowed",
+    )
+    cache_skips = _mcts_boolean(
+        timing,
+        "deterministic_cache_skips",
+        "cached_deterministic_steps_skip_search",
+        "deterministic_cache_skip_allowed",
+    )
+    dynamic_clock = _mcts_boolean(
+        timing,
+        "dynamic_game_clock_shrink",
+        "dynamic_game_allowance",
+    )
+    if dynamic_clock is None:
+        dynamic_clock = _r216_first_number(
+            timing, "game_seconds", "total_game_seconds"
+        ) is not None
+    observed = bool(timing)
+    if observed:
+        details = [
+            f"{shared_pool:g}s shared turn pool" if shared_pool is not None else "shared turn pool recorded",
+            f"{segment_cap:g}s max search segment" if segment_cap is not None else "segment cap recorded",
+            "residual later re-evaluation ON" if later_residual is True else "residual later re-evaluation OFF" if later_residual is False else "later re-evaluation receipt pending",
+            "deterministic cache skips ON" if cache_skips is True else "deterministic-cache receipt pending",
+            "dynamic game-clock shrink" if dynamic_clock else "fixed game-clock receipt",
+        ]
+        label = " · ".join(details)
+    else:
+        # This is the owner-defined r219-ready display target, explicitly
+        # labelled as pending until an immutable run contract attests it.
+        label = (
+            "r219 timing target pending receipt · 45s shared turn pool · "
+            "15s max search segment · residual re-evaluation · "
+            "deterministic cache skips · dynamic game-clock shrink"
+        )
+    return {
+        "observed": observed,
+        "shared_turn_pool_seconds": shared_pool,
+        "search_segment_cap_seconds": segment_cap,
+        "later_residual_searches": later_residual,
+        "deterministic_cache_skips": cache_skips,
+        "dynamic_game_clock": dynamic_clock,
+        "label": label,
+    }
+
+
+def _mcts_safety_projection(contract: dict[str, Any]) -> dict[str, bool | None]:
+    """Summarize only explicitly bound evaluation-isolation facts."""
+
+    runtime = contract.get("runtime") if isinstance(contract.get("runtime"), dict) else {}
+    disabled = (
+        runtime.get("disabled_runtime_components")
+        if isinstance(runtime.get("disabled_runtime_components"), dict)
+        else {}
+    )
+    adapter = _mcts_boolean(
+        runtime,
+        "matchup_adapter_required_on_both_arms",
+        "matchup_adapter_runtime_enabled",
+        "matchup_adapter_enabled",
+    )
+    rtp_enabled = _mcts_boolean(runtime, "rtp_enabled", "recursive_turn_planner_enabled")
+    if rtp_enabled is None:
+        rtp_off = _mcts_boolean(disabled, "recursive_turn_planner_rtp")
+    else:
+        rtp_off = not rtp_enabled
+    guide_values = [
+        _mcts_boolean(runtime, "guide_linear_enabled"),
+        _mcts_boolean(runtime, "guide_logit_enabled"),
+        _mcts_boolean(runtime, "guide2vec_enabled"),
+    ]
+    if all(value is not None for value in guide_values):
+        guides_off: bool | None = all(value is False for value in guide_values)
+    else:
+        disabled_values = [
+            _mcts_boolean(disabled, "guide_linear_additive_logit_layer"),
+            _mcts_boolean(disabled, "guide_logit_bonus"),
+            _mcts_boolean(disabled, "guide2vec"),
+        ]
+        guides_off = (
+            all(value is True for value in disabled_values)
+            if all(value is not None for value in disabled_values)
+            else None
+        )
+    kaggle_authority = _mcts_boolean(runtime, "kaggle_authority", "kaggle_submission_authority")
+    no_kaggle = _mcts_boolean(contract, "no_kaggle_submission")
+    kaggle_off = (
+        no_kaggle is True and kaggle_authority is False
+        if no_kaggle is not None and kaggle_authority is not None
+        else no_kaggle
+    )
+    return {
+        "adapter_on": adapter,
+        "rtp_off": rtp_off,
+        "guides_off": guides_off,
+        "kaggle_off": kaggle_off,
+    }
+
+
+def _mcts_shard_state(
+    path: Path,
+    *,
+    default_host: str | None = None,
+) -> dict[str, Any]:
+    """Project one immutable-output shard while tolerating an early heartbeat."""
+
+    contract_path = path / "run-contract.json"
+    summary_path = path / "summary.json"
+    progress_path = path / "progress.jsonl"
+    contract = read_json(contract_path)
+    summary = _r216_merged_payload(read_json(summary_path))
+    progress = _mcts_progress_metrics(progress_path)
+    completed = _r216_first_number(
+        summary, "completed_games", "games_completed", "completed"
+    )
+    if completed is None:
+        completed = progress["completed_games"]
+    valid = _r216_first_number(summary, "valid_games", "games_valid")
+    if valid is None:
+        valid = progress["valid_games"]
+    invalid = _r216_first_number(summary, "invalid_games", "games_invalid")
+    if invalid is None:
+        invalid = progress["invalid_games"]
+    target = _r216_first_number(
+        summary,
+        "shard_total_games",
+        "planned_games",
+        "target_games",
+    )
+    if target is None:
+        target = _r216_first_number(contract, "shard_total_games", "planned_games")
+    if target is None:
+        pairs = _r216_first_number(summary, "shard_pair_count", "pair_count")
+        if pairs is None:
+            pairs = _r216_first_number(contract, "shard_pair_count", "pair_count")
+        if pairs is not None:
+            target = pairs * 2
+    selected = _r216_first_number(
+        summary,
+        "mcts_selected_decisions",
+        "mcts_search_decisions",
+        "searched_decisions",
+    )
+    if selected is None:
+        selected = progress.get("mcts_selected_decisions")
+    simulations = _r216_first_number(
+        summary, "mcts_simulations", "simulations_total", "simulation_total"
+    )
+    if simulations is None:
+        simulations = progress.get("simulations")
+    fallbacks = _r216_first_number(
+        summary, "fallbacks", "fallback_count", "direct_fallbacks"
+    )
+    if fallbacks is None:
+        fallbacks = progress.get("fallbacks")
+    converged = _r216_first_number(
+        summary, "converged_searches", "stable_root_convergences"
+    )
+    if converged is None:
+        converged = progress.get("converged_searches")
+    finite_enumerations = _r216_first_number(
+        summary,
+        "finite_chance_enumerations",
+        "exact_finite_enumerations",
+        "exact_chance_enumerations",
+    )
+    if finite_enumerations is None:
+        finite_enumerations = progress.get("finite_chance_enumerations")
+    unforceable_boundaries = _r216_first_number(
+        summary,
+        "unforceable_random_branch_boundaries",
+        "unforceable_random_boundaries",
+        "random_branch_boundaries",
+    )
+    if unforceable_boundaries is None:
+        unforceable_boundaries = progress.get(
+            "unforceable_random_branch_boundaries"
+        )
+    average_depth = _r216_first_number(summary, "average_depth", "avg_depth", "mean_depth")
+    depth_samples = _r216_first_number(summary, "depth_samples", "depth_observations")
+    if average_depth is not None and depth_samples is None:
+        # Launcher summaries commonly report one mean over completed games but
+        # not its denominator.  The game count is the only truthful available
+        # weight in that receipt shape.
+        depth_samples = completed
+    if average_depth is None:
+        average_depth = progress.get("average_depth")
+        depth_samples = progress.get("depth_samples")
+    max_depth = _r216_first_number(summary, "max_depth_seen", "max_depth", "maximum_depth")
+    if max_depth is None:
+        max_depth = progress.get("max_depth")
+    workers = _r216_worker_count(
+        summary.get("active_workers", summary.get("active_worker_limit"))
+    )
+    if workers is None:
+        workers = _r216_worker_count(contract.get("workers"))
+    rate = _r216_first_number(summary, "games_per_hour", "throughput_games_per_hour")
+    latest_progress = progress.get("latest_payload")
+    if not isinstance(latest_progress, dict):
+        latest_progress = {}
+    raw_receipt_available = bool(summary) or int(progress.get("receipt_rows") or 0) > 0
+    receipt_revision = _mcts_receipt_revision(summary, latest_progress)
+    receipt_available = raw_receipt_available and receipt_revision == 222
+    receipt_completed = _r216_first_number(
+        summary, "completed_games", "games_completed", "completed"
+    )
+    if receipt_completed is None and receipt_available:
+        receipt_completed = progress["completed_games"]
+    receipt_valid = _r216_first_number(summary, "valid_games", "games_valid")
+    if receipt_valid is None and receipt_available:
+        receipt_valid = progress["valid_games"]
+    receipt_invalid = _r216_first_number(summary, "invalid_games", "games_invalid")
+    if receipt_invalid is None and receipt_available:
+        receipt_invalid = progress["invalid_games"]
+    receipt_shard_target = _r216_first_number(
+        summary,
+        "shard_total_games",
+        "planned_games",
+        "target_games",
+    )
+    if receipt_shard_target is None:
+        receipt_shard_target = _r216_first_number(
+            latest_progress,
+            "shard_total_games",
+            "planned_games",
+            "target_games",
+        )
+    receipt_evaluation_target = _r216_first_number(
+        summary,
+        "total_games",
+    )
+    if receipt_evaluation_target is None:
+        receipt_evaluation_target = _r216_first_number(
+            latest_progress,
+            "total_games",
+        )
+    receipt_target = receipt_shard_target or receipt_evaluation_target
+    receipt_workers = _r216_worker_count(
+        summary.get("active_workers", summary.get("active_worker_limit"))
+    )
+    if receipt_workers is None:
+        receipt_workers = _r216_worker_count(
+            latest_progress.get(
+                "active_workers", latest_progress.get("active_worker_limit")
+            )
+        )
+    receipt_elapsed = _r216_first_number(
+        summary, "elapsed_seconds", "wall_seconds"
+    )
+    if receipt_elapsed is None:
+        receipt_elapsed = _r216_first_number(
+            latest_progress, "elapsed_seconds", "wall_seconds"
+        )
+    receipt_eta = _r216_first_number(
+        summary, "eta_seconds", "estimated_seconds_remaining"
+    )
+    if receipt_eta is None:
+        receipt_eta = _r216_first_number(
+            latest_progress, "eta_seconds", "estimated_seconds_remaining"
+        )
+    if rate is None:
+        rate = _r216_first_number(
+            latest_progress, "games_per_hour", "throughput_games_per_hour"
+        )
+    receipt_phase = _mcts_receipt_phase(summary, latest_progress)
+    receipt_runtime, receipt_rng = _mcts_r222_runtime_identity(
+        summary, latest_progress
+    )
+    receipt_shared_tree = _mcts_r222_shared_tree_projection(
+        summary, latest_progress
+    )
+    receipt_prefix_completed = _r216_first_number(
+        summary,
+        "prefix_completed_games",
+        "prefix_diagnostic_completed_games",
+        "live_prefix_completed_games",
+    )
+    if receipt_prefix_completed is None:
+        receipt_prefix_completed = _r216_first_number(
+            latest_progress,
+            "prefix_completed_games",
+            "prefix_diagnostic_completed_games",
+            "live_prefix_completed_games",
+        )
+    receipt_prefix_target = _r216_first_number(
+        summary,
+        "prefix_target_games",
+        "prefix_diagnostic_target_games",
+        "live_prefix_target_games",
+    )
+    if receipt_prefix_target is None:
+        receipt_prefix_target = _r216_first_number(
+            latest_progress,
+            "prefix_target_games",
+            "prefix_diagnostic_target_games",
+            "live_prefix_target_games",
+        )
+    if receipt_available:
+        receipt_prefix_target = receipt_prefix_target or 10
+        if receipt_prefix_completed is None and receipt_completed is not None:
+            receipt_prefix_completed = min(
+                float(receipt_prefix_target), float(receipt_completed)
+            )
+    receipt_pair = _r216_first_number(
+        summary,
+        "current_pair_index",
+        "current_pair",
+        "last_completed_pair_index",
+    )
+    if receipt_pair is None:
+        receipt_pair = _r216_first_number(
+            latest_progress,
+            "current_pair_index",
+            "current_pair",
+            "pair_index",
+            "last_completed_pair_index",
+        )
+    receipt_game = _r216_first_number(
+        summary,
+        "current_game_number",
+        "current_game_index",
+        "last_completed_game_number",
+    )
+    if receipt_game is None:
+        receipt_game = _r216_first_number(
+            latest_progress,
+            "current_game_number",
+            "game_number",
+            "current_game_index",
+            "game_index",
+            "last_completed_game_number",
+        )
+    updated = max(
+        (
+            candidate.stat().st_mtime
+            for candidate in (contract_path, summary_path, progress_path)
+            if candidate.is_file()
+        ),
+        default=None,
+    )
+    reported_updated = _r216_timestamp(summary.get("updated_at_utc", summary.get("updated_at")))
+    if reported_updated is not None:
+        updated = max(updated or 0.0, reported_updated)
+    receipt_candidates: list[tuple[float, Path]] = []
+    if summary:
+        receipt_candidates.append(
+            (reported_updated or summary_path.stat().st_mtime, summary_path)
+        )
+    if int(progress.get("receipt_rows") or 0) > 0:
+        progress_reported_updated = _r216_timestamp(
+            latest_progress.get(
+                "updated_at_utc",
+                latest_progress.get(
+                    "updated_at",
+                    latest_progress.get("completed_at_utc"),
+                ),
+            )
+        )
+        receipt_candidates.append(
+            (
+                progress_reported_updated or progress_path.stat().st_mtime,
+                progress_path,
+            )
+        )
+    last_receipt_at: float | None = None
+    last_receipt_source: str | None = None
+    if receipt_candidates:
+        last_receipt_at, last_receipt_path = max(
+            receipt_candidates, key=lambda row: row[0]
+        )
+        last_receipt_source = str(last_receipt_path)
+    started = _r216_timestamp(summary.get("started_at_utc", summary.get("started_at")))
+    if started is None:
+        started = _r216_timestamp(contract.get("created_at_utc", contract.get("started_at_utc")))
+    elapsed = _r216_first_number(summary, "elapsed_seconds", "wall_seconds")
+    if started is None and elapsed is not None and updated is not None:
+        started = max(0.0, updated - float(elapsed))
+    mcts_wins = _r216_first_number(summary, "mcts_wins", "experimental_wins")
+    direct_wins = _r216_first_number(summary, "direct_wins", "control_wins")
+    draws = _r216_first_number(summary, "draws", "ties")
+    receipt_percent = (
+        max(
+            0.0,
+            min(100.0, 100.0 * float(receipt_completed) / float(receipt_target)),
+        )
+        if receipt_completed is not None
+        and receipt_target is not None
+        and float(receipt_target) > 0
+        else None
+    )
+    host = str(
+        summary.get("host")
+        or summary.get("hostname")
+        or default_host
+        or path.name
+    ).strip().lower()
+    return {
+        "host": host,
+        "available": bool(contract or summary or progress_path.is_file()),
+        "status": str(summary.get("status") or ("starting" if contract else "awaiting_receipt")),
+        "completed_games": int(completed or 0),
+        "valid_games": int(valid or 0),
+        "invalid_games": int(invalid or 0),
+        "target_games": int(target) if target is not None else None,
+        "unreceipted_games": max(0, int(target) - int(completed or 0)) if target is not None else None,
+        "worker_limit": workers,
+        "mcts_wins": int(mcts_wins) if mcts_wins is not None else 0,
+        "direct_wins": int(direct_wins) if direct_wins is not None else 0,
+        "draws": int(draws) if draws is not None else 0,
+        "mcts_selected_decisions": int(selected or 0),
+        "fallbacks": int(fallbacks or 0),
+        "simulations_total": int(simulations or 0),
+        "converged_searches": int(converged or 0),
+        "finite_chance_enumerations": (
+            int(finite_enumerations) if finite_enumerations is not None else None
+        ),
+        "unforceable_random_branch_boundaries": (
+            int(unforceable_boundaries)
+            if unforceable_boundaries is not None
+            else None
+        ),
+        "average_depth": average_depth,
+        "depth_samples": int(depth_samples or 0),
+        "max_depth": max_depth,
+        "games_per_hour": rate,
+        "started_at": started,
+        "updated_at": updated,
+        "contract": contract,
+        "source": str(summary_path if summary_path.is_file() else progress_path if progress_path.is_file() else contract_path),
+        "receipt_progress": {
+            "available": receipt_available,
+            "revision": receipt_revision,
+            "phase": receipt_phase,
+            "runtime": receipt_runtime,
+            "rng": receipt_rng,
+            "shared_tree": receipt_shared_tree,
+            "status": str(
+                summary.get("status")
+                or latest_progress.get("status")
+                or ("receipt_seen" if receipt_available else "awaiting_receipt")
+            ),
+            "completed_games": (
+                int(receipt_completed) if receipt_completed is not None else None
+            ),
+            "target_games": (
+                int(receipt_target) if receipt_target is not None else None
+            ),
+            "evaluation_target_games": (
+                int(receipt_evaluation_target)
+                if receipt_evaluation_target is not None
+                else None
+            ),
+            "percent": receipt_percent,
+            "prefix_completed_games": (
+                int(receipt_prefix_completed)
+                if receipt_prefix_completed is not None
+                else None
+            ),
+            "prefix_target_games": (
+                int(receipt_prefix_target)
+                if receipt_prefix_target is not None
+                else None
+            ),
+            "prefix_percent": (
+                max(
+                    0.0,
+                    min(
+                        100.0,
+                        100.0
+                        * float(receipt_prefix_completed)
+                        / float(receipt_prefix_target),
+                    ),
+                )
+                if receipt_prefix_completed is not None
+                and receipt_prefix_target is not None
+                and float(receipt_prefix_target) > 0
+                else None
+            ),
+            "valid_games": int(receipt_valid) if receipt_valid is not None else None,
+            "invalid_games": (
+                int(receipt_invalid) if receipt_invalid is not None else None
+            ),
+            "finite_chance_enumerations": (
+                int(finite_enumerations) if finite_enumerations is not None else None
+            ),
+            "unforceable_random_branch_boundaries": (
+                int(unforceable_boundaries)
+                if unforceable_boundaries is not None
+                else None
+            ),
+            "current_pair_index": (
+                int(receipt_pair) if receipt_pair is not None else None
+            ),
+            "current_game_number": (
+                int(receipt_game) if receipt_game is not None else None
+            ),
+            "active_workers": receipt_workers,
+            "games_per_hour": rate,
+            "elapsed_seconds": receipt_elapsed,
+            "eta_seconds": receipt_eta,
+            "last_receipt_at": last_receipt_at,
+            "last_receipt_source": last_receipt_source,
+        },
+    }
+
+
+def local_turn_pool_belief_mcts_bo1000_state() -> dict[str, Any]:
+    """Aggregate the content-addressed local MCTS BO1000 shard receipts.
+
+    This intentionally has no service-control or evaluator imports.  It is a
+    dashboard projection over the Train, Bert, and Elmo receipt directories;
+    unfinished work is called *unreceipted* because a queue depth is not an
+    authoritative count of processes currently executing.
+    """
+
+    output_root = _local_turn_pool_mcts_output_root()
+    shards_root = output_root / "shards"
+    shard_paths = (
+        sorted(path for path in shards_root.iterdir() if path.is_dir())
+        if shards_root.is_dir()
+        else []
+    )
+    flat_receipt = not shard_paths and any(
+        (output_root / name).is_file()
+        for name in ("summary.json", "progress.jsonl", "run-contract.json")
+    )
+    shards = [_mcts_shard_state(path) for path in shard_paths]
+    if flat_receipt:
+        shards = [_mcts_shard_state(output_root, default_host="train")]
+    known_hosts = ("train", "bert", "elmo")
+    by_host = {str(row["host"]).lower(): row for row in shards}
+    host_rows: list[dict[str, Any]] = []
+    for host in (*known_hosts, *(key for key in by_host if key not in known_hosts)):
+        row = by_host.get(host)
+        if row is None:
+            host_rows.append(
+                {
+                    "host": host,
+                    "available": False,
+                    "status": "awaiting_receipt",
+                    "completed_games": 0,
+                    "valid_games": 0,
+                    "invalid_games": 0,
+                    "unreceipted_games": None,
+                    "worker_limit": None,
+                    "mcts_selected_decisions": 0,
+                    "fallbacks": 0,
+                    "simulations_total": 0,
+                    "average_depth": None,
+                    "max_depth": None,
+                    "finite_chance_enumerations": None,
+                    "unforceable_random_branch_boundaries": None,
+                    "receipt_progress": {
+                        "available": False,
+                        "revision": None,
+                        "phase": None,
+                        "runtime": None,
+                        "rng": None,
+                        "shared_tree": _mcts_r222_shared_tree_projection({}, {}),
+                        "status": "awaiting_receipt",
+                        "completed_games": None,
+                        "target_games": None,
+                        "evaluation_target_games": None,
+                        "percent": None,
+                        "prefix_completed_games": None,
+                        "prefix_target_games": None,
+                        "prefix_percent": None,
+                        "valid_games": None,
+                        "invalid_games": None,
+                        "finite_chance_enumerations": None,
+                        "unforceable_random_branch_boundaries": None,
+                        "current_pair_index": None,
+                        "current_game_number": None,
+                        "active_workers": None,
+                        "games_per_hour": None,
+                        "elapsed_seconds": None,
+                        "eta_seconds": None,
+                        "last_receipt_at": None,
+                        "last_receipt_source": None,
+                    },
+                }
+            )
+        else:
+            host_rows.append({key: value for key, value in row.items() if key != "contract"})
+
+    completed = sum(row["completed_games"] for row in shards)
+    valid = sum(row["valid_games"] for row in shards)
+    invalid = sum(row["invalid_games"] for row in shards)
+    total_games = 1000
+    mcts_wins = sum(row["mcts_wins"] for row in shards)
+    direct_wins = sum(row["direct_wins"] for row in shards)
+    draws = sum(row["draws"] for row in shards)
+    depth_weight = sum(
+        float(row["average_depth"]) * int(row["depth_samples"])
+        for row in shards
+        if row["average_depth"] is not None and row["depth_samples"] > 0
+    )
+    depth_samples = sum(
+        int(row["depth_samples"])
+        for row in shards
+        if row["average_depth"] is not None and row["depth_samples"] > 0
+    )
+    max_depths = [float(row["max_depth"]) for row in shards if row["max_depth"] is not None]
+    started = [float(row["started_at"]) for row in shards if row["started_at"] is not None]
+    updated = [float(row["updated_at"]) for row in shards if row["updated_at"] is not None]
+    elapsed = max(updated) - min(started) if started and updated else None
+    games_per_hour = completed * 3600.0 / elapsed if elapsed and elapsed > 0 else None
+    if games_per_hour is None:
+        active_rates = [
+            float(row["games_per_hour"])
+            for row in shards
+            if row["games_per_hour"] is not None and row["status"] != "complete"
+        ]
+        games_per_hour = sum(active_rates) if active_rates else None
+    eta_seconds = (
+        max(0, total_games - completed) * 3600.0 / games_per_hour
+        if games_per_hour and games_per_hour > 0
+        else None
+    )
+    contracts = [row["contract"] for row in shards if row["contract"]]
+    timing = _mcts_timing_projection(contracts[0]) if contracts else _mcts_timing_projection({})
+    safety_rows = [_mcts_safety_projection(contract) for contract in contracts]
+
+    receipt_rows = [
+        {
+            "host": str(row["host"]).lower(),
+            **dict(row.get("receipt_progress") or {}),
+        }
+        for row in host_rows
+    ]
+    available_receipts = [row for row in receipt_rows if row.get("available") is True]
+    receipt_phases = {
+        str(row["phase"])
+        for row in available_receipts
+        if row.get("phase") in {"canary10", "bo1000"}
+    }
+    receipt_phase = next(iter(receipt_phases)) if len(receipt_phases) == 1 else None
+    receipt_completed = (
+        sum(
+            int(row["completed_games"])
+            for row in available_receipts
+            if row.get("completed_games") is not None
+        )
+        if available_receipts
+        and any(row.get("completed_games") is not None for row in available_receipts)
+        else None
+    )
+    global_targets = {
+        int(row["evaluation_target_games"])
+        for row in available_receipts
+        if row.get("evaluation_target_games") is not None
+    }
+    if len(global_targets) == 1:
+        receipt_target = next(iter(global_targets))
+    elif flat_receipt and len(available_receipts) == 1:
+        only_target = available_receipts[0].get("target_games")
+        receipt_target = int(only_target) if only_target is not None else None
+    elif len(available_receipts) == len(known_hosts) and all(
+        row.get("target_games") is not None for row in available_receipts
+    ):
+        receipt_target = sum(int(row["target_games"]) for row in available_receipts)
+    else:
+        receipt_target = None
+    receipt_percent = (
+        max(
+            0.0,
+            min(100.0, 100.0 * receipt_completed / receipt_target),
+        )
+        if receipt_completed is not None and receipt_target and receipt_target > 0
+        else None
+    )
+
+    def receipt_sum(key: str) -> int | None:
+        values = [
+            int(row[key])
+            for row in available_receipts
+            if row.get(key) is not None
+        ]
+        return sum(values) if values else None
+
+    receipt_valid = receipt_sum("valid_games")
+    receipt_invalid = receipt_sum("invalid_games")
+    receipt_finite_enumerations = receipt_sum("finite_chance_enumerations")
+    receipt_unforceable_boundaries = receipt_sum(
+        "unforceable_random_branch_boundaries"
+    )
+    receipt_workers = receipt_sum("active_workers")
+    prefix_completed_values = [
+        int(row["prefix_completed_games"])
+        for row in available_receipts
+        if row.get("prefix_completed_games") is not None
+    ]
+    prefix_target_values = {
+        int(row["prefix_target_games"])
+        for row in available_receipts
+        if row.get("prefix_target_games") is not None
+    }
+    receipt_prefix_completed = (
+        max(prefix_completed_values) if prefix_completed_values else None
+    )
+    receipt_prefix_target = (
+        next(iter(prefix_target_values)) if len(prefix_target_values) == 1 else None
+    )
+    receipt_prefix_percent = (
+        max(
+            0.0,
+            min(
+                100.0,
+                100.0 * receipt_prefix_completed / receipt_prefix_target,
+            ),
+        )
+        if receipt_prefix_completed is not None
+        and receipt_prefix_target is not None
+        and receipt_prefix_target > 0
+        else None
+    )
+    receipt_runtime_values = {
+        str(row["runtime"])
+        for row in available_receipts
+        if row.get("runtime") is not None
+    }
+    receipt_rng_values = {
+        str(row["rng"])
+        for row in available_receipts
+        if row.get("rng") is not None
+    }
+    receipt_runtime = (
+        next(iter(receipt_runtime_values))
+        if len(receipt_runtime_values) == 1
+        and all(row.get("runtime") is not None for row in available_receipts)
+        else None
+    )
+    receipt_rng = (
+        next(iter(receipt_rng_values))
+        if len(receipt_rng_values) == 1
+        and all(row.get("rng") is not None for row in available_receipts)
+        else None
+    )
+    active_receipts = [
+        row
+        for row in available_receipts
+        if str(row.get("status") or "").lower() not in {"complete", "completed"}
+    ]
+    rate_rows = active_receipts or available_receipts
+    receipt_rates = [
+        float(row["games_per_hour"])
+        for row in rate_rows
+        if row.get("games_per_hour") is not None
+    ]
+    receipt_rate = sum(receipt_rates) if receipt_rates else None
+    receipt_elapsed_values = [
+        float(row["elapsed_seconds"])
+        for row in available_receipts
+        if row.get("elapsed_seconds") is not None
+    ]
+    receipt_elapsed = max(receipt_elapsed_values) if receipt_elapsed_values else None
+    explicit_etas = [
+        float(row["eta_seconds"])
+        for row in rate_rows
+        if row.get("eta_seconds") is not None
+    ]
+    if flat_receipt and len(explicit_etas) == 1:
+        receipt_eta = explicit_etas[0]
+    elif explicit_etas:
+        receipt_eta = max(explicit_etas)
+    elif (
+        receipt_rate
+        and receipt_rate > 0
+        and receipt_completed is not None
+        and receipt_target is not None
+    ):
+        receipt_eta = (
+            max(0, receipt_target - receipt_completed) * 3600.0 / receipt_rate
+        )
+    else:
+        receipt_eta = None
+    dated_receipts = [
+        row for row in available_receipts if row.get("last_receipt_at") is not None
+    ]
+    latest_receipt = (
+        max(dated_receipts, key=lambda row: float(row["last_receipt_at"]))
+        if dated_receipts
+        else None
+    )
+    shared_tree_receipts = [
+        row
+        for row in available_receipts
+        if isinstance(row.get("shared_tree"), dict)
+        and row["shared_tree"].get("available") is True
+    ]
+    latest_shared_tree = (
+        max(
+            shared_tree_receipts,
+            key=lambda row: float(row.get("last_receipt_at") or 0.0),
+        ).get("shared_tree")
+        if shared_tree_receipts
+        else _mcts_r222_shared_tree_projection({}, {})
+    )
+    receipt_hosts = []
+    for host in known_hosts:
+        row = next((item for item in receipt_rows if item["host"] == host), None)
+        if row is None:
+            row = {
+                "host": host,
+                "available": False,
+                "revision": None,
+                "phase": None,
+                "runtime": None,
+                "rng": None,
+                "shared_tree": _mcts_r222_shared_tree_projection({}, {}),
+                "status": "awaiting_receipt",
+                "completed_games": None,
+                "target_games": None,
+                "percent": None,
+                "prefix_completed_games": None,
+                "prefix_target_games": None,
+                "prefix_percent": None,
+                "valid_games": None,
+                "invalid_games": None,
+                "finite_chance_enumerations": None,
+                "unforceable_random_branch_boundaries": None,
+                "active_workers": None,
+                "games_per_hour": None,
+                "elapsed_seconds": None,
+                "eta_seconds": None,
+                "last_receipt_at": None,
+                "last_receipt_source": None,
+            }
+        receipt_hosts.append(row)
+    progress_panel = {
+        "available": bool(available_receipts),
+        "revision": (
+            max(
+                int(row["revision"])
+                for row in available_receipts
+                if row.get("revision") is not None
+            )
+            if any(row.get("revision") is not None for row in available_receipts)
+            else None
+        ),
+        "phase": receipt_phase,
+        "status": (
+            "awaiting_receipt"
+            if not available_receipts
+            else "mixed_receipt_phases"
+            if len(receipt_phases) > 1
+            else "complete"
+            if receipt_target is not None
+            and receipt_completed is not None
+            and receipt_completed >= receipt_target
+            else "running"
+        ),
+        "completed_games": receipt_completed,
+        "target_games": receipt_target,
+        "percent": receipt_percent,
+        "prefix_completed_games": receipt_prefix_completed,
+        "prefix_target_games": receipt_prefix_target,
+        "prefix_percent": receipt_prefix_percent,
+        "runtime": receipt_runtime,
+        "rng": receipt_rng,
+        "shared_tree": latest_shared_tree,
+        "valid_games": receipt_valid,
+        "invalid_games": receipt_invalid,
+        "finite_chance_enumerations": receipt_finite_enumerations,
+        "unforceable_random_branch_boundaries": receipt_unforceable_boundaries,
+        "current_pair_index": (
+            latest_receipt.get("current_pair_index") if latest_receipt else None
+        ),
+        "current_game_number": (
+            latest_receipt.get("current_game_number") if latest_receipt else None
+        ),
+        "cursor_host": latest_receipt.get("host") if latest_receipt else None,
+        "active_workers": receipt_workers,
+        "games_per_hour": receipt_rate,
+        "elapsed_seconds": receipt_elapsed,
+        "eta_seconds": receipt_eta,
+        "last_receipt_at": (
+            latest_receipt.get("last_receipt_at") if latest_receipt else None
+        ),
+        "last_receipt_source": (
+            latest_receipt.get("last_receipt_source") if latest_receipt else None
+        ),
+        "hosts": receipt_hosts,
+        "source_policy": "r222 summary.json + progress.jsonl receipts only",
+    }
+
+    def consensus(key: str) -> bool | None:
+        values = [row[key] for row in safety_rows if row[key] is not None]
+        return all(values) if values and len(values) == len(safety_rows) else None
+
+    statuses = {str(row["status"]).lower() for row in shards}
+    if not output_root.exists():
+        status = "awaiting_launch"
+    elif completed >= total_games and completed > 0:
+        status = "complete" if not invalid else "complete_with_invalid_receipts"
+    elif any(value in {"running", "starting", "active"} for value in statuses):
+        status = "running"
+    else:
+        status = "awaiting_receipts"
+    return {
+        "available": output_root.exists(),
+        "status": status,
+        "evaluation_id": (
+            str(contracts[0].get("evaluation_id")) if contracts else "local-turn-pool-belief-mcts-bo1000"
+        ),
+        "completed_games": completed,
+        "total_games": total_games,
+        "percent": 100.0 * completed / total_games,
+        "valid_games": valid,
+        "invalid_games": invalid,
+        "unreceipted_games": (
+            max(0, total_games - completed) if output_root.exists() else None
+        ),
+        "active_worker_limit": sum(
+            int(row["worker_limit"] or 0)
+            for row in shards
+            if str(row["status"]).lower() != "complete"
+        ),
+        "mcts": {"wins": mcts_wins, "draws": draws, "losses": direct_wins},
+        "direct": {"wins": direct_wins, "draws": draws, "losses": mcts_wins},
+        "mcts_selected_decisions": sum(row["mcts_selected_decisions"] for row in shards),
+        "fallbacks": sum(row["fallbacks"] for row in shards),
+        "simulations_total": sum(row["simulations_total"] for row in shards),
+        "converged_searches": sum(row["converged_searches"] for row in shards),
+        "average_depth": depth_weight / depth_samples if depth_samples else None,
+        "max_depth": max(max_depths) if max_depths else None,
+        "games_per_hour": games_per_hour,
+        "eta_seconds": eta_seconds,
+        "updated_at": max(updated) if updated else None,
+        "hosts": host_rows,
+        "progress_panel": progress_panel,
+        "timing": timing,
+        "safety": {
+            "adapter_on": consensus("adapter_on"),
+            "rtp_off": consensus("rtp_off"),
+            "guides_off": consensus("guides_off"),
+            "kaggle_off": consensus("kaggle_off"),
+            "training_eligible": False,
+        },
+        "source": str(output_root),
+        "output_root": str(output_root),
+        "labels": [
+            "local_approximate_belief_mcts_non_exact",
+            "root_sampled_belief_mcts_non_r207_exact_chance",
+            "non_promotion_exploratory_result",
+        ],
+        "no_kaggle": True,
+        "training_eligible": False,
+        "local_only": True,
+    }
+
+
+def final_format_alakazam_rtp_r175_terminal_completion_state() -> dict[str, Any]:
+    """Verify and project the receipt-backed terminal r175 state.
+
+    A managed SIGTERM at the exact no-iteration-21 boundary is success, not a
+    stale in-flight trainer.  The projection remains fail-closed: it becomes
+    current only when the completion and registration receipts agree and every
+    checksum-addressed terminal input still matches on disk.
+    """
+
+    completion_path = FINAL_FORMAT_ALAKAZAM_RTP_R175_COMPLETION
+    registration_path = FINAL_FORMAT_ALAKAZAM_RTP_R175_REGISTRATION
+    completion = read_json(completion_path)
+    registration = read_json(registration_path)
+    checkpoint_digest = str(completion.get("checkpoint_digest") or "")
+    terminal_registry = Path(str(registration.get("registry") or ""))
+    checks = {
+        "completion_contract": bool(
+            completion.get("schema")
+            == "poke_bot.alakazam_rtp_r175_terminal_completion/v1"
+            and completion.get("status")
+            == "ceiling_accepted_frozen_registered"
+            and completion.get("specialist_id") == "alakazam"
+            and int(completion.get("completed_iteration") or -1) == 20
+            and completion.get("completion_authority")
+            == "explicit_owner_ceiling_acceptance"
+            and completion.get("measured_gate_pass") is False
+            and completion.get("current_gate_pass") is False
+            and completion.get("failed_gate_results_preserved") is True
+            and completion.get("frozen") is True
+            and completion.get("registered") is True
+            and completion.get("next_iteration_collected") is False
+            and _is_sha256_digest(checkpoint_digest)
+        ),
+        "registration_contract": bool(
+            registration.get("schema")
+            == "poke_bot.alakazam_rtp_r175_terminal_registration/v1"
+            and registration.get("status")
+            == completion.get("status")
+            and registration.get("specialist_id") == "alakazam"
+            and registration.get("checkpoint_digest") == checkpoint_digest
+            and registration.get("completion_authority")
+            == completion.get("completion_authority")
+            and registration.get("measured_gate_pass") is False
+            and registration.get("current_gate_pass") is False
+            and registration.get("failed_gate_results_preserved") is True
+        ),
+        "registration_receipt": _file_sha256_matches(
+            registration_path,
+            completion.get("registration_receipt_sha256"),
+        ),
+        "terminal_registry": bool(
+            terminal_registry.is_file()
+            and _file_sha256_matches(
+                terminal_registry,
+                completion.get("terminal_registry_sha256"),
+            )
+            and _file_sha256_matches(
+                terminal_registry,
+                registration.get("registry_sha256"),
+            )
+        ),
+    }
+    for name, path_key, digest_key in (
+        ("boundary", "boundary_receipt", "boundary_receipt_sha256"),
+        ("collection", "collection_receipt", "collection_receipt_sha256"),
+        ("commit", "commit", "commit_sha256"),
+        ("evaluation", "evaluation", "evaluation_sha256"),
+    ):
+        artifact_path = Path(str(completion.get(path_key) or ""))
+        checks[name] = bool(
+            artifact_path.is_file()
+            and _file_sha256_matches(artifact_path, completion.get(digest_key))
+        )
+    iter21_artifacts = sorted(
+        str(path)
+        for path in FINAL_FORMAT_ALAKAZAM_RTP_R175_RUN_DIR.rglob("*00021*")
+    )
+    checks["no_iteration_21"] = not iter21_artifacts
+    current = bool(checks and all(checks.values()))
+    return {
+        "schema": "poke_bot.dashboard_terminal_completion/v1",
+        "available": bool(completion or registration),
+        "current": current,
+        "status": completion.get("status") if current else "unverified",
+        "specialist_id": "alakazam",
+        "run": "final_format_alakazam_rtp_r175_i_v6_8k",
+        "completed_iteration": 20,
+        "checkpoint_digest": checkpoint_digest or None,
+        "completion_authority": completion.get("completion_authority"),
+        "measured_gate_pass": completion.get("measured_gate_pass"),
+        "failed_gate_results_preserved": completion.get(
+            "failed_gate_results_preserved"
+        ),
+        "frozen": completion.get("frozen"),
+        "registered": completion.get("registered"),
+        "next_iteration_collected": completion.get("next_iteration_collected"),
+        "source": str(completion_path),
+        "registration_source": str(registration_path),
+        "terminal_registry": (
+            str(terminal_registry) if terminal_registry.is_file() else None
+        ),
+        "commit_source": completion.get("commit"),
+        "checks": checks,
+        "iter21_artifacts": iter21_artifacts,
+    }
 
 
 def _canonical_design_digest(contract: dict[str, Any]) -> str:
@@ -11170,10 +13318,14 @@ def _is_curriculum_service_unit(unit: str) -> bool:
     lowered = str(unit).lower()
     if "pure-rl" in lowered or "curriculum" in lowered:
         return True
+    # Owner hard-swap r175 unit is final-format-alakazam-rtp-r175-rl (not *-h10*).
+    if "alakazam-rtp-r175-rl" in lowered or lowered.endswith("-rtp-r175-rl.service"):
+        return True
     if (
         "final-format-alakazam" not in lowered
         and "final-format-marnie" not in lowered
         and "final-format-crustle" not in lowered
+        and "final-format-slop-box" not in lowered
     ):
         return False
     return any(
@@ -11182,6 +13334,7 @@ def _is_curriculum_service_unit(unit: str) -> bool:
             "-h10.service",
             "-h10-rl.service",
             "-h10-bootstrap.service",
+            "-rtp-r175-rl.service",
         )
     )
 
@@ -16440,6 +18593,7 @@ def main() -> None:
         service = service_state()
         transition = transition_state()
         curriculum = curriculum_state()
+        local_mcts_evaluation = local_turn_pool_belief_mcts_bo1000_state()
         final_alakazam = final_format_alakazam_progress()
         final_marnie = final_format_marnie_progress()
         final_crustle = final_format_crustle_progress()
@@ -16702,6 +18856,65 @@ def main() -> None:
         "stopped",
     }:
         training = active_final_refresh
+    terminal_completion = (
+        final_format_alakazam_rtp_r175_terminal_completion_state()
+    )
+    terminal_identity_current = bool(
+        terminal_completion.get("current") is True
+        and training.get("mode") == "final_format_alakazam_rtp_r175_rl"
+        and training.get("specialist_id") == "alakazam"
+        and training.get("run") == terminal_completion.get("run")
+        and int(training.get("last_completed_iteration") or -1) == 20
+        and (
+            training.get("model_sha256")
+            or training.get("checkpoint_digest")
+        )
+        == terminal_completion.get("checkpoint_digest")
+    )
+    if terminal_identity_current:
+        terminal_status = str(terminal_completion["status"])
+        terminal_line = (
+            "TERMINAL COMPLETE · iter_00020 frozen and registered by explicit "
+            "owner ceiling acceptance · measured gate failed and preserved · "
+            "iter_00021 not collected"
+        )
+        training = {
+            **training,
+            "status": "complete",
+            "phase": f"terminal:{terminal_status}",
+            "goal_revision": 194,
+            "iterations_target": 21,
+            "runtime_registry": terminal_completion.get("terminal_registry"),
+            "latest_line": terminal_line,
+            "fresh": True,
+            "terminal_completion": terminal_completion,
+        }
+        curriculum = {
+            **curriculum,
+            "active": False,
+            "stage": f"terminal:{terminal_status}",
+            "source_current": True,
+            "last_completed_iteration": 20,
+            "last_committed_iteration": 20,
+            "commit_source": terminal_completion.get("commit_source"),
+            "progress_source": terminal_completion.get("source"),
+            "progress_status_source": terminal_completion.get("source"),
+            "progress_updated_at": time.time(),
+            "progress": {
+                "line": terminal_line,
+                "stage": f"terminal:{terminal_status}",
+                "iteration": 20,
+                "current": 20,
+                "total": 20,
+                "percent": 100.0,
+                "rate": None,
+                "rate_unit": None,
+                "gps": None,
+                "sps": None,
+                "remotes": 0,
+                "metrics": {},
+            },
+        }
     if postupload_boundary.get("current") is True:
         boundary_progress = dict(postupload_boundary.get("progress") or {})
         training = {
@@ -16946,6 +19159,11 @@ def main() -> None:
                 "independent_checks": final_alakazam.get("rating_gate_separate"),
             },
         }
+    r175_model_override = final_format_alakazam_rtp_r175_model_override(
+        active_final_refresh
+    )
+    if r175_model_override:
+        final_model_override = r175_model_override
     if active_final_refresh.get("mode") in {
         "final_format_crustle_h10_bootstrap",
         "final_format_crustle_h10_rl",
@@ -17249,6 +19467,7 @@ def main() -> None:
                 "service": service,
                 "transition": transition,
                 "training": training,
+                "terminal_completion": terminal_completion,
                 "bootstrap": training_alias,
                 "baseline_eval": baseline_eval,
                 "latest10": latest10,
@@ -17258,6 +19477,7 @@ def main() -> None:
                 "specialist_handoff": specialist_handoff,
                 "managed_boundary": postupload_boundary,
                 "curriculum": curriculum,
+                "evaluation_tracker": local_mcts_evaluation,
                 "gpus": gpus,
                 "fleet": {
                     "inzi": {

@@ -1,0 +1,54 @@
+{
+  "schema": "poke_bot.replay_model_inspector_submitted_adapter_runtime/v1",
+  "owner_decision_revision": 185,
+  "recorded_at_utc": "2026-08-08T00:13:53Z",
+  "status": "active_inspector_reproduction_future_package_gate_staged",
+  "activated_at_utc": "2026-08-08T01:24:17Z",
+  "activation_receipt": "state/replay-model-inspector-submitted-adapter-runtime-activation-r185.json",
+  "owner_requirement": {
+    "future_kaggle_matchup_adapters_on": true,
+    "historical_submission_bytes_mutable": false,
+    "recorded_logits_claimed": false
+  },
+  "submitted_runtime": {
+    "activation_evidence": [
+      "checksum_verified_runtime_package",
+      "checksum_verified_runtime_enabled_matchup_tree",
+      "exact_submitted_entrypoint_activation_behavior",
+      "trained_nonzero_adapter_bank"
+    ],
+    "future_package_missing_evidence_behavior": "fail_closed_before_packaging",
+    "serialized_dormant_flag_is_serving_authority": false
+  },
+  "inspector_reproduction": {
+    "scope": "single_checksum_bound_trace_request",
+    "enable_bank_when_exact_submitted_startup_would_enable_it": true,
+    "restore_cached_model_state_after_request": true,
+    "accepted_routable_route_status": "active_for_decision",
+    "unknown_or_unroutable_route_status": "bypassed",
+    "missing_or_unverified_runtime_evidence_status": "unavailable",
+    "reproduction_label": "recomputed_not_historical"
+  },
+  "safety": {
+    "read_only_historical_replay": true,
+    "no_checkpoint_or_bundle_mutation": true,
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_authority": false,
+    "training_service_restart_allowed": false
+  },
+  "activation": {
+    "boundary": "future_submission_builder_and_independent_read_only_inspector",
+    "may_run_during_healthy_training": true,
+    "requires_inspector_service_restart": true,
+    "required_validation": [
+      "exact_submitted_entrypoint_activation_test",
+      "trained_adapter_and_runtime_tree_package_gate_test",
+      "active_route_status_and_policy_effect_test",
+      "unknown_route_exact_bypass_test",
+      "unverified_tree_fail_closed_test",
+      "cached_model_state_restoration_test",
+      "live_checksum_bound_trace_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-submitted-adapter-runtime-activation-r185.json"
+  }
+}

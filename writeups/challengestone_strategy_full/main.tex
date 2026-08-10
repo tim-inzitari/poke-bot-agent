@@ -1,0 +1,511 @@
+\documentclass[10pt]{article}
+\usepackage[letterpaper,margin=0.76in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{ink}{HTML}{17233B}
+\definecolor{blue}{HTML}{2457A6}
+\definecolor{pale}{HTML}{EAF1FB}
+\definecolor{mint}{HTML}{E8F5EF}
+\definecolor{sand}{HTML}{FFF3D9}
+\definecolor{rose}{HTML}{F9E7E7}
+\definecolor{grayrow}{HTML}{F3F5F8}
+\definecolor{red}{HTML}{A52A2A}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue,pdftitle={Card-Count Control and Auditable Specialist Learning},pdfsubject={Unrestricted local technical draft; not submitted}}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\footnotesize Card-Count Control --- Full Technical Draft}
+\rhead{\footnotesize\color{red}\textbf{LOCAL DRAFT --- NOT SUBMITTED}}
+\cfoot{\footnotesize\thepage}
+\setlength{\headheight}{14pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.48em}
+\setlist[itemize]{leftmargin=1.3em,itemsep=0.13em,topsep=0.25em}
+\setlist[enumerate]{leftmargin=1.5em,itemsep=0.13em,topsep=0.25em}
+\renewcommand{\arraystretch}{1.14}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\boxcell}[2]{\cellcolor{#1}\parbox[c][0.62in][c]{0.91\linewidth}{\centering\small #2}}
+\newcommand{\verified}{\colorbox{mint}{\scriptsize\textbf{VERIFIED}}}
+\newcommand{\configured}{\colorbox{sand}{\scriptsize\textbf{CONFIGURED}}}
+\newcommand{\excluded}{\colorbox{rose}{\scriptsize\textbf{NOT CLAIMED}}}
+
+\begin{document}
+
+{\color{ink}\LARGE\bfseries Card-Count Control and Auditable Specialist Learning\par}
+\vspace{0.2em}
+{\Large A full technical draft for an Alakazam causal-policy system\par}
+\vspace{0.35em}
+{\large Legal action factorization, typed strategic fusion, immutable training lineage, and bounded recursive planning\par}
+\vspace{0.5em}
+{\small\textbf{Document:} unrestricted-length companion to the 2,000-word Strategy draft \quad \textbf{Status:} local draft; not submitted}
+
+\begin{abstract}
+This report documents a Pok\'emon TCG agent built around a causal Transformer policy/value model, structured legal-action decoding, typed strategic heads, bounded decision fusion, optional causal matchup routing, and a receipt-backed specialist training loop. The current owner-authorized development program is an Alakazam refresh, revision r175, with an exact 60-card list and an 8,196-game iteration contract. Its training runtime can use a lightweight Recursive Turn Planner (RTP) sidecar; the frozen contest-style package remains a policy-only greedy controller because its package does not include the sidecar checkpoint. We keep those surfaces separate throughout.
+
+The report also separates four kinds of evidence that are often conflated: controlled historical gates, descriptive downloaded replay samples, current r175 integration receipts, and features that are merely configured or proposed. Historical Alakazam evidence includes a 4,250-game balanced formal test that failed the system's strict terminal criterion despite passing a separate 1,000-game control. The current r175 program has collection-wiring evidence but no completed formal gate or locally validated Kaggle outcome. This is therefore a system and methodology claim, not a leaderboard or planner-strength claim. Its central thesis is that strategic learning becomes more reliable when legality, causal information, auxiliary supervision, route influence, data identity, and failed experiments are all explicit and inspectable.
+\end{abstract}
+
+\tableofcontents
+
+\section{Scope, source precedence, and claim boundaries}
+
+This is a local drafting artifact. It performs no Kaggle action, changes no competition state, and is not a declaration that the current program is complete. The repository is an active, dirty working tree, so prose and source code cannot automatically be treated as the bytes of a historical submission. We use the following precedence: current owner decisions in \texttt{GOAL.md}; typed canonical state and immutable receipts; exact bundle/checkpoint provenance; then implementation and design documentation. Historical plans and dashboard labels are supporting context only.
+
+Table~\ref{tab:status} states the implementation boundary before describing the design. This matters because the architecture has three related but non-identical surfaces: a historical frozen contest bundle; the owner-authorized r175 training contract; and a broader PokeRLM research roadmap. Only the first two are discussed as implemented system surfaces.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Implementation and evidence boundary used in this report.}
+\label{tab:status}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{0.20\linewidth}>{\raggedright\arraybackslash}p{0.16\linewidth}Y}
+\toprule
+Surface & Status & Safe claim \\
+\midrule
+Historical Alakazam contest bundle & \verified & Exact model, runtime bundle, and matchup-tree digests are bound for submissions 55315274 and 55324802. The inspector records a 19-head/19-route inventory and two exact action-reconstruction checks. No source-backed score or rank is available. \\
+Current r175 Alakazam program & \configured & Owner-authorized 25-epoch expert rebootstrap and 8,196-game RL loop. Latest recorded receipts show RTP-enabled collection locally and remotely, but this report does not freshly inspect the remote services and no r175 terminal gate is complete. \\
+RTP sidecar & \verified & A 675-game proof collection contains trusted planner-origin records. This proves integration and provenance, not a win-rate gain. \\
+Packaged RTP inference & \excluded & The normal builder and entry point do not package the RTP sidecar checkpoint or enable its environment flags. The contest-style controller is greedy policy inference. \\
+Router Format 6 & \configured & A shape-stable 64-slot compatibility design exists, but its static roster is staged and does not prove that a trained adapter affected every historical submitted decision. \\
+Expanded PokeRLM roadmap & \excluded & Larger language-like recursive planning, teacher distillation, learned plan codes, and online verification remain proposed research unless separately receipt-backed. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The official Strategy track limits its Kaggle Writeup to 2,000 words. That rule applies to the companion submission-length draft, not this report. The official rubric places 70\% weight on the model, 20\% on the deck, and 10\% on report quality. The organization below therefore explains the controller and learning system first, then the exact deck strategy, then the evidence and limitations.
+
+\section{Problem formulation and design objectives}
+
+\subsection{A legal, partially observed control problem}
+
+At decision time, the agent receives a public board, its own private information, the realized action history visible to the acting seat, and a legal-choice object generated by the competition engine. It does not receive an omniscient game state. The opponent's hidden hand, deck order, and prizes must not become features merely because they appear in offline logs. A production feature boundary rejects a state if the opponent hand is exposed where it should not be.
+
+The action is also not a single fixed-class label. Some decisions choose one option. Others choose an ordered subset, such as multiple cards, targets, or resources, with minimum and maximum cardinalities. Flattening every permutation into a monolithic action vocabulary would either omit legal actions or create a factorial output space. Our controller instead treats the engine's current options as the authoritative support and builds a sequence of legal selections.
+
+The long horizon makes local legality insufficient. A legal draw can cause deck-out; a legal Rare Candy can erase the only replacement evolution route; a legal two-prize support Pok\'emon can shorten the opponent's prize path; a legal gust can waste the one card needed to close the game. The model therefore needs both a precise current-action representation and learned estimates of future resources, responses, outcomes, and remaining turns.
+
+\subsection{Design objectives}
+
+The system was developed around six operational objectives:
+
+\begin{enumerate}
+\item \textbf{Causal parity.} Training and serving use the same acting-seat information boundary and ordered history contract.
+\item \textbf{Complete legal support.} Every engine-legal fixed or variable-card action must remain representable; inference may rank legal choices but must not invent one.
+\item \textbf{Strategic influence with attribution.} Auxiliary predictions should not live only on dashboards. Each learned view receives an explicit, bounded route into action scoring, and that route can be inspected or ablated.
+\item \textbf{Deck specialization without hidden rules.} Human strategy can guide causal supervised targets, but the guide cannot become a serving input or directly choose actions.
+\item \textbf{Repeated-match stability.} Seats, opponent packages, deck identity, simulator behavior, and held-out data must be controlled well enough that an apparent gain is not an initial-state or matchup accident.
+\item \textbf{Immutable failure history.} Rejected checkpoints, incomplete collections, migration errors, and negative gates remain labeled as such rather than being overwritten by a later narrative.
+\end{enumerate}
+
+\section{Controller architecture}
+
+\subsection{Observation, spatial state, and history}
+
+The competition wrapper is the only direct engine interface. It exposes battle initialization, legal action selection, action application, and game completion. The feature builder converts the current observation into sparse card/state groups for both players' board zones, the acting player's hand and deck summary, active positions, stadium, and global state. Embedding bags represent sparse card collections, while explicit slot identities preserve where a card or stack occurs. A spatial Transformer produces contextual board memory.
+
+For the canonical history-conditioned model, the spatial board is pooled into one state token per decision and paired with the prior realized own-action embedding. Causal temporal attention with rotary positions processes the acting seat's history. Incremental inference can reuse a key/value cache rather than rebuilding the entire sequence. The r175 service configures three temporal blocks, but a generated runtime environment that is not present in this checkout may alter the pure-RL context mode; the report therefore treats causal-history serving as the implemented model contract and does not claim that every r175 worker was freshly verified in this session.
+
+Each legal option is separately encoded from action type, attack or card identity, context, and role-specific source, owner, area, and index bindings. The option decoder cross-attends legal-action tokens to the spatial memory and current state. Padded options are masked. A flat option-policy score is therefore conditioned on both the exact choice object and the current information set.
+
+\subsection{Autoregressive legal-action factorization}
+
+For a multi-selection stage, the policy chooses one remaining option at a time. Once the engine's minimum count is satisfied, STOP becomes a legal decoder choice. Selected items are removed from the candidate set, and ordered selections retain rank information. This factorization has three benefits:
+
+\begin{itemize}
+\item it represents every ordered legal prefix without pre-enumerating all subsets or permutations;
+\item it shares parameters across stages and variable option counts;
+\item it keeps the failover path complete: if an experimental planner overflows or returns an invalid plan, the agent can still execute the full factorized greedy policy.
+\end{itemize}
+
+Normal inference takes an argmax at each stage. A seeded random legal choice is reserved for wrapper-level exception handling so an error does not emit an invalid engine action. It is not the ordinary controller.
+
+\begin{figure}[htbp]
+\centering
+\begin{tabularx}{\linewidth}{>{\centering\arraybackslash}X c >{\centering\arraybackslash}X c >{\centering\arraybackslash}X}
+\boxcell{pale}{Acting-seat board\\and realized history} & $\longrightarrow$ &
+\boxcell{mint}{Spatial + temporal\\Transformer} & $\longrightarrow$ &
+\boxcell{sand}{Legal-option\\cross-attention} \\
+&& $\Big\uparrow$ && $\Big\downarrow$ \\
+\boxcell{pale}{Causal supervised\\targets (training only)} & $\longrightarrow$ &
+\boxcell{mint}{Typed heads + one\\bounded route each} & $\longrightarrow$ &
+\boxcell{sand}{Per-stage greedy\\legal choice}
+\end{tabularx}
+\caption{Packaged neural control path. Human guide metadata scales selected causal training objectives but never enters the upper runtime path.}
+\label{fig:controller}
+\end{figure}
+
+\subsection{Policy, value, beliefs, and strategic heads}
+
+The policy head ranks legal options and the value head estimates terminal return. Additional heads create independently supervised views of the state or legal option. ``Independent'' means that a head computes its typed prediction before fusion; it does not mean that the prediction is allowed to be silently ignored after an action route is activated.
+
+Table~\ref{tab:heads} lists the 19-head physical inventory used by the H10 family. The r175 design keeps combo-state tensors for compatibility but explicitly disables its loss, fusion route, guide route, and policy backpropagation. Thus its intended live typed-source set contains the other 18 views. The historical submitted inventory reports 19 physical heads and 19 physical routes; that count alone does not establish that every route contributed to every decision.
+
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.19\linewidth}>{\raggedright\arraybackslash}p{0.32\linewidth}>{\raggedright\arraybackslash}p{0.39\linewidth}}
+\caption{Learned decision views and supervision.}\label{tab:heads}\\
+\toprule
+Head & Prediction or target & Causal role and masking \\
+\midrule
+\endfirsthead
+\toprule
+Head & Prediction or target & Causal role and masking \\
+\midrule
+\endhead
+Value & Terminal return & State view used by policy/value learning and fusion. \\
+Archetype & Publicly supported deck identity & Classification from causal card evidence; ambiguous identity cannot become a confident route. \\
+Opponent hand & Hidden-card distribution/prior & Trained only where target provenance is valid; prediction is not a revealed hand. \\
+Opponent remainder & Remaining-card distribution/prior & Root/state prior; missing targets are masked. \\
+Lethal threat & Immediate loss/knockout pressure & Public-state strategic scalar. \\
+Prize race & Relative prize trajectory & Two-output public-state estimate. \\
+Action Q & Return of the selected legal candidate & Selected action may use terminal Monte Carlo return; unselected candidates need audited counterfactual provenance or remain masked. \\
+Action type & Canonical factorized option type & Per-option categorical scorer; Fusion v3 caps its reliability at 0.25. \\
+Action target & Decoder target binding & Per-option target scorer. \\
+Action resource & Source, tool, Energy, or resource binding & Per-option resource-use scorer. \\
+Action utility & Damage, cards drawn, Energy delta, open bench, prize delta, knockout & Requires an exact immediate post-action transition. Components without a valid transition are masked. \\
+Tactical outcomes & Own/opponent prize, knockout, damage over 1, 2, 3 same-seat decision frames & Eighteen outputs with component-level causal masks. \\
+Opponent response & Attack, prize, knockout, active change, hand reduction, Energy growth, no-attack ending & Interval ends before the acting seat's next decision; unavailable components are masked. \\
+Resource forecast & Next own hand/deck size, attached Energy, bench space, attachment and retreat availability & Next-same-seat prediction with independent numeric/binary masks. \\
+Game phase & Setup, stabilize, pressure, prize race, closeout & Deterministic public-state target with explicit precedence; missing required fields mask the row. \\
+Outcome distribution & Loss/draw/win & Three-way terminal distribution with calibration diagnostics. \\
+Remaining turns & $\log(1+\text{remaining complete turns})$ & Incomplete or truncated trajectories are masked. \\
+Setup-board outcome & Six next-resource components + terminal outcome for each setup option & Nine outputs; trains only on complete selected setup-active/setup-bench stages. \\
+Combo state & Typed 32-way combination state & Architecture-compatible specialist extension. Explicitly loss/route-off for current r175 Alakazam. \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+All labels are generated from complete causal trajectories before context truncation. A missing label contributes no auxiliary loss and no fabricated zero target. Once a head is part of the fused policy, ordinary policy loss can still backpropagate through its route; this is joint decision learning, not a claim that the missing auxiliary target was inferred.
+
+\subsection{Fusion v3: typed, bounded, and attributable}
+
+Decision Fusion v3 adds learned route deltas to the preserved base option-policy logits. Every active named source is required; a missing required source raises instead of silently shrinking the architecture. A state head combines its typed output with each current option representation. An option head combines its per-option typed output with that same option representation.
+
+Each dedicated route is baseline-subtracted: the route evaluates the typed output with the option representation, then subtracts an option-only baseline. Consequently, the route cannot influence choice solely by learning a second copy of the generic option scorer. A learned positive reliability is clamped to $[0.25,4.0]$; action type is additionally capped at 0.25 while its target-binding limitations remain. Active route deltas are fixed-mean aggregated and bounded to one policy logit before addition. These constraints do not prove each head improves wins, but they make influence explicit, limited, and measurable.
+
+The human deck guide is the one deliberate no-route exception. It is curriculum metadata, not a learned runtime head. It cannot enter the observation, supply a final policy logit, or override outcome learning.
+
+\subsection{Matchup adapters and abstention}
+
+Matchup adapters provide a small residual specialization selected from public opponent card evidence. The causal router considers observed active, bench, and discard cards, applies confidence and repeated-confirmation rules, and selects at most one route. Unknown or insufficient evidence is an exact base-policy bypass. A materialized slot or a packaged matchup tree is not synonymous with activation on a particular decision.
+
+Router Format 6 is designed for long-lived checkpoint compatibility. It reserves 64 physical slots; the first 18 preserve Router Format 5 identities and tensors. A newly admitted archetype receives the lowest never-used slot. Removal tombstones a slot and disables routing, gradient, optimizer, replay, and rehearsal updates without reindexing it. Unused slots are zero and carry no optimizer state. Ordinary roster edits therefore change registry data rather than checkpoint shape or parameter names. The current static roster marks this format staged pending a safe boundary, so the design should not be retroactively attributed to every historical bundle.
+
+\subsection{Contest-style packaging and runtime safety}
+
+The package entry point first handles the choice of going first, then lazily imports the engine, verifies and loads the frozen checkpoint, and enters evaluation mode. The normal search configuration has search disabled; inference calls the history-conditioned factorized policy with greedy selection. The builder places \texttt{main.py}, \texttt{deck.csv}, \texttt{model.pt}, turn-order and search configurations, engine runtime, and required \texttt{poke\_bot} modules at the archive top level. It runs isolated smoke tests for turn order, model loading, legal actions, and policy-only mode.
+
+Two cautions are important. First, a bare build in the present dirty checkout defaults to a legacy Dragapult deck and fallback checkpoint paths; the r175 milestone builder must explicitly bind the Alakazam deck and checkpoint. Second, the exact historical archive is not mounted here. We therefore use its checksum-bound inspector provenance rather than treating today's modified \texttt{submission/main.py} or builder as proof of historical bytes.
+
+The verified historical Alakazam runtime inventory contains 714 parameter tensors, 10 buffers, and 10,757,832 total tensor elements. Two submissions share checkpoint digest \texttt{7480d81c54b1...}, bundle digest \texttt{335d91c0f3f2...}, and matchup-tree digest \texttt{da223c4903dd...}. These are identity facts, not performance facts.
+
+\section{Training system}
+
+\subsection{One active specialist and an immutable lineage}
+
+Only one specialist is permitted to update at a time. A specialist is prepared with an exact deck, expert corpus, opponent set, model format, guide contract, and runtime registry. Passing work is frozen and registered at a receipt-backed boundary. Frozen models may serve as inference-only opponents or distillation teachers, but their replays, parameters, optimizer state, and adapters do not leak into a later optimizer unless the protocol explicitly authorizes the transformation.
+
+The frozen registry records fourteen completed specialist identities spanning Alakazam, Hops/Trevenant, Starmie, Lucario, Dragapult/Dusknoir, Dudunsparce, Marnie/Grimmsnarl, Garchomp, Team Rocket's Mewtwo, Thwackey, Team Rocket's Spidops, Hammer Pult, Teal/Slop Box, and Archaludon. The cumulative shared core is refreshed only from checksum-verified teachers with balanced expert learning. Generation 9 remains the accepted fallback; later G10--G12 candidates were rejected and preserved rather than silently substituted.
+
+Every production iteration records the parent checkpoint, resolved configuration, deck distribution, opponents, seeds, code identity, collection jobs, seats, trajectory disposition, learner metrics, candidate digest, promotion evidence, selected incumbent, and local/remote reload acknowledgements. The next iteration may not issue work until a terminal commit exists. Resume reads the ledger; it does not guess from a newest filename or modification time.
+
+\subsection{Expert learning and guide discipline}
+
+The current r175 override selects Alakazam acting-seat games from five exact archive days, August 1--5, 2026, rather than assuming the older generic latest-20-day recipe. Per-day hashes, acting-seat identity, context cap, and protected corpus pointer are recorded. The expert bootstrap runs 25 epochs from the historical r79 iteration-20 Alakazam parent. Expanded heads, fusion, guide contract, curriculum, and role-map checks must be present before the child is accepted.
+
+The Powerful Hand guide is practical human strategy distilled into abstaining, causal target predicates. It may increase loss on an observed target or selected pairwise route direction, but it is forbidden from direct policy cross-entropy. It reads neither hidden cards nor future outcomes at serving time, because it is absent at serving time. The r175 guide weight ramps to and holds at 0.05; setup-board outcome uses weight 0.025. Every non-combo head has nonzero training from epoch one. Combo tensors stay resident for load compatibility, while combo loss, action route, guide route, and policy gradients are disabled.
+
+This arrangement corrects a recurring failure mode in strategy agents: converting a verbal heuristic into a hard-coded action preference. A heuristic can be right on average but wrong under a prize, bench, or resource detail. By supervising only causal typed quantities and permitting abstention, the guide supplies learning pressure without becoming a second policy.
+
+\subsection{The r175 iteration contract}
+
+Every r175 RL iteration is exactly 8,196 completed games:
+
+\begin{itemize}
+\item 1,024 self-play Alakazam mirrors;
+\item 7,172 games against the public package mix;
+\item at least 1,024 games per set against the checksum-pinned Marnie/Grimmsnarl H10 checkpoint; and
+\item exact first/second-seat balance in assigned, realized, and consumed replay.
+\end{itemize}
+
+The nominal ceiling is 300 iterations. At each fifth-iteration boundary, the system refreshes expert data and runs five expert rehearsal epochs. A submission request may be queued asynchronously at the configured milestone, but queueing is not evidence that a new submission completed, and it never blocks or selects the continuing trainer.
+
+\begin{figure}[htbp]
+\centering
+\begin{tabularx}{0.98\linewidth}{>{\centering\arraybackslash}X c >{\centering\arraybackslash}X c >{\centering\arraybackslash}X}
+\boxcell{pale}{Five-day acting-seat\\expert corpus} & $\longrightarrow$ &
+\boxcell{mint}{25-epoch CE\\rebootstrap} & $\longrightarrow$ &
+\boxcell{sand}{Frozen iteration-0\\candidate} \\
+$\Big\uparrow$ &&&& $\Big\downarrow$ \\
+\boxcell{pale}{Every 5 iterations:\\refresh + rehearsal} & $\longleftarrow$ &
+\boxcell{mint}{Immutable commit,\\reload, provenance} & $\longleftarrow$ &
+\boxcell{sand}{8,196 games +\\two AWR passes}
+\end{tabularx}
+\caption{Owner-authorized r175 learning loop. A candidate or partial shard cannot advance the lineage without its recorded gate and terminal commit.}
+\label{fig:training}
+\end{figure}
+
+The learner uses advantage-weighted regression on actions actually taken plus an undiscounted terminal-return value target. The critic baseline is frozen and detached for the iteration. Raw and normalized advantages, clipping, effective sample size, losses, optimizer state, and two-pass completion are recorded. Production defaults to two fresh-data AWR passes. That number is an engineering hypothesis rather than a contest prescription; changing it requires a new fingerprinted experiment.
+
+Candidate-versus-incumbent promotion is seat-balanced and confidence-aware. Rejection republishes the incumbent and retains the rejected candidate. Formal gates keep fixed opponents and release suites outside the replay and optimizer stream. Downloaded Kaggle replays are likewise training-ineligible; they are used for model reconstruction and descriptive diagnostics only.
+
+\subsection{Simulation batching and identity preservation}
+
+The r182 transport update permits true four-game native multi-environment packing only for 27 checksum-exact compatible public packages. Ten legacy packages remain singleton, as do unknown, changed, malformed, or cross-group cases. Self-play retains four-game packing. This is a throughput optimization with a semantic boundary: each game still records independent deck, opponent, seat, seed, result, and failure identity. Batching may not merge histories, hide a timeout, or convert a failed engine run into a win.
+
+The current service profile fixes local simulator, in-flight, held-out, and live-pool counts and binds required remote capacity. Memory thresholds and a no-swap policy are part of the launch contract. Those operational settings are not a performance result; their purpose is to keep collection reproducible and to fail before partial, memory-corrupted work enters a training shard.
+
+\section{Bounded Recursive Turn Planner}
+
+\subsection{What RTP is}
+
+RTP is a lightweight learned planning sidecar for collection and research. It is not MCTS, exhaustive rules simulation, a free-form language model, or a beam search over every card combination. The base policy encodes the causal state once. A complexity gate sends simple or low-entropy turns directly to the policy. For a complex turn, the planner proposes a small number of typed plan candidates, applies shallow latent dynamics and value refinement, tracks explicit cost/depth limits, and returns a legal first action.
+
+The pure-RL sizing profile uses a 96-dimensional latent, 192-wide dynamics, four candidates, depth two, no more than four neural passes, and a maximum plan length of twelve. Online simulator-verification budget is zero in the current profile. External engine legality and resource checks validate the result. Enumeration overflow, a missing sidecar, an invalid plan, or a planner exception returns control to the complete factorized greedy policy.
+
+\subsection{What RTP evidence proves}
+
+The r175 collection-enablement receipt records 675 proof games and 25,450 decisions. Of those, 442 games and 16,239 decisions were marked planner-origin, with 233 games and 9,211 decisions from the history policy. The records were marked trusted after repairing a local model-integration failure. Remote receipts name planner-origin probe episodes on both required farms.
+
+This evidence proves that the sidecar was wired into collection and that planner provenance survived to records. It does not compare planner-on and planner-off wins, establish a held-out gain, or certify a contest score. Teacher distillation, a controlled planner-strength study, and online verification remain future work. Most importantly, the contest-style package neither copies the RTP sidecar checkpoint nor sets its enabling environment variables. The package claim remains a fused greedy policy.
+
+\section{Alakazam deck and human strategy}
+
+\subsection{Exact 60-card r175 list}
+
+The owner pilot list intentionally differs from the older modal guide representative: it uses three Alakazam, three Dunsparce, and three Dudunsparce to preserve a 19-Pok\'emon, 60-card total. Table~\ref{tab:deck} is generated from the checksum-bound card-ID list and the repository card database.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Exact r175 Alakazam pilot list (60 cards).}
+\label{tab:deck}
+\begin{tabularx}{\linewidth}{p{0.13\linewidth}Y p{0.08\linewidth}Y}
+\toprule
+Count & Pok\'emon (19) & Count & Trainers (34) / Energy (7) \\
+\midrule
+4 & Abra (MEG 54) & 4 & Buddy-Buddy Poffin \\
+4 & Kadabra (MEG 55) & 4 & Pok\'e Pad \\
+3 & Alakazam (MEG 56) & 4 & Hilda \\
+3 & Dunsparce (JTG 120) & 4 & Dawn \\
+3 & Dudunsparce (TEF 129) & 4 & Battle Cage \\
+1 & Fezandipiti ex (SFA 38) & 3 & Rare Candy \\
+1 & Shaymin (DRI 10) & 3 & Enhanced Hammer \\
+&& 2 & Night Stretcher \\
+&& 2 & Boss's Orders \\
+&& 2 & Xerosic's Machinations \\
+&& 1 & Sacred Ash \\
+&& 1 & Lana's Aid \\
+&& 4 & Telepath Psychic Energy \\
+&& 2 & Basic Psychic Energy \\
+&& 1 & Enriching Energy \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Damage is a hand threshold, not a hand-maximization objective}
+
+Powerful Hand places two damage counters for each card in hand. Before spending a card, the relevant target is
+\[
+h_{\mathrm{KO}}=\left\lceil\frac{\text{opposing Active remaining HP}}{20}\right\rceil.
+\]
+Visible weakness, resistance, prevention, healing, or prize-changing effects are applied only when the engine state supports them. The threshold is recomputed after every draw, discard, switch, gust, heal, or modifier.
+
+The naive strategy is to maximize hand size. The actual objective is the smallest safe hand that takes the intended prize while preserving the next attacker, recovery route, bench space, and enough deck for mandatory future draws. Cards beyond the current threshold may be liabilities: they can consume the only Rare Candy, expose a two-prize support Pok\'emon, use the next turn's Supporter, or force deck-out through evolution and Energy draw.
+
+\subsection{Opening board and turn order}
+
+The default stable board aims for two live Abra routes, one Dunsparce line when it helps the next two turns, and one flexible bench slot. Abra is preferred Active when it can evolve safely; Dunsparce is a fallback when Abra would be trapped or immediately lost without progress. A second Abra is established before optional utility Pok\'emon. Rare Candy is not used merely because it is legal: the evolved Alakazam must be able to attack, its draw must fit the deck budget, and a replacement evolution route must remain.
+
+When going first is allowed, the package prefers it. The extra development turn is used to establish Abra plus replacement, then the Dunsparce engine. Energy goes to the line most likely to survive and attack. Search and board development come before speculative draw, ending with a concrete next-turn map: evolution, Energy, required hand, and replacement attacker.
+
+Going second compresses setup. A legal attacker and attachment take precedence over hand expansion. If an immediate attack is impossible, two live evolution routes are better than one oversized hand. A smaller attack can be correct when it protects the board and creates an efficient two-hit prize line.
+
+\subsection{Search, draw, and deck-out control}
+
+When the desired card is known, deterministic search precedes broad draw: remove the exact target from the deck, then draw from a narrower distribution. Reverse the order only when the draw can materially change the correct search target. Track remaining Abra, Kadabra, Alakazam, Rare Candy, Energy, and recovery before committing.
+
+Kadabra's evolution draw can preserve Rare Candy and keep multiple paths alive. Dudunsparce's Run Away Draw is used when three cards solve a named problem---knockout threshold, evolution, Energy, or recovery---and its shuffle-back creates future deck depth. It is not cashed in when the current hand already takes the required knockout. Telepath Psychic and Enriching Energy are attachment resources with draw consequences; all forced draws, including next turn's opening draw, must fit the endgame deck budget.
+
+After disruption, rebuilding follows a strict order: legal attacker/evolution, Energy or retreat, current knockout hand threshold, replacement attacker, then optional disruption. The policy does not chase its former hand size. If a one-turn knockout is no longer safe, it should choose a two-hit line that preserves board continuity.
+
+\subsection{Prize, bench, and matchup decisions}
+
+Every attack is evaluated as a short prize map: current knockout and prize yield; likely return attacker; next Alakazam route; and next required hand. Boss's Orders is valuable when it changes that map, strands an expensive retreat, removes a draw/Energy engine, or closes the game. Kadabra can finish a small remaining HP total when doing so protects Alakazam or preserves the next hand.
+
+Recovery is selected by the actual missing resource. Night Stretcher retrieves one Pok\'emon or basic Energy, Lana's Aid retrieves a narrow combination, and Sacred Ash restores a larger Pok\'emon supply. Using the largest recovery count is not automatically best. Fezandipiti ex is benched reactively when its post-knockout draw repairs a decisive hand; exposing a two-prize support by default can shorten the opponent's route to six prizes. Hidden prizes are never treated as known: absence only motivates a public worst-case line until a reveal resolves it.
+
+The exact list also encodes targeted interaction. Xerosic's Machinations is preserved in the Alakazam mirror for a turn that both shrinks Powerful Hand damage and forces the opponent to rebuild. Enhanced Hammer is saved for Special Energy whose removal actually changes the attack or prize race, particularly Rocky Fighting Energy or Mist Energy interactions. Shaymin enters reactively to protect a vulnerable non-Rule-Box bench from visible spread; Battle Cage is prioritized against damage-counter pressure such as Froslass/Munkidori lines. Matchup names inform an observed-board response, not a hidden-state shortcut.
+
+\section{Evaluation and empirical evidence}
+
+\subsection{Four evidence tiers}
+
+We report results in four non-interchangeable tiers:
+
+\begin{enumerate}
+\item \textbf{Controlled formal gates:} fixed opponents, exact seat counts, disjoint evaluation, and recorded thresholds.
+\item \textbf{Internal promotion tests:} candidate-versus-parent or held-out checks used inside a particular historical iteration.
+\item \textbf{Downloaded public replay samples:} descriptive observations whose opponents, timing, and seat mix may differ.
+\item \textbf{Integration receipts:} proof that a component loaded, executed, produced trusted records, or reproduced an action; not proof that it improved wins.
+\end{enumerate}
+
+Table~\ref{tab:results} preserves those labels. No local source establishes a current r175 formal win rate, Kaggle score, or leaderboard rank.
+
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.17\linewidth}>{\raggedright\arraybackslash}p{0.22\linewidth}>{\raggedright\arraybackslash}p{0.50\linewidth}}
+\caption{Defensible quantitative evidence.}\label{tab:results}\\
+\toprule
+Evidence tier & Result & Interpretation and boundary \\
+\midrule
+\endfirsthead
+\toprule
+Evidence tier & Result & Interpretation and boundary \\
+\midrule
+\endhead
+Historical formal gate: Alakazam r79 iter15 & 4,250 games; 63.5625\% skill-weighted win rate; 62.4375\% lower bound. Separate 1,000-game official control: 80.05\%. & The official-control floor passed, but the 75\% internal terminal criterion failed. The run continued toward its ceiling. This is the r79 parent family, not r175 performance. \\
+Historical formal gate: Marnie & 4,250 games; 74.6\% skill-weighted; 73.6\% lower bound; passed. Separate 1,000-game research control: 73.25\%. & Different specialist and checkpoint. Useful evidence that the protocol can record a pass, not an Alakazam claim. \\
+Historical formal gate: Crustle & 4,500 games; 75.99\%; 90\% interval 74.98--77.01\%; gate \texttt{passed:false}. & Exact 125/125 seats per opponent. The point criterion still failed despite the high aggregate. Crustle was later abandoned with artifacts preserved. \\
+Internal Crustle promotion & Iteration 4: 77.6\% over 4,500 held-out games; 8,192 source games and 365,218 decisions. & An internal promotion metric, not a formal final gate. Its milestone submission 55300685 later returned score 700.8; no rank is inferred. \\
+Historical Alakazam public replays & Iterations 0/4/9/14/20: 41/75, 41/71, 37/61, 31/50, 34/59. & Rates 54.7\%, 57.7\%, 60.7\%, 62.0\%, 57.6\%. Uncontrolled, different-size public samples; do not call them a monotonic learning curve or formal holdout. \\
+r79 iter20 seat slice & 23/35 first, 11/24 second; 34/59 overall; Wilson interval 45.0--69.4\%. & A 20-point observed seat gap in a small, non-random downloaded cohort. Motivates balanced collection and second-seat setup recovery; does not estimate r175 strength. \\
+Historical head reconstruction & 4,299 decision stages; 99.44\% recorded-action agreement. Largest leave-one-head-out flips: action Q 0.256\%, setup 0.209\%, opponent response 0.140\%. & Demonstrates runtime reconstruction and small local decision sensitivity. It does not identify counterfactual wins or causal benefit. \\
+Current r175 integration & 675 proof games, 25,450 decisions; 442 games and 16,239 decisions planner-origin. & Trusted RTP collection wiring only. No held-out comparison or current gate. \\
+Submitted-runtime inspection & 126 digest-bound downloaded games across two submissions; two exact traces show 19-head/19-route inventory and recorded-action agreement. & Provenance and reconstruction. Dynamic values are explicitly labeled recomputed, not historical activations. \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\subsection{The historical replay series}
+
+The downloaded Alakazam replay series is useful precisely because it refuses a simple success story. The observed rate rose through iteration 14 and then fell at iteration 20, while sample size also declined. Opponent distribution was not held constant. The final sample's first/second split was materially different. The safe conclusion is that public replay inspection found a seat-sensitive weakness and a poor 5/14 slice against Marnie variants. The r175 design responded by enforcing exact seat balance and a checksum-pinned Marnie minimum; it did not relabel the old sample as a current baseline.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Historical downloaded Alakazam public replay samples (descriptive only).}
+\begin{tabular}{rrrrl}
+\toprule
+Iteration & Wins & Games & Observed rate & Relative bar \\
+\midrule
+0  & 41 & 75 & 54.7\% & \color{blue}\rule{2.73cm}{1.0ex} \\
+4  & 41 & 71 & 57.7\% & \color{blue}\rule{2.89cm}{1.0ex} \\
+9  & 37 & 61 & 60.7\% & \color{blue}\rule{3.03cm}{1.0ex} \\
+14 & 31 & 50 & 62.0\% & \color{blue}\rule{3.10cm}{1.0ex} \\
+20 & 34 & 59 & 57.6\% & \color{blue}\rule{2.88cm}{1.0ex} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The active Alakazam gate is separate: 2,000 pinned, disjoint-seed games with a 55\% 90\%-lower-confidence-bound requirement. The archived iteration-20 lower bound of 50.35\% does not satisfy it; an older 55.5\% number is protected only as a non-regression anchor. No completed r175 gate receipt was found.
+
+\subsection{Replay Model Inspector}
+
+The inspector is a read-only localhost service over downloaded submission replays. It resolves the exact submitted bundle and checkpoint for an indexed game, verifies replay bytes, reconstructs a causally available decision, and exposes architecture-present head values/masks, route reliabilities, per-option contributions, base and fused logits, selected/recorded actions, and bounded parameter slices. Missing or mismatched identity returns explicit unavailability rather than substituting a nearby model.
+
+Its activation receipt binds 126 games across submissions 55315274 and 55324802, two provenance records, exact bundle/checkpoint/tree digests, 28 focused tests, and two real-trace action agreements. Historical replays do not store internal activations, so all model values are labeled \texttt{recomputed\_not\_historical}. Replays remain training-ineligible and mounts are read-only. This makes the tool useful for explanation without turning evaluation feedback into replay data.
+
+\section{Negative results and design changes}
+
+\subsection{Direct Alakazam migration failed closed}
+
+An older Alakazam checkpoint did not contain the H10 capacity, expanded heads, and fusion routes required by the new architecture. Rather than copying matching tensors and pretending the partial overlay was a valid descendant, the migration was rejected. The system fell back to the checksum-accepted shared core and performed a full expert bootstrap. This preserves a clean semantic boundary: compatible tensor names are not enough when the decision architecture has changed.
+
+\subsection{More guide imitation was not more strength}
+
+Earlier work showed that higher guide adherence could coexist with weak game performance. The remedy was not a larger direct imitation coefficient. Direct guide-policy cross-entropy was disabled, guide action consumption was removed, and the current design limits the guide to observed causal strategic objectives and selected pairwise route direction. The r175 weight is 0.05, not a claim that the human guide should dominate outcome learning.
+
+\subsection{Marnie family sampling rolled back}
+
+A paired family-sampling study produced two inconclusive rounds of 1,020 pairs each with no integrity failures. A subsequent mandatory monitor used 4,284 locked valid pairs and recorded a 95\% lower bound of $-8.252$ percentage points for the package delta. The exact parent was restored. The study is valuable not because it succeeded, but because the system had a predeclared rollback path and preserved both the clean methodology and negative effect.
+
+\subsection{Slowking failed, and Crustle was abandoned}
+
+Slowking's iteration-5 skill-weighted result was approximately 5.21\%. The next collection was sealed, but no iterative checkpoint, freeze, registration, submission, or serving activation followed. It remains a terminally failed experiment. Crustle, despite strong internal and formal-looking aggregates in some stages, failed its exact criterion and was later explicitly abandoned. Neither result is used to pad the active fleet or to claim a pass.
+
+\subsection{Operational failures remained data-integrity failures}
+
+An earlier 128-worker configuration exhausted memory. A subsequent attempt retained only 8,146 of 8,192 required games. The shortfall was not rounded up, and the partial set was not accepted as exact. RTP also initially encountered a local-model integration failure before the proof shard was repaired. These events motivated immutable shard counts, explicit remote completion, no silent local fallback, memory preflight, and provenance fields distinguishing planner-origin from history-policy decisions.
+
+\section{Limitations and future work}
+
+\begin{itemize}
+\item \textbf{No current r175 strength result.} The program has a typed contract and collection receipts, but no completed current formal gate or source-backed Kaggle outcome. Historical r79 scores do not transfer across the hard swap.
+\item \textbf{No causal win attribution for heads.} Leave-one-head-out logit changes show decision sensitivity, not counterfactual game outcomes. Paired fixed-seed tests are required before reweighting.
+\item \textbf{RTP is not yet validated as an improvement.} Collection provenance exists; controlled planner-on/off evaluation, teacher distillation, learned plan codes, and online verification do not.
+\item \textbf{Adapter presence is not adapter use.} A tree or nonzero bank cannot be described as active without a decision-level causal route. Router Format 6 remains a compatibility design pending a safe activation boundary.
+\item \textbf{Public replay data are biased.} Samples are small, non-random, opponent mixes vary, and seat ratios differ. They can diagnose a failure mode but cannot replace fixed held-out evaluation.
+\item \textbf{Compute cost is substantial.} Exact 8,196-game iterations, periodic expert rehearsal, fixed held-outs, remote parity, and receipt generation improve auditability but slow iteration.
+\item \textbf{Deck specificity remains.} The shared causal representation and legal decoder are deck-agnostic, but guide targets, specialist data, adapters, and the prize/resource priors can still overfit an archetype or matchup mix.
+\item \textbf{Historical source availability is incomplete.} The exact submitted archive is bound by digest in the inspector environment but not mounted in this checkout. Current dirty source must not be presented as byte-identical to it.
+\end{itemize}
+
+Future work should first complete the pinned r175 gate, then run a preregistered RTP on/off comparison with identical seeds, seats, packages, and inference budgets. Head routes should be evaluated with paired fixed-seed interventions rather than magnitude alone. Router activation should produce a decision-level receipt that distinguishes materialized, routable, and actually selected states. Only after those results should planner distillation or larger recursive designs be considered.
+
+\section{Reproducibility and artifact map}
+
+The central reproducibility unit is not a filename but a digest-bound claim. A minimal reconstruction needs the exact deck multiset, checkpoint, runtime tree, source-tree digest, feature/action schema, opponent packages, seeds, seats, and replay bytes. Table~\ref{tab:artifacts} maps the most important statements to local sources. Paths are repository-relative and are included as a reader aid; the LaTeX archive contains no model, replay, contest engine, or private data.
+
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.31\linewidth}>{\raggedright\arraybackslash}p{0.60\linewidth}}
+\caption{Primary repository evidence.}\label{tab:artifacts}\\
+\toprule
+Claim & Canonical or receipt source \\
+\midrule
+\endfirsthead
+\toprule
+Claim & Canonical or receipt source \\
+\midrule
+\endhead
+Owner-authorized r175 deck, parent, game mix, cadence, head/guide policy & \path{state/alakazam-rtp-owner-hard-swap-r175.json}; \path{GOAL.md} revision 175 \\
+Multi-environment public-package split & \path{state/alakazam-public-multi-env-split-r182.json}; \path{GOAL.md} revision 182 \\
+Exact r175 60-card IDs & \path{decks/archetype-samples/alakazam-owner-rtp-pilot-r175.csv}; names in \path{cards/EN_Card_Data.csv} \\
+Guide training boundary and human strategy & \path{config/deck_guides/alakazam-final-refresh.yaml}; \path{docs/deck_guides/alakazam-final-refresh-expert-brief.txt} \\
+Expanded heads, target masking, fusion, adapters, gates & \path{docs/RL_TRAINING_PROTOCOL.md}; \path{config/rl_protocol.yaml}; \path{poke_bot/model.py} \\
+Immutable AWR pipeline & \path{docs/PURE_RL_PIPELINE.md} \\
+RTP design and packaging boundary & \path{experiments/recursive_turn_planner/README.md}; \path{experiments/recursive_turn_planner/SWAP_IN.md}; \path{submission/main.py}; \path{scripts/build_submission.sh} \\
+RTP proof collection and remote probes & \path{outputs/state/alakazam-rtp-r175-collect-enablement.json}; \path{outputs/state/alakazam-rtp-r175-remote-sync.json} \\
+Submitted-bundle identity and inspector validation & \path{ops/elmo/replay-model-inspector-provenance-r176.json}; \path{state/replay-model-inspector-activation-r176.json} \\
+Historical replay samples and head attribution & \path{outputs/analysis/kaggle-latest-replay-20260802/report-data.json}; corresponding analysis and attribution JSON \\
+Historical formal results & \path{state/final_format_alakazam_iteration15_allocator_recovery_completion_r105.json}; Marnie r107 and Crustle r167 receipts \\
+Current gate requirement & \path{ops/ACTIVE_ALAKAZAM_GATE.md} \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+The source package is intentionally small and rights-conscious. It contains original prose, abstract diagrams, and tables. It does not embed Pokémon card art, logos, screenshots, external guide text, replay contents, Sponsor/Kaggle data, the competition engine, or weights. The project code is MIT-licensed; competition data and engine components retain their separate restrictions.
+
+\section{Conclusion}
+
+The agent's core idea is a contract between what can be known, what can be chosen, what can be supervised, and what can be claimed. A causal Transformer encodes only the acting seat's visible history. A factorized decoder preserves the full legal action support. Typed heads predict concrete strategic quantities, and Fusion v3 gives each active view a bounded, attributable route rather than an ornamental auxiliary loss. Human deck knowledge shapes causal training targets but has no serving authority. Specialist iterations are immutable and evaluation remains outside the optimizer stream.
+
+Alakazam exposes the value of that discipline. Powerful Hand gives an exact damage equation, but optimal play depends on replacement attackers, draw budget, bench liability, disruption, and prize mapping. The r175 loop targets those interactions with acting-seat expert refresh, balanced self-play/public collection, a pinned difficult opponent, periodic rehearsal, and explicit combo/guide boundaries. RTP adds bounded adaptive computation to collection, but its gain is not yet established and its sidecar is not packaged.
+
+The evidence is deliberately mixed: some historical gates passed, some failed, public replay observations exposed seat sensitivity, a sampling change rolled back, and current RTP receipts prove wiring rather than strength. That honesty is part of the system. Progress in repeated stochastic matches is more credible when a model cannot hide an illegal action, a route cannot hide its influence, a guide cannot masquerade as a policy, an evaluation replay cannot become training data, and a failed experiment cannot be renamed as success.
+
+\section*{Selected public references}
+\addcontentsline{toc}{section}{Selected public references}
+
+\footnotesize
+\begin{enumerate}[itemsep=0pt,topsep=0.15em]
+\item Kaggle, \href{https://www.kaggle.com/competitions/pokemon-tcg-ai-battle-challenge-strategy/overview}{The Pok\'emon Company --- PTCG AI Battle Challenge Strategy: overview and evaluation}.
+\item Kaggle, \href{https://www.kaggle.com/competitions/pokemon-tcg-ai-battle-challenge-strategy/rules}{Strategy competition rules}.
+\item Kaggle, \href{https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/overview/description}{PTCG AI Battle Simulation overview}.
+\item A. Vaswani et al., ``Attention Is All You Need,'' \emph{NeurIPS}, 2017.
+\item X. B. Peng et al., ``Advantage-Weighted Regression,'' arXiv:1910.00177, 2019.
+\item R. Sutton and A. Barto, \emph{Reinforcement Learning: An Introduction}, second edition, 2018.
+\item TCGplayer, \href{https://www.tcgplayer.com/content/article/Alakazam-Deck-Guide-Pok%C3%A9mon-TCG/7eb46b82-9dc5-40d8-adf9-28cca05f070f/}{Alakazam Deck Guide --- Pok\'emon TCG}.
+\item PTCGO News, \href{https://ptcgonews.com/tips/ptcgl-alakazam-deck-guide/}{PTCGL Alakazam Deck Guide}.
+\end{enumerate}
+
+\end{document}

@@ -1,0 +1,62 @@
+{
+  "schema": "poke_bot.replay_model_inspector_on_demand_gpu_trace/v1",
+  "owner_decision_revision": 222,
+  "recorded_at_utc": "2026-08-10T19:49:40Z",
+  "status": "implemented_pending_live_activation",
+  "supersedes": {
+    "source": "state/replay-model-inspector-deterministic-runtime-policy-r203.json",
+    "field": "selection_and_cache.remaining_game_step_stages_prefetched_sequentially",
+    "new_value": false,
+    "all_other_r203_semantics_preserved": true
+  },
+  "trace_loading": {
+    "selected_step_and_stage_priority": true,
+    "whole_game_background_prefetch": false,
+    "selected_trace_timeout_seconds": 20,
+    "timeout_scope": "browser_visible_selected_trace_request",
+    "stale_browser_requests_aborted": true,
+    "successful_selected_traces_cached_in_browser_memory": true,
+    "cache_cleared_on_submission_or_game_change": true,
+    "server_side_cancellation_claimed": false
+  },
+  "runtime": {
+    "host": "elmo",
+    "inference_device": "cuda:0",
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "resident_submission_id": "55410353",
+    "resident_runtime_bundle_sha256": "sha256:8f71eee9d0000a31d316a8b6d7148dce8161f38028aded1b797071135e2aa134",
+    "resident_checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "one_model_resident": true,
+    "other_exact_runtime_packages_remain_fail_closed_isolated": true
+  },
+  "reproduction_semantics": {
+    "causal_checksum_bound_rerun": true,
+    "historical_kaggle_logits_claimed": false,
+    "ordinary_model_decision_label": "recomputed_not_historical",
+    "setup_short_circuit_and_hypothetical_forward_remain_distinct": true
+  },
+  "activation": {
+    "managed_service": "pokebot-replay-model-inspector.service",
+    "requires_inspector_only_restart": true,
+    "training_or_selector_restart": false,
+    "activation_receipt": null,
+    "required_validation": [
+      "focused_static_ui_tests",
+      "javascript_syntax",
+      "systemd_unit_validation",
+      "live_service_health",
+      "resident_runtime_identity",
+      "selected_trace_cold_elapsed_at_most_20_seconds",
+      "selected_trace_warm_elapsed_at_most_20_seconds",
+      "no_whole_game_prefetch_requests"
+    ]
+  },
+  "safety": {
+    "read_only": true,
+    "checkpoint_or_bundle_mutation": false,
+    "replay_or_provenance_mutation": false,
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_authority": false,
+    "submission_authority": false
+  }
+}

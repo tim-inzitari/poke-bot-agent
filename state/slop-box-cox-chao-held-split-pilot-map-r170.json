@@ -1,0 +1,161 @@
+{
+  "cox_chao_acting_seat_games_total": 185,
+  "cox_chao_held_validation_games": 24,
+  "cox_chao_train_games": 161,
+  "created_at_utc": "2026-08-06T15:34:11.313918+00:00",
+  "gate_metric_id": "cox_chao_held_policy_acc",
+  "gate_threshold": 0.9,
+  "goal_revision": 170,
+  "held_validation_rows": [
+    {
+      "episode_id": "88672061",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88673910",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88674369",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88676385",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88677309",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88680541",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88681467",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88683800",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88684646",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88688889",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88689792",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88689823",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88690335",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88691223",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88694056",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88694548",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695018",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88695946",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88696419",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88697369",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88697833",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88698359",
+      "seat": 1,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88701642",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    },
+    {
+      "episode_id": "88701651",
+      "seat": 0,
+      "team_name": "James Cox & Henry Chao"
+    }
+  ],
+  "join_key": [
+    "episode_id",
+    "seat",
+    "exact_team_name"
+  ],
+  "pilot_map": "/home/inzi/poke-bot-agent/outputs/state/slop-box-cox-chao-held-pilot-map-r170.json",
+  "pilot_map_schema": "poke_bot.expert_pilot_map/v1",
+  "pilot_map_sha256": "sha256:9fcf02e708bec4c236093bbdb598d9bd4c9553b2721b7bcda76e3a1cbdbfda8a",
+  "requested_rows": 1442,
+  "resolved_rows": 1442,
+  "schema": "poke_bot.slop_box_cox_chao_held_split_pilot_map_r170/v1",
+  "status": "ready",
+  "targets": "/home/inzi/poke-bot-agent/outputs/state/slop-box-cox-chao-held-targets-r170.json",
+  "targets_sha256": "sha256:c4a2381c03763a3c6b0fe3e98ac157bca5a9f69b86f4832b6efb8c118bad6e74",
+  "team_counts_top": [
+    [
+      "James Cox",
+      791
+    ],
+    [
+      "zoroark190",
+      466
+    ],
+    [
+      "James Cox & Henry Chao",
+      185
+    ]
+  ],
+  "team_name_exact": "James Cox & Henry Chao",
+  "unverifiable_rows": 0
+}

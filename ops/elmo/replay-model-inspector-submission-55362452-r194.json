@@ -1,0 +1,25 @@
+{
+  "schema": "poke_bot.replay_model_inspector_submission_evidence/v1",
+  "submission_id": 55362452,
+  "label": "alakazam owner second copy iter 15 copy 2 first c2b01f5a12a4",
+  "specialist_id": "alakazam",
+  "checkpoint": {
+    "path": "/data/checkpoints/iter_00015.c2b01f5a12a4164e.pt",
+    "sha256": "sha256:c2b01f5a12a4164e282f278e104da3dd5d5b0c1467d592e01d832be141fcf69c"
+  },
+  "bundle": {
+    "path": "/data/inspector/artifacts/bundles/sha256-c8cbad2718291db32ecacb6f7bcf5606ad38d0b8ab3e6b1b19d4a998e336b0f2/submission.tar.gz",
+    "sha256": "sha256:c8cbad2718291db32ecacb6f7bcf5606ad38d0b8ab3e6b1b19d4a998e336b0f2"
+  },
+  "matchup_tree": {
+    "path": "/data/inspector/artifacts/runtimes/sha256-c8cbad2718291db32ecacb6f7bcf5606ad38d0b8ab3e6b1b19d4a998e336b0f2/package/matchup_tree.json",
+    "sha256": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588"
+  },
+  "source_contract": {
+    "path": "/inspector/state/alakazam-iter15-second-copy-r194.json",
+    "sha256": "sha256:e0f705d70fd03469c81ef1a05960fd30fefff38cec0de3003553044c00ca4ad4"
+  },
+  "selection_authority": "exact_submission_id_plus_checksum_bound_revision_194_receipt",
+  "training_eligible": false,
+  "read_only": true
+}

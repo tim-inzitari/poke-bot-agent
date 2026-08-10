@@ -1,0 +1,115 @@
+{
+  "schema": "poke_bot.replay_model_inspector_all_submission_artifact_archive/v1",
+  "owner_decision_revision": 196,
+  "recorded_at_utc": "2026-08-09T14:00:00Z",
+  "status": "complete_recurring_archive_active",
+  "scope": {
+    "archive_host": "elmo",
+    "archive_device": "Elmo NAS",
+    "selection": "all accepted owner submissions with exact queue identity",
+    "current_indexed_min_submission_id": 55217604,
+    "current_indexed_max_submission_id": 55378477,
+    "future_accepts_automatic": true
+  },
+  "historical_replay_backfill": {
+    "status": "complete",
+    "submission_ids": [
+      55230247,
+      55248489,
+      55263279,
+      55277374,
+      55280509,
+      55283418,
+      55300685,
+      55305614
+    ],
+    "managed_unit": "pokebot-kaggle-submission-replay-backfill-r196.service",
+    "ordinary_hourly_discovery_floor_changed": false,
+    "download_bandwidth_limit_mbit": 12,
+    "completed_submission_ids_at_last_receipt": [
+      55230247,
+      55248489,
+      55263279,
+      55277374,
+      55280509,
+      55283418,
+      55300685,
+      55305614
+    ],
+    "post_backfill_refresh_unit": "pokebot-replay-model-inspector-refresh-after-backfill-r196.service"
+  },
+  "artifact_backfill_receipt": {
+    "status": "complete",
+    "accepted_queue_submission_count": 17,
+    "accepted_queue_submission_ids": [
+      55230247,
+      55248489,
+      55263279,
+      55277374,
+      55280509,
+      55283418,
+      55300685,
+      55305614,
+      55315274,
+      55324802,
+      55345107,
+      55352739,
+      55359777,
+      55362452,
+      55367099,
+      55378392,
+      55378477
+    ],
+    "immutable_submission_evidence_count": 17,
+    "special_case_submission_id": 55217604,
+    "special_case_preexisting_exact_archive": true
+  },
+  "required_artifacts": [
+    "checksum_verified_uploaded_bundle",
+    "exact_packaged_runtime_tree",
+    "checkpoint_model_bytes",
+    "matchup_tree",
+    "submission_id_and_label_evidence",
+    "artifact_sha256_values"
+  ],
+  "reconstruction_gate": {
+    "requires_exact_runtime_parity_receipt": true,
+    "missing_or_conflicting_artifact_behavior": "replay_only_with_reason",
+    "nearby_checkpoint_substitution_allowed": false
+  },
+  "completion_receipt": {
+    "recorded_at_utc": "2026-08-10T13:57:33Z",
+    "indexed_submission_count": 18,
+    "verified_submission_count": 18,
+    "trace_ready_submission_count": 18,
+    "cached_replay_game_count": 1102,
+    "available_replay_game_count": 1102,
+    "live_manifest_sha256": "16eb0953a1895b25d8985b2527307b273b4bb145a325824de496213092c6e329",
+    "ordinary_hourly_archive_preserved": true
+  },
+  "storage": {
+    "content_addressed": true,
+    "bundle_root": "/mnt/Main/main/poke-bot-agent/archive/replay-model-inspector/artifacts/bundles",
+    "runtime_root": "/mnt/Main/main/poke-bot-agent/archive/replay-model-inspector/artifacts/runtimes",
+    "checkpoint_root": "/mnt/Main/main/poke-bot-agent/archive/replay-model-inspector/artifacts/checkpoints",
+    "submission_evidence_root": "/mnt/Main/main/poke-bot-agent/archive/replay-model-inspector/provenance/submission-evidence"
+  },
+  "recurring_archive": {
+    "host": "train",
+    "service": "pokebot-kaggle-submission-artifact-archive.service",
+    "timer": "pokebot-kaggle-submission-artifact-archive.timer",
+    "interval": "1h",
+    "minimum_submission_id": 55217604,
+    "maximum_submission_id": null,
+    "queue_status": "accepted",
+    "idempotent": true,
+    "conflicting_artifact_behavior": "fail_without_overwrite"
+  },
+  "safety": {
+    "training_checkpoint_mutation": false,
+    "submitted_bundle_mutation": false,
+    "replay_mutation": false,
+    "training_or_selector_service_control": false,
+    "evaluation_replays_training_eligible": false
+  }
+}

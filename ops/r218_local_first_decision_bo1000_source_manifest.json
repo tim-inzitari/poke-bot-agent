@@ -1,0 +1,21 @@
+{
+  "schema": "poke_bot.r218_local_first_decision_bo1000_source_manifest/v1",
+  "owner_decision_revision": 218,
+  "contract_sha256": "sha256:5ffb63883290d5cc295cb337ceb9fee9ba075356ab88d67a6cf616ec44bb485a",
+  "runner_sha256": "sha256:042883ec69f4498aca2070da1b2b20c2ecec3cf06c0011e0bc0ed2de99cb47c9",
+  "belief_mcts_sha256": "sha256:e224dbe34bcb7d0710dc5d16e0b95dcd8c339fb34b37e7023387e2fccd121885",
+  "game_scaffold_sha256": "sha256:a06d67a7a2cef2cdb2b59447b3882c48e60c316e6b184a688594867219951b9a",
+  "r195_checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+  "r195_matchup_tree_sha256": "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe0194c9049",
+  "seeded_engine_sha256": "sha256:b77afbd363fe80de968c7cf20a0bbf5eb616fefcacbeab7eeeda94213fad9ea6",
+  "execution": {
+    "first_decision_search_seconds": 10.0,
+    "later_same_turn_fresh_search": false,
+    "minimum_completed_backups_for_search_authority": 1,
+    "fixed_simulation_target": null,
+    "fixed_depth_target": null,
+    "emergency_simulation_and_depth_guard": 1000000,
+    "stable_root_early_stop": true,
+    "kaggle_submission_authority": false
+  }
+}

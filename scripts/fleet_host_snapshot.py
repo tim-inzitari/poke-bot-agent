@@ -56,7 +56,52 @@ def number(value: str) -> float | None:
         return None
 
 
-def memory_state() -> tuple[int | None, int | None]:
+def _bytes_from_sized_token(value: str, unit: str | None) -> int | None:
+    amount = number(value)
+    if amount is None:
+        return None
+    scale = {
+        None: 1,
+        "": 1,
+        "B": 1,
+        "K": 1024,
+        "KB": 1024,
+        "M": 1024**2,
+        "MB": 1024**2,
+        "G": 1024**3,
+        "GB": 1024**3,
+        "T": 1024**4,
+        "TB": 1024**4,
+    }.get((unit or "").upper())
+    if scale is None:
+        return None
+    return int(amount * scale)
+
+
+def darwin_swap_state() -> tuple[int | None, int | None, int | None]:
+    """Return (total, used, free) bytes from macOS vm.swapusage."""
+    raw = run(["/usr/sbin/sysctl", "-n", "vm.swapusage"])
+    if not raw:
+        raw = run(["/usr/sbin/sysctl", "vm.swapusage"])
+    matches = {
+        key.lower(): _bytes_from_sized_token(amount, unit)
+        for key, amount, unit in re.findall(
+            r"(total|used|free)\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGT]B?)?",
+            raw,
+            flags=re.IGNORECASE,
+        )
+    }
+    total = matches.get("total")
+    used = matches.get("used")
+    free = matches.get("free")
+    if used is None and total is not None and free is not None:
+        used = max(0, total - free)
+    if free is None and total is not None and used is not None:
+        free = max(0, total - used)
+    return total, used, free
+
+
+def memory_state() -> dict[str, int | None]:
     if platform.system() == "Linux":
         values: dict[str, int] = {}
         try:
@@ -66,7 +111,20 @@ def memory_state() -> tuple[int | None, int | None]:
                     values[key] = int(value.strip().split()[0]) * 1024
         except (OSError, ValueError):
             pass
-        return values.get("MemTotal"), values.get("MemAvailable")
+        swap_total = values.get("SwapTotal")
+        swap_free = values.get("SwapFree")
+        swap_used = (
+            max(0, swap_total - swap_free)
+            if swap_total is not None and swap_free is not None
+            else None
+        )
+        return {
+            "memory_total_bytes": values.get("MemTotal"),
+            "memory_available_bytes": values.get("MemAvailable"),
+            "swap_total_bytes": swap_total,
+            "swap_used_bytes": swap_used,
+            "swap_free_bytes": swap_free,
+        }
 
     total = number(run(["/usr/sbin/sysctl", "-n", "hw.memsize"]))
     raw = run(["/usr/bin/vm_stat"])
@@ -90,7 +148,14 @@ def memory_state() -> tuple[int | None, int | None]:
             "Pages purgeable",
         )
     )
-    return int(total) if total is not None else None, available_pages * page_size
+    swap_total, swap_used, swap_free = darwin_swap_state()
+    return {
+        "memory_total_bytes": int(total) if total is not None else None,
+        "memory_available_bytes": available_pages * page_size,
+        "swap_total_bytes": swap_total,
+        "swap_used_bytes": swap_used,
+        "swap_free_bytes": swap_free,
+    }
 
 
 def gpu_state() -> list[dict[str, Any]]:
@@ -440,7 +505,7 @@ def main() -> None:
     parser.add_argument("--role", default="worker")
     parser.add_argument("--name", default="")
     args = parser.parse_args()
-    total, available = memory_state()
+    memory = memory_state()
     loads = os.getloadavg()
     rows = process_rows()
     optimization = apple_optimization_state(rows)
@@ -495,8 +560,11 @@ def main() -> None:
                     "load_1m": loads[0],
                     "load_5m": loads[1],
                     "load_15m": loads[2],
-                    "memory_total_bytes": total,
-                    "memory_available_bytes": available,
+                    "memory_total_bytes": memory.get("memory_total_bytes"),
+                    "memory_available_bytes": memory.get("memory_available_bytes"),
+                    "swap_total_bytes": memory.get("swap_total_bytes"),
+                    "swap_used_bytes": memory.get("swap_used_bytes"),
+                    "swap_free_bytes": memory.get("swap_free_bytes"),
                 },
                 "gpus": gpus,
                 "worker": worker,

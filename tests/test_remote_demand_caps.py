@@ -155,6 +155,30 @@ def test_remote_socket_prefetch_keeps_one_queued_wave(
     assert remote_socket_target(16) == 32
 
 
+def test_public_socket_prefetch_does_not_expand_packed_self_play(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public reserve wave must not double the four-game self-play queue."""
+
+    monkeypatch.setenv("POKEBOT_REMOTE_PUBLIC_SOCKET_PREFETCH", "2")
+    monkeypatch.setenv("POKEBOT_REMOTE_PUBLIC_SOCKET_PREFETCH_MAX", "2")
+
+    # ``self_play_multi`` retains its one-request-per-worker default.  A
+    # global factor here would represent four source games per request and
+    # silently over-own an extra self-play wave.
+    assert remote_socket_prefetch_factor(kind="self_play") == 1
+    assert remote_socket_prefetch_max_factor(kind="self_play") == 1
+    assert remote_socket_target(52, kind="self_play") == 52
+    assert remote_socket_max_target(52, kind="self_play") == 52
+
+    # Public ``play`` receives exactly one queued request per execution worker
+    # (36 Elmo + 16 Bert), bounded independently of self-play.
+    assert remote_socket_prefetch_factor(kind="play") == 2
+    assert remote_socket_prefetch_max_factor(kind="play") == 2
+    assert remote_socket_target(52, kind="play") == 104
+    assert remote_socket_max_target(52, kind="play") == 104
+
+
 def test_remote_refill_claim_size_is_configurable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

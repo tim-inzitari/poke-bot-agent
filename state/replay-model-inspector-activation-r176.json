@@ -1,0 +1,122 @@
+{
+  "schema": "poke_bot.replay_model_inspector_activation/v1",
+  "owner_decision_revision": 176,
+  "created_at_utc": "2026-08-07T22:41:41Z",
+  "status": "active_read_only",
+  "product": {
+    "name": "Replay Model Inspector",
+    "surface": "standalone_localhost_website",
+    "separate_from_training_dashboard": true,
+    "url_on_elmo": "http://127.0.0.1:8791",
+    "workstation_access": "ssh_loopback_tunnel"
+  },
+  "managed_service": {
+    "host": "elmo",
+    "unit": "pokebot-replay-model-inspector.service",
+    "unit_sha256": "sha256:526857653c7df78e8c61e9b3df75c199f58aeac2e9dc6048b5c8c5ce2f8a7a26",
+    "active_state": "active",
+    "sub_state": "running",
+    "observed_main_pid": 2528660,
+    "observed_restart_count": 0,
+    "bind_host": "127.0.0.1",
+    "port": 8791,
+    "container_runtime": "independent_cpu_only_read_only_container",
+    "training_or_dashboard_service_control": false
+  },
+  "deployed_source": {
+    "root": "/mnt/Main/main/poke-bot-agent/replay-model-inspector-r176",
+    "config_sha256": "sha256:0645428d8feb52a7d620a8868f7d069962caba6b7b84bea9d77c63cd9e697301",
+    "server_sha256": "sha256:99edd22718ea1bca170792606eb059b3628816debeec48feea300589c0ae4876",
+    "inference_sha256": "sha256:a62dc825759d02be8fc7472a04fbacf74bafe2d7c4d9d128d1398ffd35eccfa9",
+    "provenance_sha256": "sha256:6ae7852592067dae8af415ed548370643e87eb9676b42972b8d20ff324d5cbff",
+    "catalog_sha256": "sha256:6faa88654f76148b23857cee35b12c839d609244723db5a8d5509f95d729f8a1"
+  },
+  "immutable_identity": {
+    "submission_ids": [
+      55315274,
+      55324802
+    ],
+    "checkpoint_sha256": "sha256:7480d81c54b1b98955108401fc04c82e93b6afe626a70c1b52fd467cc0cb704b",
+    "bundle_sha256": "sha256:335d91c0f3f239d885c153a154531c0a43f33a9199e63a285be15deed55c0c5b",
+    "matchup_tree_sha256": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588",
+    "runtime_source_tree_sha256": "sha256:1eaf9d4f9bc0a3f05ecdd2e3ed6d31ebfc53023f9d07d2707f6065a2e5789faf",
+    "runtime_parity_receipts": {
+      "55315274": "sha256:843bfcffb9c30f7f148ece04590a231bb450737deef326787b8945cb51d35669",
+      "55324802": "sha256:c7a5684727d35e5a3c5195e4aa21df596f87e07d8a318a8aa42cdbbe57067298"
+    },
+    "deployed_provenance_manifest_sha256": "sha256:17af406241db480f9bc892c36e0661862c9a97c03e364e384a874ea9335b7372",
+    "replay_digest_binding_count": 126,
+    "replay_counts": {
+      "55315274": 72,
+      "55324802": 54
+    }
+  },
+  "validation": {
+    "focused_tests": {
+      "command_scope": "tests/test_replay_inspector_*.py",
+      "passed": 28,
+      "failed": 0
+    },
+    "ruff_check": "passed",
+    "ruff_format_check": "passed",
+    "python_compile": "passed",
+    "javascript_syntax": "passed",
+    "static_ui_tests": 2,
+    "systemd_verify": "passed",
+    "http_root_status": 200,
+    "foreign_host_status": 403,
+    "post_status": 405,
+    "live_health_status": "ok",
+    "verified_provenance_records": 2,
+    "model_analysis_submission_count": 2,
+    "real_trace_checks": [
+      {
+        "submission_id": 55315274,
+        "episode_id": 90620383,
+        "step": 2,
+        "stage": 0,
+        "runtime_identity_verified": true,
+        "replay_digest_verified": true,
+        "head_count": 19,
+        "fusion_route_count": 19,
+        "recorded_action_agreement": true
+      },
+      {
+        "submission_id": 55324802,
+        "episode_id": 90710145,
+        "step": 3,
+        "stage": 0,
+        "runtime_identity_verified": true,
+        "replay_digest_verified": true,
+        "head_count": 19,
+        "fusion_route_count": 19,
+        "recorded_action_agreement": true
+      }
+    ],
+    "parameter_inventory": {
+      "tensor_count": 724,
+      "parameter_count": 714,
+      "buffer_count": 10,
+      "element_count": 10757832,
+      "bounded_detail_check": "action_q_head.weight:16_values:8_histogram_bins"
+    }
+  },
+  "fidelity": {
+    "dynamic_value_status": "recomputed_not_historical",
+    "historical_activations_present_in_raw_replay": false,
+    "exact_checkpoint_required": true,
+    "exact_submitted_runtime_required": true,
+    "exact_replay_bytes_required": true,
+    "missing_or_mismatched_identity_policy": "explicit_unavailable_never_substitute"
+  },
+  "safety": {
+    "source_mounts_read_only": true,
+    "max_resident_models": 1,
+    "inference_device": "cpu",
+    "gpu_visibility_disabled": true,
+    "evaluation_replays_training_eligible": false,
+    "checkpoint_or_replay_mutation": false,
+    "dashboard_mutation": false,
+    "training_service_restart_or_preemption": false
+  }
+}

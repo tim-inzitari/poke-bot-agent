@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
+import ipaddress
 import json
 import re
 import socket
@@ -15,7 +17,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-
+from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parent
 INDEX = ROOT / "index.html"
@@ -25,6 +27,260 @@ LOCAL_SNAPSHOT = ROOT / "fleet_host_snapshot.py"
 RATE_STATE = ROOT / "fleet_rate_state.json"
 GOAL_PROJECTION = ROOT / "current_goal_requirements.json"
 UI_VERSION_TOKEN = b"__DASHBOARD_UI_VERSION__"
+
+# The dashboard may only bridge this fixed local SSH forward to the separately
+# managed Elmo inspector.  This module-level address is intentionally the sole
+# upstream selection point so focused tests can substitute an ephemeral local
+# listener without introducing request- or configuration-controlled routing.
+INSPECTOR_PROXY_PREFIX = "/replay-inspector/"
+INSPECTOR_UPSTREAM_ADDRESS: tuple[str, int] = ("127.0.0.1", 8792)
+INSPECTOR_UPSTREAM_HOST_HEADER = "127.0.0.1:8791"
+# A cold exact-runtime trace may wait behind the one-model serialization lock
+# while the preceding selected-step warmup finishes.  Match the inspector's
+# bounded 240-second worker ceiling with modest transport headroom so the LAN
+# gateway does not turn a valid reconstruction into a misleading HTTP 502.
+INSPECTOR_PROXY_TIMEOUT_SECONDS = 300.0
+INSPECTOR_PROXY_MAX_TARGET_BYTES = 8 * 1024
+INSPECTOR_PROXY_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+INSPECTOR_PROXY_CHUNK_BYTES = 64 * 1024
+INSPECTOR_DIRECT_HOSTNAMES = frozenset({"localhost", "bert", "bert.local"})
+INSPECTOR_MANUAL_SYNC_PATH = "/replay-inspector/api/sync"
+INSPECTOR_MANUAL_SYNC_STATUS_PATH = "/replay-inspector/api/sync-status"
+INSPECTOR_MANUAL_SYNC_HEADER = "X-Replay-Sync-Intent"
+INSPECTOR_MANUAL_SYNC_VALUE = "manual"
+ELMO_REPLAY_SYNC_SERVICE = "pokebot-kaggle-submission-replay-sync.service"
+ELMO_REPLAY_SYNC_SSH = (
+    "/usr/bin/ssh",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=5",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-i",
+    "/Users/tsinzitari/.ssh/id_ed25519_poke_lan",
+    "admin@192.168.1.143",
+)
+# Tailscale assigns IPv4 peers from the shared-address block.  Python's
+# ``ipaddress`` correctly does not classify that block as RFC1918 private, so
+# admit it explicitly as the dashboard's already-established private overlay.
+# This does not make the listener publicly routable and every request still
+# passes the local Host/Origin, fixed-upstream, path, and GET-only gates below.
+INSPECTOR_TAILSCALE_IPV4_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+
+class InspectorProxyTargetError(ValueError):
+    """A client request target cannot safely enter the inspector gateway."""
+
+    def __init__(self, status: HTTPStatus, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+def _private_or_loopback_address(address: str) -> bool:
+    """Return whether an actual peer is local/LAN/private-overlay only."""
+
+    try:
+        # A link-local IPv6 peer may include a scope ID in a platform socket
+        # address.  It remains local, while hostnames and invalid values fail
+        # closed.
+        parsed = ipaddress.ip_address(address.split("%", 1)[0])
+    except ValueError:
+        return False
+    tailscale_peer = (
+        parsed.version == 4 and parsed in INSPECTOR_TAILSCALE_IPV4_NETWORK
+    )
+    return bool(
+        not parsed.is_unspecified
+        and (
+            parsed.is_private
+            or parsed.is_loopback
+            or parsed.is_link_local
+            or tailscale_peer
+        )
+    )
+
+
+def _local_dashboard_authority(value: str) -> tuple[str, int | None] | None:
+    """Parse one Host/Origin authority accepted by the direct LAN gateway."""
+
+    if not value or value != value.strip() or any(char.isspace() for char in value):
+        return None
+    host: str
+    port_text: str | None = None
+    if value.startswith("["):
+        end = value.find("]")
+        if end <= 1:
+            return None
+        host = value[1:end]
+        remainder = value[end + 1 :]
+        if remainder:
+            if not remainder.startswith(":"):
+                return None
+            port_text = remainder[1:]
+    else:
+        if value.count(":") > 1:
+            return None
+        if ":" in value:
+            host, port_text = value.rsplit(":", 1)
+        else:
+            host = value
+    if not host:
+        return None
+    port: int | None = None
+    if port_text is not None:
+        if not port_text.isdecimal():
+            return None
+        port = int(port_text)
+        if not 1 <= port <= 65535:
+            return None
+
+    normalized_host = host.rstrip(".").lower()
+    if normalized_host in INSPECTOR_DIRECT_HOSTNAMES:
+        return normalized_host, port
+    if not _private_or_loopback_address(normalized_host):
+        return None
+    try:
+        normalized_host = str(ipaddress.ip_address(normalized_host.split("%", 1)[0]))
+    except ValueError:
+        return None
+    return normalized_host, port
+
+
+def _origin_matches_direct_host(origin: str, host: str) -> bool:
+    """Require an explicit browser Origin to be local and Host-consistent."""
+
+    try:
+        parsed = urlsplit(origin, allow_fragments=True)
+    except ValueError:
+        return False
+    if (
+        parsed.scheme not in {"http", "https"}
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        return False
+    origin_authority = _local_dashboard_authority(parsed.netloc)
+    host_authority = _local_dashboard_authority(host)
+    if origin_authority is None or host_authority is None:
+        return False
+    origin_host, origin_port = origin_authority
+    host_name, host_port = host_authority
+    if origin_host != host_name:
+        return False
+    if host_port is None:
+        # A bare Host is an HTTP default authority.  Browser requests to the
+        # dashboard's non-default port include it, so this only preserves
+        # standards-compliant default-port origins.
+        return origin_port is None
+    if origin_port is None:
+        origin_port = 443 if parsed.scheme == "https" else 80
+    return origin_port == host_port
+
+
+def _validate_percent_encoding(value: str) -> None:
+    index = 0
+    while index < len(value):
+        if value[index] != "%":
+            index += 1
+            continue
+        if index + 2 >= len(value) or not all(
+            char in "0123456789abcdefABCDEF" for char in value[index + 1 : index + 3]
+        ):
+            raise InspectorProxyTargetError(
+                HTTPStatus.BAD_REQUEST, "invalid request target"
+            )
+        index += 3
+
+
+def _validate_request_target(raw_target: str) -> tuple[str, str]:
+    """Validate an origin-form request target without normalizing it.
+
+    The inspector is a fixed local service, so ambiguous URL forms are rejected
+    instead of being normalized or interpreted as an alternate upstream path.
+    """
+
+    if not raw_target:
+        raise InspectorProxyTargetError(
+            HTTPStatus.BAD_REQUEST, "invalid request target"
+        )
+    if (
+        len(raw_target.encode("utf-8", "surrogatepass"))
+        > INSPECTOR_PROXY_MAX_TARGET_BYTES
+    ):
+        raise InspectorProxyTargetError(
+            HTTPStatus.REQUEST_URI_TOO_LONG, "request target too long"
+        )
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in raw_target):
+        raise InspectorProxyTargetError(
+            HTTPStatus.BAD_REQUEST, "invalid request target"
+        )
+    if "\\" in raw_target or raw_target.startswith("//"):
+        raise InspectorProxyTargetError(HTTPStatus.BAD_REQUEST, "unsafe request target")
+
+    _validate_percent_encoding(raw_target)
+    try:
+        parsed = urlsplit(raw_target, allow_fragments=True)
+    except ValueError as exc:
+        raise InspectorProxyTargetError(
+            HTTPStatus.BAD_REQUEST, "invalid request target"
+        ) from exc
+    if (
+        parsed.scheme
+        or parsed.netloc
+        or parsed.fragment
+        or not parsed.path.startswith("/")
+    ):
+        raise InspectorProxyTargetError(HTTPStatus.BAD_REQUEST, "unsafe request target")
+    if "//" in parsed.path:
+        raise InspectorProxyTargetError(HTTPStatus.BAD_REQUEST, "unsafe request target")
+
+    decoded_path = parsed.path
+    decoded_query = parsed.query
+    # Reject double-encoded separators and dot segments too.  Four rounds cover
+    # a malformed target without treating percent-decoding as path normalization.
+    for _ in range(4):
+        lower_path = decoded_path.lower()
+        if "%2f" in lower_path or "%5c" in lower_path or "\\" in decoded_path:
+            raise InspectorProxyTargetError(
+                HTTPStatus.BAD_REQUEST, "unsafe request target"
+            )
+        if any(segment in {".", ".."} for segment in decoded_path.split("/")):
+            raise InspectorProxyTargetError(
+                HTTPStatus.BAD_REQUEST, "unsafe request target"
+            )
+        if any(ord(char) < 0x20 or ord(char) == 0x7F for char in decoded_path):
+            raise InspectorProxyTargetError(
+                HTTPStatus.BAD_REQUEST, "unsafe request target"
+            )
+        if any(ord(char) < 0x20 or ord(char) == 0x7F for char in decoded_query):
+            raise InspectorProxyTargetError(
+                HTTPStatus.BAD_REQUEST, "unsafe request target"
+            )
+        decoded = unquote(decoded_path)
+        decoded_query_next = unquote(decoded_query)
+        if decoded == decoded_path and decoded_query_next == decoded_query:
+            break
+        decoded_path = decoded
+        decoded_query = decoded_query_next
+    else:
+        raise InspectorProxyTargetError(HTTPStatus.BAD_REQUEST, "unsafe request target")
+    if any(segment in {".", ".."} for segment in decoded_path.split("/")):
+        raise InspectorProxyTargetError(HTTPStatus.BAD_REQUEST, "unsafe request target")
+    return parsed.path, parsed.query
+
+
+def _inspector_upstream_target(path: str, query: str) -> str | None:
+    """Return the fixed upstream origin-form target for an inspector request."""
+
+    if not path.startswith(INSPECTOR_PROXY_PREFIX):
+        return None
+    suffix = path[len(INSPECTOR_PROXY_PREFIX) :]
+    target = f"/{suffix}"
+    return f"{target}?{query}" if query else target
 
 
 def dashboard_ui_version() -> str:
@@ -77,6 +333,207 @@ class SnapshotCache:
             pass
 
     @staticmethod
+    def _staged_alakazam_marnie_splusplus_opponent(
+        raw: Any,
+    ) -> dict[str, Any] | None:
+        """Normalize r192 without giving its pending row runtime authority.
+
+        The compatibility projection may be newer than the selected registry
+        while Alakazam is in an immutable collection.  This row is therefore
+        intentionally *not* merged into a live public-mix or holdout roster:
+        a later receipt-backed boundary must do that.  Keeping the projection
+        fail-closed prevents a dashboard label from implying that the new
+        Marnie S++ row is already being sampled.
+        """
+
+        if not isinstance(raw, dict):
+            return None
+        opponent = raw.get("opponent")
+        activation = raw.get("activation")
+        collection = raw.get("collection_contract")
+        transport = raw.get("transport")
+        if not isinstance(opponent, dict) or not isinstance(activation, dict):
+            return None
+        if not isinstance(collection, dict) or not isinstance(transport, dict):
+            return None
+        try:
+            revision = int(raw.get("goal_revision") or 0)
+            weight = float(opponent.get("weight"))
+            floor_games = int(opponent.get("floor_games_per_set"))
+            games_per_iteration = int(collection.get("games_per_iteration") or 0)
+            self_play_mirrors = int(collection.get("self_play_mirrors") or 0)
+            public_mix_games = int(collection.get("public_mix_games") or 0)
+            strong_public_practice_games = int(
+                collection.get("strong_public_practice_games") or 0
+            )
+            diverse_public_games = int(collection.get("diverse_public_games") or 0)
+            ordinary_strong_public_minimum_share = float(
+                collection.get("ordinary_strong_public_minimum_share")
+            )
+            replacement_lanes = int(collection.get("public_replacement_lanes") or 0)
+            first_guaranteed_boundary = int(
+                activation.get("first_guaranteed_activation_boundary_completed_iteration")
+                or 0
+            )
+            boundary_pause_seconds = int(
+                activation.get("boundary_pause_seconds") or 0
+            )
+        except (TypeError, ValueError):
+            return None
+        if (
+            revision != 192
+            or raw.get("status")
+            != "staged_candidate_not_armed_pending_trainer_owned_fence_or_proven_inactive_boundary"
+            or raw.get("typed_schema")
+            != "poke_bot.alakazam_marnie_splusplus_opponent_r192/v1"
+            or raw.get("specialist_id") != "alakazam"
+            or opponent.get("opponent_id")
+            != "specialist-marnie-final-format-h10-f20efb20f5c3"
+            or opponent.get("archetype_id") != "marnie-s-grimmsnarl-ex"
+            or opponent.get("checkpoint_sha256")
+            != (
+                "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3"
+                "bbb431f9c8b44381"
+            )
+            or opponent.get("content_digest")
+            != (
+                "sha256:f7c25cfd0bba674ceb4c2156a6e2fef87a3ff9effc74ed41"
+                "b33fbb17fd627787"
+            )
+            or opponent.get("tier") != "S++"
+            or weight != 4.0
+            or floor_games != 1024
+            or opponent.get("distinct_additional_specialist_row") is not True
+            or opponent.get("duplicate_alias_row_allowed") is not False
+            or opponent.get("historical_marnie_must_remain_distinct") is not True
+            or activation.get("boundary")
+            != (
+                "receipt_backed_inactive_boundary_or_trainer_owned_fence_enabled_"
+                "clean_pause_after_completed_iteration5"
+            )
+            or first_guaranteed_boundary != 5
+            or boundary_pause_seconds != 30
+            or activation.get("allow_clean_boundary_design_migration") is not True
+            or activation.get("boundary_design_migration_reason")
+            != "owner_r192_marnie_splusplus_post_iteration5_receipt_backed_migration"
+            or activation.get(
+                "managed_restart_during_verified_post_iteration5_hard_pause_allowed"
+            )
+            is not False
+            or activation.get("automatic_managed_restart_armed") is not False
+            or activation.get("trainer_owned_handoff_fence_required") is not True
+            or activation.get("current_r175_source_has_trainer_owned_handoff_fence")
+            is not False
+            or activation.get(
+                "proven_inactive_receipt_boundary_alternative_required"
+            )
+            is not True
+            or activation.get("activation_receipt_required") is not True
+            or activation.get("activation_receipt") is not None
+            or activation.get("active_before_receipt_backed_activation") is not False
+            or activation.get("requires_checksum_exact_roster_binding") is not True
+            or activation.get("requires_runtime_registry_binding") is not True
+            or activation.get("requires_dispatch_provenance_binding") is not True
+            or activation.get("requires_focused_exact_retention_tests") is not True
+            or activation.get("training_restart_before_validation_allowed")
+            is not False
+            or activation.get("interrupt_active_collection_allowed") is not False
+            or collection.get("exact_total_unchanged") is not True
+            or games_per_iteration != 8196
+            or self_play_mirrors != 1024
+            or public_mix_games != 7172
+            or strong_public_practice_games != 4586
+            or diverse_public_games != 2586
+            or strong_public_practice_games + diverse_public_games != public_mix_games
+            or ordinary_strong_public_minimum_share != 0.04
+            or replacement_lanes != 32
+            or transport.get("r182_default_deny_unchanged") is not True
+            or transport.get("other_r182_pairs_unchanged") is not True
+            or transport.get("prior_pack4_eligible_group") != "diverse_public"
+            or transport.get("activation_training_group") != "strong_public_practice"
+            or transport.get("dispatch_mode") != "singleton_remote_play"
+            or transport.get("pack4_attested_for_activation_group") is not False
+            or transport.get(
+                "separate_exact_group_retention_attestation_required_for_pack4"
+            )
+            is not True
+        ):
+            return None
+        return {
+            "id": "alakazam-marnie-splusplus-r192",
+            "goal_revision": 192,
+            "status": (
+                "staged_candidate_not_armed_pending_trainer_owned_fence_or_"
+                "proven_inactive_boundary"
+            ),
+            "active": False,
+            "runtime_active": False,
+            "receipt_backed_activation": False,
+            "activation_receipt": None,
+            "activation_boundary": activation["boundary"],
+            "first_guaranteed_activation_boundary_completed_iteration": (
+                first_guaranteed_boundary
+            ),
+            "boundary_pause_seconds": boundary_pause_seconds,
+            "managed_restart_during_verified_post_iteration5_hard_pause_allowed": False,
+            "automatic_managed_restart_armed": False,
+            "trainer_owned_handoff_fence_required": True,
+            "current_r175_source_has_trainer_owned_handoff_fence": False,
+            "proven_inactive_receipt_boundary_alternative_required": True,
+            "interrupt_active_collection_allowed": False,
+            "boundary_design_migration_reason": activation[
+                "boundary_design_migration_reason"
+            ],
+            "specialist_id": "alakazam",
+            "scope": [
+                str(value)
+                for value in raw.get("scope") or []
+                if str(value)
+            ],
+            "opponent": {
+                "opponent_id": opponent["opponent_id"],
+                "archetype_id": opponent["archetype_id"],
+                "checkpoint_sha256": opponent["checkpoint_sha256"],
+                "content_digest": opponent["content_digest"],
+                "tier": opponent["tier"],
+                "weight": weight,
+                "floor_games_per_set": floor_games,
+                "historical_marnie_opponent_id": opponent.get(
+                    "historical_marnie_opponent_id"
+                ),
+            },
+            "collection_contract": {
+                "games_per_iteration": games_per_iteration,
+                "self_play_mirrors": self_play_mirrors,
+                "public_mix_games": public_mix_games,
+                "strong_public_practice_games": strong_public_practice_games,
+                "diverse_public_games": diverse_public_games,
+                "ordinary_strong_public_minimum_share": (
+                    ordinary_strong_public_minimum_share
+                ),
+                "exact_total_unchanged": True,
+                "public_replacement_lanes": replacement_lanes,
+            },
+            "transport": {
+                "r182_default_deny_unchanged": True,
+                "other_r182_pairs_unchanged": True,
+                "prior_pack4_eligible_group": "diverse_public",
+                "activation_training_group": "strong_public_practice",
+                "dispatch_mode": "singleton_remote_play",
+                "pack4_attested_for_activation_group": False,
+                "separate_exact_group_retention_attestation_required_for_pack4": True,
+            },
+            "requirements": {
+                "checksum_exact_roster_binding": True,
+                "runtime_registry_binding": True,
+                "dispatch_provenance_binding": True,
+                "focused_exact_retention_tests": True,
+            },
+            "source": "dashboard_goal_compatibility_projection",
+            "typed_source": raw.get("typed_source"),
+        }
+
+    @staticmethod
     def _apply_goal_projection(value: dict[str, Any]) -> None:
         """Overlay owner planning changes without mutating the live runtime.
 
@@ -123,6 +580,11 @@ class SnapshotCache:
         marnie_milestones = dict(
             overrides.get("final_format_marnie_milestone_submissions") or {}
         )
+        marnie_splusplus = (
+            SnapshotCache._staged_alakazam_marnie_splusplus_opponent(
+                overrides.get("alakazam_marnie_splusplus_opponent")
+            )
+        )
         slowking_failure = (
             overrides.get("slowking_failed_experiment_alakazam_transition")
             or {}
@@ -136,6 +598,20 @@ class SnapshotCache:
         protocol = value.get("specialist_protocol")
         if not isinstance(protocol, dict):
             return
+        if marnie_splusplus is not None:
+            # This status row is deliberately separate from every active
+            # roster field.  In particular, it must not affect the frozen
+            # specialist mix, the active gate, or a current iteration's exact
+            # retention accounting before its activation receipt exists.
+            staged_changes = [
+                row
+                for row in (protocol.get("staged_opponent_changes") or [])
+                if isinstance(row, dict)
+                and str(row.get("id") or "")
+                != "alakazam-marnie-splusplus-r192"
+            ]
+            staged_changes.append(marnie_splusplus)
+            protocol["staged_opponent_changes"] = staged_changes
         priority = protocol.get("training_priority")
         if not isinstance(priority, dict):
             priority = {}
@@ -1809,6 +2285,37 @@ class SnapshotCache:
         service_active = bool(
             service.get("active") and int(service.get("pid") or 0) > 0
         )
+        terminal_completion = value.get("terminal_completion") or {}
+        terminal_checks = terminal_completion.get("checks") or {}
+        terminal_completion_current = bool(
+            not service_active
+            and terminal_completion.get("current") is True
+            and terminal_completion.get("status")
+            == "ceiling_accepted_frozen_registered"
+            and terminal_completion.get("specialist_id") == "alakazam"
+            and terminal_completion.get("run")
+            == "final_format_alakazam_rtp_r175_i_v6_8k"
+            and int(terminal_completion.get("completed_iteration") or -1) == 20
+            and terminal_completion.get("completion_authority")
+            == "explicit_owner_ceiling_acceptance"
+            and terminal_completion.get("measured_gate_pass") is False
+            and terminal_completion.get("failed_gate_results_preserved") is True
+            and terminal_completion.get("frozen") is True
+            and terminal_completion.get("registered") is True
+            and terminal_completion.get("next_iteration_collected") is False
+            and terminal_checks
+            and all(value is True for value in terminal_checks.values())
+            and training.get("status") == "complete"
+            and training.get("mode") == "final_format_alakazam_rtp_r175_rl"
+            and training.get("specialist_id") == "alakazam"
+            and training.get("run") == terminal_completion.get("run")
+            and int(training.get("last_completed_iteration") or -1) == 20
+            and training.get("model_sha256")
+            == terminal_completion.get("checkpoint_digest")
+            and model.get("active_checkpoint_digest")
+            == terminal_completion.get("checkpoint_digest")
+            and str(curriculum.get("stage") or "").startswith("terminal:")
+        )
         managed_boundary_current = bool(
             managed_boundary.get("current") is True
             and managed_boundary.get("authoritative") is True
@@ -1847,7 +2354,7 @@ class SnapshotCache:
         )
         receipt_backed_stopped_final_refresh = bool(
             not service_active
-            and training.get("status") == "stopped"
+            and training.get("status") in {"stopped", "complete"}
             and active_runtime_refresh.get("active") is False
             and str(training.get("mode") or "").startswith("final_format_")
             and runtime_specialist
@@ -1857,6 +2364,8 @@ class SnapshotCache:
             == str(training.get("run") or "")
         )
         final_refresh_current = (
+            terminal_completion_current
+            or
             receipt_backed_final_refresh
             or receipt_backed_stopped_final_refresh
             or bool(
@@ -2166,12 +2675,16 @@ class SnapshotCache:
                     or handoff_transition_current
                     or managed_boundary_current
                     or managed_boundary_paused_current
+                    or terminal_completion_current
                     or (
                         service_active
                         and int(service.get("restart_count") or 0) >= 0
                     )
                 ),
                 "identity": (
+                    "alakazam-r175-iter20-terminal"
+                    if terminal_completion_current
+                    else
                     (managed_boundary.get("service") or {}).get("name")
                     if managed_boundary_current or managed_boundary_paused_current
                     else handoff.get("service", {}).get("name")
@@ -2179,6 +2692,9 @@ class SnapshotCache:
                     else service.get("name")
                 ),
                 "source": (
+                    terminal_completion.get("source")
+                    if terminal_completion_current
+                    else
                     (
                         managed_boundary.get("outcome_source")
                         if managed_boundary_paused_current
@@ -2196,6 +2712,7 @@ class SnapshotCache:
                     handoff_progress_current
                     or handoff_transition_current
                     or managed_boundary_paused_current
+                    or terminal_completion_current
                     or (
                         curriculum.get("active")
                         and curriculum.get("source_current") is True
@@ -2220,6 +2737,8 @@ class SnapshotCache:
                 "source": (
                     handoff.get("source")
                     if handoff_active or handoff_transition_current
+                    else terminal_completion.get("source")
+                    if terminal_completion_current
                     else curriculum.get("progress_status_source")
                     or curriculum.get("progress_source")
                 ),
@@ -2347,6 +2866,16 @@ class SnapshotCache:
                 "identity": stage,
                 "source": queues.get("source"),
             },
+            "terminal": {
+                "required": bool(
+                    terminal_completion.get("available") is True
+                    or str(training.get("phase") or "").startswith("terminal:")
+                ),
+                "current": terminal_completion_current,
+                "identity": terminal_completion.get("checkpoint_digest"),
+                "source": terminal_completion.get("source"),
+                "checks": terminal_checks,
+            },
         }
         # Cards that intentionally project the same authoritative object still
         # receive their own contract row. This keeps settings/reordering from
@@ -2376,6 +2905,7 @@ class SnapshotCache:
                             and training.get("source") == handoff.get("source")
                         )
                         or handoff_transition_current
+                        or terminal_completion_current
                         or (
                             progress_current
                             and bootstrap.get("compatibility_alias") is True
@@ -2391,7 +2921,9 @@ class SnapshotCache:
                 "throughput": {
                     "required": True,
                     "current": bool(
-                        progress_current or handoff_transition_current
+                        progress_current
+                        or handoff_transition_current
+                        or terminal_completion_current
                     ),
                     "identity": f"{curriculum.get('iteration')}:{stage}",
                     "source": progress_source,
@@ -2468,6 +3000,7 @@ class SnapshotCache:
                     "current": bool(
                         handoff_active
                         or handoff_transition_current
+                        or terminal_completion_current
                         or progress_current
                     ),
                     "identity": f"{curriculum.get('run')}:{stage}",
@@ -2478,6 +3011,7 @@ class SnapshotCache:
                     "current": bool(
                         handoff_active
                         or handoff_transition_current
+                        or terminal_completion_current
                         or progress_current
                     ),
                     "identity": curriculum.get("run"),
@@ -2687,7 +3221,9 @@ class SnapshotCache:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=15,
+                # Full train snapshot regularly exceeds 15s under live RL load;
+                # a too-low timeout freezes /api/status on the last good sample.
+                timeout=45,
             )
             if proc.returncode != 0:
                 raise RuntimeError(proc.stderr.strip() or f"ssh exited {proc.returncode}")
@@ -2815,8 +3351,353 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self) -> None:  # noqa: N802
-        path = self.path.partition("?")[0]
+    def _send_gateway_error(self, status: HTTPStatus, message: str) -> None:
+        self.send_bytes(
+            f"{message}\n".encode(),
+            "text/plain; charset=utf-8",
+            int(status),
+        )
+        self.close_connection = True
+
+    def _send_gateway_redirect(self) -> None:
+        self.send_response(HTTPStatus.PERMANENT_REDIRECT)
+        self.send_header("Location", INSPECTOR_PROXY_PREFIX)
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+
+    def _send_gateway_method_not_allowed(self) -> None:
+        self.send_response(HTTPStatus.METHOD_NOT_ALLOWED)
+        self.send_header("Allow", "GET")
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(b"method not allowed\n")))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(b"method not allowed\n")
+        self.close_connection = True
+
+    def _send_manual_sync_json(
+        self, status: HTTPStatus, payload: dict[str, Any]
+    ) -> None:
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
+        self.close_connection = True
+
+    def _manual_sync_intent_is_valid(self) -> bool:
+        values = self.headers.get_all(INSPECTOR_MANUAL_SYNC_HEADER, [])
+        return values == [INSPECTOR_MANUAL_SYNC_VALUE]
+
+    @staticmethod
+    def _elmo_sync_command(*arguments: str) -> list[str]:
+        return [
+            *ELMO_REPLAY_SYNC_SSH,
+            "sudo",
+            "-n",
+            "systemctl",
+            *arguments,
+            ELMO_REPLAY_SYNC_SERVICE,
+        ]
+
+    def _manual_sync_status(self) -> None:
+        try:
+            result = subprocess.run(
+                self._elmo_sync_command("is-active"),
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=8,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            self._send_manual_sync_json(
+                HTTPStatus.BAD_GATEWAY,
+                {
+                    "available": False,
+                    "running": False,
+                    "reason": "sync_status_unavailable",
+                },
+            )
+            return
+        state = result.stdout.strip()
+        self._send_manual_sync_json(
+            HTTPStatus.OK,
+            {
+                "available": state in {"active", "activating", "inactive", "failed"},
+                "running": state in {"active", "activating"},
+                "service_state": state or "unknown",
+                "hourly_schedule_unchanged": True,
+            },
+        )
+
+    def _request_manual_sync(self) -> None:
+        if not self._manual_sync_intent_is_valid():
+            self._send_gateway_error(
+                HTTPStatus.FORBIDDEN, "manual sync intent required"
+            )
+            return
+        if not self._has_empty_get_body():
+            self._send_gateway_error(HTTPStatus.BAD_REQUEST, "request body rejected")
+            return
+        try:
+            result = subprocess.run(
+                self._elmo_sync_command("start", "--no-block"),
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=8,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            self._send_manual_sync_json(
+                HTTPStatus.BAD_GATEWAY,
+                {"accepted": False, "reason": "sync_request_unavailable"},
+            )
+            return
+        if result.returncode != 0:
+            self._send_manual_sync_json(
+                HTTPStatus.BAD_GATEWAY,
+                {"accepted": False, "reason": "sync_request_rejected"},
+            )
+            return
+        self._send_manual_sync_json(
+            HTTPStatus.ACCEPTED,
+            {
+                "accepted": True,
+                "service": ELMO_REPLAY_SYNC_SERVICE,
+                "hourly_schedule_unchanged": True,
+            },
+        )
+
+    def _direct_inspector_request_is_allowed(self) -> bool:
+        """Apply the direct-LAN boundary before header stripping/proxying."""
+
+        if not _private_or_loopback_address(self.client_address[0]):
+            self._send_gateway_error(HTTPStatus.FORBIDDEN, "private clients only")
+            return False
+        host_values = self.headers.get_all("Host", [])
+        if len(host_values) != 1 or _local_dashboard_authority(host_values[0]) is None:
+            self._send_gateway_error(HTTPStatus.FORBIDDEN, "local Host required")
+            return False
+        origin_values = self.headers.get_all("Origin", [])
+        if len(origin_values) > 1:
+            self._send_gateway_error(HTTPStatus.FORBIDDEN, "local Origin required")
+            return False
+        if origin_values and not _origin_matches_direct_host(
+            origin_values[0], host_values[0]
+        ):
+            self._send_gateway_error(HTTPStatus.FORBIDDEN, "local Origin required")
+            return False
+        return True
+
+    def _has_empty_get_body(self) -> bool:
+        """Reject request bodies rather than leaving bytes on a keep-alive socket."""
+
+        if self.headers.get("Transfer-Encoding"):
+            return False
+        lengths = self.headers.get_all("Content-Length", [])
+        if len(lengths) > 1:
+            return False
+        if not lengths:
+            return True
+        try:
+            return int(lengths[0]) == 0 and lengths[0].strip() == lengths[0]
+        except ValueError:
+            return False
+
+    def _send_inspector_response_headers(
+        self,
+        response: http.client.HTTPResponse,
+        content_length: int | None,
+    ) -> None:
+        content_type = response.getheader("Content-Type") or "application/octet-stream"
+        if "\r" in content_type or "\n" in content_type:
+            content_type = "application/octet-stream"
+        self.send_response(response.status)
+        self.send_header("Content-Type", content_type)
+        if content_length is not None:
+            self.send_header("Content-Length", str(content_length))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; connect-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'",
+        )
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header(
+            "Permissions-Policy",
+            "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+        )
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        # Never forward transfer encoding, cookies, CORS, redirects, or any
+        # upstream-controlled headers.  Closing after each proxy response also
+        # avoids a malformed upstream body contaminating the next dashboard
+        # request on this client socket.
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+
+    @staticmethod
+    def _response_content_length(response: http.client.HTTPResponse) -> int | None:
+        values = response.headers.get_all("Content-Length", [])
+        if not values:
+            return None
+        if len(values) != 1:
+            raise ValueError("ambiguous upstream response length")
+        value = values[0]
+        if not value.isascii() or not value.isdecimal():
+            raise ValueError("invalid upstream response length")
+        length = int(value)
+        if length > INSPECTOR_PROXY_MAX_RESPONSE_BYTES:
+            raise ValueError("upstream response exceeds limit")
+        return length
+
+    def _proxy_replay_inspector(self, target: str) -> None:
+        """Stream one safe GET to the checksum-bound inspector tunnel.
+
+        ``HTTPConnection`` does not implement redirect following.  We also
+        reject 3xx responses rather than exposing an upstream-controlled
+        ``Location`` to a browser on the dashboard origin.
+        """
+
+        connection: http.client.HTTPConnection | None = None
+        response_started = False
+        try:
+            host, port = INSPECTOR_UPSTREAM_ADDRESS
+            connection = http.client.HTTPConnection(
+                host, port, timeout=INSPECTOR_PROXY_TIMEOUT_SECONDS
+            )
+            # Construct the outbound request from fixed fields only.  In
+            # particular, no browser Host, cookie, credential, Origin,
+            # Referer, Fetch-Metadata, or forwarding header crosses the trust
+            # boundary.
+            connection.putrequest(
+                "GET", target, skip_host=True, skip_accept_encoding=True
+            )
+            connection.putheader("Host", INSPECTOR_UPSTREAM_HOST_HEADER)
+            connection.putheader("Connection", "close")
+            connection.endheaders()
+            response = connection.getresponse()
+            if 300 <= response.status < 400:
+                self._send_gateway_error(
+                    HTTPStatus.BAD_GATEWAY, "upstream redirect rejected"
+                )
+                return
+            if response.status < 200 or response.status > 599:
+                self._send_gateway_error(
+                    HTTPStatus.BAD_GATEWAY, "invalid upstream response"
+                )
+                return
+            try:
+                content_length = self._response_content_length(response)
+            except ValueError:
+                self._send_gateway_error(
+                    HTTPStatus.BAD_GATEWAY, "upstream response rejected"
+                )
+                return
+
+            self._send_inspector_response_headers(response, content_length)
+            response_started = True
+            total = 0
+            while True:
+                chunk = response.read(INSPECTOR_PROXY_CHUNK_BYTES)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > INSPECTOR_PROXY_MAX_RESPONSE_BYTES:
+                    # Headers are already committed.  Terminate rather than
+                    # relaying data beyond the bounded response contract.
+                    self.close_connection = True
+                    return
+                self.wfile.write(chunk)
+        except TimeoutError:
+            if not response_started:
+                self._send_gateway_error(
+                    HTTPStatus.GATEWAY_TIMEOUT, "inspector unavailable"
+                )
+            self.close_connection = True
+        except (OSError, http.client.HTTPException):
+            if not response_started:
+                self._send_gateway_error(
+                    HTTPStatus.BAD_GATEWAY, "inspector unavailable"
+                )
+            self.close_connection = True
+        finally:
+            if connection is not None:
+                connection.close()
+
+    def _handle_non_get(self) -> None:
+        try:
+            path, _query = _validate_request_target(self.path)
+        except InspectorProxyTargetError as exc:
+            self._send_gateway_error(exc.status, str(exc))
+            return
+        if path == INSPECTOR_MANUAL_SYNC_PATH and self.command == "POST":
+            if not self._direct_inspector_request_is_allowed():
+                return
+            self._request_manual_sync()
+            return
+        if path == INSPECTOR_PROXY_PREFIX.rstrip("/") or path.startswith(
+            INSPECTOR_PROXY_PREFIX
+        ):
+            if not self._direct_inspector_request_is_allowed():
+                return
+            self._send_gateway_method_not_allowed()
+            return
+        # Keep existing dashboard endpoints' unsupported-method behavior.
+        self.send_error(HTTPStatus.NOT_IMPLEMENTED, "Unsupported method")
+
+    def do_GET(self) -> None:
+        try:
+            path, query = _validate_request_target(self.path)
+        except InspectorProxyTargetError as exc:
+            self._send_gateway_error(exc.status, str(exc))
+            return
+        if path == INSPECTOR_MANUAL_SYNC_STATUS_PATH:
+            if not self._direct_inspector_request_is_allowed():
+                return
+            if not self._has_empty_get_body():
+                self._send_gateway_error(
+                    HTTPStatus.BAD_REQUEST, "GET request body rejected"
+                )
+                return
+            self._manual_sync_status()
+            return
+        inspector_root = path == INSPECTOR_PROXY_PREFIX.rstrip("/")
+        inspector_target = _inspector_upstream_target(path, query)
+        if inspector_root or inspector_target is not None:
+            if not self._direct_inspector_request_is_allowed():
+                return
+            if inspector_root:
+                self._send_gateway_redirect()
+                return
+            fetch_site_values = self.headers.get_all("Sec-Fetch-Site", [])
+            if any(
+                "cross-site" in {item.strip().lower() for item in value.split(",")}
+                for value in fetch_site_values
+            ):
+                self._send_gateway_error(
+                    HTTPStatus.FORBIDDEN, "cross-site request rejected"
+                )
+                return
+            if not self._has_empty_get_body():
+                self._send_gateway_error(
+                    HTTPStatus.BAD_REQUEST, "GET request body rejected"
+                )
+                return
+            self._proxy_replay_inspector(inspector_target)
+            return
         if path in ("/", "/index.html"):
             self.send_bytes(rendered_index(), "text/html; charset=utf-8")
             return
@@ -2833,6 +3714,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_bytes(json.dumps(payload).encode(), "application/json", status)
             return
         self.send_bytes(b"not found\n", "text/plain; charset=utf-8", HTTPStatus.NOT_FOUND)
+
+    do_POST = _handle_non_get
+    do_PUT = _handle_non_get
+    do_PATCH = _handle_non_get
+    do_DELETE = _handle_non_get
+    do_OPTIONS = _handle_non_get
+    do_HEAD = _handle_non_get
+    do_CONNECT = _handle_non_get
+    do_TRACE = _handle_non_get
 
     def log_message(self, fmt: str, *args: object) -> None:
         print(f"{self.address_string()} - {fmt % args}", flush=True)

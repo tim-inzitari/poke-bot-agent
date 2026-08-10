@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from typing import Optional
 
@@ -18,6 +19,41 @@ from poke_bot.live_pool import (
 )
 from poke_bot.pure_rl.hardware import FullHardwareProfile
 from poke_bot.pure_rl.multi_env_self_play import process_worker_count
+
+
+# Revision 70 / GOAL's final-format profile is an explicit fixed-capacity
+# contract, not an adaptive scheduling preference.  Keep this narrow: generic
+# profiles continue to use the no-swap RAM clamp below.
+_EXACT_FIXED_LOCAL_WORKERS = 96
+_EXACT_FIXED_WORKER_ENV_KEYS = (
+    "PURE_RL_SIM_WORKERS",
+    "PURE_RL_GAMES_IN_FLIGHT",
+    "PURE_RL_REBALANCE_MIN_WORKERS",
+    "PURE_RL_REBALANCE_MAX_WORKERS",
+    "POKEBOT_LIVE_POOL_MAX_WORKERS",
+)
+
+
+def _exact_fixed_local_worker_target() -> Optional[int]:
+    """Return the hard 96-worker target only for the fully pinned profile.
+
+    A live-pool plan is normally advisory and may be RAM-capped.  The
+    final-format 96/96 profile is different: its worker floor, target,
+    ceiling, and games-in-flight are all owner-pinned.  Do not infer this
+    from one setting alone; all five runtime settings must explicitly agree.
+    """
+    values: list[int] = []
+    for key in _EXACT_FIXED_WORKER_ENV_KEYS:
+        raw = os.environ.get(key)
+        if raw is None or not str(raw).strip():
+            return None
+        try:
+            values.append(int(raw))
+        except ValueError:
+            return None
+    if all(value == _EXACT_FIXED_LOCAL_WORKERS for value in values):
+        return _EXACT_FIXED_LOCAL_WORKERS
+    return None
 
 
 def split_leaf_replicas(total: int, *, prefer_gpu1: bool = True) -> tuple[int, int]:
@@ -68,6 +104,11 @@ def apply_live_pool_plan(
     )
     want_w = int(plan.workers) if plan.workers is not None else int(hw.sim_workers)
     want_w = max(1, want_w)
+    fixed_worker_target = _exact_fixed_local_worker_target()
+    if fixed_worker_target is not None:
+        # Never let a stale watcher plan or its generic RAM model reduce the
+        # explicitly hard-stuck final-format collection profile.
+        want_w = fixed_worker_target
 
     if plan.leaf_gpu0 is not None and plan.leaf_gpu1 is not None:
         gpu0, gpu1 = int(plan.leaf_gpu0), int(plan.leaf_gpu1)
@@ -91,14 +132,15 @@ def apply_live_pool_plan(
         total = max(1, gpu0 + gpu1)
         gpu0, gpu1 = total, 0
 
-    # No-swap RAM ceiling: a plan (hand-written or watcher-emitted) must
-    # never raise local workers above what physically fits without swap,
-    # even if it is inside the module's headroom-only _MAX_WORKERS sanity
-    # clamp above. Leaf server RSS is accounted for since it grows/shrinks
-    # with this same plan.
-    ram_cap = max_local_workers_for_ram(leaf_count=gpu0 + gpu1, min_workers=1)
-    if want_w > ram_cap:
-        want_w = max(1, ram_cap)
+    if fixed_worker_target is None:
+        # No-swap RAM ceiling: a plan (hand-written or watcher-emitted) must
+        # never raise local workers above what physically fits without swap,
+        # even if it is inside the module's headroom-only _MAX_WORKERS sanity
+        # clamp above. Leaf server RSS is accounted for since it grows/shrinks
+        # with this same plan.
+        ram_cap = max_local_workers_for_ram(leaf_count=gpu0 + gpu1, min_workers=1)
+        if want_w > ram_cap:
+            want_w = max(1, ram_cap)
 
     leaf_changed = gpu0 != hw.leaf_gpu0_replicas or gpu1 != hw.leaf_gpu1_replicas
     workers_changed = want_w != hw.sim_workers or want_w != hw.games_in_flight

@@ -1454,3 +1454,201 @@ validation remains unweighted, unmatched or unverifiable pilots remain `1.0x`,
 and replay actions and causal labels are never rewritten. The index digest and
 effective weight contract are present in every epoch checkpoint, frozen model
 provenance, and readiness receipt.
+
+## 11. Alakazam RTP realignment, abandonment, and separate MCTS (revisions 197–210)
+
+Treat the revision-195 RTP result as immutable historical evidence.  The
+sidecar used there is never rewritten or relabelled as aligned.  Build the
+revision-197 candidate in a new content-addressed location from the exact
+revision-195 policy checkpoint and the protected 2026-08-01 through
+2026-08-05 Alakazam expert corpus.  The terminal r175 service remains inactive;
+this work never restarts it and never creates iteration 21.
+
+The `pure_rl_r197` planner profile is separate from legacy `pure_rl`. Under
+revision 198 it uses four plan candidates, recursion depth two, an exact hard
+ceiling of 256 neural passes, and up to 1,024 complete ordered legal-action
+combinations. The serving preflight proves that the current normal and forced
+paths require only six and five passes respectively; 256 is headroom, not a
+required amount of work. No automatic or unbounded escalation is allowed, and
+no path may exceed 256.
+
+Training and serving use the same canonical, complete ordered legal-action
+combinations.  Factorized prefixes are not complete RTP actions.  Split by
+whole episode before encoding and keep evaluation and Kaggle replays
+training-ineligible.  Behavior imitation may remain a regularizer, but planner
+value and recursion gating must be outcome/value-of-planning aligned.  Do not
+assign the observed return to unchosen actions or otherwise fabricate
+counterfactual targets; without trusted alternative-action targets, the
+candidate remains shadow-only.
+
+Every candidate checkpoint remains `serving_eligible=false` and
+`action_authority_enabled=false` until an immutable three-arm evaluation
+separates NO-RTP, direct complete-combo bridge, and recursive RTP.  Promotion
+requires exact parent/data/code/config/deck/tree identity, real recursive-plan
+execution, zero neural-budget failures, bounded fallback and latency, no new
+illegal-action or forfeit regression, source-excluded heldout improvement of
+recursive RTP over the direct bridge, and a separate promotion receipt.  A
+shadow build or public leaderboard score cannot change the canonical selector
+or authorize a Kaggle submission.
+
+Revision 199 historically continued RTP as separately versioned, receipt-backed,
+shadow-only R&D and rescinds the provisional abandonment instruction before it
+activates. Revision 210 supersedes that continuation and its following
+imperatives; they are retained here only as historical provenance. Under the
+former revision-199 policy, the frozen r198 attempt 10 had to continue unchanged to an immutable
+terminal evaluation boundary or fail closed. A live prefix is not terminal
+efficacy, promotion, abandonment, or stop evidence; it cannot authorize
+preemption, restart, mutation, an in-place retry, or a selector change.
+
+Preserve every completed, held, rejected, invalid, or fail-closed attempt. A
+non-promotable result retains zero serving, action, selector,
+checkpoint-publication, submission, and promotion authority. Further research
+may proceed only as a new separately versioned shadow candidate with a new
+content-addressed source snapshot, candidate identity, evaluation identity,
+and output root after receipt-bound diagnosis and preflight. The exact
+1,024-action, 256-pass, six-normal/five-forced-replan and all paired evidence,
+reliability, latency, legality, source-excluded efficacy, trustworthy-target,
+and separate-promotion gates remain unchanged.
+
+Revision 200 authorizes an offline, shadow-only replacement strategy: a
+conservative batched one-turn complete-action GPU reranker. It scores only the
+current decision's complete legal actions and never executes a cached
+multi-action program. The base policy remains the exact default; an override
+is forbidden until a separately receipted action-space-bound counterfactual
+target set, source-excluded ranking evidence, value/uncertainty calibration,
+support check, positive post-compute margin, legality check, and latency and
+reliability gates all pass.
+
+The r197 candidate has zero trusted candidate-return, ranking, and calibration
+targets, so those labels cannot be inferred or relabelled. Generate new labels
+only through checksum-bound paired simulator branches, keep the planner's
+model inputs policy-visible, and never train on evaluation or Kaggle games.
+Full-batch and bounded-microbatch GPU scoring must match a CPU reference and
+must not mutate policy state, caches, or RNG. The current evaluator remains
+untouched; any executable derivative requires new content-addressed source,
+sidecar, candidate, evaluation, output, and separate promotion evidence.
+
+Revision 201 supersedes that single-decision design before implementation. The
+owner requires planning one whole current turn over multiple atomic actions.
+Use closed-loop receding-horizon execution: construct and score a bounded typed
+trajectory through `END_TURN`, execute exactly one next action, consume the
+real policy-visible observation and freshly enumerated legal actions, then
+replan the remaining turn. A turn-key change or `END_TURN` terminates the plan;
+no trajectory may cross into the next turn.
+
+Every continuation must bind its expected observation and legal-action
+fingerprints. Missing branch evidence must never select a default branch, and
+root option encodings or legal actions must never be reused after state
+changes. The direct-policy action remains a mandatory candidate and exact
+fallback at every step. A true multi-step GPU search additionally requires an
+information-set-safe arbitrary-decision branch or successor-state facility and
+exact future legality. The existing battle-start pairing snapshot and latent
+rollout do not establish that facility and cannot be described as an exact
+beam, MCTS, or simulator. Until trusted multi-step transition, trajectory
+return/ranking, calibration, support, margin, legality, latency, and reliability
+receipts exist, implementation remains offline and has no runtime authority.
+
+Revision 202 supersedes revision 201 before its phase-1 module is implemented.
+The planner may retain and reuse a precomputed inter-turn subtree when the
+real transition is attested deterministic and its turn key, policy-visible
+observation, complete legal-action set, fresh option encoding, subtree digest,
+and direct-policy candidate all match exactly. It still emits at most one
+atomic action before consuming the real observation. Matching deterministic
+children advance without rebuilding or rescoring the tree; a missing child or
+any identity mismatch discards the cache and returns to planning or the exact
+direct-policy action.
+
+Chance nodes are typed. A fully enumerated finite event with exact positive
+rational probabilities summing to one, exact successor states, and exact
+future legality may be expanded and backed up as the probability-weighted sum
+of all child values. A fair coin is the canonical simple example. This lets the
+search value states beyond that coin, but the realized outcome starts a fresh
+public execution root; finite-chance children are not promoted into the live
+cache. Hidden-state determinization, subset sampling presented as exact,
+probability reweighting, and traversal through unknown, complex, unbounded, or
+incomplete chance or opponent-information nodes are forbidden; those are tree
+boundaries until reality supplies a fresh public root.
+
+Planner latency is configured in one typed budget object, with defaults of
+`20.0` seconds total monotonic planner wall time per actual turn and `5.0`
+seconds before any individual atomic action. Enumeration, encoding, GPU work,
+chance expansion, backup, cache validation, and subtree advance are charged.
+Timeouts give no partial-tree authority and return the exact direct-policy
+action. The values are intentionally easy to change for offline experiments,
+but every effective pair is bound into a candidate/configuration identity and
+must be re-receipted before any runtime evaluation. Phase 1 remains isolated
+and offline; exact successor/future-legality/chance-distribution and trusted
+target, calibration, support, latency, reliability, and promotion evidence are
+still prerequisites for any later MCTS/expectimax or action-authority claim.
+
+Revision 205 authorizes one exact evaluation-only BO1000 after those real-search
+prerequisites are met. Use the immutable revision-195 NO-RTP checkpoint and
+Alakazam pilot deck on both sides. Run 500 RNG-matched pairs, swap seats within
+each pair, and complete all 1,000 games: MCTS occupies each seat exactly 500
+times. There is no additional training, and every game remains permanently
+training-ineligible. Compatible idle remotes should run independent games in
+parallel after a resource and checkpoint preflight; the live r198 attempt-10
+host and GPU remain excluded until that attempt is terminal.
+
+The MCTS arm must enforce the identity-bound `20.0`-second per-turn and
+`5.0`-second per-action limits with its own monotonic clock. Its per-turn
+receipt records evaluated leaf/results, unique and expanded nodes, terminal
+and boundary leaves, chance outcomes, cache reuse/rebuilds, tree completeness,
+deadline state, direct fallback, action legality, and tree/config identity.
+The final report includes paired and seat-split outcomes, failures and
+forfeits, turn/action latency distributions, mean/median/p95/min/max results
+seen per turn, and full requested-tree completion rates overall and by seat.
+The prebuilt-tree phase-1 controller alone is not the MCTS arm and cannot
+authorize a launch. A new content-addressed source, candidate, evaluation, and
+output plus successor, future-legality, chance, clock, integrity, parity,
+determinism, and safe-remote receipts must all pass first.
+
+Revision 207 supersedes only r205's experimental-arm mechanics. The BO1000
+still consists of the same 500 RNG-matched, seat-swapped pairs using the exact
+frozen r195 NO-RTP checkpoint and pilot deck, remains permanently
+training-ineligible, and retains the exact `20.0`-second actual-turn and
+`5.0`-second atomic-action monotonic clocks. The experimental arm must use
+simulator-backed chance-aware inter-turn MCTS. It uses the checksum-bound frozen
+model for legal policy priors and batched frozen outcome/value reranking of
+nonterminal leaves; a simulator terminal leaf records the exact terminal result
+and is never model-reranked, reweighted, or replaced. No gradients, optimizer
+steps, parameter updates, or other training are allowed.
+
+Per-turn receipts retain the existing seat split and add separate simulator
+transition, exact-terminal-result, frozen-policy-prior, frozen-outcome-leaf,
+and frozen-value-leaf counts and batches. Bert, Elmo, and train may participate
+only after a per-host safe-noninterference preflight; no interactive session or
+in-flight attempt may be disturbed. Every simulator, terminal-result,
+frozen-model, clock, integrity, determinism, noninterference, and
+content-addressed-output prerequisite remains fail-closed. Typed contract:
+`state/alakazam-chance-aware-inter-turn-mcts-bo1000-r207.json`.
+
+Revision 210 supersedes revision 199's continuation policy and fully abandons
+the legacy recursive RTP line. The active r198 attempt-10 evaluation was
+stopped immediately through its managed systemd unit. Preserve the exact
+owner-stopped snapshot: 761 completed transcript/receipt pairs, 253 complete
+three-arm cells plus the NO-RTP/direct arms of cell 253, and no terminal
+result, compiler receipt, HOLD, or promotion artifact. The completed evidence
+leaves are read-only, but the output roots were not terminal-sealed; therefore
+only the exact snapshot digests in
+`state/alakazam-rtp-abandonment-r210.json` are valid preservation boundaries.
+The partial prefix is not a complete efficacy result and is never eligible for
+training, promotion, serving, or action authority.
+
+Never restart or retry attempt 10, create a new legacy recursive-RTP candidate
+or evaluation, collect or train legacy RTP data, attach its sidecar/executor,
+change the selector for it, publish or promote it, or submit it to Kaggle.
+The exact linked historical unit is retained as evidence behind a persistent
+external systemd retirement drop-in: manual starts are refused and indirect
+activation is skipped before `ExecStartPre` or `ExecStart`. The immutable
+activation receipt is
+`state/alakazam-rtp-abandonment-retirement-guard-r210.json`; removing that
+drop-in alone never authorizes a restart.
+Historical r195 RTP and r197/r198/r199 artifacts remain audit evidence only.
+This abandonment does not cancel the independently versioned r202/r205/r207
+simulator-backed MCTS experiment: that experiment uses the exact frozen r195
+NO-RTP policy and cannot consume an abandoned RTP sidecar, executor, or
+partial row. It remains offline/shadow-only and may run BO1000 only after
+every r207 successor, chance, calibration, clock, integrity, determinism,
+host-noninterference, and content-addressed-output prerequisite passes. The
+attempt-10 stop alone does not grant train-host capacity.

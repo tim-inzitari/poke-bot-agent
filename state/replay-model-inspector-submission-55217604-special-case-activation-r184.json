@@ -1,0 +1,51 @@
+{
+  "schema": "poke_bot.replay_model_inspector_submission_special_case_activation/v1",
+  "owner_decision_revision": 184,
+  "created_at_utc": "2026-08-08T01:47:00Z",
+  "status": "active_weights_only_dynamic_trace_fail_closed",
+  "submission": {
+    "submission_id": 55217604,
+    "submission_id_text": "55217604",
+    "label": "new list experiment, h10 alakazam, no train",
+    "cached_replay_count": 79,
+    "source_backed_wins": 48,
+    "source_backed_outcome_count": 79,
+    "checkpoint_sha256": "sha256:02c014ad7c3318d9871a2b16b57b25adb721d5c88cacb2a3d23db3c2f3ca0d92",
+    "bundle_sha256": "sha256:5696a66f47f1f9fd7999cf70b5fc93908e97537a76678a728a228339f526a5b0",
+    "matchup_tree_sha256": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588"
+  },
+  "hourly_sync": {
+    "host": "elmo",
+    "timer": "pokebot-kaggle-submission-replay-sync.timer",
+    "active": true,
+    "enabled": true,
+    "ordinary_minimum_submission_id": 55315274,
+    "minimum_changed": false,
+    "automatic_new_submission_discovery_preserved": true,
+    "special_case_rechecked_each_default_run": true,
+    "sync_script_sha256": "sha256:2ad7e3822e2bd848af00df37ad163b3e77148969599cb062601223aa155e9a34"
+  },
+  "inspector": {
+    "catalog_status": "weights_only",
+    "weights_available": true,
+    "dynamic_trace_available": false,
+    "dynamic_trace_reason": "runtime_package_artifact_missing",
+    "plain_english_reason": "exact submitted runtime is not yet checksum-attested",
+    "r175_runtime_substitution_allowed": false,
+    "parameter_inventory_available": true,
+    "deployed_manifest_sha256": "sha256:be66f18dfebc73ae00f39c1602e3dca85bc77ed416cff280a81def62a3a994cf",
+    "matchup_tree_path": "/data/inspector/artifacts/runtimes/sha256-5696a66f47f1f9fd7999cf70b5fc93908e97537a76678a728a228339f526a5b0/package/matchup_tree.json"
+  },
+  "validation": {
+    "sync_selection_tests_passed": 6,
+    "full_exact_runtime_inspector_tests_passed": 88,
+    "live_catalog_game_count": 79,
+    "live_weights_endpoint": "available",
+    "live_dynamic_trace_behavior": "explicit_unavailable_no_model_substitution"
+  },
+  "safety": {
+    "evaluation_replays_training_eligible": false,
+    "checkpoint_or_replay_mutation": false,
+    "training_or_selector_service_control_invoked": false
+  }
+}

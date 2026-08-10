@@ -52,6 +52,11 @@ from poke_bot.pure_rl.strong_public_gate import (
     GATE_RESULT_SCHEMA,
     materialize_fallback_gate_contract,
 )
+from poke_bot.rtp_evaluation_promotion import (
+    RTPPromotionEvidenceError,
+    read_r198_immutable_json_object,
+    validate_r198_evaluation_receipt,
+)
 
 
 AUTH_SCHEMA = "poke_bot.kaggle_submission_authorization/v1"
@@ -67,6 +72,59 @@ BASE_ACTIVE_GATE_CHECKS = frozenset(
         "s_tier_mean_floor",
         "individual_opponent_floor",
     }
+)
+_SUBMISSION_RTP_MODES = frozenset(
+    {"default_off", "disabled", "enabled", "off", "direct", "recursive"}
+)
+_RTP_PROMOTION_SCHEMA = "poke_bot.rtp_promotion/v1"
+_RTP_R197_SPECIALIST_ID = "alakazam"
+_RTP_R198_EXACT_MAX_NEURAL_PASSES = 256
+_RTP_R198_EXACT_MAX_ACTION_COMBOS = 1024
+_RTP_R197_REQUIRED_NEURAL_PASSES = {
+    "normal": 6,
+    "forced_replan": 5,
+}
+_RTP_PROMOTION_REQUIRED_FIELDS = frozenset(
+    {
+        "schema",
+        "status",
+        "specialist_id",
+        "parent_checkpoint_sha256",
+        "sidecar_sha256",
+        "sidecar_config_sha256",
+        "max_neural_passes",
+        "max_action_combos",
+        "required_neural_passes",
+        "deck_file_sha256",
+        "deck_cards_sha256",
+        "matchup_tree_sha256",
+        "evaluation_receipt_path",
+        "evaluation_receipt_sha256",
+        "identity_gate_passed",
+        "planner_activation_gate_passed",
+        "reliability_gate_passed",
+        "heldout_efficacy_gate_passed",
+        "robustness_gate_passed",
+        "latency_gate_passed",
+        "serving_eligible",
+        "action_authority_enabled",
+        "created_at_utc",
+    }
+)
+_RTP_PROMOTION_REQUIRED_TRUE_FIELDS = (
+    "identity_gate_passed",
+    "planner_activation_gate_passed",
+    "reliability_gate_passed",
+    "heldout_efficacy_gate_passed",
+    "robustness_gate_passed",
+    "latency_gate_passed",
+    "serving_eligible",
+    "action_authority_enabled",
+)
+_RTP_SUBMISSION_ENV_KEYS = (
+    "POKEBOT_SUBMISSION_RTP_CHECKPOINT",
+    "POKEBOT_SUBMISSION_RTP_PARENT_CHECKPOINT_SHA256",
+    "POKEBOT_SUBMISSION_RTP_PROMOTION_RECEIPT",
 )
 
 
@@ -1222,6 +1280,238 @@ def materialize_pinned_specialist_deck(
     }
 
 
+def _require_submission_sha256(value: object, *, field: str) -> str:
+    """Return one canonical SHA-256 identity or reject the package input."""
+
+    digest = str(value or "")
+    if (
+        len(digest) != 71
+        or not digest.startswith("sha256:")
+        or any(character not in "0123456789abcdef" for character in digest[7:])
+    ):
+        raise RuntimeError(f"RTP submission has invalid {field}")
+    return digest
+
+
+def _prepare_submission_rtp_environment(
+    *,
+    rtp_mode: str,
+    rtp_promotion_receipt: Path | None,
+    frozen_checkpoint: Path,
+    frozen_model_digest: str,
+    expected_archetype: str,
+    deck_file_digest: str,
+    deck_cards_digest: str,
+    matchup_tree_digest: str | None,
+) -> tuple[dict[str, str], dict[str, Any] | None]:
+    """Resolve the only RTP inputs that may enter a submission build.
+
+    Historical ``disabled``/``enabled`` calls retain their ambient sidecar
+    interface. The r197 direct and recursive arms bind the same frozen parent,
+    deck, tree, and inert sidecar; recursive alone additionally requires its
+    separately supplied immutable promotion receipt before the build script is
+    even invoked.
+    """
+
+    if rtp_mode not in _SUBMISSION_RTP_MODES:
+        raise RuntimeError("invalid submission RTP mode")
+    if rtp_promotion_receipt is not None and rtp_mode != "recursive":
+        raise RuntimeError(
+            "a RTP promotion receipt is valid only for recursive submissions"
+        )
+    if rtp_mode in {"default_off", "disabled", "off"}:
+        return {}, None
+
+    raw_sidecar = str(os.environ.get("POKEBOT_SUBMISSION_RTP_CHECKPOINT") or "")
+    sidecar = Path(raw_sidecar).expanduser().resolve() if raw_sidecar else None
+    if sidecar is None or not sidecar.is_file():
+        raise RuntimeError(f"{rtp_mode} submission RTP checkpoint is unavailable")
+    if rtp_mode == "enabled":
+        return {"POKEBOT_SUBMISSION_RTP_CHECKPOINT": str(sidecar)}, None
+
+    if rtp_mode == "direct":
+        if expected_archetype != _RTP_R197_SPECIALIST_ID:
+            raise RuntimeError("direct RTP submission is only defined for alakazam r197")
+        frozen_checkpoint = Path(frozen_checkpoint).expanduser().resolve()
+        if not frozen_checkpoint.is_file():
+            raise RuntimeError("direct RTP frozen parent checkpoint is unavailable")
+        expected_parent_digest = _require_submission_sha256(
+            frozen_model_digest,
+            field="frozen model digest",
+        )
+        if sha256(frozen_checkpoint) != expected_parent_digest:
+            raise RuntimeError("direct RTP frozen parent checkpoint digest changed")
+        expected_deck_cards_digest = _require_submission_sha256(
+            deck_cards_digest,
+            field="submission deck cards digest",
+        )
+        if matchup_tree_digest is None:
+            raise RuntimeError("direct RTP submission requires a matchup tree")
+        expected_tree_digest = _require_submission_sha256(
+            matchup_tree_digest,
+            field="submission matchup tree digest",
+        )
+        return (
+            {
+                "POKEBOT_SUBMISSION_RTP_CHECKPOINT": str(sidecar),
+                "POKEBOT_SUBMISSION_RTP_PARENT_CHECKPOINT_SHA256": expected_parent_digest,
+            },
+            {
+                "sidecar_sha256": sha256(sidecar),
+                "parent_checkpoint_sha256": expected_parent_digest,
+                "max_neural_passes": _RTP_R198_EXACT_MAX_NEURAL_PASSES,
+                "max_action_combos": _RTP_R198_EXACT_MAX_ACTION_COMBOS,
+                "required_neural_passes": dict(_RTP_R197_REQUIRED_NEURAL_PASSES),
+                "deck_cards_sha256": expected_deck_cards_digest,
+                "matchup_tree_sha256": expected_tree_digest,
+            },
+        )
+
+    # ``recursive`` is an r197-only production candidate.  It must never
+    # inherit receipt or parent values from the launcher environment.
+    if expected_archetype != _RTP_R197_SPECIALIST_ID:
+        raise RuntimeError("recursive RTP submission is only defined for alakazam r197")
+    if rtp_promotion_receipt is None:
+        raise RuntimeError("recursive submission requires a RTP promotion receipt")
+    try:
+        promotion_identity, receipt = read_r198_immutable_json_object(
+            rtp_promotion_receipt,
+            label="recursive RTP promotion receipt",
+        )
+    except RTPPromotionEvidenceError as exc:
+        raise RuntimeError(
+            f"recursive RTP promotion receipt is not immutable evidence: {exc}"
+        ) from exc
+    receipt_path = Path(str(promotion_identity["path"]))
+    missing = sorted(_RTP_PROMOTION_REQUIRED_FIELDS.difference(receipt))
+    if missing:
+        raise RuntimeError(
+            "recursive RTP promotion receipt is incomplete: " + ", ".join(missing)
+        )
+    if (
+        receipt.get("schema") != _RTP_PROMOTION_SCHEMA
+        or receipt.get("status") != "accepted"
+        or receipt.get("specialist_id") != _RTP_R197_SPECIALIST_ID
+    ):
+        raise RuntimeError("recursive RTP promotion receipt is not an accepted r197 receipt")
+    for field in _RTP_PROMOTION_REQUIRED_TRUE_FIELDS:
+        if receipt.get(field) is not True:
+            raise RuntimeError(f"recursive RTP promotion receipt does not pass {field}")
+    if not isinstance(receipt.get("created_at_utc"), str) or not str(
+        receipt["created_at_utc"]
+    ).strip():
+        raise RuntimeError("recursive RTP promotion receipt has no creation time")
+
+    frozen_checkpoint = Path(frozen_checkpoint).expanduser().resolve()
+    if not frozen_checkpoint.is_file():
+        raise RuntimeError("recursive RTP frozen parent checkpoint is unavailable")
+    expected_parent_digest = _require_submission_sha256(
+        frozen_model_digest,
+        field="frozen model digest",
+    )
+    if sha256(frozen_checkpoint) != expected_parent_digest:
+        raise RuntimeError("recursive RTP frozen parent checkpoint digest changed")
+    if _require_submission_sha256(
+        receipt.get("parent_checkpoint_sha256"),
+        field="promotion.parent_checkpoint_sha256",
+    ) != expected_parent_digest:
+        raise RuntimeError("recursive RTP promotion receipt parent digest mismatch")
+    if _require_submission_sha256(
+        receipt.get("sidecar_sha256"), field="promotion.sidecar_sha256"
+    ) != sha256(sidecar):
+        raise RuntimeError("recursive RTP promotion receipt sidecar digest mismatch")
+    _require_submission_sha256(
+        receipt.get("sidecar_config_sha256"),
+        field="promotion.sidecar_config_sha256",
+    )
+    if (
+        type(receipt.get("max_neural_passes")) is not int
+        or receipt.get("max_neural_passes") != _RTP_R198_EXACT_MAX_NEURAL_PASSES
+        or type(receipt.get("max_action_combos")) is not int
+        or receipt.get("max_action_combos") != _RTP_R198_EXACT_MAX_ACTION_COMBOS
+        or receipt.get("required_neural_passes")
+        != _RTP_R197_REQUIRED_NEURAL_PASSES
+    ):
+        raise RuntimeError(
+            "recursive RTP receipt does not bind exact 256-pass/1024-action r198"
+        )
+
+    expected_deck_cards_digest = _require_submission_sha256(
+        deck_cards_digest,
+        field="submission deck cards digest",
+    )
+    expected_deck_file_digest = _require_submission_sha256(
+        deck_file_digest,
+        field="submission deck file digest",
+    )
+    if matchup_tree_digest is None:
+        raise RuntimeError("recursive RTP submission requires a matchup tree")
+    expected_tree_digest = _require_submission_sha256(
+        matchup_tree_digest,
+        field="submission matchup tree digest",
+    )
+    if _require_submission_sha256(
+        receipt.get("deck_file_sha256"), field="promotion.deck_file_sha256"
+    ) != expected_deck_file_digest:
+        raise RuntimeError("recursive RTP promotion receipt deck-file digest mismatch")
+    if _require_submission_sha256(
+        receipt.get("deck_cards_sha256"), field="promotion.deck_cards_sha256"
+    ) != expected_deck_cards_digest:
+        raise RuntimeError("recursive RTP promotion receipt deck digest mismatch")
+    if _require_submission_sha256(
+        receipt.get("matchup_tree_sha256"), field="promotion.matchup_tree_sha256"
+    ) != expected_tree_digest:
+        raise RuntimeError("recursive RTP promotion receipt matchup-tree digest mismatch")
+
+    evaluation_digest = _require_submission_sha256(
+        receipt.get("evaluation_receipt_sha256"),
+        field="promotion.evaluation_receipt_sha256",
+    )
+    evaluation_path = Path(str(receipt.get("evaluation_receipt_path") or ""))
+    try:
+        validate_r198_evaluation_receipt(
+            evaluation_path,
+            expected_sha256=evaluation_digest,
+            require_local_evidence=True,
+            expected_parent_checkpoint_sha256=expected_parent_digest,
+            expected_sidecar_sha256=sha256(sidecar),
+            expected_sidecar_config_sha256=_require_submission_sha256(
+                receipt.get("sidecar_config_sha256"),
+                field="promotion.sidecar_config_sha256",
+            ),
+            expected_deck_file_sha256=expected_deck_file_digest,
+            expected_deck_cards_sha256=expected_deck_cards_digest,
+            expected_matchup_tree_sha256=expected_tree_digest,
+        )
+    except RTPPromotionEvidenceError as exc:
+        raise RuntimeError(
+            f"recursive RTP promotion evaluation receipt is non-promotable: {exc}"
+        ) from exc
+    receipt_digest = str(promotion_identity["sha256"])
+    return (
+        {
+            "POKEBOT_SUBMISSION_RTP_CHECKPOINT": str(sidecar),
+            "POKEBOT_SUBMISSION_RTP_PARENT_CHECKPOINT_SHA256": expected_parent_digest,
+            "POKEBOT_SUBMISSION_RTP_PROMOTION_RECEIPT": str(receipt_path),
+        },
+        {
+            "path": str(receipt_path),
+            "sha256": receipt_digest,
+            "parent_checkpoint_sha256": expected_parent_digest,
+            "sidecar_sha256": sha256(sidecar),
+            "sidecar_config_sha256": str(receipt["sidecar_config_sha256"]),
+            "max_neural_passes": _RTP_R198_EXACT_MAX_NEURAL_PASSES,
+            "max_action_combos": _RTP_R198_EXACT_MAX_ACTION_COMBOS,
+            "required_neural_passes": dict(_RTP_R197_REQUIRED_NEURAL_PASSES),
+            "deck_file_sha256": expected_deck_file_digest,
+            "deck_cards_sha256": expected_deck_cards_digest,
+            "matchup_tree_sha256": expected_tree_digest,
+            "evaluation_receipt_path": str(evaluation_path),
+            "evaluation_receipt_sha256": evaluation_digest,
+        },
+    )
+
+
 def build_submission_bundle(
     *,
     repo_root: Path,
@@ -1232,6 +1522,8 @@ def build_submission_bundle(
     archetype: str,
     matchup_tree: Path | None = None,
     turn_order_preference: str = "first_if_allowed",
+    rtp_mode: str = "default_off",
+    rtp_promotion_receipt: Path | None = None,
 ) -> dict[str, Any]:
     from poke_bot import checkpoint as checkpoint_mod
 
@@ -1271,6 +1563,8 @@ def build_submission_bundle(
         "second_if_allowed",
     }:
         raise RuntimeError("invalid submission turn-order preference")
+    if rtp_mode not in _SUBMISSION_RTP_MODES:
+        raise RuntimeError("invalid submission RTP mode")
     if checkpoint_archetype != expected_archetype:
         raise RuntimeError(
             "frozen checkpoint archetype does not match the submission "
@@ -1287,8 +1581,13 @@ def build_submission_bundle(
             "POKEBOT_SEARCH_MODE": "policy",
             "POKEBOT_ALLOW_ORACLE_DECK": "0",
             "POKEBOT_SUBMISSION_TURN_ORDER": turn_order_preference,
+            "POKEBOT_SUBMISSION_RTP_MODE": rtp_mode,
         }
     )
+    # Never allow an ambient launcher value to arm a different package mode.
+    # The resolver below re-adds only mode-authorized RTP inputs.
+    for name in _RTP_SUBMISSION_ENV_KEYS:
+        env.pop(name, None)
     matchup_tree_digest: str | None = None
     if matchup_tree is not None:
         matchup_tree = Path(matchup_tree).expanduser().resolve()
@@ -1315,6 +1614,17 @@ def build_submission_bundle(
             )
         matchup_tree_digest = sha256(matchup_tree)
         env["POKEBOT_SUBMISSION_MATCHUP_TREE"] = str(matchup_tree)
+    rtp_env, rtp_binding = _prepare_submission_rtp_environment(
+        rtp_mode=rtp_mode,
+        rtp_promotion_receipt=rtp_promotion_receipt,
+        frozen_checkpoint=frozen_checkpoint,
+        frozen_model_digest=str(frozen_manifest.get("checkpoint_digest") or ""),
+        expected_archetype=expected_archetype,
+        deck_file_digest=str(deck_receipt.get("file_sha256") or ""),
+        deck_cards_digest=str(deck_receipt.get("cards_sha256") or ""),
+        matchup_tree_digest=matchup_tree_digest,
+    )
+    env.update(rtp_env)
     completed = subprocess.run(
         [
             "bash",
@@ -1377,12 +1687,250 @@ def build_submission_bundle(
             if matchup_tree is not None
             else None
         )
+        runtime_profile_bytes = (
+            member_bytes("runtime_profile.json")
+            if rtp_mode in {"disabled", "enabled", "off", "direct", "recursive"}
+            else None
+        )
+        rtp_sidecar_bytes = (
+            member_bytes("rtp_shadow_planner.pt")
+            if rtp_mode in {"enabled", "direct", "recursive"}
+            else None
+        )
+        rtp_promotion_bytes = (
+            member_bytes("rtp_promotion_receipt.json")
+            if rtp_mode == "recursive"
+            else None
+        )
+        rtp_evaluation_bytes = (
+            member_bytes("rtp_evaluation_receipt.json")
+            if rtp_mode == "recursive"
+            else None
+        )
     model_digest = "sha256:" + hashlib.sha256(model_bytes).hexdigest()
     deck_digest = "sha256:" + hashlib.sha256(deck_bytes).hexdigest()
     if model_digest != frozen_manifest["checkpoint_digest"]:
         raise RuntimeError("submission bundle contains the wrong frozen model")
     if deck_digest != deck_receipt["file_sha256"]:
         raise RuntimeError("submission bundle contains the wrong specialist deck")
+    runtime_profile: dict[str, Any] = {}
+    if rtp_mode == "disabled":
+        try:
+            runtime_profile = json.loads(runtime_profile_bytes or b"")
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("NO RTP runtime profile is invalid JSON") from exc
+        if (
+            runtime_profile.get("schema")
+            != "poke_bot.submission_runtime_profile/v1"
+            or runtime_profile.get("recursive_turn_planner") != "disabled"
+            or runtime_profile.get("display") != "NO RTP"
+            or runtime_profile.get("rtp_sidecar_packaged") is not False
+            or any(
+                name.endswith("rtp_shadow_planner.pt")
+                or name.endswith("rtp_checkpoint.pt")
+                for name in members
+            )
+            or attested.get("recursive_turn_planner") != "disabled"
+            or attested.get("submission_message_required_literal") != "NO RTP"
+        ):
+            raise RuntimeError("submission bundle failed its NO RTP contract")
+    elif rtp_mode == "off":
+        try:
+            runtime_profile = json.loads(runtime_profile_bytes or b"")
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("explicit NO RTP runtime profile is invalid JSON") from exc
+        if (
+            runtime_profile.get("schema")
+            != "poke_bot.submission_runtime_profile/v1"
+            or runtime_profile.get("rtp_mode") != "off"
+            or runtime_profile.get("recursive_turn_planner") != "disabled"
+            or runtime_profile.get("display") != "NO RTP"
+            or runtime_profile.get("rtp_sidecar_packaged") is not False
+            or runtime_profile.get("model_checkpoint_sha256") != model_digest
+            or any(
+                name.endswith("rtp_shadow_planner.pt")
+                or name.endswith("rtp_checkpoint.pt")
+                for name in members
+            )
+            or attested.get("rtp_mode") != "off"
+            or attested.get("recursive_turn_planner") != "disabled"
+            or attested.get("submission_message_required_literal") != "NO RTP"
+            or attested.get("model_checkpoint_sha256") != model_digest
+        ):
+            raise RuntimeError("submission bundle failed its explicit NO RTP contract")
+    elif rtp_mode == "direct":
+        if rtp_binding is None:
+            raise RuntimeError("direct RTP submission lost its sidecar binding")
+        try:
+            runtime_profile = json.loads(runtime_profile_bytes or b"")
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("direct RTP runtime profile is invalid JSON") from exc
+        sidecar_digest = "sha256:" + hashlib.sha256(
+            rtp_sidecar_bytes or b""
+        ).hexdigest()
+        direct_config_digest = _require_submission_sha256(
+            runtime_profile.get("rtp_config_sha256"),
+            field="direct RTP config digest",
+        )
+        if (
+            runtime_profile.get("schema")
+            != "poke_bot.submission_runtime_profile/v1"
+            or runtime_profile.get("rtp_mode") != "direct"
+            or runtime_profile.get("recursive_turn_planner") != "enabled"
+            or runtime_profile.get("display") != "DIRECT RTP"
+            or runtime_profile.get("rtp_sidecar_packaged") is not True
+            or runtime_profile.get("rtp_direct_bridge_only") is not True
+            or runtime_profile.get("rtp_sizing_profile") != "pure_rl_r197"
+            or runtime_profile.get("specialist_id") != _RTP_R197_SPECIALIST_ID
+            or runtime_profile.get("model_checkpoint_sha256") != model_digest
+            or runtime_profile.get("parent_checkpoint_sha256") != model_digest
+            or runtime_profile.get("rtp_checkpoint_sha256") != sidecar_digest
+            or runtime_profile.get("rtp_checkpoint_sha256")
+            != rtp_binding["sidecar_sha256"]
+            or runtime_profile.get("deck_cards_sha256")
+            != rtp_binding["deck_cards_sha256"]
+            or runtime_profile.get("matchup_tree_sha256")
+            != rtp_binding["matchup_tree_sha256"]
+            or type(runtime_profile.get("max_neural_passes")) is not int
+            or runtime_profile.get("max_neural_passes")
+            != _RTP_R198_EXACT_MAX_NEURAL_PASSES
+            or type(runtime_profile.get("max_action_combos")) is not int
+            or runtime_profile.get("max_action_combos")
+            != _RTP_R198_EXACT_MAX_ACTION_COMBOS
+            or runtime_profile.get("max_action_combos")
+            != rtp_binding["max_action_combos"]
+            or runtime_profile.get("required_neural_passes")
+            != rtp_binding["required_neural_passes"]
+            or any(
+                name.endswith("rtp_promotion_receipt.json")
+                or name.endswith("rtp_evaluation_receipt.json")
+                for name in members
+            )
+            or attested.get("rtp_mode") != "direct"
+            or attested.get("recursive_turn_planner") != "enabled"
+            or attested.get("submission_message_required_literal") != "DIRECT RTP"
+            or attested.get("model_checkpoint_sha256") != model_digest
+            or attested.get("rtp_checkpoint_sha256") != sidecar_digest
+            or attested.get("rtp_config_sha256") != direct_config_digest
+            or attested.get("max_neural_passes")
+            != _RTP_R198_EXACT_MAX_NEURAL_PASSES
+            or attested.get("max_action_combos")
+            != _RTP_R198_EXACT_MAX_ACTION_COMBOS
+            or attested.get("required_neural_passes")
+            != _RTP_R197_REQUIRED_NEURAL_PASSES
+        ):
+            raise RuntimeError("submission bundle failed its direct RTP contract")
+    elif rtp_mode == "enabled":
+        try:
+            runtime_profile = json.loads(runtime_profile_bytes or b"")
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("RTP runtime profile is invalid JSON") from exc
+        sidecar_digest = "sha256:" + hashlib.sha256(
+            rtp_sidecar_bytes or b""
+        ).hexdigest()
+        if (
+            runtime_profile.get("schema")
+            != "poke_bot.submission_runtime_profile/v1"
+            or runtime_profile.get("recursive_turn_planner") != "enabled"
+            or runtime_profile.get("display") != "RTP"
+            or runtime_profile.get("rtp_sidecar_packaged") is not True
+            or runtime_profile.get("rtp_checkpoint_sha256") != sidecar_digest
+            or attested.get("recursive_turn_planner") != "enabled"
+            or attested.get("submission_message_required_literal") != "RTP"
+        ):
+            raise RuntimeError("submission bundle failed its RTP contract")
+    elif rtp_mode == "recursive":
+        if rtp_binding is None:
+            raise RuntimeError("recursive RTP submission lost its promotion receipt")
+        try:
+            runtime_profile = json.loads(runtime_profile_bytes or b"")
+            packaged_promotion = json.loads(rtp_promotion_bytes or b"")
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("recursive RTP package receipts are invalid JSON") from exc
+        sidecar_digest = "sha256:" + hashlib.sha256(
+            rtp_sidecar_bytes or b""
+        ).hexdigest()
+        promotion_digest = "sha256:" + hashlib.sha256(
+            rtp_promotion_bytes or b""
+        ).hexdigest()
+        evaluation_digest = "sha256:" + hashlib.sha256(
+            rtp_evaluation_bytes or b""
+        ).hexdigest()
+        if (
+            runtime_profile.get("schema")
+            != "poke_bot.submission_runtime_profile/v1"
+            or runtime_profile.get("rtp_mode") != "recursive"
+            or runtime_profile.get("recursive_turn_planner") != "enabled"
+            or runtime_profile.get("display") != "RTP"
+            or runtime_profile.get("rtp_sidecar_packaged") is not True
+            or runtime_profile.get("rtp_sizing_profile") != "pure_rl_r197"
+            or runtime_profile.get("specialist_id") != _RTP_R197_SPECIALIST_ID
+            or runtime_profile.get("model_checkpoint_sha256") != model_digest
+            or runtime_profile.get("parent_checkpoint_sha256") != model_digest
+            or runtime_profile.get("rtp_checkpoint_sha256") != sidecar_digest
+            or runtime_profile.get("rtp_checkpoint_sha256")
+            != rtp_binding["sidecar_sha256"]
+            or runtime_profile.get("rtp_config_sha256")
+            != rtp_binding["sidecar_config_sha256"]
+            or type(runtime_profile.get("max_neural_passes")) is not int
+            or runtime_profile.get("max_neural_passes")
+            != _RTP_R198_EXACT_MAX_NEURAL_PASSES
+            or type(runtime_profile.get("max_action_combos")) is not int
+            or runtime_profile.get("max_action_combos")
+            != _RTP_R198_EXACT_MAX_ACTION_COMBOS
+            or runtime_profile.get("max_action_combos")
+            != rtp_binding["max_action_combos"]
+            or runtime_profile.get("required_neural_passes")
+            != rtp_binding["required_neural_passes"]
+            or runtime_profile.get("deck_file_sha256")
+            != rtp_binding["deck_file_sha256"]
+            or runtime_profile.get("deck_cards_sha256")
+            != rtp_binding["deck_cards_sha256"]
+            or runtime_profile.get("matchup_tree_sha256")
+            != rtp_binding["matchup_tree_sha256"]
+            or runtime_profile.get("rtp_promotion_receipt_file")
+            != "rtp_promotion_receipt.json"
+            or runtime_profile.get("rtp_promotion_receipt_sha256") != promotion_digest
+            or promotion_digest != rtp_binding["sha256"]
+            or runtime_profile.get("rtp_evaluation_receipt_file")
+            != "rtp_evaluation_receipt.json"
+            or runtime_profile.get("rtp_evaluation_receipt_sha256")
+            != evaluation_digest
+            or evaluation_digest != rtp_binding["evaluation_receipt_sha256"]
+            or packaged_promotion.get("parent_checkpoint_sha256") != model_digest
+            or packaged_promotion.get("sidecar_sha256") != sidecar_digest
+            or packaged_promotion.get("sidecar_config_sha256")
+            != rtp_binding["sidecar_config_sha256"]
+            or packaged_promotion.get("max_neural_passes")
+            != _RTP_R198_EXACT_MAX_NEURAL_PASSES
+            or packaged_promotion.get("max_action_combos")
+            != _RTP_R198_EXACT_MAX_ACTION_COMBOS
+            or packaged_promotion.get("required_neural_passes")
+            != _RTP_R197_REQUIRED_NEURAL_PASSES
+            or packaged_promotion.get("deck_file_sha256")
+            != rtp_binding["deck_file_sha256"]
+            or packaged_promotion.get("deck_cards_sha256")
+            != rtp_binding["deck_cards_sha256"]
+            or packaged_promotion.get("matchup_tree_sha256")
+            != rtp_binding["matchup_tree_sha256"]
+            or packaged_promotion.get("evaluation_receipt_sha256")
+            != evaluation_digest
+            or attested.get("rtp_mode") != "recursive"
+            or attested.get("recursive_turn_planner") != "enabled"
+            or attested.get("submission_message_required_literal") != "RTP"
+            or attested.get("model_checkpoint_sha256") != model_digest
+            or attested.get("rtp_checkpoint_sha256") != sidecar_digest
+            or attested.get("rtp_config_sha256")
+            != rtp_binding["sidecar_config_sha256"]
+            or attested.get("rtp_promotion_receipt_sha256") != promotion_digest
+            or attested.get("max_neural_passes")
+            != _RTP_R198_EXACT_MAX_NEURAL_PASSES
+            or attested.get("max_action_combos")
+            != _RTP_R198_EXACT_MAX_ACTION_COMBOS
+            or attested.get("required_neural_passes")
+            != _RTP_R197_REQUIRED_NEURAL_PASSES
+        ):
+            raise RuntimeError("submission bundle failed its recursive RTP contract")
     try:
         search_config = json.loads(search_config_bytes)
         belief_decks = json.loads(belief_decks_bytes)
@@ -1453,6 +2001,8 @@ def build_submission_bundle(
         "specialist_id": expected_archetype,
         "checkpoint_archetype_id": checkpoint_archetype,
         "turn_order_preference": turn_order_preference,
+        "rtp_mode": rtp_mode,
+        "runtime_profile": runtime_profile,
         "deck": deck_receipt,
         "contents": {
             "model_sha256": model_digest,
@@ -1465,6 +2015,20 @@ def build_submission_bundle(
             "belief_mcts_default": False,
             "main_present": True,
             "vendored_cg_present": True,
+            "rtp_enabled": (
+                False
+                if rtp_mode in {"disabled", "off"}
+                else True
+                if rtp_mode in {"enabled", "direct", "recursive"}
+                else None
+            ),
+            "rtp_sidecar_sha256": (
+                str((rtp_binding or {}).get("sidecar_sha256") or "")
+                or None
+            ),
+            "rtp_promotion_receipt_sha256": (
+                str((rtp_binding or {}).get("sha256") or "") or None
+            ),
         },
     }
 
@@ -1492,6 +2056,8 @@ def _copy_submission_slot(bundle: dict[str, Any], root: Path, slot: int) -> dict
         "turn_order_preference": str(
             bundle.get("turn_order_preference") or "first_if_allowed"
         ),
+        "rtp_mode": str(bundle.get("rtp_mode") or "default_off"),
+        "runtime_profile": dict(bundle.get("runtime_profile") or {}),
         "model_sha256": str(bundle["contents"]["model_sha256"]),
         "deck_sha256": str(bundle["contents"]["deck_sha256"]),
         "deck_cards_sha256": str(bundle["contents"]["deck_cards_sha256"]),
@@ -1527,6 +2093,7 @@ def queue_submission_copies(
         raise RuntimeError("submission queue requires exact ordered copy slots")
     checkpoint_digest = str(gate_plan.get("checkpoint_digest") or "")
     gate_id = str(gate_plan.get("gate_id") or "")
+    label_suffix = str(gate_plan.get("label_suffix") or "").strip()
     iteration = int(gate_plan.get("iteration", -1))
     if (
         not checkpoint_digest.startswith("sha256:")
@@ -1557,6 +2124,12 @@ def queue_submission_copies(
         selected: list[dict[str, Any]] = []
         for copy in copies:
             slot = int(copy["slot"])
+            copy_label_suffix = str(copy.get("label_suffix") or label_suffix).strip()
+            if copy_label_suffix and (
+                len(copy_label_suffix) > 80
+                or any(character in copy_label_suffix for character in "\r\n\t")
+            ):
+                raise RuntimeError("submission label suffix is invalid")
             turn_order_preference = str(
                 copy.get("turn_order_preference") or "first_if_allowed"
             )
@@ -1603,6 +2176,7 @@ def queue_submission_copies(
                 f"copy {slot}/{required_count} "
                 f"{turn_order_preference.replace('_if_allowed', '')} "
                 f"{checkpoint_digest[7:19]}"
+                f"{(' ' + copy_label_suffix) if copy_label_suffix else ''}"
             )
             expected = {
                 "specialist_id": specialist_id,
@@ -1632,6 +2206,7 @@ def queue_submission_copies(
                 "competition": competition,
                 "file": str(copy["path"]),
                 "file_sha256": str(copy["sha256"]),
+                "rtp_mode": str(copy.get("rtp_mode") or "default_off"),
                 "retry_count": 0,
                 "submitted_at": None,
                 "submission_id": None,
@@ -1658,6 +2233,7 @@ def queue_submission_copies(
                     "competition",
                     "file",
                     "file_sha256",
+                    "rtp_mode",
                 )
                 if any(existing.get(key) != expected.get(key) for key in immutable):
                     raise RuntimeError("existing pending Kaggle copy identity changed")

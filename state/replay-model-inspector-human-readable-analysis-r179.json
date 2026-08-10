@@ -1,0 +1,58 @@
+{
+  "schema": "poke_bot.replay_model_inspector_human_readable_analysis/v1",
+  "owner_decision_revision": 179,
+  "recorded_at_utc": "2026-08-07T23:39:00Z",
+  "status": "staged",
+  "presentation": {
+    "primary_language": "plain_english",
+    "technical_payload_remains_available": true,
+    "raw_action_representation_remains_available": true,
+    "raw_head_and_tensor_values_remain_available": true,
+    "provenance_and_availability_remain_visible": true
+  },
+  "legal_actions": {
+    "plain_english_transcript_required": true,
+    "factorized_stage_context_required": true,
+    "derived_only_from_causal_option_and_observation": true,
+    "hidden_or_future_information_allowed": false,
+    "unknown_action_behavior": "show_raw_with_explicit_transcript_unavailable_reason"
+  },
+  "head_policy_influence": {
+    "method": "exact_leave_one_head_out_final_policy_recomputation",
+    "raw_head_magnitude_is_not_policy_influence": true,
+    "required_per_head_metrics": [
+      "selected_option_probability_delta",
+      "selected_option_logit_delta",
+      "maximum_absolute_option_probability_delta",
+      "most_helped_option_and_probability_delta",
+      "most_hurt_option_and_probability_delta"
+    ],
+    "sign_convention": "full_policy_minus_policy_without_head",
+    "plain_english_interpretation_required": true,
+    "legacy_or_unavailable_behavior": "explicit_unavailable_reason"
+  },
+  "safety": {
+    "read_only": true,
+    "historical_logits_claimed": false,
+    "dynamic_values_remain_recomputed_not_historical": true,
+    "evaluation_replays_training_eligible": false,
+    "checkpoint_or_replay_mutation": false,
+    "training_or_selector_authority": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_inspector_ui_and_api",
+    "may_run_during_healthy_training": true,
+    "requires_inspector_service_restart": true,
+    "must_not_restart_training": true,
+    "required_validation": [
+      "factorized_action_transcript_unit_test",
+      "unknown_action_unavailable_test",
+      "leave_one_head_out_metric_reconstruction_test",
+      "plain_english_static_ui_test",
+      "prefix_gateway_asset_and_api_test",
+      "live_trace_plain_english_action_test",
+      "live_trace_head_policy_influence_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-human-readable-analysis-activation-r179.json"
+  }
+}

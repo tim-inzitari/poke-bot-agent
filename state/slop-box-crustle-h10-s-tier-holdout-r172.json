@@ -1,0 +1,126 @@
+{
+  "baseline_content_digest": "sha256:359e3b4fed00502e58be4631576501b6f63523226ec92f2d75446df085b19afa",
+  "baseline_dir": "crustle-final-format-h10-7efd8d4113e7",
+  "bundle_digest": "sha256:3a380d6bd723866911d2e99e9239c679baedfdbb3ba21f27a8f2d522f7738a90",
+  "checkpoint_digest": "sha256:7efd8d4113e736d28576bdbfa1c9d1c3f3a7cf1a31a0b3cfadd1e7f82cf08955",
+  "commit_sha256": "sha256:8817ad8592df90ff75eca919a1c8a8c0e838f1944d828ec6a2d885e2c3b38ba4",
+  "constraints_honored": [
+    "no_crustle_game_or_quarantine_deletion",
+    "no_incomplete_iter5_package",
+    "no_chao_hard_ce_disruption",
+    "systemd_launchd_only_no_interactive_kills",
+    "coordinate_with_ceiling_register_before_rl_collect"
+  ],
+  "coordination_note": "1f90a2c3 ceiling register failed on guide loss weight; Crustle S-tier gate/frozen rebound into specialist_runtime_registry_h10_r171.json so the next successful register/RL start inherits the 20-opponent roster.",
+  "created_at_utc": "2026-08-06T19:22:28.277083+00:00",
+  "gate_id": "specialist-strong-public-roster-sw80-at-iter5-v1+h10-s-other-a-r111+marnie-h10-r163+lucario-a-r168+crustle-h10-s-r172",
+  "live_for_next_slop_box_collect": true,
+  "opponent_id": "specialist-crustle-final-format-h10-7efd8d4113e7",
+  "owner_goal_revision": 172,
+  "package_install_checks": [
+    {
+      "content_digest": "sha256:359e3b4fed00502e58be4631576501b6f63523226ec92f2d75446df085b19afa",
+      "exists": true,
+      "matches_canonical": true,
+      "path": "/home/inzi/poke-bot-agent/baselines/specialists/crustle-final-format-h10-7efd8d4113e7"
+    },
+    {
+      "content_digest": "sha256:359e3b4fed00502e58be4631576501b6f63523226ec92f2d75446df085b19afa",
+      "exists": true,
+      "matches_canonical": true,
+      "path": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v9/baselines/specialists/crustle-final-format-h10-7efd8d4113e7"
+    },
+    {
+      "content_digest": "sha256:359e3b4fed00502e58be4631576501b6f63523226ec92f2d75446df085b19afa",
+      "exists": true,
+      "matches_canonical": true,
+      "path": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/baselines/specialists/crustle-final-format-h10-7efd8d4113e7"
+    },
+    {
+      "canonical_content_digest": "sha256:359e3b4fed00502e58be4631576501b6f63523226ec92f2d75446df085b19afa",
+      "host": "bert",
+      "main_py_present": true,
+      "matches_canonical": true,
+      "model_matches": true,
+      "model_sha256": "sha256:7efd8d4113e736d28576bdbfa1c9d1c3f3a7cf1a31a0b3cfadd1e7f82cf08955",
+      "path": "/Users/tsinzitari/workspace/poke-bot-agent/baselines/specialists/crustle-final-format-h10-7efd8d4113e7"
+    },
+    {
+      "canonical_content_digest": "sha256:359e3b4fed00502e58be4631576501b6f63523226ec92f2d75446df085b19afa",
+      "host": "bert",
+      "main_py_present": true,
+      "matches_canonical": true,
+      "model_matches": true,
+      "model_sha256": "sha256:7efd8d4113e736d28576bdbfa1c9d1c3f3a7cf1a31a0b3cfadd1e7f82cf08955",
+      "path": "/Users/tsinzitari/workspace/poke-bot-agent-h10-r79-stage/baselines/specialists/crustle-final-format-h10-7efd8d4113e7"
+    },
+    {
+      "canonical_content_digest": "sha256:359e3b4fed00502e58be4631576501b6f63523226ec92f2d75446df085b19afa",
+      "host": "elmo",
+      "main_py_present": true,
+      "matches_canonical": true,
+      "model_matches": true,
+      "model_sha256": "sha256:7efd8d4113e736d28576bdbfa1c9d1c3f3a7cf1a31a0b3cfadd1e7f82cf08955",
+      "path": "/mnt/Main/Elmo/poke-bot-agent/baselines/specialists/crustle-final-format-h10-7efd8d4113e7"
+    },
+    {
+      "canonical_content_digest": "sha256:359e3b4fed00502e58be4631576501b6f63523226ec92f2d75446df085b19afa",
+      "host": "elmo",
+      "main_py_present": true,
+      "matches_canonical": true,
+      "model_matches": true,
+      "model_sha256": "sha256:7efd8d4113e736d28576bdbfa1c9d1c3f3a7cf1a31a0b3cfadd1e7f82cf08955",
+      "path": "/mnt/Main/main/poke-bot-agent/baselines/specialists/crustle-final-format-h10-7efd8d4113e7"
+    }
+  ],
+  "package_path": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/baselines/specialists/crustle-final-format-h10-7efd8d4113e7",
+  "parent_frozen": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/ops/frozen_specialist_registry_crustle_r168_lucario_a.json",
+  "parent_frozen_sha256": "sha256:7dc9768f8ec9b6a624519128d5fa202d51ad083f43d4d41023b4d7b10e803e32",
+  "parent_gate": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/runtime/final_format_crustle_gate_r168_lucario_a.json",
+  "parent_gate_sha256": "sha256:611c67e6d4db1ae4995c307ec65180f49b4b2a9299c57c9eedcd66c7e8f1580a",
+  "receipt_payload_digest": "sha256:1f001e7be7f605627398bedc8807bb0ec765d818ed4d986a088a51ba6c588c0f",
+  "roster": {
+    "games_per_opponent": 250,
+    "new_gate_games_total": 5000,
+    "new_size": 20,
+    "previous_gate_games_total": 4750,
+    "previous_size": 19,
+    "s_tier_opponents": [
+      [
+        "specialist-marnie-final-format-h10-f20efb20f5c3",
+        "S",
+        2.0
+      ],
+      [
+        "specialist-alakazam-final-format-h10-02c014ad7c33",
+        "S",
+        2.0
+      ],
+      [
+        "specialist-crustle-final-format-h10-7efd8d4113e7",
+        "S",
+        2.0
+      ]
+    ],
+    "seat0_games_per_opponent": 125,
+    "seat1_games_per_opponent": 125
+  },
+  "schema": "poke_bot.slop_box_crustle_h10_s_tier_holdout_r172/v1",
+  "slop_box_registry_rebound": true,
+  "slop_box_runtime_registry": "/home/inzi/poke-bot-agent/outputs/final_format_slop_box_h10_rtp/runtime/specialist_runtime_registry_h10_r171.json",
+  "slop_box_runtime_registry_sha256": "sha256:13ed0450bf0e159f12ebb16eef3800888ee5c5e8b8e255a643b7c2b5a90d141b",
+  "source_package_choice": {
+    "bootstrap_available_but_not_selected": "sha256:73443f9544471b25c13f5833847471f4d311b5640af3b2c6d6d3bef6ba2fdf95",
+    "reason": "prefer latest committed RL checkpoint with valid checksum-bound submission bundle over bootstrap; never use incomplete iter5",
+    "rejected_incomplete_iter5_quarantine": true,
+    "selected": "committed_rl_iter_00004_milestone_bundle"
+  },
+  "specialist_id": "crustle",
+  "staged_frozen_registry": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/ops/frozen_specialist_registry_slop_box_r172_crustle_h10_s.json",
+  "staged_frozen_registry_sha256": "sha256:88134fcfc354b80bac2ae34e28aa31ad5ce6955f118400c9580b8e0452052da7",
+  "staged_gate": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/runtime/final_format_slop_box_gate_r172_crustle_h10_s.json",
+  "staged_gate_sha256": "sha256:8bcaf7e934078760bbd6c80f808c84985a1bbd8a3f0ea6ae1fe9a489ab6ca37a",
+  "status": "staged_and_bound_for_slop_box_rl",
+  "tier": "S",
+  "weight": 2.0
+}

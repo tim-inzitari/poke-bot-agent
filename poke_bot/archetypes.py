@@ -50,13 +50,16 @@ MEOWTH_EX = 1071
 ENERGY_SWITCH = 1116
 AREA_ZERO_UNDERDEPTHS = 1250
 SLOP_BOX_KANGASKHAN_COUNT = 3
+# Owner r175 Alakazam RTP pilot list (Abra/Kadabra/Alakazam/Dunsparce line).
+# Bound from decks/archetype-samples/alakazam-owner-rtp-pilot-r175.csv.
+# Note: owner prose said 2x Dudunsparce but Pokemon(19)/60-card math requires 3x.
 ALAKAZAM_FINAL_REFRESH_REPRESENTATIVE: tuple[int, ...] = (
-    5, 5, 13, 19, 19, 19, 19, 66, 66, 140, 305, 305, 305, 343,
-    741, 741, 741, 741, 742, 742, 742, 742, 743, 743, 743, 743,
+    5, 5, 13, 19, 19, 19, 19, 66, 66, 66, 140, 305, 305, 305, 343,
+    741, 741, 741, 741, 742, 742, 742, 742, 743, 743, 743,
     1079, 1079, 1079, 1081, 1081, 1081, 1086, 1086, 1086, 1086,
-    1097, 1129, 1152, 1152, 1152, 1152, 1182, 1182, 1182, 1184,
-    1197, 1197, 1197, 1225, 1225, 1225, 1225, 1231, 1231, 1231,
-    1231, 1266, 1266, 1266,
+    1097, 1097, 1129, 1152, 1152, 1152, 1152, 1182, 1182, 1184,
+    1197, 1197, 1225, 1225, 1225, 1225, 1231, 1231, 1231, 1231,
+    1264, 1264, 1264, 1264,
 )
 _ALAKAZAM_FINAL_REFRESH_MULTISET = tuple(
     sorted(ALAKAZAM_FINAL_REFRESH_REPRESENTATIVE)

@@ -1,0 +1,161 @@
+{
+  "schema": "poke_bot.slop_box_h10_rtp_cox_chao_guide_audit_r170/v1",
+  "status": "reviewable_audited_package",
+  "goal_revision": 170,
+  "created_at_utc": "2026-08-06T15:30:00Z",
+  "guide_contract": "config/deck_guides/slop-box-h10-rtp-north-star-v1.yaml",
+  "guide_version": "teal-mask-ogerpon-ex-slop-box-north-star-v3",
+  "teacher_module": "poke_bot.teal_mask_ogerpon_heuristics",
+  "teacher_module_sha256": "sha256:57c0d03e15f4bc4d2357f7f4e24cd736238a4e5df7431a671a75b118ccc0d004",
+  "what_it_distills_from_cox_chao": [
+    "Primary authors for current-deck guide distillation under r170",
+    "Checksum-bound primary submission list 55188658 (modal deck_hash bcfc7b778a72d895; 394/546 acting-seat games in 2026-08-02..05 window)",
+    "Matchup-conditional setup defaults (not a rigid Kangaskhan / two-Teal / Latias+Meowth script): blind Kangaskhan opener; Teal opener on public spread/Dragapult pressure; skip second Teal when opponent board sparse or prize-ahead; Clefairy/Wellspring/Bolt-ready only for observed public jobs",
+    "Main-phase ability preference for legal Teal Dance / Run Errand / Flip the Script when origins are exact",
+    "\u226590% held policy_acc gate focuses on Cox/Chao acting seats only (MissingNo. excluded); labels must not force one setup path in every matchup"
+  ],
+  "coverage": {
+    "protected_expert_corpus": {
+      "records": 1442,
+      "decisions": 97762,
+      "guide_rows": 8672,
+      "label_coverage_rate": 0.08870522288823879,
+      "window_days": 33,
+      "guide_version": "teal-mask-ogerpon-ex-slop-box-north-star-v3",
+      "receipt": "data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/teal-mask-ogerpon-ex/CURRENT_DECK_GUIDE_CORPUS_READY.json"
+    },
+    "bootstrap_guide_rows_per_epoch_train": 7890,
+    "bootstrap_guide_rows_per_epoch_validation": 782,
+    "strategic_head_mask_rates_epoch_25_validation": {
+      "action_q": 0.0,
+      "action_resource": 0.12411929350448797,
+      "action_target": 0.736704951259531,
+      "action_type": 0.336743557571663,
+      "action_utility": 0.09062831772994875,
+      "remaining_turns": 0.390469114837614,
+      "note": "High action_target mask rate is expected: attack/target branches stay under fused policy"
+    },
+    "cox_chao_list_evidence": {
+      "submission_id": 55188658,
+      "acting_seat_games_2026_08_02_to_05": 546,
+      "modal_deck_hash_games": 394,
+      "secondary_variant_games": 152,
+      "digest_receipt": "state/slop-box-cox-chao-60-card-digest-r170.json"
+    }
+  },
+  "agreement": {
+    "full_archetype_guide_vs_public_expert_actions": {
+      "receipt": "state/teal-guide-adherence-iter12-bounded2048-v1.json",
+      "schema": "poke_bot.teal_guide_adherence_audit/v1",
+      "games": 2048,
+      "guide_labeled_stages": 18769,
+      "guide_agreement_rate": 0.8861420427300336,
+      "by_context": {
+        "main": 0.9166767298635431,
+        "setup_active": 0.9568281938325991,
+        "setup_bench": 0.33955223880597013
+      },
+      "setup_bench_decline_rate": 0.5923507462686567,
+      "scope_note": "Full teal-mask-ogerpon-ex / Slop Box archetype shard; not Cox/Chao-filtered"
+    },
+    "bootstrap_policy_acc_full_archetype_held": {
+      "run": "final_format_slop_box_h10_rtp_bootstrap",
+      "epochs_completed": 25,
+      "epoch_1_validation_accuracy": 0.5259144870186275,
+      "epoch_25_validation_accuracy": 0.7661422642602066,
+      "epoch_25_train_policy_acc": 0.7644997173544376,
+      "cox_chao_90pct_gate": {
+        "threshold": 0.9,
+        "measured_on_cox_chao_held_split": false,
+        "passes_gate": false,
+        "gap_note": "Bootstrap validation_accuracy is full-archetype held policy_acc (~76.6%), not Cox/Chao-only held join; gate remains fail-closed until TeamNames-joined measurement exists"
+      }
+    },
+    "cox_chao_specific_guide_adherence": {
+      "status": "not_yet_measured",
+      "blocker": "episode-day archives for TeamNames join live on elmo; train lacked mounted episode-days for a bounded Cox/Chao-only adherence sample at audit time"
+    }
+  },
+  "masked_stages": {
+    "teacher_always_masks": [
+      "Teal Dance attachment without exact target",
+      "Energy Switch source/destination",
+      "Crispin type-pair and Energy Switch route",
+      "attack selection / damage target",
+      "Raging Bolt discard source / damage target",
+      "Kangaskhan coin / bonus damage",
+      "Wellspring Torrential Pump bench target",
+      "Glass Trumpet recovery target",
+      "Area Zero future bench/collapse",
+      "Supporter search/discard/recovery choice",
+      "face-down prizes / hidden opponent info / future draws",
+      "unresolved options or preference margin < 0.25"
+    ],
+    "corpus_effect": "Only ~8.9% of expert decisions receive sparse guide labels; remaining stages stay masked (mask_not_zero)"
+  },
+  "curriculum_validation": {
+    "status": "validated",
+    "receipt": "state/slop-box-strategic-curriculum-validation-r170.json",
+    "training_mode": "strategic_directional_v2",
+    "bootstrap_bound_thin_contract_sha256": "sha256:26357bc9f39356a0ab8422b01e058d18fd82e401449e14448b00555f9aa03948"
+  },
+  "gaps_vs_missingno_and_full_archetype": [
+    "Training corpus is full archetype (1442 games), not Cox/Chao-only \u2014 intentional under r170",
+    "MissingNo. is secondary evidence only; not in \u226590% gate denominator; no separate MissingNo. adherence receipt in this package",
+    "Full-archetype guide agreement ~88.6% overall, but setup_bench agreement only ~34% (largest sparse-teacher mismatch)",
+    "Bootstrap held policy_acc ~76.6% < 90% Cox/Chao gate; Cox/Chao-held measurement still missing",
+    "Pilot inventory previously noted 659 Cox/Chao / 368 MissingNo. any-archetype acting seats in 2026-07-30..08-02 days; Slop Box-filtered recount for latest public window still pending beyond digest modal counts",
+    "Secondary Cox/Chao list variant b934c6c2f248aadc (152 games) is observed but not the primary representative"
+  ],
+  "risks": [
+    "Fail-closed \u226590% Cox/Chao held policy_acc gate is not yet passed \u2014 do not treat bootstrap ready as gate satisfaction",
+    "setup_bench sparse teacher historically disagreed with public experts; matchup-conditional stop/skip-second-Teal may improve but needs re-adherence sample",
+    "Thin bootstrap contract sha is immutable history; this expanded review yaml has a new sha and must not silently rewrite completed receipts",
+    "RTP must remain neural-only with zero guide-label consumption",
+    "Crustle artifacts must remain preserved; this package does not touch them",
+    "Labels must not force one-path setup in every matchup even while the \u226590% gate remains acting-seat accuracy"
+  ],
+  "bootstrap_service": {
+    "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+    "observed_active_state": "inactive",
+    "observed_result": "success",
+    "left_untouched": true
+  },
+  "paths_for_review": [
+    "config/deck_guides/slop-box-h10-rtp-north-star-v1.yaml",
+    "state/slop-box-h10-rtp-cox-chao-guide-audit-r170.json",
+    "state/slop-box-cox-chao-60-card-digest-r170.json",
+    "state/slop-box-cox-chao-55188658.deck.csv",
+    "poke_bot/teal_mask_ogerpon_heuristics.py",
+    "docs/deck_guides/teal-mask-ogerpon-ex-expert-brief.txt",
+    "config/deck_guides/teal-mask-ogerpon-ex.yaml",
+    "state/teal-guide-adherence-iter12-bounded2048-v1.json",
+    "state/slop-box-strategic-curriculum-validation-r170.json"
+  ],
+  "guide_contract_sha256": "sha256:cc52544ebe34498327c09774ee5aced3dca37d957f20c7438655d3adec25fd5b",
+  "updated_at_utc": "2026-08-06T15:46:01.483555+00:00",
+  "matchup_conditioning": {
+    "status": "implemented_sparse_public_state",
+    "inputs": [
+      "opponent_public_active_and_bench_card_ids",
+      "public_remaining_prize_counts"
+    ],
+    "tags": [
+      "opponent_public_sparse",
+      "clef_job",
+      "spread_job",
+      "dragapult_pressure",
+      "bolt_pressure",
+      "engine_default",
+      "prize_behind",
+      "prize_ahead",
+      "prize_even",
+      "prize_race_unknown"
+    ],
+    "mask_when": [
+      "preference_margin_below_0_25",
+      "matchup_specific_tool_without_public_job_tag",
+      "attack_Bolt_KO_timing_and_Wellspring_targets_remain_fused_policy"
+    ]
+  }
+}

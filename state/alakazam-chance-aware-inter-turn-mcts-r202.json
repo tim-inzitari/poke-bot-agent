@@ -1,0 +1,219 @@
+{
+  "schema": "poke_bot.alakazam_chance_aware_inter_turn_mcts_r202/v1",
+  "owner_decision_revision": 202,
+  "recorded_at_utc": "2026-08-10T14:22:07Z",
+  "status": "authorized_offline_shadow_design_and_phase_1_implementation_not_runtime_attached",
+  "owner_intent": "plan and cache multi-action trees across deterministic turn segments, avoid recalculation while exact predicted state remains valid, and expand only exact simple chance points by probability-weighted value",
+  "superseded_design": {
+    "path": "state/alakazam-closed-loop-turn-planner-r201.json",
+    "sha256": "sha256:a7dd427e3222dbcfbdc91572ef35c3d808870a80b2a72f1306f210ba626b8820",
+    "owner_decision_revision": 201,
+    "superseded_before_phase_1_module_candidate_service_or_authority_activation": true,
+    "reason": "revision 201 required unconditional replanning after every action and prohibited cross-turn reuse, while the owner now requires exact deterministic subtree reuse and chance-aware inter-turn search"
+  },
+  "frozen_predecessors": {
+    "r198_contract_sha256": "sha256:ea032624be23341fbae6e0b9b9debf6695a7a3b5a51613cf7294248bdba39c05",
+    "r199_continuation_sha256": "sha256:9de3cce02940bec190dd5d7028036e6943511889c85164d165a40c979d9f7869",
+    "attempt10_evaluation_id": "r198-three-arm-6a0d99cb02d5ca02318f8725c6523517fee1b9a97d76b05aa6bb0fddfc680105",
+    "attempt10_invocation_id": "1aaed5eeae4349d78c27a29d80bd2441",
+    "attempt10_must_continue_unchanged_to_terminal_or_fail_closed": true
+  },
+  "tree_scope": {
+    "strategy_id": "chance_aware_cached_inter_turn_expectimax_mcts",
+    "plans_multiple_atomic_actions": true,
+    "inter_turn_search_allowed": true,
+    "actions_executed_before_real_observation": 1,
+    "real_observation_verified_before_cached_child_advance": true,
+    "deterministic_matching_subtree_reused_without_recalculation": true,
+    "unconditional_replan_after_every_action_required": false,
+    "turn_key_change_alone_invalidates_tree": false,
+    "planning_horizon": "through_exact_deterministic_and_fully_enumerated_finite_chance_nodes_until_an_unresolved_chance_information_budget_or_state_divergence_boundary",
+    "cached_subtree_has_action_authority_without_current_step_validation": false
+  },
+  "node_types": {
+    "decision": "policy_visible_complete_action_decision",
+    "deterministic_transition": "single_exact_successor_with_exact_future_legality",
+    "finite_chance": "complete_exact_outcome_distribution_with_one_successor_per_outcome",
+    "boundary": "unresolved_chance_information_or_search_budget_leaf",
+    "terminal": "typed_game_or_search_terminal"
+  },
+  "finite_chance_contract": {
+    "simple_exact_chance_may_be_expanded": true,
+    "example": "a fully enumerated fair coin flip may use outcomes with exact probabilities 1/2 and 1/2",
+    "all_possible_outcomes_must_be_enumerated": true,
+    "probabilities_must_be_exact_positive_rationals": true,
+    "probabilities_must_sum_exactly_to_one": true,
+    "outcome_labels_must_be_unique": true,
+    "exact_successor_state_and_future_legality_required_per_outcome": true,
+    "policy_visible_information_only": true,
+    "hidden_state_determinization_allowed": false,
+    "sampling_a_subset_and_calling_it_exact_allowed": false,
+    "backup_operator": "sum_over_all_outcomes_probability_times_child_value",
+    "risk_adjustment_or_probability_reweighting_allowed_without_separate_receipt": false,
+    "max_enumerated_outcomes": null,
+    "max_enumerated_outcomes_requires_measured_profile_receipt": true,
+    "observed_outcome_may_reuse_precomputed_child_without_recalculation": false,
+    "realized_chance_is_an_execution_cache_boundary_even_when_its_expectation_was_expanded": true,
+    "unknown_complex_unbounded_or_incompletely_modelled_chance_behavior": "stop_at_boundary_then_rebuild_after_real_outcome"
+  },
+  "cached_subtree_contract": {
+    "immutable_content_digest_required_per_tree_and_node": true,
+    "expected_turn_key_required_per_node": true,
+    "expected_policy_visible_observation_fingerprint_required_per_node": true,
+    "expected_complete_legal_action_fingerprint_required_per_decision": true,
+    "expected_option_encoding_fingerprint_required_per_decision": true,
+    "fresh_policy_visible_observation_checked_after_every_real_action": true,
+    "fresh_complete_legal_actions_checked_after_every_real_action": true,
+    "fresh_option_encoding_checked_before_every_executed_decision": true,
+    "direct_policy_action_is_mandatory_candidate_each_decision": true,
+    "direct_policy_action_is_exact_fallback_each_decision": true,
+    "empty_complete_action_is_legal_when_present": true,
+    "missing_branch_or_chance_outcome_may_default_to_any_child": false,
+    "recalculate_or_stop_triggers": [
+      "unresolved_or_incompletely_modelled_chance_boundary",
+      "any_realized_chance_outcome_including_a_fully_enumerated_simple_event",
+      "opponent_or_private_information_boundary_without_a_receipted_policy_visible_distribution",
+      "observation_fingerprint_mismatch",
+      "legal_action_fingerprint_mismatch",
+      "option_encoding_fingerprint_mismatch",
+      "turn_key_mismatch_without_an_exact_attested_child",
+      "missing_observed_branch_or_chance_outcome",
+      "cached_subtree_exhausted",
+      "search_budget_or_profile_identity_changed"
+    ],
+    "no_recalculation_conditions": [
+      "the realized transition is attested deterministic and contains no chance outcome",
+      "the exact expected turn key observation legal-action and option-encoding fingerprints match",
+      "the subtree and profile digests remain unchanged",
+      "the current direct-policy action is present and exact legality holds"
+    ]
+  },
+  "compute_budget_contract": {
+    "configuration_surface": "one_typed_budget_object",
+    "default_max_planner_wall_seconds_per_actual_turn": 20.0,
+    "default_max_planner_wall_seconds_before_each_atomic_action": 5.0,
+    "values_must_not_be_scattered_magic_literals": true,
+    "offline_budget_values_are_easy_to_override_explicitly": true,
+    "candidate_and_receipts_must_bind_the_effective_budget_values": true,
+    "effective_budget_change_requires_a_new_config_identity_before_runtime_evaluation": true,
+    "budget_clock": "monotonic_wall_clock",
+    "per_action_budget_is_also_charged_to_current_turn": true,
+    "turn_budget_resets_only_on_an_exact_real_turn_key_change": true,
+    "cached_subtree_validation_and_advance_are_charged": true,
+    "fresh_enumeration_encoding_gpu_search_chance_expansion_and_backup_are_charged": true,
+    "tree_reuse_may_reset_or_extend_same_turn_budget": false,
+    "partial_tree_has_action_authority_after_timeout": false,
+    "budget_exhaustion_behavior": "discard_unverified_partial_work_and_execute_exact_direct_policy_action",
+    "automatic_budget_extension_or_escalation_allowed": false,
+    "measured_per_action_and_per_turn_latency_receipt_required": true
+  },
+  "search_prerequisites": {
+    "valid_successor_state_mechanism_required": true,
+    "exact_future_legality_mechanism_required": true,
+    "information_set_safe_arbitrary_decision_branch_abi_required": true,
+    "exact_chance_boundary_classifier_required": true,
+    "exact_finite_outcome_distribution_receipt_required": true,
+    "opponent_decision_without_receipted_policy_visible_distribution_is_information_boundary": true,
+    "battle_start_pairing_snapshot_counts_as_arbitrary_decision_branch_abi": false,
+    "current_r197_latent_rollout_counts_as_exact_successor_mcts_or_simulator": false,
+    "mcts_or_expectimax_runtime_claim_allowed_before_prerequisite_receipts": false,
+    "max_complete_actions_per_real_decision": 1024,
+    "absolute_neural_pass_ceiling": 256,
+    "automatic_budget_escalation_allowed": false,
+    "gpu_full_batch_microbatch_and_cpu_reference_parity_required": true,
+    "model_state_cache_or_rng_mutation_during_tree_search_allowed": false
+  },
+  "value_contract": {
+    "decision_backup": "maximum_gate_eligible_child_value_with_direct_policy_child_always_present",
+    "finite_chance_backup": "exact_probability_weighted_expected_value",
+    "unresolved_boundary_value": "separately_calibrated_policy_visible_leaf_value_or_no_override",
+    "current_r197_trusted_multistep_transition_target_count": 0,
+    "current_r197_trusted_trajectory_return_target_count": 0,
+    "current_r197_trusted_ranking_pair_count": 0,
+    "current_r197_trusted_calibration_target_count": 0,
+    "current_r197_targets_may_be_relabelled_or_fabricated": false,
+    "trusted_source_excluded_multi_step_targets_required": true,
+    "missing_partial_or_untrusted_value_evidence_behavior": "retain_exact_direct_policy_action"
+  },
+  "override_gates": {
+    "all_required_for_each_executed_non_direct_action": true,
+    "required": [
+      "trusted_successor_and_future_legality_receipt",
+      "trusted_trajectory_return_and_ranking_receipt",
+      "exact_chance_distribution_receipt_when_a_chance_node_is_expanded",
+      "source_excluded_calibration_and_uncertainty_receipt",
+      "in_distribution_support_gate",
+      "positive_value_margin_after_compute_cost",
+      "current_node_and_subtree_fingerprint_match",
+      "exact_next_action_legality",
+      "latency_and_reliability_gate"
+    ],
+    "missing_gate_behavior": "execute_exact_direct_policy_action",
+    "owner_performance_latency_or_abandonment_threshold_invented": false
+  },
+  "implementation_phases": {
+    "phase_1_cached_tree_state_machine": {
+      "authorized": true,
+      "runtime_attachment_allowed": false,
+      "gpu_or_service_required": false,
+      "may_validate_and_advance_prebuilt_typed_trees": true,
+      "may_claim_mcts_quality_or_action_authority": false
+    },
+    "phase_2_successor_legality_chance_and_target_facility": {
+      "authorized_for_offline_design_and_tests": true,
+      "remote_execution_requires_separate_resource_and_noninterference_preflight": true
+    },
+    "phase_3_gpu_expectimax_mcts_search": {
+      "authorized_after_phase_2_receipts": true,
+      "runtime_attachment_allowed": false
+    },
+    "phase_4_new_shadow_candidate_and_evaluation": {
+      "new_owner_or_receipt_backed_boundary_required": true,
+      "new_content_addressed_source_sidecar_candidate_evaluation_and_output_required": true,
+      "in_place_retry_or_reuse_allowed": false
+    }
+  },
+  "required_phase_1_tests": [
+    "multi_action_tree_representation_across_turn_keys",
+    "execute_exactly_one_action_before_real_observation",
+    "deterministic_matching_child_reused_without_recalculation",
+    "turn_key_change_with_exact_attested_child_reuses_subtree",
+    "observation_legal_or_option_fingerprint_mismatch_forces_rebuild",
+    "missing_branch_observation_never_defaults",
+    "exact_fair_coin_children_backup_to_probability_weighted_expected_value",
+    "invalid_incomplete_duplicate_or_nonunit_chance_distribution_rejected",
+    "observed_exact_chance_outcome_starts_a_fresh_public_root",
+    "unknown_or_complex_chance_stops_at_boundary",
+    "opponent_or_private_information_without_receipted_distribution_stops_at_boundary",
+    "direct_action_present_and_exact_fallback",
+    "empty_legal_action_preserved",
+    "no_hidden_state_determinization_or_state_cache_rng_service_mutation"
+  ],
+  "future_shadow_evaluation": {
+    "arms": [
+      "no_rtp",
+      "direct_bridge_recursive_disabled",
+      "recursive_rtp_r198_evidence_only",
+      "chance_aware_cached_inter_turn_expectimax_mcts"
+    ],
+    "true_rng_matched_cells_required": true,
+    "zero_new_illegal_actions_or_forfeits_required": true,
+    "source_excluded_new_strategy_over_direct_improvement_required": true,
+    "owner_latency_slo_required_before_promotion": true,
+    "separate_immutable_promotion_receipt_required": true
+  },
+  "authority": {
+    "training_service_start_authorized": false,
+    "evaluation_service_start_authorized": false,
+    "replay_collection_authorized": false,
+    "serving_eligible": false,
+    "action_authority_enabled": false,
+    "selector_change_authorized": false,
+    "checkpoint_publication_authorized": false,
+    "kaggle_submission_authorized": false,
+    "promotion_authorized": false,
+    "self_promotion_authorized": false,
+    "r175_restart_authorized": false,
+    "iteration_21_collection_authorized": false
+  }
+}

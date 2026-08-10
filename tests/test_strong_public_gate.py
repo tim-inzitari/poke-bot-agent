@@ -196,6 +196,108 @@ def test_s_plus_frozen_specialist_counts_in_s_tier_floor() -> None:
     assert result["checks"]["s_tier_mean_floor"] is False
 
 
+def test_s_plusplus_is_weighted_s_tier_and_premium_floor_member(
+    tmp_path: Path,
+) -> None:
+    contract = copy.deepcopy(load_active_gate_contract(CONTRACT_PATH))
+    gate = contract["next_gate"]
+    marnie_h10_id = "specialist-marnie-final-format-h10-f20efb20f5c3"
+    gate["roster"].append(
+        {
+            "opponent_id": marnie_h10_id,
+            "content_digest": (
+                "sha256:f7c25cfd0bba674ceb4c2156a6e2fef87a3ff9effc74ed41b33fbb17fd627787"
+            ),
+            "frozen_specialist": True,
+            "frozen_checkpoint_digest": (
+                "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381"
+            ),
+            "tier": "S++",
+            "weight": 4.0,
+            "strong_public_practice_floor_games": 1024,
+        }
+    )
+    gate["evaluation"]["games_total"] = 250 * len(gate["roster"])
+    gate["pass_criteria"]["s_plus_below_floor_allowance"] = 0
+    semantics = contract["active_gate_semantics"]
+    semantics["gate_roster_size"] = len(gate["roster"])
+    semantics["gate_games_total"] = gate["evaluation"]["games_total"]
+    semantics["frozen_specialist_agents"] = sum(
+        row.get("frozen_specialist") is True for row in gate["roster"]
+    )
+    semantics["exact_additional_splusplus_specialist"] = {
+        "opponent_id": marnie_h10_id,
+        "checkpoint_digest": (
+            "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381"
+        ),
+        "content_digest": (
+            "sha256:f7c25cfd0bba674ceb4c2156a6e2fef87a3ff9effc74ed41b33fbb17fd627787"
+        ),
+        "tier": "S++",
+        "weight": 4.0,
+        "strong_public_practice_floor_games": 1024,
+    }
+    contract_path = tmp_path / "r192-gate.json"
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    contract = load_active_gate_contract(contract_path)
+    gate = contract["next_gate"]
+    ids = [row["opponent_id"] for row in gate["roster"]]
+    rates = {opponent_id: 0.80 for opponent_id in ids}
+    rates[marnie_h10_id] = 0.20
+    digest = "sha256:candidate"
+
+    active_result = build_active_gate_result(
+        contract=contract,
+        checkpoint="/checkpoint.pt",
+        checkpoint_digest=digest,
+        iteration=3,
+        gate_rows=_rows(ids, rates, digest=digest),
+        gate_audit=_audit(ids, digest=digest),
+        gate_seed=9_030_000,
+        bootstrap_resamples=100,
+    )
+    research_ids = [
+        row["opponent_id"] for row in gate["research_measurements"]
+    ]
+    strong_result = build_strong_public_gate_result(
+        contract=contract,
+        checkpoint="/checkpoint.pt",
+        checkpoint_digest=digest,
+        iteration=3,
+        gate_rows=_rows(ids, rates, digest=digest),
+        gate_audit=_audit(ids, digest=digest),
+        research_rows=_rows(
+            research_ids,
+            {opponent_id: 0.80 for opponent_id in research_ids},
+            digest=digest,
+        ),
+        research_audit=_audit(research_ids, digest=digest),
+        gate_seed=9_030_000,
+        research_seed=10_030_000,
+        bootstrap_resamples=100,
+    )
+    s_rows = [
+        row for row in gate["roster"] if row.get("tier") in {"S", "S+", "S++"}
+    ]
+    expected_s_tier_mean = sum(
+        rates[row["opponent_id"]] * float(row["weight"]) for row in s_rows
+    ) / sum(float(row["weight"]) for row in s_rows)
+    for result in (active_result, strong_result):
+        assert result["s_tier_mean"] == pytest.approx(expected_s_tier_mean)
+        assert result["s_plus_below_floor_opponent_ids"] == [marnie_h10_id]
+        assert result["checks"]["s_plus_matchup_floor_allowance"] is False
+
+    invalid = copy.deepcopy(contract)
+    next(
+        row
+        for row in invalid["next_gate"]["roster"]
+        if row["opponent_id"] == marnie_h10_id
+    ).pop("strong_public_practice_floor_games")
+    contract_path.write_text(json.dumps(invalid), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid exact additional S\\+\\+"):
+        load_active_gate_contract(contract_path)
+
+
 def test_s_plus_floor_allows_at_most_two_below_thirty_percent() -> None:
     roster = [
         {"opponent_id": f"specialist-{index}", "tier": "S+"}

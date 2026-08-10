@@ -1,0 +1,15 @@
+{
+  "bundle_sha256": "sha256:c8cbad2718291db32ecacb6f7bcf5606ad38d0b8ab3e6b1b19d4a998e336b0f2",
+  "checkpoint_sha256": "sha256:c2b01f5a12a4164e282f278e104da3dd5d5b0c1467d592e01d832be141fcf69c",
+  "runtime_package_sha256": "sha256:c8cbad2718291db32ecacb6f7bcf5606ad38d0b8ab3e6b1b19d4a998e336b0f2",
+  "runtime_source_tree_sha256": "sha256:f466199aad6d5d154dabe0040c2de74d838769658c386c060f4748877694c46a",
+  "schema": "poke_bot.replay_model_inspector_runtime_parity_receipt/v1",
+  "status": "verified",
+  "submission_id": 55359777,
+  "verification": {
+    "method": "independent_exact_runtime_parity",
+    "verified_at_utc": "2026-08-09T14:13:17Z",
+    "verified_by": "codex-r196-exact-byte-equivalence-to-r194-runtime-smoked-submission-55362452"
+  },
+  "version": 1
+}

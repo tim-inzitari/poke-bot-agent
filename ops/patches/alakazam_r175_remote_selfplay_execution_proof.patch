@@ -1,0 +1,36 @@
+--- a/poke_bot/remote_jobs.py
++++ b/poke_bot/remote_jobs.py
+@@ -2754,12 +2754,13 @@
+                         if on_execution is not None:
+                             on_execution(
+                                 {
+                                     "origin": "remote",
+                                     "endpoint": client.endpoint,
+-                                    "kind": (
+-                                        "self_play_multi" if pack_n > 1 else kind
++                                    "kind": kind,
++                                    "transport_kind": (
++                                        "self_play_multi" if pack_n > 1 else kind
+                                     ),
+-                                    "pack_games": len(pack) if pack_n > 1 else 1,
++                                    "pack_games": 1,
+                                 }
+                             )
+                         if not _put_thread_result(
+@@ -3842,13 +3843,14 @@
+                                 on_execution(
+                                     {
+                                         "origin": "remote",
+                                         "endpoint": client.endpoint,
+-                                        "kind": (
++                                        "kind": kind,
++                                        "transport_kind": (
+                                             "self_play_multi"
+                                             if pack_n > 1
+                                             else kind
+                                         ),
+-                                        "pack_games": len(pack) if pack_n > 1 else 1,
++                                        "pack_games": 1,
+                                     }
+                                 )
+                             if not _put_thread_result(

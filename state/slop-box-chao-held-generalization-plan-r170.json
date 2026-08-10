@@ -1,0 +1,218 @@
+{
+  "schema": "poke_bot.slop_box_chao_held_generalization_plan_r170/v1",
+  "goal_revision": 170,
+  "created_at_utc": "2026-08-06T17:30:00+00:00",
+  "status": "staged_wait_cd90d21d_full_archive",
+  "coordinate_with": "7cbdccac",
+  "live_evidence": {
+    "deep_ce_unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+    "deep_ce_leave_alone": true,
+    "deep_ce_epoch_observed": 116,
+    "deep_ce_epochs_max": 300,
+    "train_policy_acc_ep116": 0.9874194997753483,
+    "full_val_policy_acc_ep116": 0.7818743364540103,
+    "best_val_loss_epoch": 24,
+    "cox_chao_held_plateau": [
+      0.76,
+      0.771,
+      0.765,
+      0.777
+    ],
+    "best_aux_chao_held": 0.777059773828756,
+    "best_aux_epochs": [
+      39,
+      41
+    ],
+    "naive_x10_result": "train memorizes (~0.98) while Chao held stuck ~0.76-0.78",
+    "current_held": {
+      "games": 24,
+      "decisions": 1857,
+      "overlap_with_train": 0
+    },
+    "current_pilot_team_counts": {
+      "James Cox": 791,
+      "zoroark190": 466,
+      "James Cox & Henry Chao": 185
+    },
+    "corpus_expand": {
+      "elmo_out": "/mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v5-r170",
+      "window": "2026-07-29..2026-08-05",
+      "state_at_plan": "running_2_of_8_days_completed",
+      "projected_new_teal_seats": 1257
+    },
+    "secondary_list_train_only_candidate": {
+      "deck_hash": "b934c6c2f248aadc",
+      "games_aug2_5_window": 152,
+      "gate_identity": false
+    }
+  },
+  "ranked_methods_held_generalization": [
+    {
+      "rank": 1,
+      "id": "expand_chao_train_diversity",
+      "fits_codebase": true,
+      "why": "24-game held + 161 Chao train seats is underpowered; Jul29-Aug5 expand already in flight via 7cbdccac; more non-overlapping Chao decisions is the primary way to close a 0.13 gap without memorizing the mix.",
+      "implementation": "scripts/expand_slop_box_cox_chao_corpus_r170.py + rebuild_slop_box_cox_chao_maps_r170.py --output-suffix -expanded-r170 --skip-live-upweight"
+    },
+    {
+      "rank": 2,
+      "id": "chao_hard_loss_mass_with_chao_held_selection",
+      "fits_codebase": true,
+      "why": "\u00d710 multinomial proved train memorization. Raise Chao train loss mass moderately, keep full-archetype 1\u00d7, and select/early-stop by Chao held policy_acc (not full val_loss, not train acc).",
+      "implementation": "scripts/stage_slop_box_chao_hard_ce_r170.py + select_slop_box_chao_held_checkpoint_r170.py; gate identity remains exact James Cox & Henry Chao"
+    },
+    {
+      "rank": 3,
+      "id": "james_cox_train_only_related_names",
+      "fits_codebase": true,
+      "why": "Pilot already has 791 James Cox seats vs 185 exact Chao. Related-author train upweight diversifies Chao-like decisions without polluting the exact-name gate.",
+      "implementation": "chao-hard importance with james_cox_train_weight>1; never put James Cox into held gate rows"
+    },
+    {
+      "rank": 4,
+      "id": "hot_start_from_best_chao_held_not_val_loss",
+      "fits_codebase": true,
+      "why": "Deep CE best_path is epoch_24 by val_loss; best measured Chao held is ~0.777 at epochs 39/41. Continuing from memorized late epochs (100+) is counterproductive.",
+      "implementation": "resolve hot-start via Chao-held sweep over completed deep-CE epochs after boundary; default candidate epoch_39/41"
+    },
+    {
+      "rank": 5,
+      "id": "teacher_soft_policy_on_public_states",
+      "fits_codebase": "partial",
+      "why": "train.py already supports teacher_policy_weight / soft_targets. Distill a Chao-focused teacher on public teal states to reduce hard-label noise without train-on-held.",
+      "implementation": "supervised_rehearsal_step / bootstrap teacher_policy path; needs soft-label materialization \u2014 stage after Exp A if still <0.90"
+    },
+    {
+      "rank": 6,
+      "id": "freeze_encoder_chao_head_or_adapter_ft",
+      "fits_codebase": true,
+      "why": "matchup_adapter_trainer and requires_grad freeze patterns exist. After a good encoder from deep CE, freeze backbone and fine-tune policy/adapter on Chao+James Cox only to limit full-mix memorization.",
+      "implementation": "Experiment B if A plateaus; use frozen-base adapter bank / head FT with Chao held selection"
+    },
+    {
+      "rank": 7,
+      "id": "secondary_list_variants_train_only",
+      "fits_codebase": true,
+      "why": "Digest shows secondary deck_hash b934c6c2f248aadc (152 games). Include as train-only diversity if list-close; keep gate on exact TeamName.",
+      "implementation": "optional train-weight tier after expanded pilot join; audit list distance before enabling"
+    },
+    {
+      "rank": 8,
+      "id": "guide_sparse_keep_low",
+      "fits_codebase": true,
+      "why": "Guide coverage ~8.9% and is RL-training-only. Raising guide weight will not buy Chao held policy_acc and risks matchup-rigid setup scripts.",
+      "implementation": "keep guide_max_loss_weight <=0.25; do not intensify guide for gate chasing"
+    },
+    {
+      "rank": 9,
+      "id": "label_smoothing_via_soft_targets",
+      "fits_codebase": "partial",
+      "why": "No first-class label_smoothing TrainConfig flag; soft_targets path is the in-repo analogue. Prefer teacher soft CE over inventing mixup.",
+      "implementation": "bundle with teacher_soft_policy in Exp B"
+    },
+    {
+      "rank": 10,
+      "id": "longer_context",
+      "fits_codebase": "costly",
+      "why": "max_context=320 already contracted in featurize/importance. Raising requires full refeaturize; defer unless expand+Chao-hard fail.",
+      "implementation": "not Experiment A/B"
+    }
+  ],
+  "avoid": [
+    "train-on-held / leakage of the 24-game exact Chao held split",
+    "endless mixed deep CE after train_acc>>val_acc (already 0.987 vs 0.782 at ep116)",
+    "naive multinomial \u00d710 (or higher) without Chao-held selection",
+    "selecting checkpoints by train policy_acc or full-archetype val_loss alone",
+    "putting James Cox / secondary lists into the gate TeamName identity",
+    "killing or restarting healthy deep CE to reconcile metadata",
+    "ready/RL declaration before Chao held >=0.90 on the exact gate",
+    "Crustle deletes or Crustle RL restarts",
+    "guide-heavy CE as a substitute for Chao decision diversity"
+  ],
+  "recommended_experiments": [
+    {
+      "id": "A",
+      "name": "expanded_corpus_chao_hard_held_select",
+      "when": "after elmo Jul29-Aug5 materialize completes AND deep CE reaches a clean oneshot boundary (do not preempt healthy deep CE)",
+      "steps": [
+        "promote expanded teal corpus pointer (no rewrite of old shard bytes); train on ALL acting-seat teal games in that corpus",
+        "rebuild targets/pilot/held with --output-suffix -expanded-r170 --skip-live-upweight (full train mix retained)",
+        "build Chao-hard importance on full train mix: Cox/Chao\u00d725 + James Cox\u00d75 train-only + every other train game\u00d71; never Chao-filter; validation unweighted; held Chao 0-overlap",
+        "hot-start from best Chao-held fusion-valid deep-CE epoch (prefer ~39/41 over late memorized epochs)",
+        "run dedicated Chao-hard CE <=60 epochs in separate run_dir on the full expanded expert corpus",
+        "select best checkpoint by Chao held policy_acc via select_slop_box_chao_held_checkpoint_r170.py",
+        "remeasure gate; no ready/RL"
+      ],
+      "success_metrics": {
+        "cox_chao_held_policy_acc": ">=0.90",
+        "full_archetype_val_policy_acc": ">=0.75 (no collapse)",
+        "train_minus_chao_held_gap": "<=0.08 preferred; hard fail if train>~0.98 and held<0.85",
+        "held_split": "still 0-overlap exact James Cox & Henry Chao"
+      },
+      "staging_paths": {
+        "stage_script": "scripts/stage_slop_box_chao_hard_ce_r170.py",
+        "run_script": "scripts/run_slop_box_chao_hard_ce_r170.py",
+        "selector": "scripts/select_slop_box_chao_held_checkpoint_r170.py",
+        "upweight_preferred": "/home/inzi/poke-bot-agent/outputs/state/slop-box-chao-hard-train-upweight-importance-r170.json",
+        "upweight_cox_chao_only": "/home/inzi/poke-bot-agent/outputs/state/slop-box-chao-hard-train-upweight-cox-chao-only-r170.json",
+        "staged_receipt": "/home/inzi/poke-bot-agent/outputs/state/slop-box-chao-hard-ce-staged-r170.json"
+      }
+    },
+    {
+      "id": "B",
+      "name": "freeze_encoder_teacher_soft_chao_ft",
+      "when": "only if Experiment A Chao held still <0.88 after expanded corpus",
+      "steps": [
+        "freeze encoder / shared trunk from Exp A best Chao-held ckpt",
+        "fine-tune policy head (or matchup adapter route) on Chao + James Cox train rows",
+        "add teacher soft-policy loss on public teal states (no held leakage)",
+        "optional secondary-list train-only tier after list-distance audit",
+        "select by Chao held; keep full-archetype smoke val"
+      ],
+      "success_metrics": {
+        "cox_chao_held_policy_acc": ">=0.90",
+        "full_archetype_val_policy_acc": ">=0.74",
+        "train_minus_chao_held_gap": "<=0.06"
+      }
+    }
+  ],
+  "experiment_a_defaults": {
+    "cox_chao_train_weight": 25.0,
+    "james_cox_train_weight": 5.0,
+    "epochs_max": 60,
+    "patience_on_chao_held": 8,
+    "select_metric": "cox_chao_held_policy_acc",
+    "train_corpus_mode": "full_available_teal_acting_seat_upweight",
+    "chao_only_filter": false,
+    "install_systemd_onsuccess": false,
+    "install_systemd_only_after": [
+      "expanded maps exist",
+      "deep CE oneshot boundary reached or owner orders boundary switch"
+    ]
+  },
+  "owner_clarification_2026_08_06": {
+    "train_all_available_games": true,
+    "upweight_is_not_a_filter": true,
+    "held_chao_never_trained": true,
+    "deep_ce_current_mix": {
+      "expert_games_total": 1442,
+      "train_games": 1298,
+      "validation_games": 144,
+      "cox_chao_train_x10": 161,
+      "other_train_x1": 1137,
+      "rtp_shard_trajectories": 42453,
+      "full_archetype_train_preserved": true,
+      "leave_alone": true
+    }
+  },
+  "no_ready": true,
+  "no_rl": true,
+  "no_crustle_delete": true,
+  "full_archive_expand": {
+    "archive_range": "2026-06-16..2026-08-05",
+    "archive_days": 51,
+    "ownership_full_range": "cd90d21d",
+    "in_flight_jul29_aug5": "7cbdccac",
+    "coordination_receipt": "state/slop-box-full-archive-expand-coordination-r170.json"
+  }
+}

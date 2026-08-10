@@ -64,6 +64,10 @@ from .slowking_combo_targets import (
     attach_slowking_combo_state_labels,
     is_exact_slowking_deck,
 )
+from .slop_box_combo_targets import (
+    attach_slop_box_combo_state_labels,
+    is_slop_box_combo_deck,
+)
 
 
 VISUAL_TRACE_SCHEMA = "pokebot-authoritative-visual-trace/v1"
@@ -567,11 +571,20 @@ def convert_visual_episode(
             )
         _attach_strategy_labels(seat_steps[seat])
         combo_coverage = None
-        if is_exact_slowking_deck(list(setup_decks[seat] or [])):
+        combo_provenance_key = None
+        seat_deck = list(setup_decks[seat] or [])
+        if is_exact_slowking_deck(seat_deck):
             combo_coverage = attach_slowking_combo_state_labels(
                 seat_steps[seat],
-                deck=list(setup_decks[seat] or []),
+                deck=seat_deck,
             )
+            combo_provenance_key = "slowking_combo_state_targets"
+        elif is_slop_box_combo_deck(seat_deck):
+            combo_coverage = attach_slop_box_combo_state_labels(
+                seat_steps[seat],
+                deck=seat_deck,
+            )
+            combo_provenance_key = "slop_box_combo_state_targets"
         try:
             strategic_contract = attach_expanded_strategic_labels(
                 seat_steps[seat],
@@ -607,8 +620,9 @@ def convert_visual_episode(
                     "alignment": "pre_full=v[i-1].current;masked_input=v[i].obs",
                     "expanded_strategic_targets": strategic_contract,
                     **(
-                        {"slowking_combo_state_targets": combo_coverage}
+                        {combo_provenance_key: combo_coverage}
                         if combo_coverage is not None
+                        and combo_provenance_key is not None
                         else {}
                     ),
                 },

@@ -1,0 +1,166 @@
+{
+  "schema": "poke_bot.alakazam_closed_loop_turn_planner_r201/v1",
+  "owner_decision_revision": 201,
+  "recorded_at_utc": "2026-08-10T14:10:43Z",
+  "status": "superseded_before_implementation_by_revision_202",
+  "implementation_allowed": false,
+  "owner_intent": "plan one complete current turn over multiple atomic actions with closed-loop replanning after every real action result",
+  "superseded_by": {
+    "owner_decision_revision": 202,
+    "typed_source": "state/alakazam-chance-aware-inter-turn-mcts-r202.json",
+    "superseded_before_phase_1_module_candidate_service_or_authority_activation": true,
+    "reason": "the owner requires deterministic subtree reuse without recalculation and permits exact finite chance-node expectation across turn boundaries"
+  },
+  "superseded_design": {
+    "path": "state/alakazam-gpu-turn-planner-r200.json",
+    "sha256": "sha256:046144920e1e66679f340d2c84ffadb45b8b348766b6f276c1494fc44c603361",
+    "owner_decision_revision": 200,
+    "superseded_before_module_candidate_service_or_authority_activation": true,
+    "reason": "single-decision reranking did not satisfy the owner's full-turn multi-step requirement"
+  },
+  "frozen_predecessors": {
+    "r198_contract_sha256": "sha256:ea032624be23341fbae6e0b9b9debf6695a7a3b5a51613cf7294248bdba39c05",
+    "r199_continuation_sha256": "sha256:9de3cce02940bec190dd5d7028036e6943511889c85164d165a40c979d9f7869",
+    "attempt10_evaluation_id": "r198-three-arm-6a0d99cb02d5ca02318f8725c6523517fee1b9a97d76b05aa6bb0fddfc680105",
+    "attempt10_invocation_id": "1aaed5eeae4349d78c27a29d80bd2441",
+    "attempt10_must_continue_unchanged_to_terminal_or_fail_closed": true
+  },
+  "turn_scope": {
+    "strategy_id": "closed_loop_receding_horizon_full_turn_gpu_planner",
+    "plans_multiple_atomic_actions": true,
+    "planning_horizon": "current_turn_until_typed_end_turn",
+    "cross_turn_planning_allowed": false,
+    "single_step_reranker_is_sufficient": false,
+    "receding_horizon_execution": true,
+    "actions_executed_before_real_observation": 1,
+    "replan_after_every_real_action_result": true,
+    "cached_remainder_may_be_proposal_only": true,
+    "cached_remainder_has_action_authority": false
+  },
+  "closed_loop_state_contract": {
+    "fresh_policy_visible_observation_required_each_step": true,
+    "fresh_complete_legal_action_set_required_each_step": true,
+    "fresh_option_encoding_required_each_step": true,
+    "turn_key_must_match_original_turn": true,
+    "end_turn_or_turn_key_change_terminates_plan": true,
+    "expected_observation_fingerprint_required": true,
+    "expected_legal_action_fingerprint_required": true,
+    "missing_or_mismatched_expected_state_behavior": "discard_remainder_and_replan_or_take_base_action",
+    "branch_predicate_observation_required": true,
+    "missing_branch_predicate_default_branch_allowed": false,
+    "reuse_root_legal_actions_after_state_change_allowed": false,
+    "reuse_root_option_hidden_after_state_change_allowed": false,
+    "direct_policy_action_is_mandatory_candidate_each_step": true,
+    "direct_policy_action_is_exact_fallback_each_step": true,
+    "empty_complete_action_is_legal_when_present": true
+  },
+  "trajectory_search_contract": {
+    "candidate_representation": "typed_conditional_current_turn_program",
+    "gpu_batched_candidate_scoring_required": true,
+    "max_complete_actions_per_real_decision": 1024,
+    "max_program_steps": null,
+    "max_program_steps_requires_measured_profile_receipt": true,
+    "absolute_neural_pass_ceiling": 256,
+    "automatic_budget_escalation_allowed": false,
+    "valid_successor_state_mechanism_required": true,
+    "exact_future_legality_mechanism_required": true,
+    "information_set_safe_arbitrary_decision_branch_abi_required": true,
+    "battle_start_pairing_snapshot_counts_as_arbitrary_decision_branch_abi": false,
+    "current_r197_latent_rollout_counts_as_exact_simulator_or_beam": false,
+    "beam_mcts_or_rollout_runtime_claim_allowed_before_branch_abi_receipt": false,
+    "hidden_opponent_state_as_planner_input_allowed": false,
+    "full_batch_microbatch_and_cpu_reference_parity_required": true,
+    "state_cache_and_rng_mutation_during_scoring_allowed": false
+  },
+  "learning_and_target_contract": {
+    "current_r197_should_recurse_target_count": 0,
+    "current_r197_root_plan_target_count": 0,
+    "current_r197_trusted_candidate_return_target_count": 0,
+    "current_r197_trusted_candidate_ranking_pair_count": 0,
+    "current_r197_trusted_candidate_calibration_target_count": 0,
+    "current_r197_targets_may_be_relabelled_or_fabricated": false,
+    "trusted_multi_step_transition_targets_required": true,
+    "trusted_trajectory_return_and_ranking_targets_required": true,
+    "action_space_trajectory_and_evaluator_receipt_binding_required": true,
+    "paired_common_random_numbers_across_candidate_trajectories_required": true,
+    "source_excluded_whole_game_split_required": true,
+    "model_inputs_must_be_policy_visible": true,
+    "evaluation_or_kaggle_games_training_eligible": false,
+    "missing_or_partial_targets_behavior": "mask_and_retain_direct_policy_authority"
+  },
+  "override_gates": {
+    "all_required_for_each_executed_action": true,
+    "required": [
+      "trusted_multi_step_transition_receipt",
+      "trusted_trajectory_return_and_ranking_receipt",
+      "source_excluded_calibration_and_uncertainty_receipt",
+      "in_distribution_support_gate",
+      "positive_value_margin_after_compute_cost",
+      "current_observation_and_legal_fingerprint_match",
+      "exact_next_action_legality",
+      "latency_and_reliability_gate"
+    ],
+    "missing_gate_behavior": "execute_exact_direct_policy_action",
+    "owner_performance_or_abandonment_threshold_invented": false
+  },
+  "implementation_phases": {
+    "phase_1_closed_loop_controller_state_machine": {
+      "authorized": true,
+      "runtime_attachment_allowed": false,
+      "gpu_or_service_required": false
+    },
+    "phase_2_information_set_safe_branch_and_target_generator": {
+      "authorized_for_offline_design_and_tests": true,
+      "remote_execution_requires_separate_resource_and_noninterference_preflight": true
+    },
+    "phase_3_gpu_trajectory_scorer_and_search": {
+      "authorized_after_phase_2_receipt": true,
+      "runtime_attachment_allowed": false
+    },
+    "phase_4_new_shadow_candidate_and_evaluation": {
+      "new_owner_or_receipt_backed_boundary_required": true,
+      "new_content_addressed_source_sidecar_candidate_evaluation_and_output_required": true,
+      "in_place_retry_or_reuse_allowed": false
+    }
+  },
+  "required_phase_1_tests": [
+    "multi_step_same_turn_plan_representation",
+    "execute_exactly_one_action_before_observation",
+    "replan_after_true_branch_observation",
+    "replan_after_false_branch_observation",
+    "missing_branch_observation_never_defaults_then_branch",
+    "stale_observation_or_legal_fingerprint_discards_remainder",
+    "turn_key_change_and_end_turn_terminate_plan",
+    "direct_action_present_and_exact_fallback",
+    "empty_legal_action_preserved",
+    "no_cross_turn_or_hidden_state_input",
+    "no_state_cache_rng_or_service_mutation"
+  ],
+  "future_shadow_evaluation": {
+    "arms": [
+      "no_rtp",
+      "direct_bridge_recursive_disabled",
+      "recursive_rtp_r198_evidence_only",
+      "closed_loop_full_turn_gpu_planner"
+    ],
+    "true_rng_matched_cells_required": true,
+    "zero_new_illegal_actions_or_forfeits_required": true,
+    "source_excluded_closed_loop_over_direct_improvement_required": true,
+    "owner_latency_slo_required_before_promotion": true,
+    "separate_immutable_promotion_receipt_required": true
+  },
+  "authority": {
+    "training_service_start_authorized": false,
+    "evaluation_service_start_authorized": false,
+    "replay_collection_authorized": false,
+    "serving_eligible": false,
+    "action_authority_enabled": false,
+    "selector_change_authorized": false,
+    "checkpoint_publication_authorized": false,
+    "kaggle_submission_authorized": false,
+    "promotion_authorized": false,
+    "self_promotion_authorized": false,
+    "r175_restart_authorized": false,
+    "iteration_21_collection_authorized": false
+  }
+}

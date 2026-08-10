@@ -1,0 +1,1616 @@
+{
+  "schema": "poke_bot.slowking_top_replay_distillation/v1",
+  "status": "research_only_no_training_or_runtime_authority",
+  "source": {
+    "date": "2026-08-01",
+    "archive": "/Users/tsinzitari/Documents/poke-agent-codex/data/episodes/raw/pokemon-tcg-ai-battle-episodes-2026-08-01.zip",
+    "archive_sha256": "sha256:1ba104fca133b096655ef385b16f630218ad41fe561e14edbc74b79e3f5b2cff",
+    "archive_json_members": 4518,
+    "manifest_episode_count": 4518,
+    "manifest_minus_archive_members": 0,
+    "episodes_scanned": 4518
+  },
+  "identity": {
+    "unique_deck_lists": 1,
+    "unique_team_names": [
+      "ShumpeiNomura"
+    ],
+    "decks": [
+      {
+        "fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+        "games": 16,
+        "card_count": 60,
+        "cards": [
+          {
+            "card_id": 5,
+            "card_name": "Basic {P} Energy",
+            "count": 4
+          },
+          {
+            "card_id": 19,
+            "card_name": "Telepath Psychic Energy",
+            "count": 4
+          },
+          {
+            "card_id": 115,
+            "card_name": "Conkeldurr",
+            "count": 1
+          },
+          {
+            "card_id": 140,
+            "card_name": "Fezandipiti ex",
+            "count": 1
+          },
+          {
+            "card_id": 144,
+            "card_name": "Kyurem",
+            "count": 2
+          },
+          {
+            "card_id": 162,
+            "card_name": "Slowpoke",
+            "count": 4
+          },
+          {
+            "card_id": 163,
+            "card_name": "Slowking",
+            "count": 4
+          },
+          {
+            "card_id": 183,
+            "card_name": "Smoochum",
+            "count": 1
+          },
+          {
+            "card_id": 184,
+            "card_name": "Latias ex",
+            "count": 2
+          },
+          {
+            "card_id": 224,
+            "card_name": "Annihilape",
+            "count": 1
+          },
+          {
+            "card_id": 756,
+            "card_name": "Mega Kangaskhan ex",
+            "count": 3
+          },
+          {
+            "card_id": 880,
+            "card_name": "Spectrier",
+            "count": 1
+          },
+          {
+            "card_id": 1071,
+            "card_name": "Meowth ex",
+            "count": 1
+          },
+          {
+            "card_id": 1088,
+            "card_name": "Prime Catcher",
+            "count": 1
+          },
+          {
+            "card_id": 1097,
+            "card_name": "Night Stretcher",
+            "count": 4
+          },
+          {
+            "card_id": 1121,
+            "card_name": "Ultra Ball",
+            "count": 4
+          },
+          {
+            "card_id": 1123,
+            "card_name": "Switch",
+            "count": 1
+          },
+          {
+            "card_id": 1146,
+            "card_name": "Wondrous Patch",
+            "count": 3
+          },
+          {
+            "card_id": 1152,
+            "card_name": "Poké Pad",
+            "count": 4
+          },
+          {
+            "card_id": 1188,
+            "card_name": "Ciphermaniac’s Codebreaking",
+            "count": 4
+          },
+          {
+            "card_id": 1194,
+            "card_name": "Colress’s Tenacity",
+            "count": 1
+          },
+          {
+            "card_id": 1225,
+            "card_name": "Hilda",
+            "count": 1
+          },
+          {
+            "card_id": 1227,
+            "card_name": "Lillie's Determination",
+            "count": 4
+          },
+          {
+            "card_id": 1248,
+            "card_name": "Academy at Night",
+            "count": 4
+          }
+        ]
+      }
+    ]
+  },
+  "outcomes": {
+    "games": 16,
+    "wins": 9,
+    "losses": 7,
+    "draws": 0,
+    "win_rate": 0.5625,
+    "turn_order": {
+      "first": {
+        "games": 8,
+        "wins": 5,
+        "win_rate": 0.625
+      },
+      "second": {
+        "games": 8,
+        "wins": 4,
+        "win_rate": 0.5
+      },
+      "unknown": {
+        "games": 0,
+        "wins": 0,
+        "win_rate": null
+      }
+    },
+    "by_opponent_team": [
+      {
+        "opponent_team_name": "M Sato",
+        "games": 2,
+        "wins": 1,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.5
+      },
+      {
+        "opponent_team_name": "Sixth Sense",
+        "games": 2,
+        "wins": 0,
+        "losses": 2,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "sadwat",
+        "games": 2,
+        "wins": 2,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "カントー地方マスター(KantoRegionMaster)",
+        "games": 2,
+        "wins": 2,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Dominic Peel",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "Dries @ Tufa Labs",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Kosmostars",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "Rmy",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "insuperabilehart",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "やる気元気ミワハルキ",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      },
+      {
+        "opponent_team_name": "低消650元任你吃啊",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      },
+      {
+        "opponent_team_name": "隔壁老王",
+        "games": 1,
+        "wins": 1,
+        "losses": 0,
+        "draws": 0,
+        "win_rate": 1.0
+      }
+    ]
+  },
+  "behavior": {
+    "initial_active": [
+      {
+        "key": 756,
+        "count": 5,
+        "fraction": 0.4166666666666667,
+        "card_name": "Mega Kangaskhan ex"
+      },
+      {
+        "key": 162,
+        "count": 3,
+        "fraction": 0.25,
+        "card_name": "Slowpoke"
+      },
+      {
+        "key": 144,
+        "count": 1,
+        "fraction": 0.08333333333333333,
+        "card_name": "Kyurem"
+      },
+      {
+        "key": 183,
+        "count": 1,
+        "fraction": 0.08333333333333333,
+        "card_name": "Smoochum"
+      },
+      {
+        "key": 184,
+        "count": 1,
+        "fraction": 0.08333333333333333,
+        "card_name": "Latias ex"
+      },
+      {
+        "key": 880,
+        "count": 1,
+        "fraction": 0.08333333333333333,
+        "card_name": "Spectrier"
+      }
+    ],
+    "initial_bench": [],
+    "main_action_types": [
+      {
+        "key": "play",
+        "count": 80,
+        "fraction": 0.5128205128205128
+      },
+      {
+        "key": "attach",
+        "count": 28,
+        "fraction": 0.1794871794871795
+      },
+      {
+        "key": "attack",
+        "count": 14,
+        "fraction": 0.08974358974358974
+      },
+      {
+        "key": "retreat",
+        "count": 13,
+        "fraction": 0.08333333333333333
+      },
+      {
+        "key": "ability",
+        "count": 9,
+        "fraction": 0.057692307692307696
+      },
+      {
+        "key": "evolve",
+        "count": 6,
+        "fraction": 0.038461538461538464
+      },
+      {
+        "key": "end",
+        "count": 6,
+        "fraction": 0.038461538461538464
+      }
+    ],
+    "played_cards": [
+      {
+        "key": 1121,
+        "count": 11,
+        "fraction": 0.1375,
+        "card_name": "Ultra Ball"
+      },
+      {
+        "key": 1097,
+        "count": 11,
+        "fraction": 0.1375,
+        "card_name": "Night Stretcher"
+      },
+      {
+        "key": 1152,
+        "count": 10,
+        "fraction": 0.125,
+        "card_name": "Poké Pad"
+      },
+      {
+        "key": 1188,
+        "count": 8,
+        "fraction": 0.1,
+        "card_name": "Ciphermaniac’s Codebreaking"
+      },
+      {
+        "key": 162,
+        "count": 7,
+        "fraction": 0.0875,
+        "card_name": "Slowpoke"
+      },
+      {
+        "key": 1227,
+        "count": 7,
+        "fraction": 0.0875,
+        "card_name": "Lillie's Determination"
+      },
+      {
+        "key": 140,
+        "count": 4,
+        "fraction": 0.05,
+        "card_name": "Fezandipiti ex"
+      },
+      {
+        "key": 1146,
+        "count": 3,
+        "fraction": 0.0375,
+        "card_name": "Wondrous Patch"
+      },
+      {
+        "key": 1248,
+        "count": 3,
+        "fraction": 0.0375,
+        "card_name": "Academy at Night"
+      },
+      {
+        "key": 1123,
+        "count": 3,
+        "fraction": 0.0375,
+        "card_name": "Switch"
+      },
+      {
+        "key": 756,
+        "count": 3,
+        "fraction": 0.0375,
+        "card_name": "Mega Kangaskhan ex"
+      },
+      {
+        "key": 1071,
+        "count": 2,
+        "fraction": 0.025,
+        "card_name": "Meowth ex"
+      },
+      {
+        "key": 880,
+        "count": 2,
+        "fraction": 0.025,
+        "card_name": "Spectrier"
+      },
+      {
+        "key": 1088,
+        "count": 2,
+        "fraction": 0.025,
+        "card_name": "Prime Catcher"
+      },
+      {
+        "key": 184,
+        "count": 2,
+        "fraction": 0.025,
+        "card_name": "Latias ex"
+      },
+      {
+        "key": 1225,
+        "count": 1,
+        "fraction": 0.0125,
+        "card_name": "Hilda"
+      },
+      {
+        "key": 144,
+        "count": 1,
+        "fraction": 0.0125,
+        "card_name": "Kyurem"
+      }
+    ],
+    "attached_energy": [
+      {
+        "key": 19,
+        "count": 16,
+        "fraction": 0.5714285714285714,
+        "card_name": "Telepath Psychic Energy"
+      },
+      {
+        "key": 5,
+        "count": 12,
+        "fraction": 0.42857142857142855,
+        "card_name": "Basic {P} Energy"
+      }
+    ],
+    "attachment_targets": [
+      {
+        "key": 756,
+        "count": 14,
+        "fraction": 0.5,
+        "card_name": "Mega Kangaskhan ex"
+      },
+      {
+        "key": 184,
+        "count": 6,
+        "fraction": 0.21428571428571427,
+        "card_name": "Latias ex"
+      },
+      {
+        "key": 162,
+        "count": 3,
+        "fraction": 0.10714285714285714,
+        "card_name": "Slowpoke"
+      },
+      {
+        "key": 163,
+        "count": 2,
+        "fraction": 0.07142857142857142,
+        "card_name": "Slowking"
+      },
+      {
+        "key": 1071,
+        "count": 2,
+        "fraction": 0.07142857142857142,
+        "card_name": "Meowth ex"
+      },
+      {
+        "key": 140,
+        "count": 1,
+        "fraction": 0.03571428571428571,
+        "card_name": "Fezandipiti ex"
+      }
+    ],
+    "evolved_cards": [
+      {
+        "key": 163,
+        "count": 6,
+        "fraction": 1.0,
+        "card_name": "Slowking"
+      }
+    ],
+    "ability_sources": [
+      {
+        "key": 1248,
+        "count": 9,
+        "fraction": 1.0,
+        "card_name": "Academy at Night"
+      }
+    ],
+    "academy_targets": [
+      {
+        "key": 144,
+        "count": 4,
+        "fraction": 0.5714285714285714,
+        "card_name": "Kyurem"
+      },
+      {
+        "key": 115,
+        "count": 2,
+        "fraction": 0.2857142857142857,
+        "card_name": "Conkeldurr"
+      },
+      {
+        "key": 163,
+        "count": 1,
+        "fraction": 0.14285714285714285,
+        "card_name": "Slowking"
+      }
+    ],
+    "effect_selected_cards": {
+      "19": {
+        "effect_card_name": "Telepath Psychic Energy",
+        "targets": [
+          {
+            "key": 162,
+            "count": 5,
+            "fraction": 0.7142857142857143,
+            "card_name": "Slowpoke"
+          },
+          {
+            "key": 184,
+            "count": 1,
+            "fraction": 0.14285714285714285,
+            "card_name": "Latias ex"
+          },
+          {
+            "key": 183,
+            "count": 1,
+            "fraction": 0.14285714285714285,
+            "card_name": "Smoochum"
+          }
+        ]
+      },
+      "1071": {
+        "effect_card_name": "Meowth ex",
+        "targets": [
+          {
+            "key": 1188,
+            "count": 2,
+            "fraction": 1.0,
+            "card_name": "Ciphermaniac’s Codebreaking"
+          }
+        ]
+      },
+      "1097": {
+        "effect_card_name": "Night Stretcher",
+        "targets": [
+          {
+            "key": 5,
+            "count": 2,
+            "fraction": 0.6666666666666666,
+            "card_name": "Basic {P} Energy"
+          },
+          {
+            "key": 162,
+            "count": 1,
+            "fraction": 0.3333333333333333,
+            "card_name": "Slowpoke"
+          }
+        ]
+      },
+      "1121": {
+        "effect_card_name": "Ultra Ball",
+        "targets": [
+          {
+            "key": 144,
+            "count": 2,
+            "fraction": 0.14285714285714285,
+            "card_name": "Kyurem"
+          },
+          {
+            "key": 756,
+            "count": 2,
+            "fraction": 0.14285714285714285,
+            "card_name": "Mega Kangaskhan ex"
+          },
+          {
+            "key": 880,
+            "count": 2,
+            "fraction": 0.14285714285714285,
+            "card_name": "Spectrier"
+          },
+          {
+            "key": 162,
+            "count": 2,
+            "fraction": 0.14285714285714285,
+            "card_name": "Slowpoke"
+          },
+          {
+            "key": 1097,
+            "count": 2,
+            "fraction": 0.14285714285714285,
+            "card_name": "Night Stretcher"
+          },
+          {
+            "key": 163,
+            "count": 1,
+            "fraction": 0.07142857142857142,
+            "card_name": "Slowking"
+          },
+          {
+            "key": 115,
+            "count": 1,
+            "fraction": 0.07142857142857142,
+            "card_name": "Conkeldurr"
+          },
+          {
+            "key": 1123,
+            "count": 1,
+            "fraction": 0.07142857142857142,
+            "card_name": "Switch"
+          },
+          {
+            "key": 1227,
+            "count": 1,
+            "fraction": 0.07142857142857142,
+            "card_name": "Lillie's Determination"
+          }
+        ]
+      },
+      "1146": {
+        "effect_card_name": "Wondrous Patch",
+        "targets": [
+          {
+            "key": 5,
+            "count": 4,
+            "fraction": 1.0,
+            "card_name": "Basic {P} Energy"
+          }
+        ]
+      },
+      "1152": {
+        "effect_card_name": "Poké Pad",
+        "targets": [
+          {
+            "key": 162,
+            "count": 2,
+            "fraction": 0.4,
+            "card_name": "Slowpoke"
+          },
+          {
+            "key": 880,
+            "count": 1,
+            "fraction": 0.2,
+            "card_name": "Spectrier"
+          },
+          {
+            "key": 144,
+            "count": 1,
+            "fraction": 0.2,
+            "card_name": "Kyurem"
+          },
+          {
+            "key": 163,
+            "count": 1,
+            "fraction": 0.2,
+            "card_name": "Slowking"
+          }
+        ]
+      },
+      "1188": {
+        "effect_card_name": "Ciphermaniac’s Codebreaking",
+        "targets": [
+          {
+            "key": 1188,
+            "count": 1,
+            "fraction": 0.25,
+            "card_name": "Ciphermaniac’s Codebreaking"
+          },
+          {
+            "key": 144,
+            "count": 1,
+            "fraction": 0.25,
+            "card_name": "Kyurem"
+          },
+          {
+            "key": 1227,
+            "count": 1,
+            "fraction": 0.25,
+            "card_name": "Lillie's Determination"
+          },
+          {
+            "key": 162,
+            "count": 1,
+            "fraction": 0.25,
+            "card_name": "Slowpoke"
+          }
+        ]
+      },
+      "1194": {
+        "effect_card_name": "Colress’s Tenacity",
+        "targets": [
+          {
+            "key": 19,
+            "count": 4,
+            "fraction": 0.6666666666666666,
+            "card_name": "Telepath Psychic Energy"
+          },
+          {
+            "key": 1248,
+            "count": 2,
+            "fraction": 0.3333333333333333,
+            "card_name": "Academy at Night"
+          }
+        ]
+      },
+      "1225": {
+        "effect_card_name": "Hilda",
+        "targets": [
+          {
+            "key": 115,
+            "count": 1,
+            "fraction": 0.5,
+            "card_name": "Conkeldurr"
+          },
+          {
+            "key": 163,
+            "count": 1,
+            "fraction": 0.5,
+            "card_name": "Slowking"
+          }
+        ]
+      },
+      "1248": {
+        "effect_card_name": "Academy at Night",
+        "targets": [
+          {
+            "key": 144,
+            "count": 4,
+            "fraction": 0.5714285714285714,
+            "card_name": "Kyurem"
+          },
+          {
+            "key": 115,
+            "count": 2,
+            "fraction": 0.2857142857142857,
+            "card_name": "Conkeldurr"
+          },
+          {
+            "key": 163,
+            "count": 1,
+            "fraction": 0.14285714285714285,
+            "card_name": "Slowking"
+          }
+        ]
+      }
+    },
+    "seek_sources": [
+      {
+        "key": 144,
+        "count": 4,
+        "fraction": 0.5714285714285714,
+        "card_name": "Kyurem"
+      },
+      {
+        "key": 115,
+        "count": 3,
+        "fraction": 0.42857142857142855,
+        "card_name": "Conkeldurr"
+      }
+    ],
+    "seek_copied_attack_ids": [
+      {
+        "key": 188,
+        "count": 4,
+        "fraction": 1.0,
+        "card_name": "Vibrava"
+      }
+    ],
+    "attack_users": [
+      {
+        "key": 163,
+        "count": 7,
+        "fraction": 0.5,
+        "card_name": "Slowking"
+      },
+      {
+        "key": 183,
+        "count": 5,
+        "fraction": 0.35714285714285715,
+        "card_name": "Smoochum"
+      },
+      {
+        "key": 162,
+        "count": 2,
+        "fraction": 0.14285714285714285,
+        "card_name": "Slowpoke"
+      }
+    ],
+    "top_turn_bigrams": [
+      {
+        "key": "play:Night Stretcher > play:Night Stretcher",
+        "count": 4,
+        "fraction": 0.057971014492753624
+      },
+      {
+        "key": "play:Poké Pad > play:Ultra Ball",
+        "count": 3,
+        "fraction": 0.043478260869565216
+      },
+      {
+        "key": "ability:Academy at Night > attack:Slowking",
+        "count": 3,
+        "fraction": 0.043478260869565216
+      },
+      {
+        "key": "play:Slowpoke > play:Slowpoke",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "ability:Academy at Night > attach:Basic {P} Energy->Latias ex",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "evolve:Slowking > ability:Academy at Night",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "ability:Academy at Night > retreat",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "retreat > attack:Slowking",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > play:Ciphermaniac’s Codebreaking",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "play:Night Stretcher > retreat",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > play:Prime Catcher",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > attach:Telepath Psychic Energy->Slowpoke",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "evolve:Slowking > retreat",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "play:Ultra Ball > play:Ultra Ball",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "play:Slowpoke > attach:Basic {P} Energy->Latias ex",
+        "count": 2,
+        "fraction": 0.028985507246376812
+      },
+      {
+        "key": "play:Poké Pad > play:Poké Pad",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Hilda > attach:Telepath Psychic Energy->Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > retreat",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "retreat > ability:Academy at Night",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "ability:Academy at Night > play:Wondrous Patch",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > attach:Telepath Psychic Energy->Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > ability:Academy at Night",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Slowpoke > play:Poké Pad",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Slowpoke > retreat",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Poké Pad > ability:Academy at Night",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > attack:Slowking",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Night Stretcher > play:Lillie's Determination",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Lillie's Determination > attach:Basic {P} Energy->Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Poké Pad > attach:Telepath Psychic Energy->Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > play:Lillie's Determination",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Lillie's Determination > retreat",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Fezandipiti ex > play:Night Stretcher",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Meowth ex > play:Lillie's Determination",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Lillie's Determination > play:Spectrier",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Spectrier > retreat",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "retreat > retreat",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "retreat > attack:Smoochum",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > play:Ciphermaniac’s Codebreaking",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Poké Pad > end",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Lillie's Determination > play:Night Stretcher",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "retreat > play:Slowpoke",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Slowpoke > end",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "attach:Basic {P} Energy->Meowth ex > ability:Academy at Night",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Ultra Ball > play:Poké Pad",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Academy at Night > evolve:Slowking",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Night Stretcher > play:Poké Pad",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Night Stretcher > attach:Basic {P} Energy->Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "attach:Basic {P} Energy->Mega Kangaskhan ex > attach:Basic {P} Energy->Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "attach:Basic {P} Energy->Mega Kangaskhan ex > attach:Basic {P} Energy->Fezandipiti ex",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      },
+      {
+        "key": "play:Ultra Ball > play:Spectrier",
+        "count": 1,
+        "fraction": 0.014492753623188406
+      }
+    ],
+    "top_turn_trigrams": [
+      {
+        "key": "play:Poké Pad > play:Ultra Ball > play:Ultra Ball",
+        "count": 2,
+        "fraction": 0.0392156862745098
+      },
+      {
+        "key": "play:Poké Pad > play:Poké Pad > play:Ultra Ball",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Hilda > attach:Telepath Psychic Energy->Mega Kangaskhan ex > retreat",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > retreat > ability:Academy at Night",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "retreat > ability:Academy at Night > attack:Slowking",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > attach:Telepath Psychic Energy->Mega Kangaskhan ex > ability:Academy at Night",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > ability:Academy at Night > attack:Slowking",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Slowpoke > play:Slowpoke > play:Slowpoke",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Slowpoke > play:Slowpoke > retreat",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Poké Pad > ability:Academy at Night > attach:Basic {P} Energy->Latias ex",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "evolve:Slowking > ability:Academy at Night > retreat",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Night Stretcher > play:Lillie's Determination > attach:Basic {P} Energy->Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Poké Pad > attach:Telepath Psychic Energy->Mega Kangaskhan ex > play:Ciphermaniac’s Codebreaking",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > play:Ciphermaniac’s Codebreaking > play:Lillie's Determination",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > play:Lillie's Determination > retreat",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "ability:Academy at Night > retreat > attack:Slowking",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Fezandipiti ex > play:Night Stretcher > play:Night Stretcher",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Night Stretcher > play:Night Stretcher > retreat",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Meowth ex > play:Lillie's Determination > play:Spectrier",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Lillie's Determination > play:Spectrier > retreat",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Spectrier > retreat > retreat",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "retreat > retreat > attack:Smoochum",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > play:Ciphermaniac’s Codebreaking > play:Ciphermaniac’s Codebreaking",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Lillie's Determination > play:Night Stretcher > retreat",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Night Stretcher > retreat > play:Slowpoke",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "retreat > play:Slowpoke > end",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "attach:Basic {P} Energy->Meowth ex > ability:Academy at Night > attach:Basic {P} Energy->Latias ex",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Ultra Ball > play:Poké Pad > play:Ultra Ball",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Night Stretcher > play:Poké Pad > play:Ultra Ball",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Night Stretcher > play:Night Stretcher > attach:Basic {P} Energy->Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Night Stretcher > attach:Basic {P} Energy->Mega Kangaskhan ex > attach:Basic {P} Energy->Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "attach:Basic {P} Energy->Mega Kangaskhan ex > attach:Basic {P} Energy->Mega Kangaskhan ex > attach:Basic {P} Energy->Fezandipiti ex",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Ultra Ball > play:Spectrier > attack:Slowpoke",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Spectrier > attack:Slowpoke > attack:Slowpoke",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Fezandipiti ex > evolve:Slowking > play:Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Night Stretcher > play:Night Stretcher > play:Night Stretcher",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Poké Pad > play:Fezandipiti ex > play:Kyurem",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Fezandipiti ex > play:Kyurem > evolve:Slowking",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Kyurem > evolve:Slowking > retreat",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Latias ex > play:Ultra Ball > attach:Telepath Psychic Energy->Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Ultra Ball > attach:Telepath Psychic Energy->Mega Kangaskhan ex > attach:Telepath Psychic Energy->Slowpoke",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Academy at Night > play:Wondrous Patch > play:Switch",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Wondrous Patch > play:Switch > play:Switch",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Switch > play:Switch > attack:Smoochum",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "evolve:Slowking > ability:Academy at Night > attach:Telepath Psychic Energy->Mega Kangaskhan ex",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Lillie's Determination > play:Fezandipiti ex > play:Academy at Night",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Fezandipiti ex > play:Academy at Night > end",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "attach:Telepath Psychic Energy->Mega Kangaskhan ex > play:Prime Catcher > play:Ciphermaniac’s Codebreaking",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Ciphermaniac’s Codebreaking > play:Poké Pad > play:Slowpoke",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      },
+      {
+        "key": "play:Poké Pad > play:Slowpoke > attach:Basic {P} Energy->Latias ex",
+        "count": 1,
+        "fraction": 0.0196078431372549
+      }
+    ]
+  },
+  "card_moves": {
+    "19": [
+      "n/a"
+    ],
+    "115": [
+      "Tantrum",
+      "Gutsy Swing"
+    ],
+    "140": [
+      "[Ability] Flip the Script",
+      "Cruel Arrow"
+    ],
+    "144": [
+      "[Ability] Plasma Bane",
+      "Trifrost"
+    ],
+    "162": [
+      "Dangle Tail",
+      "Tackle"
+    ],
+    "163": [
+      "Seek Inspiration",
+      "Super Psy Bolt"
+    ],
+    "183": [
+      "Delightful Kiss"
+    ],
+    "184": [
+      "[Ability] Skyliner",
+      "Eon Blade"
+    ],
+    "224": [
+      "Tantrum",
+      "Destined Fight"
+    ],
+    "756": [
+      "[Ability] Run Errand",
+      "Rapid-Fire Combo"
+    ],
+    "880": [
+      "Spooky Shot",
+      "Phantasmal Barrage"
+    ],
+    "1071": [
+      "[Ability] Last-Ditch Catch",
+      "Tuck Tail"
+    ],
+    "1088": [
+      "n/a"
+    ],
+    "1097": [
+      "n/a"
+    ],
+    "1121": [
+      "n/a"
+    ],
+    "1123": [
+      "n/a"
+    ],
+    "1146": [
+      "n/a"
+    ],
+    "1152": [
+      "n/a"
+    ],
+    "1188": [
+      "n/a"
+    ],
+    "1194": [
+      "n/a"
+    ],
+    "1225": [
+      "n/a"
+    ],
+    "1227": [
+      "n/a"
+    ],
+    "1248": [
+      "n/a"
+    ]
+  },
+  "games": [
+    {
+      "episode_id": "89229410",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "カントー地方マスター(KantoRegionMaster)",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 45,
+      "seek_sources": [
+        144,
+        144
+      ]
+    },
+    {
+      "episode_id": "89231467",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Dries @ Tufa Labs",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 47,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89231470",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Dominic Peel",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 39,
+      "seek_sources": [
+        144,
+        115
+      ]
+    },
+    {
+      "episode_id": "89264223",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "カントー地方マスター(KantoRegionMaster)",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 43,
+      "seek_sources": [
+        144
+      ]
+    },
+    {
+      "episode_id": "89267427",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "やる気元気ミワハルキ",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 42,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89277224",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Sixth Sense",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 45,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89280181",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Kosmostars",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 33,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89283511",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Rmy",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 3,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89299473",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "M Sato",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 48,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89301587",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "M Sato",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 51,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89314498",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "Sixth Sense",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 12,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89318754",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "insuperabilehart",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 64,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89332281",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "sadwat",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 34,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89334793",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "隔壁老王",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "second",
+      "decision_frames": 21,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89338183",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "sadwat",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": 1,
+      "result": "win",
+      "turn_order": "first",
+      "decision_frames": 39,
+      "seek_sources": []
+    },
+    {
+      "episode_id": "89345880",
+      "seat": 1,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "低消650元任你吃啊",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "second",
+      "decision_frames": 36,
+      "seek_sources": [
+        115,
+        115
+      ]
+    }
+  ],
+  "limitations": [
+    "Observational replay evidence cannot identify unchosen counterfactual actions.",
+    "Opponent team names are not equivalent to normalized deck archetypes.",
+    "Win rate is conditional on this public daily opponent mix, not a formal paired gate.",
+    "Repeated deterministic actions may reflect simulator or policy implementation artifacts."
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schema": "poke_bot.alakazam_r175_iter20_finalizer_stage/v1",
+  "owner_goal_revision": 194,
+  "status": "completed_ceiling_accepted_frozen_registered",
+  "specialist_id": "alakazam",
+  "run_name": "final_format_alakazam_rtp_r175_i_v6_8k",
+  "activated_at_utc": "2026-08-09T00:06:31.058852+00:00",
+  "trainer": {
+    "unit": "pokebot-final-format-alakazam-rtp-r175-rl.service",
+    "main_pid_after_activation": 2529475,
+    "restart_count_after_activation": 0,
+    "interrupted": false
+  },
+  "boundary": {
+    "unit": "pokebot-final-format-alakazam-rtp-r175-iter20-boundary.service",
+    "completed_iteration": 20,
+    "forbidden_next_iteration": 21,
+    "status_receipt": "/home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-boundary-r193.json",
+    "successor_unit": "pokebot-final-format-alakazam-rtp-r175-iter20-finalize.service",
+    "unit_sha256": "sha256:2cb47b7f568ac90e088644736678aded1fb3294905e4160d4c6b92ee0451f25d",
+    "watcher_sha256": "sha256:dec45efb685d44e3dc39a83c8717d4864c8ee3fb5366a4f1cd4239964b886146",
+    "stable_receipt_before_successor_start": true
+  },
+  "finalizer": {
+    "unit": "pokebot-final-format-alakazam-rtp-r175-iter20-finalize.service",
+    "unit_sha256": "sha256:542771a397ffcf19b3103824d0c41e0598a243ef6324db4bc93e3efab91821bb",
+    "script": "/home/inzi/poke-bot-agent/scripts/finalize_alakazam_rtp_r175_iter20.py",
+    "script_sha256": "sha256:5467b1c25b12290090991ec9db54e2f1abc3066d3c870ccc334a58e02864557d",
+    "requires_inactive_trainer": true,
+    "requires_no_iteration_21_commit": true,
+    "requires_no_uncommitted_iteration_21_start": true,
+    "requires_exact_8196_collection": true,
+    "requires_exact_4098_4098_seat_split": true,
+    "requires_matchup_runtime_contract": true,
+    "requires_strict_two_endpoint_remote_proof": true,
+    "requires_checksum_verified_collection_plan_and_shard": true,
+    "requires_h10_marnie_splusplus_floor_games": 1024,
+    "requires_h10_marnie_exact_content_digest": "sha256:f7c25cfd0bba674ceb4c2156a6e2fef87a3ff9effc74ed41b33fbb17fd627787",
+    "requires_h10_marnie_strong_public_group": true,
+    "requires_h10_marnie_rtp_and_matchup_runtime_provenance": true,
+    "measured_pass_else_explicit_owner_ceiling_acceptance": true,
+    "terminal_registry": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_registry_h10_r175_iter20_terminal.json",
+    "registration_receipt": "/home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-registration-v1.json",
+    "completion_receipt": "/home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-completion-v1.json"
+  },
+  "completion": {
+    "completed_at_utc": "2026-08-09T04:06:19.331605+00:00",
+    "completed_iteration": 20,
+    "forbidden_next_iteration": 21,
+    "next_iteration_collected": false,
+    "checkpoint_sha256": "sha256:87caf05bdeda3a798268905a5670841125b1797f31b9a823343c393d7f0ced65",
+    "completion_authority": "explicit_owner_ceiling_acceptance",
+    "measured_gate_pass": false,
+    "current_gate_pass": false,
+    "failed_gate_results_preserved": true,
+    "frozen": true,
+    "registered": true,
+    "completion_receipt": "/home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-completion-v1.json",
+    "completion_receipt_sha256": "sha256:34444545bb93db19d7d6e25a59889b8f3927be85c44246725eac3e375f1cc828",
+    "registration_receipt_sha256": "sha256:f885644b0efaeec26be27c6fb14329bfbbea4c06569f07cdf5b0bf5192f7194a",
+    "terminal_registry_sha256": "sha256:37024aa2e25c71218295ee8bd07f924afa47eb3d4d2f386ff2af002c833fd37e"
+  }
+}

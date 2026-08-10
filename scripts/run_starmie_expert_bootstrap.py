@@ -38,6 +38,7 @@ from poke_bot.model import (
     DECISION_FUSION_REQUIRED_HEADS,
     DECISION_FUSION_SCHEMA,
     DECISION_FUSION_V2_SCHEMA,
+    DECISION_FUSION_V3_SCHEMA,
     SETUP_BOARD_OUTCOME_HEAD_NAME,
 )
 from poke_bot.strategic_heads import (
@@ -47,6 +48,7 @@ from poke_bot.strategic_heads import (
 from poke_bot.strategic_schedule import (
     EXPANDED_HEAD_IDS,
     EXPANDED_SCHEDULE_SCHEMA,
+    all_expanded_heads_live_epoch_plan,
     expanded_head_epoch_plan,
     expanded_schedule_digest,
     validated_expanded_head_schedule,
@@ -459,6 +461,60 @@ def current_deck_guide_epoch_weight(
         return end_weight
     fraction = float(epoch - start_epoch) / float(end_epoch - start_epoch)
     return start_weight + fraction * (end_weight - start_weight)
+
+
+def _slop_box_ce_intensify_guide_rebind_ok(
+    old: dict[str, Any],
+    new: dict[str, Any],
+) -> bool:
+    """Allow owner r170 CE-intensify guide schedule/contract rebind only."""
+
+    if not isinstance(old, dict) or not isinstance(new, dict):
+        return False
+    if (
+        old.get("specialist_id") != new.get("specialist_id")
+        or old.get("guide_version") != new.get("guide_version")
+        or old.get("training_mode") != new.get("training_mode")
+        or old.get("policy_target") != new.get("policy_target")
+        or old.get("corpus_ready_receipt_sha256")
+        != new.get("corpus_ready_receipt_sha256")
+        or old.get("runtime_action_override") is not False
+        or new.get("runtime_action_override") is not False
+    ):
+        return False
+    new_schedule = dict(new.get("bootstrap_schedule") or {})
+    owner_schedule = dict(new.get("owner_epoch_schedule") or {})
+    hold_through = int(new_schedule.get("hold_through_epoch", -1))
+    # Owner r170 CE intensify: 40-epoch first pass, then 60-epoch Cox/Chao
+    # upweight continuation from the same run_dir history.
+    if hold_through not in {40, 60, 80, 120, 300}:
+        return False
+    if (
+        list(new_schedule.get("ramp_epochs") or []) != [1, 5]
+        or float(new_schedule.get("ramp_start_weight", -1.0)) != 0.05
+        or float(new_schedule.get("ramp_end_weight", -1.0)) != 0.25
+        or float(new_schedule.get("maximum_loss_weight", -1.0)) != 0.25
+        or float(new.get("runtime_initial_weight", -1.0)) != 0.25
+        or owner_schedule.get("schema")
+        != "poke_bot.slop_box_ce_intensify_epochs/v1"
+        or int(owner_schedule.get("owner_goal_revision", -1)) != 170
+        or int((owner_schedule.get("guide_active_epochs") or [0, -1])[-1])
+        != hold_through
+        or int((owner_schedule.get("expert_policy_ce_epochs") or [0, -1])[-1])
+        != hold_through
+    ):
+        return False
+    old_sc = dict(old.get("strategic_curriculum") or {})
+    new_sc = dict(new.get("strategic_curriculum") or {})
+    for key in (
+        "schema",
+        "training_mode",
+        "guide_curriculum_revision",
+        "decision_fusion_schema",
+    ):
+        if old_sc.get(key) != new_sc.get(key):
+            return False
+    return True
 
 
 def specialist_bootstrap_guide_weight(
@@ -1392,6 +1448,15 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=0,
     )
+    parser.add_argument(
+        "--owner-slop-box-ce-intensify-epochs",
+        type=int,
+        default=0,
+        help=(
+            "Owner r170 Slop Box exception: continue expert policy CE + guide "
+            "through this many total epochs (e.g. 300) past the locked 25."
+        ),
+    )
     parser.add_argument("--patience", type=int, default=5)
     parser.add_argument("--min-delta", type=float, default=1e-4)
     parser.add_argument("--min-decisions", type=int, default=100_000)
@@ -1473,14 +1538,28 @@ def main(argv: list[str] | None = None) -> int:
         and int(args.owner_crustle_guide_free_refresh_epochs) == 0
         and int(args.epochs) == 35
     )
-    if not crustle_extended_refresh and (
-        int(args.epochs) != 25
-        or int(args.owner_crustle_guide_active_epochs) != 0
-        or int(args.owner_crustle_guide_free_refresh_epochs) != 0
+    INNER_EPOCHS = 5  # Slop Box multi-pass CE per bootstrap epoch
+    slop_box_ce_intensify = (
+        archetype == "teal-mask-ogerpon-ex"
+        and int(args.owner_slop_box_ce_intensify_epochs) == int(args.epochs)
+        and int(args.epochs) in {40, 60, 80, 120, 300}
+        and int(args.owner_crustle_guide_active_epochs) == 0
+        and int(args.owner_crustle_guide_free_refresh_epochs) == 0
+    )
+    if (
+        not crustle_extended_refresh
+        and not slop_box_ce_intensify
+        and (
+            int(args.epochs) != 25
+            or int(args.owner_crustle_guide_active_epochs) != 0
+            or int(args.owner_crustle_guide_free_refresh_epochs) != 0
+            or int(args.owner_slop_box_ce_intensify_epochs) != 0
+        )
     ):
         raise ValueError(
             "specialist bootstrap is locked to 25 epochs except for the "
-            "owner-scoped Crustle all-guide 35-epoch bootstrap"
+            "owner-scoped Crustle all-guide 35-epoch bootstrap or the "
+            "owner-scoped Slop Box CE intensify 40/60/80/120/300-epoch bootstrap"
         )
     retained_h10_combo = bool(args.retain_inherited_h10_combo_state_head)
     combo_state_architecture = bool(args.combo_state_head or retained_h10_combo)
@@ -1493,6 +1572,13 @@ def main(argv: list[str] | None = None) -> int:
             "inherited H10 combo-state retention requires an H10 parent and "
             "decision fusion, and is distinct from Slowking pretraining"
         )
+    # Owner r175: Alakazam CE/rebootstrap trains every non-combo expanded head
+    # with protocol nonzero weights from epoch 1 (no staged zero-weight shadow).
+    alakazam_all_heads_live = bool(
+        archetype == "alakazam"
+        and args.expanded_heads
+        and not combo_state_architecture
+    )
     expanded_raw: dict[str, Any] | None = None
     expanded_identity: dict[str, Any] | None = None
     if args.expanded_heads:
@@ -1587,10 +1673,39 @@ def main(argv: list[str] | None = None) -> int:
                 "expert_pilot_importance_epochs": [1, 35],
             },
         }
+    elif slop_box_ce_intensify:
+        if guide_identity is None:
+            raise ValueError("Slop Box CE intensify requires its current-deck guide")
+        intensify_epochs = int(args.epochs)
+        guide_identity = {
+            **guide_identity,
+            "bootstrap_schedule": {
+                "ramp_epochs": [1, 5],
+                "ramp_start_weight": 0.05,
+                "ramp_end_weight": 0.25,
+                "hold_through_epoch": intensify_epochs,
+                "maximum_loss_weight": 0.25,
+            },
+            "runtime_initial_weight": 0.25,
+            "owner_epoch_schedule": {
+                "schema": "poke_bot.slop_box_ce_intensify_epochs/v1",
+                "owner_goal_revision": 170,
+                "guide_active_epochs": [1, intensify_epochs],
+                "expert_policy_ce_epochs": [1, intensify_epochs],
+                "final_selection_eligible_epochs": [1, intensify_epochs],
+                "setup_board_outcome_loss_weight": 0.05,
+                "rtp_trajectory_games_full_shard": True,
+                "cox_chao_train_upweight": (
+                    args.pilot_importance_index is not None
+                ),
+                "train_corpus_remains_full_archetype": True,
+            },
+        }
     elif args.pilot_importance_index is not None:
         raise ValueError(
             "generic specialist bootstrap pilot weighting is currently scoped "
-            "to the owner-authorized Crustle 35-epoch run"
+            "to the owner-authorized Crustle 35-epoch run or Slop Box CE "
+            "intensify Cox/Chao upweight continuation"
         )
     strategic_curriculum = (
         guide_identity is not None
@@ -1856,7 +1971,22 @@ def main(argv: list[str] | None = None) -> int:
         ):
             print(json.dumps(ready, indent=2), flush=True)
             return 0
-        raise RuntimeError("existing specialist readiness identity changed")
+        # Owner r170 CE intensify: a fail-closed Cox/Chao gate receipt must not
+        # block epochs 26-40 continuation on the same run_dir.
+        if not (
+            slop_box_ce_intensify
+            and ready.get("status")
+            == "failed_cox_chao_held_policy_acc_gate"
+            and ready.get("fail_closed") is True
+            and archetype == "teal-mask-ogerpon-ex"
+        ):
+            raise RuntimeError("existing specialist readiness identity changed")
+        print(
+            "[specialist-bootstrap:teal-mask-ogerpon-ex] "
+            "continuing CE intensify after failed Cox/Chao gate "
+            f"(measured={ready.get('cox_chao_held_policy_acc')})",
+            flush=True,
+        )
 
     run_dir = args.run_dir.expanduser().resolve()
     checkpoint_dir = run_dir / "checkpoints"
@@ -1879,6 +2009,14 @@ def main(argv: list[str] | None = None) -> int:
     state_path = run_dir / "state.json"
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
     if state:
+        # Owner r170: CE intensify may newly attach Cox/Chao train upweight
+        # (None → checksum-bound index) without rewriting history/corpus.
+        ce_intensify_pilot_importance_rebind = bool(
+            slop_box_ce_intensify
+            and args.pilot_importance_index is not None
+            and pilot_importance_digest is not None
+            and state.get("expert_pilot_importance_index_sha256") in {None, ""}
+        )
         fixed_identity_changed = bool(
             state.get("core_checkpoint_digest")
             != core.get("checkpoint_digest")
@@ -1888,6 +2026,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.pilot_importance_index is not None
                 and state.get("expert_pilot_importance_index_sha256")
                 != pilot_importance_digest
+                and not ce_intensify_pilot_importance_rebind
             )
             or (
                 expanded_identity is not None
@@ -1912,15 +2051,31 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             )
         )
+        # Owner r170: CE intensify may rebind guide schedule (0.05→0.25 /
+        # 40→60 epochs) and matchup-conditional contract sha while preserving
+        # the same run_dir history and expert corpus identity.
+        ce_intensify_guide_rebind = bool(
+            slop_box_ce_intensify
+            and guide_changed
+            and not receipt_only_rebind
+            and _slop_box_ce_intensify_guide_rebind_ok(
+                saved_guide, guide_identity
+            )
+        )
         if fixed_identity_changed or (
-            guide_changed and not receipt_only_rebind
+            guide_changed
+            and not receipt_only_rebind
+            and not ce_intensify_guide_rebind
         ):
             raise RuntimeError("specialist bootstrap state identity changed")
-        if receipt_only_rebind:
-            state = {
-                **state,
-                "current_deck_guide": guide_identity,
-                "validation_receipt_rebind": {
+        if (
+            receipt_only_rebind
+            or ce_intensify_guide_rebind
+            or ce_intensify_pilot_importance_rebind
+        ):
+            rebind_payload: dict[str, Any]
+            if receipt_only_rebind:
+                rebind_payload = {
                     "schema":
                         "poke_bot.bootstrap_validation_receipt_rebind/v1",
                     "old_receipt_sha256": (
@@ -1930,7 +2085,43 @@ def main(argv: list[str] | None = None) -> int:
                         guide_identity.get("strategic_curriculum") or {}
                     ).get("validation_receipt_sha256"),
                     "training_identity_unchanged": True,
-                },
+                }
+            else:
+                rebind_payload = {
+                    "schema":
+                        "poke_bot.slop_box_ce_intensify_guide_rebind/v1",
+                    "owner_goal_revision": 170,
+                    "old_contract_sha256": saved_guide.get(
+                        "contract_sha256"
+                    ),
+                    "new_contract_sha256": guide_identity.get(
+                        "contract_sha256"
+                    ),
+                    "old_bootstrap_schedule": saved_guide.get(
+                        "bootstrap_schedule"
+                    ),
+                    "new_bootstrap_schedule": guide_identity.get(
+                        "bootstrap_schedule"
+                    ),
+                    "history_epochs_preserved": len(
+                        list(state.get("history") or [])
+                    ),
+                    "continue_from_epoch": (
+                        int((list(state.get("history") or []) or [{}])[-1]
+                            .get("epoch", 0))
+                        + 1
+                    ),
+                    "cox_chao_pilot_importance_attached": (
+                        ce_intensify_pilot_importance_rebind
+                    ),
+                    "pilot_importance_index_sha256": pilot_importance_digest,
+                }
+            state = {
+                **state,
+                "current_deck_guide": guide_identity,
+                "status": "running",
+                "epochs_max": int(args.epochs),
+                "validation_receipt_rebind": rebind_payload,
             }
             atomic_json(state_path, state)
 
@@ -1976,7 +2167,9 @@ def main(argv: list[str] | None = None) -> int:
             or pilot_contract.get("validation_unweighted") is not True
             or int(pilot_contract.get("matched_top_100_train_games", 0)) <= 0
         ):
-            raise RuntimeError("Crustle weighted expert contract is not usable")
+            raise RuntimeError(
+                "weighted expert pilot-importance contract is not usable"
+            )
     history = list(state.get("history") or [])
     best_metric = float(state.get("best_metric", math.inf))
     best_path = str(state.get("best_path") or "")
@@ -2001,7 +2194,11 @@ def main(argv: list[str] | None = None) -> int:
                     active_through_epoch=(
                         int(args.owner_crustle_guide_active_epochs)
                         if crustle_extended_refresh
-                        else 0
+                        else (
+                            int(args.owner_slop_box_ce_intensify_epochs)
+                            if slop_box_ce_intensify
+                            else 0
+                        )
                     ),
                 )
                 if guide_identity is not None
@@ -2010,11 +2207,24 @@ def main(argv: list[str] | None = None) -> int:
             plan = (
                 expanded_head_epoch_plan(
                     expanded_raw,
-                    min(epoch, 25) if crustle_extended_refresh else epoch,
+                    (
+                        min(epoch, 25)
+                        if (crustle_extended_refresh or slop_box_ce_intensify)
+                        else epoch
+                    ),
                 )
                 if expanded_raw is not None
                 else None
             )
+            if plan is not None and alakazam_all_heads_live:
+                plan = all_expanded_heads_live_epoch_plan(expanded_raw, int(epoch))
+                if int(epoch) == int(start_epoch):
+                    print(
+                        "[specialist-bootstrap:alakazam] owner r175 "
+                        "all-heads-live: every expanded head nonzero; "
+                        "combo_state disabled",
+                        flush=True,
+                    )
             output = checkpoint_dir / f"epoch_{epoch:02d}.pt"
             if output.is_file():
                 saved = checkpoint.load_checkpoint(output, map_location="cpu")
@@ -2123,6 +2333,59 @@ def main(argv: list[str] | None = None) -> int:
                         else {}
                     ),
                 }
+                # Non-guide head weights: for Slop Box CE intensify, adaptively
+                # shrink competing aux heads when they dominate policy CE so the
+                # full joint model still trains but policy accuracy gets more
+                # loss allowance. Guide weight stays on its owner schedule only
+                # (no extra guide reliance).
+                non_guide_weights = {
+                    "aux_loss_weight": 0.05,
+                    "opp_hand_loss_weight": 0.05,
+                    "opp_remainder_loss_weight": 0.05,
+                    "lethal_threat_loss_weight": 0.025,
+                    "prize_race_loss_weight": 0.025,
+                    "setup_board_outcome_loss_weight": (
+                        0.05 if slop_box_ce_intensify else 0.025
+                    ),
+                    # Retained H10 combo-state (Marnie/Crustle/Slop Box) must
+                    # train under the ordinary 0.025 weight whenever the head is
+                    # architecturally present. --combo-state-head is the
+                    # Slowking pretraining flag only; do not zero the retained
+                    # H10 head when that flag is absent. Missing labels stay
+                    # masked (loss 0) rather than inventing targets.
+                    "combo_state_loss_weight": (
+                        0.025 if combo_state_architecture else 0.0
+                    ),
+                }
+                if slop_box_ce_intensify:
+                    # Owner: maximize policy CE allowance while still training
+                    # every non-guide head (joint full model). Keep guide on its
+                    # schedule only — do not raise guide reliance.
+                    prev = dict((history[-1].get("validation_metrics") or {}) if history else {})
+                    prev_acc = float(prev.get("policy_acc") or 0.0)
+                    # Strong policy priority after the original 25-epoch lock.
+                    if int(epoch) > 25:
+                        scale = 0.25 if prev_acc < 0.90 else 0.45
+                    else:
+                        scale = 0.70
+                    for key in list(non_guide_weights):
+                        if key == "setup_board_outcome_loss_weight":
+                            non_guide_weights[key] = (
+                                0.05 if scale >= 0.7 else 0.025
+                            )
+                        elif non_guide_weights[key] > 0.0:
+                            floor = 0.005
+                            non_guide_weights[key] = max(
+                                floor, float(non_guide_weights[key]) * scale
+                            )
+                    print(
+                        f"[specialist-bootstrap:{archetype}] "
+                        f"non_guide_weight_scale={scale:.3f} "
+                        f"inner_epochs={INNER_EPOCHS} "
+                        f"prev_policy_acc={prev_acc:.4f} "
+                        f"weights={non_guide_weights}",
+                        flush=True,
+                    )
                 rehearsal_kwargs = {
                     "base_ckpt": parent,
                     "output_path": output,
@@ -2140,20 +2403,35 @@ def main(argv: list[str] | None = None) -> int:
                             else {}
                         ),
                     },
-                    "epochs": 1,
+                    "epochs": (
+                        int(INNER_EPOCHS)
+                        if slop_box_ce_intensify
+                        else 1
+                    ),
                     "lr": 5e-5,
                     "requested_batch_size": int(args.batch_size),
                     "seed": 20260722 + epoch,
                     "corpus_split_seed": int(args.split_seed),
                     "device": device,
-                    "aux_loss_weight": 0.05,
-                    "opp_hand_loss_weight": 0.05,
-                    "opp_remainder_loss_weight": 0.05,
-                    "lethal_threat_loss_weight": 0.025,
-                    "prize_race_loss_weight": 0.025,
+                    "aux_loss_weight": float(non_guide_weights["aux_loss_weight"]),
+                    "opp_hand_loss_weight": float(
+                        non_guide_weights["opp_hand_loss_weight"]
+                    ),
+                    "opp_remainder_loss_weight": float(
+                        non_guide_weights["opp_remainder_loss_weight"]
+                    ),
+                    "lethal_threat_loss_weight": float(
+                        non_guide_weights["lethal_threat_loss_weight"]
+                    ),
+                    "prize_race_loss_weight": float(
+                        non_guide_weights["prize_race_loss_weight"]
+                    ),
                     "alakazam_guide_loss_weight": guide_weight,
-                    "combo_state_loss_weight": (
-                        0.025 if bool(args.combo_state_head) else 0.0
+                    "setup_board_outcome_loss_weight": float(
+                        non_guide_weights["setup_board_outcome_loss_weight"]
+                    ),
+                    "combo_state_loss_weight": float(
+                        non_guide_weights["combo_state_loss_weight"]
                     ),
                     "current_deck_guide_training_mode": (
                         str(guide_identity["training_mode"])
@@ -2374,6 +2652,80 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError(
             "specialist bootstrap did not complete its exact epoch contract"
         )
+    # Slop Box CE intensify: if val-loss best lacks trained fusion (common when
+    # best remains a pre-extension epoch), reselect the fusion-valid checkpoint
+    # with highest validation policy_acc so continuation epochs can finalize.
+    if slop_box_ce_intensify and fusion_identity is not None:
+        def _fusion_ok(path: Path) -> bool:
+            try:
+                payload = checkpoint.load_checkpoint(path, map_location="cpu")
+            except Exception:
+                return False
+            cfg = dict(payload.get("model_config") or {})
+            prov = dict(
+                (payload.get("provenance") or {}).get("decision_fusion") or {}
+            )
+            state = dict(payload.get("model_state_dict") or {})
+            out_w = state.get("decision_fusion.residual.2.weight")
+            routes = {
+                n: t
+                for n, t in state.items()
+                if n.startswith("decision_fusion.dedicated_routes.")
+                and n.endswith(".network.2.weight")
+            }
+            if cfg.get("decision_fusion_enabled") is not True:
+                return False
+            if cfg.get("decision_fusion_runtime_enabled") is not True:
+                return False
+            if prov.get("runtime_enabled") is not True:
+                return False
+            if not isinstance(out_w, torch.Tensor) or not bool(
+                torch.count_nonzero(out_w).item()
+            ):
+                return False
+            expected = {
+                "decision_fusion.dedicated_routes."
+                f"{name}.network.2.weight"
+                for name in fusion_identity["required_heads"]
+            }
+            if set(routes) != expected:
+                return False
+            return all(
+                isinstance(t, torch.Tensor)
+                and bool(torch.count_nonzero(t).item())
+                for t in routes.values()
+            )
+
+        ranked = sorted(
+            (
+                (
+                    float(row.get("validation_accuracy") or 0.0),
+                    -float(row.get("validation_loss") or 1e9),
+                    int(row.get("epoch") or 0),
+                    row,
+                )
+                for row in history
+                if _fusion_ok(Path(str(row.get("checkpoint") or "")))
+            ),
+            reverse=True,
+        )
+        if ranked:
+            chosen = ranked[0][3]
+            best_path = str(chosen["checkpoint"])
+            best_digest = str(chosen["checkpoint_digest"])
+            best_metric = float(chosen.get("validation_loss") or best_metric)
+            print(
+                f"[specialist-bootstrap:{archetype}] "
+                f"slop-box fusion-valid reselect epoch={chosen.get('epoch')} "
+                f"policy_acc={float(chosen.get('validation_accuracy') or 0.0):.6f} "
+                f"val_loss={float(chosen.get('validation_loss') or 0.0):.6f}",
+                flush=True,
+            )
+        else:
+            raise RuntimeError(
+                "Slop Box CE intensify has no fusion-valid bootstrap checkpoint"
+            )
+
     best = Path(best_path).resolve()
     if not best.is_file() or checkpoint.checkpoint_digest(best) != best_digest:
         raise RuntimeError("selected specialist bootstrap identity is invalid")
@@ -2411,15 +2763,15 @@ def main(argv: list[str] | None = None) -> int:
             if name.startswith("decision_fusion.dedicated_routes.")
             and name.endswith(".network.2.weight")
         }
-        expected_fusion_schema = (
-            DECISION_FUSION_V2_SCHEMA
+        expected_fusion_schemas = (
+            {DECISION_FUSION_V2_SCHEMA, DECISION_FUSION_V3_SCHEMA}
             if strategic_curriculum
-            else DECISION_FUSION_SCHEMA
+            else {DECISION_FUSION_SCHEMA}
         )
         if (
             best_config.get("decision_fusion_enabled") is not True
             or best_config.get("decision_fusion_runtime_enabled") is not True
-            or fusion_inventory.get("schema") != expected_fusion_schema
+            or fusion_inventory.get("schema") not in expected_fusion_schemas
             or fusion_inventory.get("runtime_enabled") is not True
             or fusion_inventory.get("required_heads")
             != list(fusion_identity["required_heads"])
@@ -2484,7 +2836,11 @@ def main(argv: list[str] | None = None) -> int:
                 active_through_epoch=(
                     int(args.owner_crustle_guide_active_epochs)
                     if crustle_extended_refresh
-                    else 0
+                    else (
+                        int(args.owner_slop_box_ce_intensify_epochs)
+                        if slop_box_ce_intensify
+                        else 0
+                    )
                 ),
             ),
         )

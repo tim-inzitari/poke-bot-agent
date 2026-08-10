@@ -20,7 +20,13 @@ from poke_bot.model import (
     DECISION_FUSION_SCHEMA,
 )
 from scripts.launch_active_specialist import (
+    R192_HISTORICAL_MARNIE_OPPONENT_ID,
+    R192_MARNIE_H10_CHECKPOINT_DIGEST,
+    R192_MARNIE_H10_CONTENT_DIGEST,
+    R192_MARNIE_H10_OPPONENT_ID,
+    R192_SPLUSPLUS_SEMANTICS_KEY,
     _build_command,
+    _gate_runtime,
     _load_registry,
     _required_runtime_fusion_heads,
     _resolve,
@@ -1032,3 +1038,183 @@ def test_gate_total_scales_with_every_frozen_predecessor(tmp_path: Path) -> None
         "gate-v1+frozen-specialists-r2"
     )
     assert command[command.index("--heldout-games") + 1] == "2500"
+
+
+def _r192_marnie_gate_fixture() -> tuple[dict, dict]:
+    historical_checkpoint = "sha256:" + "1" * 64
+    historical_content = "sha256:" + "2" * 64
+    h10_row = {
+        "opponent_id": R192_MARNIE_H10_OPPONENT_ID,
+        "content_digest": R192_MARNIE_H10_CONTENT_DIGEST,
+        "frozen_specialist": True,
+        "frozen_checkpoint_digest": R192_MARNIE_H10_CHECKPOINT_DIGEST,
+        "tier": "S++",
+        "weight": 4.0,
+        "strong_public_practice_floor_games": 1024,
+    }
+    historical_row = {
+        "opponent_id": R192_HISTORICAL_MARNIE_OPPONENT_ID,
+        "content_digest": historical_content,
+        "frozen_specialist": True,
+        "frozen_checkpoint_digest": historical_checkpoint,
+        "tier": "S+",
+        "weight": 2.0,
+    }
+    gate = {
+        "next_gate": {
+            "id": "alakazam-r175+r192-marnie-splusplus",
+            "evaluation": {
+                "games_total": 1000,
+                "games_per_opponent": 250,
+                "seat0_games_per_opponent": 125,
+                "seat1_games_per_opponent": 125,
+            },
+            "roster": [
+                {
+                    "opponent_id": "public-s-tier",
+                    "content_digest": "sha256:" + "3" * 64,
+                    "tier": "S",
+                    "weight": 2.0,
+                },
+                {
+                    "opponent_id": "public-a-tier",
+                    "content_digest": "sha256:" + "4" * 64,
+                    "tier": "A",
+                    "weight": 1.0,
+                },
+                historical_row,
+                h10_row,
+            ],
+        },
+        "active_gate_semantics": {
+            "base_premium_agents": 2,
+            R192_SPLUSPLUS_SEMANTICS_KEY: {
+                "opponent_id": R192_MARNIE_H10_OPPONENT_ID,
+                "checkpoint_digest": R192_MARNIE_H10_CHECKPOINT_DIGEST,
+                "content_digest": R192_MARNIE_H10_CONTENT_DIGEST,
+                "tier": "S++",
+                "weight": 4.0,
+                "strong_public_practice_floor_games": 1024,
+            },
+        },
+    }
+    frozen = {
+        "schema": "poke_bot.frozen_specialist_registry/v1",
+        "specialists": [
+            {
+                "opponent_id": R192_HISTORICAL_MARNIE_OPPONENT_ID,
+                "checkpoint_digest": historical_checkpoint,
+                "content_digest": historical_content,
+                "frozen": True,
+                "public_mix_eligible": True,
+            },
+            {
+                "opponent_id": R192_MARNIE_H10_OPPONENT_ID,
+                "checkpoint_digest": R192_MARNIE_H10_CHECKPOINT_DIGEST,
+                "content_digest": R192_MARNIE_H10_CONTENT_DIGEST,
+                "final_format_h10_refresh": True,
+                "frozen": True,
+                "public_mix_eligible": True,
+            },
+        ],
+    }
+    return gate, frozen
+
+
+def _write_r192_marnie_gate(
+    tmp_path: Path,
+    gate: dict,
+    frozen: dict,
+) -> tuple[Path, Path]:
+    gate_path = tmp_path / "gate.json"
+    frozen_path = tmp_path / "frozen.json"
+    gate_path.write_text(json.dumps(gate), encoding="utf-8")
+    frozen_path.write_text(json.dumps(frozen), encoding="utf-8")
+    return gate_path, frozen_path
+
+
+def test_gate_runtime_accepts_only_exact_additional_r192_marnie_splusplus(
+    tmp_path: Path,
+) -> None:
+    gate, frozen = _r192_marnie_gate_fixture()
+    h10 = next(
+        row
+        for row in gate["next_gate"]["roster"]
+        if row["opponent_id"] == R192_MARNIE_H10_OPPONENT_ID
+    )
+    assert h10["strong_public_practice_floor_games"] == 1024
+    assert (
+        gate["active_gate_semantics"][R192_SPLUSPLUS_SEMANTICS_KEY][
+            "strong_public_practice_floor_games"
+        ]
+        == 1024
+    )
+    gate_path, frozen_path = _write_r192_marnie_gate(tmp_path, gate, frozen)
+
+    assert _gate_runtime(gate_path, frozen_path) == (
+        "alakazam-r175+r192-marnie-splusplus",
+        1000,
+    )
+    assert [
+        (row["tier"], row["weight"])
+        for row in gate["next_gate"]["roster"]
+        if row.get("frozen_specialist") is not True
+    ] == [("S", 2.0), ("A", 1.0)]
+
+
+def test_gate_runtime_preserves_legacy_marnie_and_rejects_r192_aliases(
+    tmp_path: Path,
+) -> None:
+    gate, frozen = _r192_marnie_gate_fixture()
+    historical = next(
+        row
+        for row in gate["next_gate"]["roster"]
+        if row["opponent_id"] == R192_HISTORICAL_MARNIE_OPPONENT_ID
+    )
+    historical["tier"] = "A"
+    gate_path, frozen_path = _write_r192_marnie_gate(tmp_path, gate, frozen)
+    with pytest.raises(RuntimeError, match="S\\+ tier mismatch"):
+        _gate_runtime(gate_path, frozen_path)
+
+    gate, frozen = _r192_marnie_gate_fixture()
+    gate["next_gate"]["roster"] = [
+        row
+        for row in gate["next_gate"]["roster"]
+        if row["opponent_id"] != R192_HISTORICAL_MARNIE_OPPONENT_ID
+    ]
+    gate["next_gate"]["evaluation"]["games_total"] = 750
+    frozen["specialists"] = [
+        row
+        for row in frozen["specialists"]
+        if row["opponent_id"] != R192_HISTORICAL_MARNIE_OPPONENT_ID
+    ]
+    gate_path, frozen_path = _write_r192_marnie_gate(tmp_path, gate, frozen)
+    with pytest.raises(RuntimeError, match="requires distinct H10 and historical rows"):
+        _gate_runtime(gate_path, frozen_path)
+
+    gate, frozen = _r192_marnie_gate_fixture()
+    historical = next(
+        row
+        for row in gate["next_gate"]["roster"]
+        if row["opponent_id"] == R192_HISTORICAL_MARNIE_OPPONENT_ID
+    )
+    h10 = next(
+        row
+        for row in gate["next_gate"]["roster"]
+        if row["opponent_id"] == R192_MARNIE_H10_OPPONENT_ID
+    )
+    h10["content_digest"] = historical["content_digest"]
+    gate_path, frozen_path = _write_r192_marnie_gate(tmp_path, gate, frozen)
+    with pytest.raises(RuntimeError, match="roster has an alias"):
+        _gate_runtime(gate_path, frozen_path)
+
+    gate, frozen = _r192_marnie_gate_fixture()
+    h10 = next(
+        row
+        for row in gate["next_gate"]["roster"]
+        if row["opponent_id"] == R192_MARNIE_H10_OPPONENT_ID
+    )
+    h10.pop("strong_public_practice_floor_games")
+    gate_path, frozen_path = _write_r192_marnie_gate(tmp_path, gate, frozen)
+    with pytest.raises(RuntimeError, match="checksum binding changed"):
+        _gate_runtime(gate_path, frozen_path)

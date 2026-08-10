@@ -245,6 +245,45 @@ def test_coordinator_repairs_stale_remote_label_before_compaction() -> None:
     assert game.target_provenance["opponent_archetype_id"] == "lucario"
 
 
+def test_recordless_practice_result_is_left_for_exact_cell_retry() -> None:
+    writer = _Writer()
+    stats = _stats()
+    seen: set[int] = set()
+    successful: set[int] = set()
+    written: set[int] = set()
+
+    trainer._consume_results(
+        [
+            {
+                "job_index": 41,
+                "opponent_id": "yaminh-ai-challenge",
+                "our_seat": 0,
+                "winner": 0,
+                "record_json": None,
+            }
+        ],
+        writer,
+        [],
+        stats,
+        practice_record_contracts={
+            41: {
+                "opponent_id": "yaminh-ai-challenge",
+                "opponent_archetype_id": "lucario",
+                "active_gate_id": "alakazam-strong-public-roster-v1",
+                "our_seat": "0",
+            }
+        },
+        practice_seen_indices=seen,
+        practice_successful_indices=successful,
+        practice_written_indices=written,
+    )
+
+    assert seen == {41}
+    assert successful == written == set()
+    assert writer.games == []
+    assert stats["strong_public_practice_recordless_results"] == 1
+
+
 def test_coordinator_rejects_wrong_or_duplicate_practice_result_identity() -> None:
     contract = {
         7: {

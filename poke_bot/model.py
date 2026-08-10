@@ -419,6 +419,7 @@ class CausalDecisionFusion(nn.Module):
         ),
         setup_board_outcome_outputs: int = 0,
         combo_state_outputs: int = 0,
+        combo_state_route_enabled: bool = True,
         typed_output_centered_routes: bool = False,
         action_type_reliability_cap: float = 1.0,
     ) -> None:
@@ -516,15 +517,50 @@ class CausalDecisionFusion(nn.Module):
             if self.typed_output_centered_routes
             else {}
         )
+        # This intentionally leaves ``combo_state`` in both ModuleDicts.  H10
+        # checkpoints own those tensor names, and the runtime gate must not
+        # turn an action-policy choice into an architecture migration.
+        self.combo_state_route_enabled = bool(combo_state_route_enabled)
+        self.disabled_dedicated_route_names = frozenset(
+            {"combo_state"}
+            if (
+                "combo_state" in self.dedicated_route_dims
+                and not self.combo_state_route_enabled
+            )
+            else ()
+        )
 
     @property
-    def required_heads(self) -> tuple[str, ...]:
+    def physical_required_heads(self) -> tuple[str, ...]:
+        """Checkpoint-resident fusion source inventory.
+
+        This remains stable when a specialist turns off a runtime route: H10
+        checkpoint/provenance contracts continue to name every physical head
+        and dedicated-route tensor.
+        """
+
         optional = tuple(
             name
             for name in DECISION_FUSION_V2_OPTIONAL_HEADS
             if name in self.dedicated_route_dims
         )
         return (*DECISION_FUSION_REQUIRED_HEADS, *optional)
+
+    @property
+    def required_heads(self) -> tuple[str, ...]:
+        """Backward-compatible alias for the physical checkpoint inventory."""
+
+        return self.physical_required_heads
+
+    @property
+    def active_required_heads(self) -> tuple[str, ...]:
+        """Sources that must participate in the current action/guide route."""
+
+        return tuple(
+            name
+            for name in self.physical_required_heads
+            if name not in self.disabled_dedicated_route_names
+        )
 
     @staticmethod
     def _bounded(value: Tensor) -> Tensor:
@@ -541,7 +577,7 @@ class CausalDecisionFusion(nn.Module):
     ) -> Tensor:
         missing = [
             name
-            for name in self.required_heads
+            for name in self.active_required_heads
             if name not in state_sources and name not in option_sources
         ]
         if missing:
@@ -616,6 +652,8 @@ class CausalDecisionFusion(nn.Module):
         batch_size, option_count, _ = option_hidden.shape
         deltas: dict[str, Tensor] = {}
         for name, route in self.dedicated_routes.items():
+            if name in self.disabled_dedicated_route_names:
+                continue
             already_option_conditioned = name in option_sources
             source = (
                 option_sources[name]
@@ -687,6 +725,7 @@ class CausalDecisionFusion(nn.Module):
             "enabled": True,
             "runtime_enabled": bool(runtime_enabled),
             "required_heads": list(self.required_heads),
+            "active_required_heads": list(self.active_required_heads),
             "parameters": int(sum(p.numel() for p in self.parameters())),
             "zero_safe_initialization": True,
             "guide_excluded": True,
@@ -700,6 +739,15 @@ class CausalDecisionFusion(nn.Module):
                 "runtime_enabled": bool(dedicated_routes_runtime_enabled),
                 "route_count": route_count,
                 "route_names": list(self.dedicated_routes),
+                "active_route_names": [
+                    name
+                    for name in self.dedicated_routes
+                    if name not in self.disabled_dedicated_route_names
+                ],
+                "disabled_route_names": sorted(
+                    self.disabled_dedicated_route_names
+                ),
+                "combo_state_route_enabled": self.combo_state_route_enabled,
                 "aggregation": "fixed_mean",
                 "total_delta_cap": self.dedicated_route_total_delta_cap,
                 "zero_safe_final_projection": True,
@@ -1306,6 +1354,13 @@ class TemporalCabtTransformer(nn.Module):
         self.combo_state_head_enabled = bool(
             getattr(cfg, "combo_state_head_enabled", False)
         )
+        # H10 continues to require the physical combo branch.  This separate
+        # gate only controls whether that branch participates in action fusion
+        # (and its directional-guide route); it must never remove checkpoint
+        # tensors or weaken the H10 architecture contract.
+        self.combo_state_route_enabled = bool(
+            getattr(cfg, "combo_state_route_enabled", True)
+        )
         self.decision_fusion_dedicated_routes_enabled = bool(
             getattr(cfg, "decision_fusion_dedicated_routes_enabled", False)
         )
@@ -1473,6 +1528,9 @@ class TemporalCabtTransformer(nn.Module):
                         COMBO_STATE_HEAD_OUTPUTS
                         if self.combo_state_head_enabled
                         else 0
+                    ),
+                    combo_state_route_enabled=(
+                        self.combo_state_route_enabled
                     ),
                     typed_output_centered_routes=(
                         self.decision_fusion_typed_output_centered_routes_enabled
@@ -1647,8 +1705,16 @@ class TemporalCabtTransformer(nn.Module):
             )
         if isinstance(self.combo_state_head, ComboStateHead):
             modules[COMBO_STATE_HEAD_NAME] = self.combo_state_head.inventory()
+        runtime_disabled_heads = (
+            [COMBO_STATE_HEAD_NAME]
+            if (
+                isinstance(self.combo_state_head, ComboStateHead)
+                and not self.combo_state_route_enabled
+            )
+            else []
+        )
         runtime_enabled_heads = (
-            list(modules)
+            [name for name in modules if name not in runtime_disabled_heads]
             if self.decision_fusion_dedicated_routes_runtime_enabled
             else []
         )
@@ -1657,9 +1723,17 @@ class TemporalCabtTransformer(nn.Module):
             "version": int(self.expanded_head_schema_version),
             "enabled": bool(self.expanded_heads_enabled),
             "runtime_enabled_heads": runtime_enabled_heads,
+            "runtime_disabled_heads": runtime_disabled_heads,
             "modules": modules,
             "fusion_roles": {
-                **{name: "fused_input" for name in modules},
+                **{
+                    name: (
+                        "architecture_resident_route_disabled"
+                        if name in runtime_disabled_heads
+                        else "fused_input"
+                    )
+                    for name in modules
+                },
             },
             "capacity": {
                 "schema": H10_CAPACITY_SCHEMA,
@@ -1780,7 +1854,10 @@ class TemporalCabtTransformer(nn.Module):
             expanded_option["setup_board_outcome"] = (
                 self.setup_board_outcome_logits(option_hidden)
             )
-        if self.combo_state_head_enabled:
+        if (
+            self.combo_state_head_enabled
+            and self.combo_state_route_enabled
+        ):
             expanded_option["combo_state"] = self.combo_state_logits(
                 option_hidden
             )

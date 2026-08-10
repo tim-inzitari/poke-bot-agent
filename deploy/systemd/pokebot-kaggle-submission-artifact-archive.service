@@ -1,0 +1,15 @@
+[Unit]
+Description=Archive exact accepted Kaggle submission artifacts on Elmo
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json
+ConditionPathExists=/home/inzi/poke-bot-agent/scripts/archive_accepted_kaggle_submissions_to_elmo.py
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+ExecStart=/usr/bin/python3 -u /home/inzi/poke-bot-agent/scripts/archive_accepted_kaggle_submissions_to_elmo.py --queue /home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json --elmo-host elmo --remote-root /mnt/Main/main/poke-bot-agent/archive/replay-model-inspector --min-submission-id 55217604
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=6h
+

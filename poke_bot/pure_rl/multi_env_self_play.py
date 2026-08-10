@@ -296,15 +296,32 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     if bool(
                         jobs[i].get("collect_privileged_belief", False)
                     ) and bool(getattr(agent, "collect_targets", False)):
-                        hidden = env.hidden_snapshot(i, 1 - seat)
-                        privileged_aux = {
-                            "opp_hand": hidden["hand"],
-                            "opp_deck_order": hidden["deck"],
-                            "opp_prizes": hidden["prize"],
-                            "privileged_label_source": (
-                                "training_fork_exact_same_state"
-                            ),
-                        }
+                        # Official competition libcg has no GetHiddenSnapshot.
+                        # Remote workers (and any host without the training
+                        # fork) must keep packing; unavailable belief labels
+                        # stay masked the same way as single-game remote play.
+                        # Probe the symbol once so official-libcg hosts never
+                        # enter the raise path that older workers treated as a
+                        # hard game failure.
+                        lib = getattr(env, "_lib", None)
+                        if lib is not None and hasattr(lib, "GetHiddenSnapshot"):
+                            try:
+                                hidden = env.hidden_snapshot(i, 1 - seat)
+                            except (RuntimeError, AttributeError) as exc:
+                                if "hidden snapshot" not in str(exc).lower():
+                                    raise
+                                hidden = None
+                        else:
+                            hidden = None
+                        if hidden is not None:
+                            privileged_aux = {
+                                "opp_hand": hidden["hand"],
+                                "opp_deck_order": hidden["deck"],
+                                "opp_prizes": hidden["prize"],
+                                "privileged_label_source": (
+                                    "training_fork_exact_same_state"
+                                ),
+                            }
                     actions[i] = list(agent(obs))
                     acting_agents[i] = agent
                     acting_seats[i] = seat
@@ -513,6 +530,378 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     ],
                     "error": terminal_failure_error,
                 }
+            )
+        return results
+    except BaseException as exc:  # noqa: BLE001
+        return [
+            _base(job, our_failed=True, error=f"{type(exc).__name__}: {exc}")
+            for job in jobs
+        ]
+    finally:
+        try:
+            env.close()
+        except Exception:
+            pass
+
+
+class _CallableSeat:
+    """Baseline / heuristic seat that matches the PolicyAgent call surface used in multi-env."""
+
+    __slots__ = ("_fn", "targets", "fail_closed_count")
+
+    def __init__(self, fn: Any) -> None:
+        self._fn = fn
+        self.targets: list[Any] = []
+        self.fail_closed_count = 0
+
+    def __call__(self, obs: dict[str, Any]) -> list[int]:
+        out = self._fn(obs)
+        return list(out) if out is not None else []
+
+    def reset_game(self) -> None:
+        self.targets.clear()
+        self.fail_closed_count = 0
+
+    def matchup_adapter_shadow_snapshot(self) -> None:
+        return None
+
+
+def run_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Play public-mix jobs concurrently via LibcgMultiEnv (policy vs package opp).
+
+    Same socket packing as :func:`run_self_play_multi`, but the opponent seat is
+    loaded from each job's portable ``spec`` (frozen specialist / public package).
+    Result rows match ``remote_play_job`` / ``_worker_play`` shape for retention.
+    """
+    import json
+    import random
+    import time
+
+    import torch
+
+    from poke_bot import batched_infer, config as _config
+    from poke_bot.agent import PolicyAgent, install_quiet_stdout
+    from poke_bot.baselines_runtime import (
+        load_baseline_agent,
+        resolve_baseline_spec_payload,
+    )
+    from poke_bot.engine_rebuild.interfaces import Action, ResetSpec
+    from poke_bot.engine_rebuild.libcg_multi_env import LibcgMultiEnv
+    from poke_bot.pure_rl.leaf_self_play import rtp_requires_local_model
+    from poke_bot.remote_sim_jobs import load_round_robin_module
+    from poke_bot.train import load_model_from_checkpoint
+
+    if not jobs:
+        return []
+
+    install_quiet_stdout(_config.agent_verbose())
+    leaf_backend = batched_infer.remote_leaf_backend_from_worker()
+    force_rtp_local = rtp_requires_local_model()
+    if force_rtp_local:
+        leaf_backend = None
+    rr = load_round_robin_module()
+    state = rr._WORKER_STATE
+    model_cache: dict[str, Any] = state.setdefault("multi_env_models", {})
+
+    n = len(jobs)
+    env = LibcgMultiEnv(n)
+    max_steps = 4000
+    agents0: list[Any] = [None] * n
+    agents1: list[Any] = [None] * n
+    our_seats = [int(job.get("our_seat", 0)) for job in jobs]
+    opp_decks: list[list[int]] = [[] for _ in range(n)]
+    steps = [0] * n
+    failed_seat: list[Optional[int]] = [None] * n
+    errors: list[Optional[str]] = [None] * n
+    finished = [False] * n
+    load_failed: list[Optional[dict[str, Any]]] = [None] * n
+    t0 = time.perf_counter()
+
+    def _base(job: dict[str, Any], **over: Any) -> dict[str, Any]:
+        sampled = bool(
+            job.get("sample_actions", not bool(job.get("greedy", False)))
+        )
+        r = {
+            "job_index": int(job.get("job_index", 0)),
+            "opponent_id": str(
+                (job.get("spec") or {}).get("id") or job.get("opponent_id") or ""
+            ),
+            "our_seat": int(job.get("our_seat", 0)),
+            "winner": 2,
+            "value": 0.0,
+            "steps": 0,
+            "is_mirror": False,
+            "mcts_on": True,
+            "targets": [],
+            "seed": job.get("seed"),
+            "pair_id": job.get("pair_id"),
+            "baseline_failed": False,
+            "our_failed": False,
+            "resource_error": False,
+            "trust_failure": False,
+            "search_budget_exhausted": False,
+            "game_timeout": False,
+            "cancelled": False,
+            "training_eligible": bool(job.get("training_eligible", True)),
+            "archetype": job.get("archetype"),
+            "checkpoint_digest": job.get("checkpoint_digest"),
+            "action_selection": "sampled" if sampled else "greedy",
+            "matchup_runtime_audit": None,
+            "record_json": None,
+            "record_jsons": None,
+            "record": None,
+            "error": None,
+            "self_play": False,
+            "multi_env": True,
+            "multi_env_batch": n,
+        }
+        r.update(over)
+        return r
+
+    try:
+        specs: list[ResetSpec] = []
+        for i, job in enumerate(jobs):
+            seed = int(job["seed"])
+            random.seed(seed)
+            torch.manual_seed(seed)
+            deck = list(job["our_deck"])
+            our_seat = our_seats[i]
+            try:
+                spec = resolve_baseline_spec_payload(
+                    job["spec"],
+                    require_content_identity=bool(
+                        job.get("require_portable_baseline_contract", False)
+                    ),
+                )
+                opp_fn, opp_deck = load_baseline_agent(spec)
+            except Exception as exc:  # noqa: BLE001
+                load_failed[i] = _base(
+                    job,
+                    baseline_failed=True,
+                    winner=our_seat,
+                    value=1.0,
+                    error=f"load: {type(exc).__name__}: {exc}",
+                )
+                # Placeholder reset so env size stays aligned; mark finished.
+                opp_deck = list(deck)
+                opp_fn = lambda _obs: []  # noqa: E731
+                finished[i] = True
+            opp_decks[i] = list(opp_deck)
+            if our_seat == 0:
+                specs.append(ResetSpec(deck, list(opp_deck), seed=seed))
+            else:
+                specs.append(ResetSpec(list(opp_deck), deck, seed=seed))
+
+            device = torch.device(job.get("device", "cpu"))
+            us = str(job["checkpoint"])
+            us_model = None
+            us_leaf = leaf_backend
+            if leaf_backend is None or force_rtp_local:
+                key = f"{us}|{device}|rtp={int(force_rtp_local)}"
+                if key not in model_cache:
+                    model_cache[key] = load_model_from_checkpoint(us, device=device)
+                us_model = model_cache[key]
+                us_leaf = None
+            temp = float(job.get("action_temperature", 1.0))
+            sample = bool(job.get("sample_actions", True))
+            ctx = int(job.get("model_max_context") or _config.MODEL.max_context)
+            timeout_s = int(job.get("game_timeout_s", 600))
+            us_agent = PolicyAgent(
+                model=us_model,
+                deck=deck,
+                use_mcts=False,
+                max_sims=0,
+                collect_targets=bool(job.get("training_eligible", True)),
+                sample_actions=sample,
+                action_temperature=temp,
+                rng=random.Random(seed ^ 0xA11CE),
+                device=device if us_leaf is None else torch.device("cpu"),
+                leaf_backend=us_leaf,
+                max_context_override=ctx,
+                game_time_budget_s=float(timeout_s),
+                game_watchdog_reserve_s=min(60.0, max(10.0, 0.1 * float(timeout_s))),
+                strict_runtime=True,
+            )
+            them_agent = _CallableSeat(opp_fn)
+            us_agent.reset_game()
+            them_agent.reset_game()
+            if our_seat == 0:
+                agents0[i], agents1[i] = us_agent, them_agent
+            else:
+                agents0[i], agents1[i] = them_agent, us_agent
+
+        batch = env.reset(specs)
+        obs_list = [e.obs for e in batch.envs]
+
+        while not all(finished):
+            actions: list[Optional[Action]] = [None] * n
+            acting_agents: list[Any] = [None] * n
+            acting_seats: list[Optional[int]] = [None] * n
+            target_counts_before: list[Optional[int]] = [None] * n
+            any_active = False
+            for i in range(n):
+                if finished[i]:
+                    continue
+                obs = obs_list[i]
+                if obs is None:
+                    finished[i] = True
+                    continue
+                cur = obs.get("current") or {}
+                if int(cur.get("result", -1)) != -1:
+                    finished[i] = True
+                    continue
+                if steps[i] >= max_steps:
+                    finished[i] = True
+                    continue
+                seat = int(cur.get("yourIndex", 0))
+                agent = agents0[i] if seat == 0 else agents1[i]
+                assert agent is not None
+                try:
+                    target_count_before = len(getattr(agent, "targets", []) or [])
+                    actions[i] = list(agent(obs))
+                    acting_agents[i] = agent
+                    acting_seats[i] = seat
+                    target_counts_before[i] = target_count_before
+                except BaseException as exc:  # noqa: BLE001
+                    failed_seat[i] = seat
+                    errors[i] = f"{type(exc).__name__}: {exc}"
+                    finished[i] = True
+                    continue
+                any_active = True
+            if not any_active:
+                break
+            batch = env.step_batch(actions)
+            for e in batch.envs:
+                i = e.env_id
+                if i >= n or finished[i]:
+                    continue
+                if actions[i] is not None:
+                    steps[i] += 1
+                obs_list[i] = e.obs
+                acted = acting_agents[i]
+                target_count_before = target_counts_before[i]
+                if (
+                    isinstance(acted, PolicyAgent)
+                    and acting_seats[i] is not None
+                    and target_count_before is not None
+                    and len(acted.targets) == target_count_before + 1
+                ):
+                    from poke_bot.strategic_heads import public_transition_snapshot
+
+                    acted.targets[-1]["transition_after"] = public_transition_snapshot(
+                        e.obs,
+                        actor_seat=int(acting_seats[i]),
+                    )
+                if e.done:
+                    finished[i] = True
+
+        wall_s = time.perf_counter() - t0
+        results: list[dict[str, Any]] = []
+        for i, job in enumerate(jobs):
+            if load_failed[i] is not None:
+                row = dict(load_failed[i])
+                row["wall_s"] = wall_s
+                results.append(row)
+                continue
+            our_seat = our_seats[i]
+            us_agent = agents0[i] if our_seat == 0 else agents1[i]
+            assert isinstance(us_agent, PolicyAgent)
+            deck = list(job["our_deck"])
+            opp_deck = opp_decks[i]
+            opp_id = str(
+                (job.get("spec") or {}).get("id") or job.get("opponent_id") or ""
+            )
+            if failed_seat[i] is not None:
+                failed = int(failed_seat[i])
+                err = str(errors[i] or "action failure")
+                if failed == our_seat:
+                    results.append(
+                        _base(
+                            job,
+                            our_failed=True,
+                            winner=1 - our_seat,
+                            value=-1.0,
+                            steps=steps[i],
+                            wall_s=wall_s,
+                            error=f"our-agent: {err}",
+                            is_mirror=sorted(deck) == sorted(opp_deck),
+                            n_decisions=len(us_agent.targets),
+                            fail_closed=int(us_agent.fail_closed_count),
+                        )
+                    )
+                else:
+                    results.append(
+                        _base(
+                            job,
+                            baseline_failed=True,
+                            winner=our_seat,
+                            value=1.0,
+                            steps=steps[i],
+                            wall_s=wall_s,
+                            error=f"in-game: {err}",
+                            is_mirror=sorted(deck) == sorted(opp_deck),
+                            n_decisions=len(us_agent.targets),
+                            fail_closed=int(us_agent.fail_closed_count),
+                        )
+                    )
+                continue
+            obs = obs_list[i] or {}
+            cur = obs.get("current") or {}
+            result_code = cur.get("result", -1)
+            if int(result_code) == -1:
+                results.append(
+                    _base(
+                        job,
+                        resource_error=True,
+                        game_timeout=True,
+                        steps=steps[i],
+                        wall_s=wall_s,
+                        error="incomplete",
+                        is_mirror=sorted(deck) == sorted(opp_deck),
+                        n_decisions=len(us_agent.targets),
+                    )
+                )
+                continue
+            winner = int(result_code)
+            value = 0.0 if winner == 2 else (1.0 if winner == our_seat else -1.0)
+            matchup_runtime_audit = us_agent.matchup_adapter_shadow_snapshot()
+            record = None
+            if job.get("training_eligible", True) and us_agent.targets:
+                record = rr._build_selfplay_record(
+                    us_agent.targets,
+                    our_deck=deck,
+                    our_seat=our_seat,
+                    value=value,
+                    opp_id=opp_id,
+                    archetype=str(job.get("archetype") or "core"),
+                    seed=int(job["seed"]),
+                    target_provenance={
+                        **dict(job.get("target_provenance") or {}),
+                        "multi_env": True,
+                        "matchup_runtime_audit": matchup_runtime_audit,
+                    },
+                    opp_archetype=(str(job.get("opp_archetype") or "") or None),
+                )
+            results.append(
+                _base(
+                    job,
+                    winner=winner,
+                    value=value,
+                    steps=steps[i],
+                    wall_s=wall_s,
+                    n_decisions=len(us_agent.targets),
+                    fail_closed=int(us_agent.fail_closed_count),
+                    leaf_remote=leaf_backend is not None and not force_rtp_local,
+                    is_mirror=sorted(deck) == sorted(opp_deck),
+                    agent_mode=job.get("agent_mode", "policy"),
+                    matchup_runtime_audit=matchup_runtime_audit,
+                    record_json=(
+                        json.dumps(record, separators=(",", ":")) if record else None
+                    ),
+                    record_jsons=(
+                        [json.dumps(record, separators=(",", ":"))] if record else []
+                    ),
+                )
             )
         return results
     except BaseException as exc:  # noqa: BLE001

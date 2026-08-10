@@ -1,0 +1,47 @@
+{
+  "schema": "poke_bot.replay_model_inspector_own_seat_decisions_activation/v1",
+  "owner_decision_revision": 188,
+  "created_at_utc": "2026-08-08T01:47:00Z",
+  "status": "active_read_only",
+  "identity": {
+    "agent_name": "Challengestone",
+    "seat_authority": "archived_submission_bound_own_agent_seat",
+    "fixed_seat_assumption": false
+  },
+  "live_validation": [
+    {
+      "submission_id_text": "55217604",
+      "episode_id": 89759425,
+      "own_seat": 0,
+      "selectable_own_steps": 67,
+      "hidden_opponent_steps": 64,
+      "direct_opponent_step": 3,
+      "direct_opponent_status": 404
+    },
+    {
+      "submission_id_text": "55217604",
+      "episode_id": 89760007,
+      "own_seat": 1,
+      "selectable_own_steps": 55,
+      "hidden_opponent_steps": 69,
+      "direct_opponent_step": 1,
+      "direct_opponent_status": 404
+    }
+  ],
+  "actor_integrity": {
+    "requires_active_row": true,
+    "requires_integer_your_index_equal_to_archived_seat": true,
+    "opponent_history_retained_for_causal_reconstruction": true,
+    "opponent_steps_selectable": false
+  },
+  "validation": {
+    "full_exact_runtime_inspector_tests_passed": 88,
+    "both_seats": "passed",
+    "direct_opponent_rejection_reason": "opponent_decision_not_selectable"
+  },
+  "safety": {
+    "read_only": true,
+    "checkpoint_or_replay_mutation": false,
+    "training_service_control_invoked": false
+  }
+}

@@ -1,0 +1,25 @@
+[Unit]
+Description=Sync Kaggle submission replays and full visual-trace rollouts on Elmo
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+Environment=POKEBOT_ELMO_ROOT=/mnt/Main/main/poke-bot-agent
+Environment=POKEBOT_SUBMISSION_REPLAY_MIN_ID=55315274
+Environment=POKEBOT_DOWNLOAD_MAX_MBIT=12
+Environment=POKEBOT_EXPERT_DOWNLOAD_MIN_FREE_GIB=200
+Environment=POKEBOT_SUBMISSION_REPLAY_WORKERS=4
+Environment=POKEBOT_SUBMISSION_REPLAY_ROLLOUT_WORKERS=4
+Environment=POKEBOT_SUBMISSION_REPLAY_ROLLOUT_ARCHETYPE=*
+Environment=POKEBOT_ROLLOUT_SOURCE=/home/admin/pokebot-expert-guide-src-v1
+ExecStart=/usr/bin/bash /mnt/Main/main/poke-bot-agent/run_kaggle_submission_replay_pipeline.sh
+ExecStartPost=+/usr/bin/bash /mnt/Main/main/poke-bot-agent/refresh_replay_model_inspector_after_sync.sh
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

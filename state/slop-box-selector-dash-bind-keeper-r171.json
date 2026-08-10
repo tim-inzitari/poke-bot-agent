@@ -1,0 +1,11 @@
+{
+  "schema": "poke_bot.slop_box_selector_dash_bind_keeper_r171/v1",
+  "updated_at_utc": "2026-08-06T22:01:59Z",
+  "status": "ok_no_repair",
+  "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+  "MainPID": 1706695,
+  "runtime_root": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136",
+  "snapshot": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/scripts/dashboard_snapshot.py",
+  "latest_line": "Slop Box H10 bootstrap LIVE \u00b7 epoch 19/300 \u00b7 val_loss=1.739 \u00b7 val_acc=0.798 \u00b7 batch 36/68 \u00b7 3.03batch/s",
+  "tui_patched": false
+}

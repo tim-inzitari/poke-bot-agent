@@ -37,6 +37,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 
+from poke_bot.public_multi_env_safety import (
+    public_multi_env_legacy_opponent_ids,
+    public_multi_env_safe_job,
+)
+
 try:  # Optional fast, GIL-friendly codec; wire format remains ordinary JSON.
     import orjson as _orjson
 except ImportError:  # pragma: no cover - exercised on minimal worker images
@@ -93,6 +98,12 @@ _BERT_STAGE_LOCK = threading.RLock()
 _BERT_STAGE_CACHE: dict[tuple[str, str], str] = {}
 _MATCHUP_RUNTIME_MARKER_NAME = "matchup-runtime-activation.json"
 _MATCHUP_RUNTIME_MARKER_SCHEMA = "poke_bot.remote_matchup_runtime_activation/v1"
+_SAFE_ELMO_SSH_STAGE_PATH_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-"
+)
+_SAFE_ELMO_SSH_TARGET_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.@:-[]"
+)
 
 # Remote demand contract (max ≫ default; scheduler grows into max):
 #   Elmo default 20 / max 40; Bert default 10 / max 20.
@@ -634,42 +645,57 @@ def endpoint_dispatch_chunk(
     return max(1, int(default if override is None else override))
 
 
-def remote_socket_prefetch_factor() -> int:
+def remote_socket_prefetch_factor(*, kind: Optional[str] = None) -> int:
     """Return request sockets opened per remote execution worker.
 
-    Production starts with one executing wave plus four server-queued waves.
-    A separate bounded reserve is admitted only if server telemetry reports
-    that the local queue fell below its low-water mark.  The additional
-    sockets do not add simulator processes, policy leaves, or model replicas.
+    Public ``play`` has its own reserve-depth knob so a one-extra-request
+    queue can keep Bert/Elmo fed without multiplying the already four-game
+    ``self_play_multi`` batches.  Callers without a collection kind retain the
+    legacy generic setting for compatibility.
     """
+    name = (
+        "POKEBOT_REMOTE_PUBLIC_SOCKET_PREFETCH"
+        if str(kind).strip().lower() == "play"
+        else "POKEBOT_REMOTE_SOCKET_PREFETCH"
+    )
     try:
-        value = int(os.environ.get("POKEBOT_REMOTE_SOCKET_PREFETCH", "1") or "1")
+        value = int(os.environ.get(name, "1") or "1")
     except (TypeError, ValueError):
         value = 1
     return max(1, min(8, value))
 
 
-def remote_socket_prefetch_max_factor() -> int:
+def remote_socket_prefetch_max_factor(*, kind: Optional[str] = None) -> int:
     """Return the hard per-worker request-socket ceiling for low-water refill."""
-    base = remote_socket_prefetch_factor()
+    base = remote_socket_prefetch_factor(kind=kind)
+    name = (
+        "POKEBOT_REMOTE_PUBLIC_SOCKET_PREFETCH_MAX"
+        if str(kind).strip().lower() == "play"
+        else "POKEBOT_REMOTE_SOCKET_PREFETCH_MAX"
+    )
     try:
-        value = int(
-            os.environ.get("POKEBOT_REMOTE_SOCKET_PREFETCH_MAX", str(base))
-            or str(base)
-        )
+        value = int(os.environ.get(name, str(base)) or str(base))
     except (TypeError, ValueError):
         value = base
     return max(base, min(8, value))
 
 
-def remote_socket_target(execution_workers: int) -> int:
+def remote_socket_target(
+    execution_workers: int, *, kind: Optional[str] = None
+) -> int:
     """Map scheduled execution-worker demand to queued request sockets."""
-    return max(0, int(execution_workers)) * remote_socket_prefetch_factor()
+    return max(0, int(execution_workers)) * remote_socket_prefetch_factor(
+        kind=kind
+    )
 
 
-def remote_socket_max_target(execution_workers: int) -> int:
+def remote_socket_max_target(
+    execution_workers: int, *, kind: Optional[str] = None
+) -> int:
     """Map execution demand to the bounded low-water reserve ceiling."""
-    return max(0, int(execution_workers)) * remote_socket_prefetch_max_factor()
+    return max(0, int(execution_workers)) * remote_socket_prefetch_max_factor(
+        kind=kind
+    )
 
 
 def remote_queue_low_water_fraction() -> float:
@@ -701,6 +727,131 @@ def remote_refill_games_per_socket() -> int:
     except (TypeError, ValueError):
         value = 1
     return max(1, min(64, value))
+
+
+def remote_self_play_multi_games() -> int:
+    """Games packed into one ``self_play_multi`` socket job.
+
+    Owner override of GOAL r112/r124 single-game-per-socket for LAN remotes
+    that advertise ``job_kinds`` including ``self_play_multi``. Default ``4``.
+    Set ``POKEBOT_REMOTE_SELF_PLAY_MULTI_GAMES=0`` (or ``1``) to keep the
+    historical one-game-per-socket submit path even when workers advertise
+    the multi kind.
+    """
+    raw = os.environ.get("POKEBOT_REMOTE_SELF_PLAY_MULTI_GAMES", "4")
+    try:
+        value = int(raw or "4")
+    except (TypeError, ValueError):
+        value = 4
+    return max(0, min(64, value))
+
+
+try:
+    PUBLIC_MULTI_ENV_LEGACY_OPPONENT_IDS = public_multi_env_legacy_opponent_ids()
+except RuntimeError:
+    # Missing/corrupt deployment metadata disables public packing through the
+    # lazy classifier below; ordinary singleton remote play stays available.
+    PUBLIC_MULTI_ENV_LEGACY_OPPONENT_IDS = frozenset()
+
+
+def _client_supports_self_play_multi(client: "RemoteJobClient") -> bool:
+    """Whether a remote advertised the existing multi-env transport kind."""
+
+    info = getattr(client, "info", None)
+    return "self_play_multi" in set(getattr(info, "job_kinds", ()) or ())
+
+
+def client_self_play_multi_pack(
+    client: "RemoteJobClient",
+    *,
+    kind: str,
+) -> int:
+    """Return pack size when this endpoint should receive ``self_play_multi``.
+
+    Only true self-play is safe to pack. Public baseline agents use the
+    process-global ``cg.game`` singleton and must keep the ordinary one-game
+    ``play`` path even when a worker advertises ``self_play_multi``. Remotes
+    remain engaged; this changes only the per-socket public-play packing.
+    """
+    if str(kind) != "self_play":
+        return 0
+    pack = remote_self_play_multi_games()
+    if pack <= 1:
+        return 0
+    if not _client_supports_self_play_multi(client):
+        return 0
+    return pack
+
+
+def _client_public_multi_env_pack(client: "RemoteJobClient") -> int:
+    """Return the public multi-env pack size after endpoint capability gating.
+
+    The job-level r182 allowlist is deliberately checked separately, before a
+    child is placed into a pack.  Both the existing transport kind and the
+    new worker capability are required, so an unupdated endpoint that happens
+    to advertise ``self_play_multi`` cannot receive public packs.
+    """
+
+    pack = remote_self_play_multi_games()
+    info = getattr(client, "info", None)
+    capabilities = set(getattr(info, "capabilities", ()) or ())
+    if (
+        pack <= 1
+        or not _client_supports_self_play_multi(client)
+        or "public_multi_env_allowlist_r182_v1" not in capabilities
+    ):
+        return 0
+    # The public LibcgMultiEnv contract is intentionally narrower than the
+    # generic self-play transport knob.  Larger generic batches are valid for
+    # self-play, but public packets must remain one exact-safe pack of at most
+    # four independently accounted collection children.
+    return min(4, pack)
+
+
+def _remote_transport_packets(
+    client: "RemoteJobClient",
+    *,
+    kind: str,
+    jobs: list[dict[str, Any]],
+) -> list[list[dict[str, Any]]]:
+    """Stable-partition claimed logical jobs into transport packets.
+
+    Public play is default-singleton.  Only exact r182-safe children form
+    packets of up to four; every legacy, malformed, or provenance-drifted
+    child remains its own ordinary ``play`` request.  The safe and singleton
+    partitions retain their original internal order, which permits client and
+    server result identity checks to remain one logical result per job.
+    """
+
+    if not jobs:
+        return []
+    if str(kind) == "self_play":
+        pack = client_self_play_multi_pack(client, kind=kind)
+        if pack <= 1:
+            return [[job] for job in jobs]
+        return [jobs[index : index + pack] for index in range(0, len(jobs), pack)]
+    if str(kind) != "play":
+        return [[job] for job in jobs]
+    pack = _client_public_multi_env_pack(client)
+    if pack <= 1:
+        return [[job] for job in jobs]
+    safe = [job for job in jobs if public_multi_env_safe_job(job)]
+    singleton = [job for job in jobs if not public_multi_env_safe_job(job)]
+    packets = [safe[index : index + pack] for index in range(0, len(safe), pack)]
+    packets.extend([[job] for job in singleton])
+    return packets
+
+
+def _remote_packet_uses_multi_env(
+    *, kind: str, packet: list[dict[str, Any]]
+) -> bool:
+    """Return whether this packet must use the multi-env wire transport."""
+
+    if len(packet) <= 1:
+        return False
+    if str(kind) == "self_play":
+        return True
+    return str(kind) == "play" and all(public_multi_env_safe_job(job) for job in packet)
 
 
 def endpoint_dispatch_weight(host: str, port: Optional[int] = None) -> float:
@@ -825,14 +976,58 @@ def describe_endpoint_weights(
     return rows
 
 
+def _path_is_dir_bounded(
+    path: Path, *, timeout_s: float = 1.0
+) -> tuple[bool, bool]:
+    """Return ``(is_dir, timed_out)`` without hanging on stuck gvfs."""
+
+    if timeout_s <= 0:
+        try:
+            return path.is_dir(), False
+        except OSError:
+            return False, False
+
+    result: dict[str, bool] = {"is_dir": False}
+
+    def _probe() -> None:
+        try:
+            result["is_dir"] = bool(path.is_dir())
+        except OSError:
+            result["is_dir"] = False
+
+    probe = threading.Thread(target=_probe, name="smb-dir-probe", daemon=True)
+    probe.start()
+    probe.join(timeout=timeout_s)
+    if probe.is_alive():
+        return False, True
+    return bool(result["is_dir"]), False
+
+
+def _smb_checkpoint_probe_timeout_s() -> float:
+    """Bound one trainer-side GVFS probe before choosing SSH publication."""
+
+    try:
+        timeout_s = float(
+            os.environ.get("POKEBOT_ELMO_SMB_PROBE_TIMEOUT_S", "1") or "1"
+        )
+    except (TypeError, ValueError):
+        timeout_s = 1.0
+    return max(0.05, min(10.0, timeout_s))
+
+
 def _smb_checkpoint_dir() -> Path | None:
+    timeout_s = _smb_checkpoint_probe_timeout_s()
     explicit = os.environ.get("POKEBOT_TRUENAS_CHECKPOINT_SMB")
     if explicit:
         path = Path(explicit)
-        return path if path.is_dir() else None
+        is_dir, _timed_out = _path_is_dir_bounded(path, timeout_s=timeout_s)
+        return path if is_dir else None
     uid = os.getuid()
     # Host Docker compose mounts containers/truenas-worker/checkpoint →
     # /workspace/checkpoint (NOT the top-level poke-bot-agent/checkpoint/).
+    # Probe gvfs with a bound timeout: a wedged mount previously hung every
+    # Elmo resolve and starved self_play_multi packing. The NFS mirror under
+    # /tmp/truenas_main is read-only and is intentionally not a stage target.
     candidates = [
         Path(
             f"/run/user/{uid}/gvfs/smb-share:server=truenas.local,"
@@ -842,10 +1037,23 @@ def _smb_checkpoint_dir() -> Path | None:
             f"/run/user/{uid}/gvfs/smb-share:server=truenas.local,"
             "share=main/poke-bot-agent/checkpoint"
         ),
+        Path(
+            f"/run/user/{uid}/gvfs/smb-share:server=192.168.1.143,"
+            "share=main,user=inzi/poke-bot-agent/containers/"
+            "truenas-worker/checkpoint"
+        ),
+        Path(
+            f"/run/user/{uid}/gvfs/smb-share:server=192.168.1.143,"
+            "share=main,user=inzi/poke-bot-agent/checkpoint"
+        ),
     ]
     for candidate in candidates:
-        if candidate.is_dir():
+        is_dir, timed_out = _path_is_dir_bounded(candidate, timeout_s=timeout_s)
+        if is_dir:
             return candidate
+        if timed_out:
+            # One wedged gvfs probe is enough; further siblings share the mount.
+            return None
     return None
 
 
@@ -1098,6 +1306,226 @@ def _elmo_remote_checkpoint_digest(host: str, remote_path: str) -> Optional[str]
         client.close()
 
 
+def _elmo_ssh_stage_config() -> Optional[tuple[str, str]]:
+    """Return the explicit host-side Elmo stage target, if enabled.
+
+    Elmo deliberately exposes ``/workspace/checkpoint`` to its worker as a
+    read-only bind.  A trainer-local GVFS mount is convenient, but it is not a
+    publication requirement: a new immutable checkpoint can instead be copied
+    to that same bind source over the already-authenticated LAN SSH transport.
+
+    This fallback is opt-in because it writes to a remote host.  It is used
+    only after the storage-local worker verifier has proved that the requested
+    digest is *not* resident, and the caller verifies it again before reload.
+    """
+
+    if not _env_truthy("POKEBOT_ELMO_SSH_STAGE"):
+        return None
+    target = os.environ.get("POKEBOT_ELMO_SSH", "admin@elmo").strip()
+    checkpoint_dir = os.environ.get(
+        "POKEBOT_ELMO_CHECKPOINT_HOST_DIR", ""
+    ).strip()
+    if not target:
+        raise RemoteJobsError(
+            "POKEBOT_ELMO_SSH_STAGE requires a nonempty POKEBOT_ELMO_SSH"
+        )
+    if target.startswith("-") or any(
+        character not in _SAFE_ELMO_SSH_TARGET_CHARS for character in target
+    ):
+        raise RemoteJobsError("POKEBOT_ELMO_SSH is not a safe SSH target")
+    if not checkpoint_dir:
+        raise RemoteJobsError(
+            "POKEBOT_ELMO_SSH_STAGE requires "
+            "POKEBOT_ELMO_CHECKPOINT_HOST_DIR"
+        )
+    if (
+        not checkpoint_dir.startswith("/")
+        or any(
+            character not in _SAFE_ELMO_SSH_STAGE_PATH_CHARS
+            for character in checkpoint_dir
+        )
+    ):
+        raise RemoteJobsError(
+            "POKEBOT_ELMO_CHECKPOINT_HOST_DIR must be an absolute safe path"
+        )
+    checkpoint_dir = checkpoint_dir.rstrip("/")
+    if not checkpoint_dir:
+        raise RemoteJobsError(
+            "POKEBOT_ELMO_CHECKPOINT_HOST_DIR may not be filesystem root"
+        )
+    return target, checkpoint_dir
+
+
+def _elmo_ssh_transport_options() -> list[str]:
+    """Return noninteractive SSH/SCP options for one bounded stage transfer."""
+
+    options = [
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "StrictHostKeyChecking=yes",
+    ]
+    identity_raw = os.environ.get("POKEBOT_ELMO_SSH_IDENTITY_FILE", "").strip()
+    if identity_raw:
+        identity = Path(identity_raw).expanduser()
+        if not identity.is_file():
+            raise RemoteJobsError(
+                "POKEBOT_ELMO_SSH_IDENTITY_FILE is not a readable file: "
+                f"{identity}"
+            )
+        options.extend(["-i", str(identity), "-o", "IdentitiesOnly=yes"])
+    return options
+
+
+def _elmo_ssh_stage_timeout_s() -> float:
+    """Bound an SSH publish so a wedged transport cannot stall a hard gate."""
+
+    try:
+        timeout_s = float(
+            os.environ.get("POKEBOT_ELMO_SSH_STAGE_TIMEOUT_S", "900") or "900"
+        )
+    except (TypeError, ValueError):
+        timeout_s = 900.0
+    return max(30.0, min(3600.0, timeout_s))
+
+
+def _stage_elmo_file_via_ssh(
+    src: Path,
+    *,
+    destination_name: str,
+    digest: str,
+) -> bool:
+    """Atomically stage one digest-addressed Elmo bind-source file over SSH.
+
+    The transfer lands under a unique same-directory partial name.  Elmo
+    hashes the partial bytes before an atomic rename and the caller then asks
+    the worker's storage-local ``checkpoint_digest_verify_v1`` verifier to
+    hash the published object again.  A failed transfer never exposes partial
+    bytes at the path a worker can reload.
+    """
+
+    config = _elmo_ssh_stage_config()
+    if config is None:
+        return False
+    target, checkpoint_dir = config
+    source = Path(src).expanduser().resolve()
+    if not source.is_file():
+        raise RemoteJobsError(f"local checkpoint missing for SSH stage: {source}")
+    if (
+        Path(destination_name).name != destination_name
+        or destination_name in {"", ".", ".."}
+        or any(
+            character not in _SAFE_ELMO_SSH_STAGE_PATH_CHARS - {"/"}
+            for character in destination_name
+        )
+    ):
+        raise RemoteJobsError(
+            f"unsafe Elmo SSH stage destination name: {destination_name!r}"
+        )
+    expected_digest = str(digest)
+    expected_hex = expected_digest.removeprefix("sha256:")
+    if (
+        not expected_digest.startswith("sha256:")
+        or len(expected_hex) != 64
+        or any(character not in "0123456789abcdef" for character in expected_hex)
+    ):
+        raise RemoteJobsError(
+            f"invalid Elmo SSH stage checkpoint digest: {expected_digest!r}"
+        )
+    if _cached_local_checkpoint_digest(source) != expected_digest:
+        raise RemoteJobsError(
+            f"local checkpoint changed before Elmo SSH stage: {source}"
+        )
+
+    # ``scp`` writes only the unique partial object.  The final object remains
+    # invisible to the worker until the storage-local SHA-256 has passed and
+    # the same-directory rename commits.
+    nonce = f"{os.getpid()}.{threading.get_ident()}.{expected_hex[:16]}"
+    remote_destination = f"{checkpoint_dir}/{destination_name}"
+    remote_partial = f"{checkpoint_dir}/.{destination_name}.partial.{nonce}"
+    options = _elmo_ssh_transport_options()
+    timeout_s = _elmo_ssh_stage_timeout_s()
+    transfer = [
+        "scp",
+        *options,
+        str(source),
+        f"{target}:{remote_partial}",
+    ]
+    try:
+        copied = subprocess.run(
+            transfer,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RemoteJobsError(
+            "Elmo SSH checkpoint transfer timed out before publication "
+            f"after {timeout_s:.0f}s"
+        ) from exc
+    if copied.returncode != 0:
+        detail = (copied.stderr or copied.stdout or str(copied.returncode)).strip()
+        raise RemoteJobsError(f"Elmo SSH checkpoint transfer failed: {detail}")
+
+    # Do not rely on filename or byte size.  If another publisher raced this
+    # immutable destination, replacing it is safe only after the staged source
+    # itself has its requested digest; the caller's subsequent worker-local
+    # verification remains the final authority before reload/pin.
+    script = "\n".join(
+        (
+            "set -eu",
+            f"partial={shlex.quote(remote_partial)}",
+            f"destination={shlex.quote(remote_destination)}",
+            f"expected={shlex.quote(expected_hex)}",
+            "cleanup() { rm -f -- \"$partial\"; }",
+            "trap cleanup EXIT HUP INT TERM",
+            "test -f \"$partial\"",
+            "actual=$(sha256sum -- \"$partial\" | awk '{print $1}')",
+            "test \"$actual\" = \"$expected\"",
+            "chmod 0444 -- \"$partial\"",
+            "if test -e \"$destination\"; then",
+            "  test -f \"$destination\"",
+            "fi",
+            "mv -f -- \"$partial\" \"$destination\"",
+            "actual=$(sha256sum -- \"$destination\" | awk '{print $1}')",
+            "test \"$actual\" = \"$expected\"",
+            "trap - EXIT HUP INT TERM",
+        )
+    )
+    publish = [
+        "ssh",
+        *options,
+        target,
+        "sh -ceu " + shlex.quote(script),
+    ]
+    try:
+        published = subprocess.run(
+            publish,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RemoteJobsError(
+            "Elmo SSH checkpoint checksum/publish timed out "
+            f"after {timeout_s:.0f}s"
+        ) from exc
+    if published.returncode != 0:
+        detail = (
+            published.stderr or published.stdout or str(published.returncode)
+        ).strip()
+        raise RemoteJobsError(f"Elmo SSH checkpoint checksum/publish failed: {detail}")
+    if _cached_local_checkpoint_digest(source) != expected_digest:
+        raise RemoteJobsError(
+            f"local checkpoint changed during Elmo SSH stage: {source}"
+        )
+    return True
+
+
 def _bert_remote_digest(remote_native: Path) -> Optional[str]:
     """Return Bert's SHA-256 for one staged file, or ``None`` when absent."""
 
@@ -1263,6 +1691,48 @@ def _stage_elmo_runtime_companions(checkpoint_dir: Path) -> None:
             marker_path.unlink(missing_ok=True)
 
 
+def _stage_elmo_runtime_companions_via_ssh() -> bool:
+    """Publish runtime tree/marker beside an SSH-staged Elmo checkpoint.
+
+    The worker validates these companions during reload, so an SSH fallback
+    must use the same byte-bound activation files as the ordinary SMB path.
+    ``True`` means staging is either unnecessary or completed; ``False``
+    means host-side SSH staging is not enabled.
+    """
+
+    companions = _matchup_runtime_companions()
+    if companions is None:
+        return True
+    tree, marker = companions
+    tree_digest = "sha256:" + hashlib.sha256(tree.read_bytes()).hexdigest()
+    if not _stage_elmo_file_via_ssh(
+        tree,
+        destination_name=tree.name,
+        digest=tree_digest,
+    ):
+        return False
+
+    descriptor, temporary = tempfile.mkstemp(
+        prefix="pokebot-matchup-runtime-marker-",
+        suffix=".json",
+        dir="/tmp",
+    )
+    marker_path = Path(temporary)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(marker)
+            stream.flush()
+            os.fsync(stream.fileno())
+        marker_digest = "sha256:" + hashlib.sha256(marker).hexdigest()
+        return _stage_elmo_file_via_ssh(
+            marker_path,
+            destination_name=_MATCHUP_RUNTIME_MARKER_NAME,
+            digest=marker_digest,
+        )
+    finally:
+        marker_path.unlink(missing_ok=True)
+
+
 def _rsync_to_bert(src: Path, remote_native: Path, *, digest: str) -> None:
     """Atomically stage and checksum ``src`` on Bert via BatchMode rsync."""
     remote_dir = remote_native.parent.as_posix()
@@ -1391,8 +1861,11 @@ def _stage_bert_checkpoint(src: Path) -> str:
 def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
     """Map a trainer-local .pt path to a path the remote process can open.
 
-    Elmo (TrueNAS host Docker): stage bytes onto the SMB ``checkpoint/``
-    bind-mount and reload ``/workspace/checkpoint/<basename>``.
+    Elmo (TrueNAS host Docker): stage bytes onto the ``checkpoint/`` bind
+    source through an available verified transport, then reload
+    ``/workspace/checkpoint/<basename>``.  GVFS SMB is preferred when mounted;
+    an explicitly enabled checksum-verified SSH host stage handles new
+    digests when GVFS is unavailable.
     Bert: stage bytes onto the native checkout (gvfs SFTP or SSH rsync), then
     remap the training-box repo root onto ``/Users/tsinzitari/workspace/...``.
     """
@@ -1402,12 +1875,6 @@ def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
     src = Path(raw).expanduser().resolve()
     host_l = host.strip().lower()
     if host_l in _ELMO_HOSTS:
-        smb = _smb_checkpoint_dir()
-        if smb is None:
-            raise RemoteJobsError(
-                "TrueNAS SMB checkpoint dir not mounted "
-                "(open smb://truenas.local/main then retry)"
-            )
         if not src.is_file():
             raise RemoteJobsError(f"local checkpoint missing for stage: {src}")
         # Digest-addressed basename: pins/reloads stay valid across iters/runs.
@@ -1415,6 +1882,59 @@ def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
 
         digest = _cached_local_checkpoint_digest(src)
         dest_name = digest_addressed_basename(src, digest=digest)
+        remote_path = f"/workspace/checkpoint/{dest_name}"
+        resident_key = (digest, "elmo:/workspace/checkpoint")
+        with _ELMO_STAGE_LOCK:
+            cached = _ELMO_STAGE_CACHE.get(resident_key)
+            if cached is not None:
+                return cached
+
+        smb = _smb_checkpoint_dir()
+        if smb is None:
+            # BETWEEN_ITER / prior stage can leave a digest-addressed object
+            # resident even when GVFS is missing or wedged. For a genuinely
+            # new digest, use the opt-in host-side publisher rather than an
+            # interactive GUI mount. Hold the rare publish under the existing
+            # digest lock: a hard-gate has many client calls, but one immutable
+            # object must be copied and verified once.
+            with _ELMO_STAGE_LOCK:
+                cached = _ELMO_STAGE_CACHE.get(resident_key)
+                if cached is not None:
+                    return cached
+                remote_digest = _elmo_remote_checkpoint_digest(
+                    host, remote_path
+                )
+                if remote_digest != digest:
+                    staged = _stage_elmo_file_via_ssh(
+                        src,
+                        destination_name=dest_name,
+                        digest=digest,
+                    )
+                    if not staged:
+                        raise RemoteJobsError(
+                            "TrueNAS checkpoint is not resident on Elmo and "
+                            "no writable trainer SMB mount or enabled "
+                            "checksum-verified SSH stage is available; set "
+                            "POKEBOT_ELMO_SSH_STAGE=1 with "
+                            "POKEBOT_ELMO_CHECKPOINT_HOST_DIR"
+                        )
+                    if not _stage_elmo_runtime_companions_via_ssh():
+                        raise RemoteJobsError(
+                            "Elmo SSH checkpoint stage is enabled but runtime "
+                            "companions could not be published"
+                        )
+                    remote_digest = _elmo_remote_checkpoint_digest(
+                        host, remote_path
+                    )
+                if remote_digest != digest:
+                    raise RemoteJobsError(
+                        "Elmo SSH checkpoint stage did not pass storage-local "
+                        "digest verification: "
+                        f"path={remote_path} expected={digest} "
+                        f"actual={remote_digest!r}"
+                    )
+                _ELMO_STAGE_CACHE[resident_key] = remote_path
+                return remote_path
         dest = smb / dest_name
         cache_key = (digest, str(smb))
         with _ELMO_STAGE_LOCK:
@@ -1433,13 +1953,13 @@ def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
                     f"/workspace/checkpoint/{receipt_destination.name}"
                 )
                 _ELMO_STAGE_CACHE[cache_key] = result
+                _ELMO_STAGE_CACHE[resident_key] = result
                 return result
             destination_verified = False
             if dest.is_file() and dest.stat().st_size == src.stat().st_size:
                 if _elmo_stage_receipt_is_exact(src, dest, digest):
                     destination_verified = True
                 else:
-                    remote_path = f"/workspace/checkpoint/{dest_name}"
                     remote_digest = _elmo_remote_checkpoint_digest(
                         host, remote_path
                     )
@@ -1456,13 +1976,20 @@ def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
                         except OSError:
                             destination_verified = False
             if not destination_verified:
-                _gvfs_safe_copy(src, dest)
+                try:
+                    _gvfs_safe_copy(src, dest)
+                except OSError as exc:
+                    raise RemoteJobsError(
+                        "TrueNAS checkpoint not writable for stage "
+                        f"({smb}): {exc}"
+                    ) from exc
                 if checkpoint_digest(dest) != digest:
                     raise RemoteJobsError("Elmo gvfs checkpoint digest mismatch")
             _write_elmo_stage_receipt(src, dest, digest)
             _stage_elmo_runtime_companions(smb)
             result = f"/workspace/checkpoint/{dest_name}"
             _ELMO_STAGE_CACHE[cache_key] = result
+            _ELMO_STAGE_CACHE[resident_key] = result
             return result
     if host_l in _BERT_HOSTS:
         return _stage_bert_checkpoint(src)
@@ -1494,23 +2021,27 @@ def cache_exact_resident_remote_checkpoint(
     src = Path(local_path).expanduser().resolve()
     if not src.is_file():
         raise RemoteJobsError(f"resident checkpoint source is missing: {src}")
-    smb = _smb_checkpoint_dir()
-    if smb is None:
-        raise RemoteJobsError(
-            "TrueNAS SMB checkpoint dir not mounted for resident mapping"
-        )
     dest_name = digest_addressed_basename(src, digest=dig)
-    dest = smb / dest_name
-    if not dest.is_file() or dest.stat().st_size != src.stat().st_size:
-        raise RemoteJobsError(
-            "resident checkpoint object is missing or has the wrong byte size: "
-            f"{dest}"
-        )
     result = f"/workspace/checkpoint/{dest_name}"
-    cache_key = (dig, str(smb))
+    resident_key = (dig, "elmo:/workspace/checkpoint")
+    smb = _smb_checkpoint_dir()
+    if smb is not None:
+        dest = smb / dest_name
+        if not dest.is_file() or dest.stat().st_size != src.stat().st_size:
+            raise RemoteJobsError(
+                "resident checkpoint object is missing or has the wrong byte "
+                f"size: {dest}"
+            )
+        cache_key = (dig, str(smb))
+        with _ELMO_STAGE_LOCK:
+            _ELMO_STAGE_CACHE[cache_key] = result
+            _ELMO_STAGE_CACHE[resident_key] = result
+            _write_elmo_stage_receipt(src, dest, dig)
+        return result
+    # Health proof already verified digest residency; cache the deterministic
+    # Elmo bind-mount path even when the trainer's SMB/gvfs mount is down.
     with _ELMO_STAGE_LOCK:
-        _ELMO_STAGE_CACHE[cache_key] = result
-        _write_elmo_stage_receipt(src, dest, dig)
+        _ELMO_STAGE_CACHE[resident_key] = result
     return result
 
 
@@ -2032,6 +2563,168 @@ class RemoteJobClient:
         assert last_exc is not None
         raise last_exc
 
+    def submit_self_play_multi(
+        self, jobs: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Submit a packed Libcg self-play batch as one ``self_play_multi`` job.
+
+        The remote worker runs :func:`remote_self_play_multi_job` and returns a
+        dict envelope with ``results``. Each child result is validated with the
+        ordinary remote-result contract before credit.
+        """
+        if not jobs:
+            return []
+        prepared = [prepare_remote_play_job(self.host, job) for job in jobs]
+        batch_job: dict[str, Any] = {"jobs": prepared}
+        first = prepared[0]
+        if first.get("checkpoint"):
+            batch_job["checkpoint"] = first["checkpoint"]
+        if first.get("checkpoint_digest"):
+            batch_job["checkpoint_digest"] = first["checkpoint_digest"]
+        job_buffer_s = _env_float("POKEBOT_REMOTE_JOB_TIMEOUT_BUFFER_S", 600.0)
+        # Packed batches share one socket wait; keep the buffer sized for the
+        # slowest child rather than multiplying timeouts by pack size.
+        timeout_games = max(
+            float(job.get("game_timeout_s") or 900) for job in prepared
+        )
+        last_exc: Optional[BaseException] = None
+        for attempt in range(2):
+            sock: Optional[socket.socket] = None
+            prev: Optional[float] = None
+            try:
+                sock = self._require_sock()
+                prev = sock.gettimeout()
+                sock.settimeout(max(self.timeout_s, timeout_games + job_buffer_s))
+                self._send(
+                    sock,
+                    {
+                        "type": "job",
+                        "kind": "self_play_multi",
+                        "job": batch_job,
+                    },
+                )
+                reply = read_frame(sock)
+            except (TimeoutError, OSError, RemoteJobsError) as exc:
+                last_exc = exc
+                if attempt == 0 and _is_remote_hangup_error(exc):
+                    try:
+                        self.reconnect()
+                    except (TimeoutError, OSError, RemoteJobsError):
+                        raise exc
+                    continue
+                raise
+            finally:
+                if sock is not None:
+                    try:
+                        sock.settimeout(prev)
+                    except Exception:
+                        pass
+            if reply.get("type") != "result":
+                raise RemoteJobsError(f"unexpected job reply: {reply!r}")
+            if not reply.get("ok", False):
+                raise RemoteJobsError(str(reply.get("error") or "remote job failed"))
+            payload = reply.get("result")
+            if isinstance(payload, dict) and bool(payload.get("self_play_multi")):
+                rows = list(payload.get("results") or [])
+            elif isinstance(payload, list):
+                rows = list(payload)
+            else:
+                raise RemoteJobsError(
+                    "remote self_play_multi result missing results list"
+                )
+            if len(rows) != len(jobs):
+                raise RemoteJobsError(
+                    "remote self_play_multi result count mismatch: "
+                    f"expected={len(jobs)} got={len(rows)}"
+                )
+            expected_by_index: dict[int, dict[str, Any]] = {}
+            for job in jobs:
+                try:
+                    job_index = int(job.get("job_index", -1))
+                    our_seat = int(job.get("our_seat", 0))
+                except (TypeError, ValueError) as exc:
+                    raise RemoteJobsError(
+                        "self_play_multi request has non-integer child identity"
+                    ) from exc
+                if job_index < 0 or job_index in expected_by_index:
+                    raise RemoteJobsError(
+                        "self_play_multi request has invalid child job indexes"
+                    )
+                expected_by_index[job_index] = {**job, "our_seat": our_seat}
+            checked_by_index: dict[int, dict[str, Any]] = {}
+            for position, row in enumerate(rows):
+                if not isinstance(row, dict):
+                    raise RemoteJobsError(
+                        "remote self_play_multi child is not an object: "
+                        f"position={position}"
+                    )
+                try:
+                    job_index = int(row.get("job_index", -1))
+                    row_seat = int(row.get("our_seat", 0))
+                except (TypeError, ValueError) as exc:
+                    raise RemoteJobsError(
+                        "remote self_play_multi child has non-integer identity: "
+                        f"position={position}"
+                    ) from exc
+                if job_index in checked_by_index:
+                    raise RemoteJobsError(
+                        "remote self_play_multi returned a duplicate child: "
+                        f"job_index={job_index}"
+                    )
+                job = expected_by_index.get(job_index)
+                if job is None:
+                    raise RemoteJobsError(
+                        "remote self_play_multi returned an unknown child: "
+                        f"job_index={job_index}"
+                    )
+                expected_identity = (
+                    job_index,
+                    str(job.get("opponent_id") or "self"),
+                    int(job.get("our_seat", 0)),
+                )
+                actual_identity = (
+                    job_index,
+                    str(row.get("opponent_id") or "self"),
+                    row_seat,
+                )
+                if actual_identity != expected_identity:
+                    raise RemoteJobsError(
+                        "remote self_play_multi child identity mismatch: "
+                        f"position={position} expected={expected_identity!r} "
+                        f"actual={actual_identity!r}"
+                    )
+                # Public r182 packets carry a portable baseline ``spec``;
+                # unlike self-play, their per-child collection identity also
+                # includes the deterministic seed and the exact full-model
+                # checkpoint digest.  ``run_play_multi`` echoes both fields,
+                # so accepting a row without them would allow a same-index
+                # stale/foreign public result to consume an exact cell.
+                if job.get("spec") is not None and (
+                    "seed" not in row
+                    or "checkpoint_digest" not in row
+                    or row.get("seed") != job.get("seed")
+                    or row.get("checkpoint_digest")
+                    != job.get("checkpoint_digest")
+                ):
+                    raise RemoteJobsError(
+                        "remote self_play_multi public child proof mismatch: "
+                        f"position={position} job_index={job_index} "
+                        f"expected_seed={job.get('seed')!r} "
+                        f"actual_seed={row.get('seed')!r} "
+                        "expected_checkpoint_digest="
+                        f"{job.get('checkpoint_digest')!r} "
+                        "actual_checkpoint_digest="
+                        f"{row.get('checkpoint_digest')!r}"
+                    )
+                checked_by_index[job_index] = require_remote_result_success(row)
+            if set(checked_by_index) != set(expected_by_index):
+                raise RemoteJobsError(
+                    "remote self_play_multi result child set mismatch"
+                )
+            return [checked_by_index[int(job["job_index"])] for job in jobs]
+        assert last_exc is not None
+        raise last_exc
+
     def _control_call(self, msg: dict[str, Any]) -> dict[str, Any]:
         """Send a control-plane frame with ``control_timeout_s``; one hangup retry."""
         last_exc: Optional[BaseException] = None
@@ -2236,6 +2929,7 @@ def _parallel_remote_slots(
     remote_clients: list[RemoteJobClient],
     *,
     demand_by_endpoint: Optional[dict[str, int]] = None,
+    kind: Optional[str] = None,
 ) -> tuple[list[RemoteJobClient], list[RemoteJobClient]]:
     """Expand farm endpoints into concurrent sockets (one in-flight game each).
 
@@ -2296,7 +2990,7 @@ def _parallel_remote_slots(
                 )
         n = max(0, n // divisor) if divisor > 1 else n
         execution_slots = n
-        n = remote_socket_target(execution_slots)
+        n = remote_socket_target(execution_slots, kind=kind)
         if n <= 0:
             print(
                 f"[remote] {getattr(template, 'endpoint', '?')} "
@@ -2308,7 +3002,7 @@ def _parallel_remote_slots(
             print(
                 f"[remote] {getattr(template, 'endpoint', '?')} "
                 f"socket_prefetch={n} ({execution_slots} workers × "
-                f"{remote_socket_prefetch_factor()})",
+                f"{remote_socket_prefetch_factor(kind=kind)})",
                 flush=True,
             )
         ordered_slots.append((endpoint_index, 0, template, False))
@@ -2502,30 +3196,83 @@ def iter_additive_results(
         assert last_exc is not None
         raise last_exc
 
+    def _submit_remote_multi_with_retry(
+        client: RemoteJobClient, jobs: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Submit a packed self_play_multi batch with remote-only retries."""
+        max_attempts = max(
+            1, int(os.environ.get("POKEBOT_REMOTE_JOB_RETRIES", "8") or "8")
+        )
+        last_exc: Optional[BaseException] = None
+        for attempt in range(max_attempts):
+            try:
+                return client.submit_self_play_multi(jobs)
+            except (TimeoutError, OSError, RemoteJobsError) as exc:
+                last_exc = exc
+                print(
+                    f"[remote] {client.endpoint} self_play_multi attempt "
+                    f"{attempt + 1}/{max_attempts} failed "
+                    f"({type(exc).__name__}: {exc}); reconnect+retry on remote "
+                    f"pack_games={len(jobs)}",
+                    flush=True,
+                )
+                try:
+                    client.reconnect()
+                except (TimeoutError, OSError, RemoteJobsError) as recon_exc:
+                    print(
+                        f"[remote] {client.endpoint} reconnect failed "
+                        f"({type(recon_exc).__name__}: {recon_exc}); backing off",
+                        flush=True,
+                    )
+                    time.sleep(min(30.0, 2.0 * (attempt + 1)))
+                else:
+                    time.sleep(min(5.0, 0.5 * (attempt + 1)))
+        assert last_exc is not None
+        raise last_exc
+
     def _emit_remote(client: RemoteJobClient, batch: list[dict[str, Any]]) -> None:
         try:
-            for index, job in enumerate(batch):
+            packets = _remote_transport_packets(client, kind=kind, jobs=batch)
+            for packet_index, packet in enumerate(packets):
                 if producer_stop.is_set():
                     return
+                multi_env = _remote_packet_uses_multi_env(
+                    kind=kind, packet=packet
+                )
                 try:
-                    if no_local_fallback:
-                        row = _submit_remote_with_retry(client, job)
-                    else:
-                        row = client.submit_job(job, kind=kind)
-                    if on_execution is not None:
-                        on_execution(
-                            {
-                                "origin": "remote",
-                                "endpoint": client.endpoint,
-                                "kind": kind,
-                            }
+                    if multi_env:
+                        rows = (
+                            _submit_remote_multi_with_retry(client, packet)
+                            if no_local_fallback
+                            else client.submit_self_play_multi(packet)
                         )
-                    if not _put_thread_result(
-                        out_q, producer_stop, ("ok", row)
-                    ):
-                        return
+                    elif no_local_fallback:
+                        rows = [_submit_remote_with_retry(client, packet[0])]
+                    else:
+                        rows = [client.submit_job(packet[0], kind=kind)]
+                    for row in rows:
+                        if on_execution is not None:
+                            on_execution(
+                                {
+                                    "origin": "remote",
+                                    "endpoint": client.endpoint,
+                                    "kind": kind,
+                                    "transport_kind": (
+                                        "self_play_multi" if multi_env else kind
+                                    ),
+                                    "pack_games": 1,
+                                }
+                            )
+                        if not _put_thread_result(
+                            out_q, producer_stop, ("ok", row)
+                        ):
+                            return
                 except (TimeoutError, OSError, RemoteJobsError) as exc:
-                    remaining = batch[index:]
+                    remaining = [
+                        job
+                        for pending_packet in packets[packet_index:]
+                        for job in pending_packet
+                    ]
                     if no_local_fallback:
                         # Exhausted remote retries — fail the wave; never dump onto
                         # the training-box CPU (steals from co-resident Blackwell).
@@ -2571,7 +3318,9 @@ def iter_additive_results(
 
     try:
         if remote_jobs:
-            remote_slots, owned_clients = _parallel_remote_slots(remote_clients)
+            remote_slots, owned_clients = _parallel_remote_slots(
+                remote_clients, kind=kind
+            )
             if not remote_slots:
                 if no_local_fallback:
                     print(
@@ -2588,7 +3337,9 @@ def iter_additive_results(
                                 f"reconnect failed ({type(exc).__name__}: {exc})",
                                 flush=True,
                             )
-                    remote_slots, owned_clients = _parallel_remote_slots(remote_clients)
+                    remote_slots, owned_clients = _parallel_remote_slots(
+                        remote_clients, kind=kind
+                    )
                 if not remote_slots:
                     if no_local_fallback:
                         raise RemoteJobsError(
@@ -2769,6 +3520,21 @@ def iter_scheduled_additive_results(
     slots_by_endpoint: dict[str, int] = {}
     refill_slot_floor: dict[str, int] = {}
     low_water_recovery: set[str] = set()
+    # A listener restart invalidates every persistent request socket at once,
+    # but the corresponding emitter threads can remain alive while their
+    # reconnect retries back off.  ``slots_by_endpoint`` intentionally counts
+    # those threads until they exit, so an ordinary low-water refill sees its
+    # socket ceiling as full even though the restarted listener has no live
+    # data-plane sessions.  Keep that exceptional state at *emitter* grain:
+    # a successful fresh control-plane probe may open one replacement for each
+    # emitter that has actually observed a refused reconnect.  The old emitter
+    # is then retired at its next between-claim boundary.  This never releases
+    # or reassigns its logical credits, which can include an in-flight packed
+    # r182 public request.
+    next_remote_emitter_id = 0
+    remote_emitter_endpoint: dict[int, str] = {}
+    remote_emitter_reconnect_backoff: set[int] = set()
+    remote_emitter_rejoin_retire: set[int] = set()
     initial_remote_tokens: set[int] = set()
     initial_remote_leaders: set[int] = set()
     initial_endpoint_leaders_ready = threading.Event()
@@ -2844,6 +3610,94 @@ def iter_scheduled_additive_results(
     demand_queue_mode = _env_truthy("POKEBOT_REMOTE_DEMAND_QUEUE")
     endpoint_owned_queue_mode = bool(demand_queue_mode or remote_only)
 
+    # ``eout`` / ``bout`` are already exact *logical-game* credits.  That is
+    # deliberately a different unit from both request sockets and the worker
+    # server's ``active_jobs`` counter: one r182 public request can contain up
+    # to four independent logical games.  Keep a compact per-wave transport
+    # audit so the event log proves which public rows really used LibcgMultiEnv
+    # and which stayed singleton without printing one line per game.
+    public_transport_enabled = str(kind) == "play"
+    public_transport_lock = threading.Lock()
+    public_transport_by_endpoint: dict[str, dict[str, int]] = {}
+
+    def _public_transport_bucket(
+        packet: list[dict[str, Any]], *, multi_env: bool
+    ) -> str | None:
+        if not public_transport_enabled or not packet:
+            return None
+        if multi_env:
+            # ``_remote_packet_uses_multi_env`` has already proven that every
+            # child is exact-r182 safe.  Keep the assertion local to telemetry
+            # as a second guard against a misleading success log.
+            if not all(public_multi_env_safe_job(job) for job in packet):
+                return "default_singleton"
+            return "safe_multi"
+        job = packet[0]
+        if public_multi_env_safe_job(job):
+            # A final 1--3 safe-row remainder, or an endpoint without the
+            # r182 capability, correctly remains an ordinary one-game play.
+            return "safe_singleton"
+        opponent_id = str(job.get("opponent_id") or "")
+        if opponent_id in PUBLIC_MULTI_ENV_LEGACY_OPPONENT_IDS:
+            return "legacy_id_singleton"
+        return "default_singleton"
+
+    def _note_public_transport(
+        endpoint: str,
+        packet: list[dict[str, Any]],
+        *,
+        multi_env: bool,
+        returned_rows: int,
+    ) -> None:
+        """Record completed public transport at packet and logical-game grain."""
+
+        bucket = _public_transport_bucket(packet, multi_env=multi_env)
+        if bucket is None:
+            return
+        logical_games = max(0, int(returned_rows))
+        with public_transport_lock:
+            row = public_transport_by_endpoint.setdefault(
+                str(endpoint),
+                {
+                    "safe_multi_requests": 0,
+                    "safe_multi_games": 0,
+                    "safe_singleton_requests": 0,
+                    "safe_singleton_games": 0,
+                    "legacy_id_singleton_requests": 0,
+                    "legacy_id_singleton_games": 0,
+                    "default_singleton_requests": 0,
+                    "default_singleton_games": 0,
+                },
+            )
+            row[f"{bucket}_requests"] += 1
+            row[f"{bucket}_games"] += logical_games
+
+    def _public_transport_summary() -> str:
+        """Format a bounded, deterministic public transport receipt line."""
+
+        with public_transport_lock:
+            rows = {
+                endpoint: dict(values)
+                for endpoint, values in public_transport_by_endpoint.items()
+            }
+        if not rows:
+            return "-"
+        parts: list[str] = []
+        for endpoint in sorted(rows):
+            row = rows[endpoint]
+            parts.append(
+                f"{endpoint}:"
+                f"safe_multi={row['safe_multi_games']}/"
+                f"{row['safe_multi_requests']}req,"
+                f"safe_singleton={row['safe_singleton_games']}/"
+                f"{row['safe_singleton_requests']}req,"
+                f"legacy_id_singleton={row['legacy_id_singleton_games']}/"
+                f"{row['legacy_id_singleton_requests']}req,"
+                f"default_singleton={row['default_singleton_games']}/"
+                f"{row['default_singleton_requests']}req"
+            )
+        return ";".join(parts)
+
     def _publish_remote_slots() -> None:
         """Push sockets and exact remote-owned games as separate values.
 
@@ -2888,6 +3742,85 @@ def iter_scheduled_additive_results(
             # Progress telemetry is observational and may never break exact
             # job ownership or result delivery.
             pass
+
+    def _new_remote_emitter_id_locked(endpoint: str) -> int:
+        """Register one request-emitter identity while ``grow_lock`` is held."""
+
+        nonlocal next_remote_emitter_id
+        emitter_id = int(next_remote_emitter_id)
+        next_remote_emitter_id += 1
+        remote_emitter_endpoint[emitter_id] = str(endpoint)
+        return emitter_id
+
+    def _discard_remote_emitter_id_locked(emitter_id: int) -> None:
+        """Forget an emitter that was allocated but never allowed to start."""
+
+        token = int(emitter_id)
+        remote_emitter_endpoint.pop(token, None)
+        remote_emitter_reconnect_backoff.discard(token)
+        remote_emitter_rejoin_retire.discard(token)
+
+    def _mark_remote_emitter_reconnect_backoff(
+        endpoint: str, emitter_id: Optional[int]
+    ) -> None:
+        """Record one data-path refused-reconnect without touching credits.
+
+        The marker is deliberately per emitter rather than per error attempt:
+        one dead socket may retry several times while the worker listener is
+        down, but it grants at most one bounded replacement socket after the
+        listener's fresh health probe succeeds.
+        """
+
+        if emitter_id is None:
+            return
+        token = int(emitter_id)
+        ep = str(endpoint)
+        with grow_lock:
+            if remote_emitter_endpoint.get(token) != ep:
+                return
+            if token not in remote_emitter_rejoin_retire:
+                remote_emitter_reconnect_backoff.add(token)
+
+    def _mark_remote_emitter_progress(
+        endpoint: str, emitter_id: Optional[int]
+    ) -> None:
+        """Clear a stale-reconnect marker after a real logical result."""
+
+        if emitter_id is None:
+            return
+        token = int(emitter_id)
+        with grow_lock:
+            if remote_emitter_endpoint.get(token) == str(endpoint):
+                remote_emitter_reconnect_backoff.discard(token)
+
+    def _listener_rejoin_replacements_locked(
+        endpoint: str,
+        *,
+        active: int,
+        execution: int,
+        deficit: int,
+    ) -> list[int]:
+        """Return bounded stale emitters that a public listener rejoin may replace.
+
+        A low active server sample by itself is not enough: normal fast
+        completions routinely report it.  The replacement path requires both
+        a successful *new* health socket and a data-path reconnect refusal from
+        the old emitter.  It is public-play-only because self-play's one-wave
+        cap deliberately forbids low-water second-wave admission.
+        """
+
+        if str(kind) != "play" or int(active) >= max(1, int(execution)):
+            return []
+        cap = max(0, int(deficit))
+        if cap <= 0:
+            return []
+        ep = str(endpoint)
+        return [
+            token
+            for token in sorted(remote_emitter_reconnect_backoff)
+            if remote_emitter_endpoint.get(token) == ep
+            and token not in remote_emitter_rejoin_retire
+        ][:cap]
 
     def _tail_endpoint_target(endpoint: str) -> int:
         """Return the controller-owned target once tail stealing starts.
@@ -3152,12 +4085,54 @@ def iter_scheduled_additive_results(
         if not initial_remote_leaders:
             initial_endpoint_leaders_ready.set()
 
+    def _take_public_transport_packet_locked(
+        source: deque[dict[str, Any]],
+        *,
+        packet_size: int,
+    ) -> list[dict[str, Any]]:
+        """Atomically select one exact-safe public packet from ``source``.
+
+        The caller holds ``claim_lock``.  A scheduled public emitter owns at
+        most one transport request at a time: scan the controller deque for
+        up to four r182-safe children, remove only those children, and leave
+        every legacy/default-singleton row in its original source order.  If
+        no safe child remains, release exactly one front row as the ordinary
+        singleton fallback.  The source may be the shared deque or an
+        endpoint-owned controller queue; in the latter case credit was already
+        reserved at queue fill, so this changes packet selection only.
+        """
+
+        if not source:
+            return []
+        limit = max(1, min(4, int(packet_size)))
+        rows = list(source)
+        selected_indexes: list[int] = []
+        for index, job in enumerate(rows):
+            if not public_multi_env_safe_job(job):
+                continue
+            selected_indexes.append(index)
+            if len(selected_indexes) >= limit:
+                break
+        if not selected_indexes:
+            # No exact-safe child is available anywhere in this controller
+            # queue.  Preserve legacy/default ordering and give the emitter a
+            # single ordinary transport request rather than a private chunk.
+            return [source.popleft()]
+
+        selected = set(selected_indexes)
+        source.clear()
+        source.extend(
+            job for index, job in enumerate(rows) if index not in selected
+        )
+        return [rows[index] for index in selected_indexes]
+
     def _claim(
         side: str,
         want: int,
         *,
         initial_token: Optional[int] = None,
         endpoint: Optional[str] = None,
+        public_packet_size: int = 0,
     ) -> list[dict[str, Any]]:
         nonlocal claimed_local, claimed_remote
         nonlocal local_batch_size, local_batch_outstanding
@@ -3183,7 +4158,13 @@ def iter_scheduled_additive_results(
                 _refill_endpoint_queue_locked(str(endpoint), dec)
                 owned = endpoint_owned_queues.setdefault(str(endpoint), deque())
                 take = min(requested_want, len(owned))
-                batch = [owned.popleft() for _ in range(take)]
+                if public_packet_size > 0:
+                    batch = _take_public_transport_packet_locked(
+                        owned,
+                        packet_size=min(take, public_packet_size),
+                    )
+                else:
+                    batch = [owned.popleft() for _ in range(take)]
                 if initial_attempt:
                     _finish_initial_remote_claim(initial_token)
                 if callable(log_scheduler):
@@ -3348,7 +4329,13 @@ def iter_scheduled_additive_results(
                 )
             if want <= 0:
                 return []
-            batch = [remaining.popleft() for _ in range(want)]
+            if side == "remote" and public_packet_size > 0:
+                batch = _take_public_transport_packet_locked(
+                    remaining,
+                    packet_size=min(want, public_packet_size),
+                )
+            else:
+                batch = [remaining.popleft() for _ in range(want)]
             if side == "remote":
                 claimed_remote += len(batch)
                 endpoint_credits.note_claimed(str(endpoint), len(batch))
@@ -3406,19 +4393,26 @@ def iter_scheduled_additive_results(
     # exit between chunks so live sockets fall with demand (not grow-only).
     retire_tokens: dict[str, int] = {}
 
-    def _account_remote_slot_exit(endpoint: str) -> tuple[int, int]:
+    def _account_remote_slot_exit(
+        endpoint: str, emitter_id: Optional[int] = None
+    ) -> tuple[int, int]:
         """Remove one live emitter from both slot and reservation accounting."""
         ep = str(endpoint)
         with grow_lock:
             before = max(0, int(slots_by_endpoint.get(ep, 0)))
             after = max(0, before - 1)
             slots_by_endpoint[ep] = after
+            if emitter_id is not None:
+                _discard_remote_emitter_id_locked(int(emitter_id))
         with claim_lock:
             endpoint_credits.unregister(ep)
         return before, after
 
     def _submit_remote_with_retry(
-        client: RemoteJobClient, job: dict[str, Any]
+        client: RemoteJobClient,
+        job: dict[str, Any],
+        *,
+        on_reconnect_backoff: Optional[Callable[[], None]] = None,
     ) -> dict[str, Any]:
         max_attempts = max(
             1, int(os.environ.get("POKEBOT_REMOTE_JOB_RETRIES", "8") or "8")
@@ -3438,6 +4432,41 @@ def iter_scheduled_additive_results(
                 try:
                     client.reconnect()
                 except (TimeoutError, OSError, RemoteJobsError):
+                    if on_reconnect_backoff is not None:
+                        on_reconnect_backoff()
+                    time.sleep(min(30.0, 2.0 * (attempt + 1)))
+                else:
+                    time.sleep(min(5.0, 0.5 * (attempt + 1)))
+        assert last_exc is not None
+        raise last_exc
+
+    def _submit_remote_multi_with_retry(
+        client: RemoteJobClient,
+        jobs: list[dict[str, Any]],
+        *,
+        on_reconnect_backoff: Optional[Callable[[], None]] = None,
+    ) -> list[dict[str, Any]]:
+        max_attempts = max(
+            1, int(os.environ.get("POKEBOT_REMOTE_JOB_RETRIES", "8") or "8")
+        )
+        last_exc: Optional[BaseException] = None
+        for attempt in range(max_attempts):
+            try:
+                return client.submit_self_play_multi(jobs)
+            except (TimeoutError, OSError, RemoteJobsError) as exc:
+                last_exc = exc
+                print(
+                    f"[remote] {client.endpoint} scheduled self_play_multi "
+                    f"attempt {attempt + 1}/{max_attempts} failed "
+                    f"({type(exc).__name__}: {exc}); reconnect+retry remote "
+                    f"pack_games={len(jobs)}",
+                    flush=True,
+                )
+                try:
+                    client.reconnect()
+                except (TimeoutError, OSError, RemoteJobsError):
+                    if on_reconnect_backoff is not None:
+                        on_reconnect_backoff()
                     time.sleep(min(30.0, 2.0 * (attempt + 1)))
                 else:
                     time.sleep(min(5.0, 0.5 * (attempt + 1)))
@@ -3447,6 +4476,7 @@ def iter_scheduled_additive_results(
     def _emit_remote(
         client: RemoteJobClient,
         initial_token: Optional[int] = None,
+        emitter_id: Optional[int] = None,
     ) -> None:
         # Fair, shallow reservations keep every remote socket fed.  This claim
         # is only an in-process deque operation; it does not amortize LAN RTT.
@@ -3458,11 +4488,23 @@ def iter_scheduled_additive_results(
         ep = client.endpoint
         first_claim = initial_token is not None
         retiring = False
+        listener_rejoin_retiring = False
         try:
             while True:
                 if producer_stop.is_set():
                     return
                 with grow_lock:
+                    if (
+                        emitter_id is not None
+                        and int(emitter_id) in remote_emitter_rejoin_retire
+                    ):
+                        listener_rejoin_retiring = True
+                        retiring = True
+                        try:
+                            client.close()
+                        except Exception:
+                            pass
+                        return
                     tok = int(retire_tokens.get(ep, 0))
                     if tok > 0:
                         retire_tokens[ep] = tok - 1
@@ -3482,12 +4524,30 @@ def iter_scheduled_additive_results(
                     live_endpoint_slots = max(
                         1, int(slots_by_endpoint.get(ep, 1))
                     )
+                self_play_pack = client_self_play_multi_pack(client, kind=kind)
+                public_pack = (
+                    _client_public_multi_env_pack(client)
+                    if str(kind) == "play"
+                    else 0
+                )
+                pack_n = max(self_play_pack, public_pack)
+                public_packet_size = public_pack if public_pack > 1 else 0
                 chunk = max(
                     remote_refill_games_per_socket(),
                     (int(endpoint_backlog) + live_endpoint_slots - 1)
                     // live_endpoint_slots,
                 )
-                if self_play_elmo_tail_only:
+                if public_packet_size:
+                    # Do not privately reserve a generic lookahead chunk.  The
+                    # packet-aware claim below scans its controller deque under
+                    # the exact ownership lock and removes only one up-to-four
+                    # safe packet, leaving legacy rows available for later
+                    # singleton dispatch.  This keeps every public prefetch
+                    # socket productive before an earlier request returns.
+                    chunk = public_packet_size
+                elif pack_n > 1:
+                    chunk = pack_n
+                elif self_play_elmo_tail_only:
                     # One socket represents one execution worker in the
                     # revision-123 self-play profile.  Letting the first few
                     # socket threads privately claim multi-game batches leaves
@@ -3496,7 +4556,11 @@ def iter_scheduled_additive_results(
                     # workers fed and makes ``inflight`` exactly represent
                     # remote-owned work.
                     chunk = 1
-                if endpoint_owned_queue_mode and not remote_only:
+                if (
+                    endpoint_owned_queue_mode
+                    and not remote_only
+                    and not public_packet_size
+                ):
                     # A mixed collection may not hide more than half of the
                     # tail window in emitter-private lists. Production's many
                     # sockets remain at their existing small per-slot chunks,
@@ -3508,13 +4572,14 @@ def iter_scheduled_additive_results(
                         // max(1, 2 * live_endpoint_slots),
                     )
                     chunk = min(chunk, private_tail_cap)
-                    if tail_work_steal_started:
+                    if tail_work_steal_started and pack_n <= 1:
                         chunk = 1
                 batch = _claim(
                     "remote",
                     chunk,
                     initial_token=initial_token if first_claim else None,
                     endpoint=ep,
+                    public_packet_size=public_packet_size,
                 )
                 was_initial_claim = first_claim
                 if first_claim:
@@ -3528,7 +4593,8 @@ def iter_scheduled_additive_results(
                     time.sleep(min(0.25, 0.02 * float(idle_spins)))
                     continue
                 idle_spins = 0
-                for index, job in enumerate(batch):
+                packets = _remote_transport_packets(client, kind=kind, jobs=batch)
+                for packet_index, packet in enumerate(packets):
                     if producer_stop.is_set():
                         return
                     # Retire only between claimed chunks.  Returning the
@@ -3538,32 +4604,71 @@ def iter_scheduled_additive_results(
                     # not reclaim the returned jobs.  A slot now completes the
                     # batch it owns, then consumes its retire token at the top
                     # of the outer loop.
+                    multi_env = _remote_packet_uses_multi_env(
+                        kind=kind, packet=packet
+                    )
                     try:
-                        row = (
-                            _submit_remote_with_retry(client, job)
-                            if no_local_fallback
-                            else client.submit_job(job, kind=kind)
-                        )
-                        _finish_remote_credit(ep)
-                        scheduler.note_completed(
-                            side="remote",
-                            n=1,
-                            decisions=_result_decision_count(row),
-                        )
-                        if on_execution is not None:
-                            on_execution(
-                                {
-                                    "origin": "remote",
-                                    "endpoint": client.endpoint,
-                                    "kind": kind,
-                                }
+                        if multi_env:
+                            rows = _submit_remote_multi_with_retry(
+                                client,
+                                packet,
+                                on_reconnect_backoff=lambda: (
+                                    _mark_remote_emitter_reconnect_backoff(
+                                        ep, emitter_id
+                                    )
+                                ),
                             )
-                        if not _put_thread_result(
-                            out_q, producer_stop, ("ok", row)
-                        ):
-                            return
+                        else:
+                            row = (
+                                _submit_remote_with_retry(
+                                    client,
+                                    packet[0],
+                                    on_reconnect_backoff=lambda: (
+                                        _mark_remote_emitter_reconnect_backoff(
+                                            ep, emitter_id
+                                        )
+                                    ),
+                                )
+                                if no_local_fallback
+                                else client.submit_job(packet[0], kind=kind)
+                            )
+                            rows = [row]
+                        _note_public_transport(
+                            client.endpoint,
+                            packet,
+                            multi_env=multi_env,
+                            returned_rows=len(rows),
+                        )
+                        for row in rows:
+                            _mark_remote_emitter_progress(ep, emitter_id)
+                            _finish_remote_credit(ep)
+                            scheduler.note_completed(
+                                side="remote",
+                                n=1,
+                                decisions=_result_decision_count(row),
+                            )
+                            if on_execution is not None:
+                                on_execution(
+                                    {
+                                        "origin": "remote",
+                                        "endpoint": client.endpoint,
+                                        "kind": kind,
+                                        "transport_kind": (
+                                            "self_play_multi" if multi_env else kind
+                                        ),
+                                        "pack_games": 1,
+                                    }
+                                )
+                            if not _put_thread_result(
+                                out_q, producer_stop, ("ok", row)
+                            ):
+                                return
                     except (TimeoutError, OSError, RemoteJobsError) as exc:
-                        remaining_jobs = batch[index:]
+                        remaining_jobs = [
+                            job
+                            for pending_packet in packets[packet_index:]
+                            for job in pending_packet
+                        ]
                         if no_local_fallback:
                             print(
                                 f"[remote] {client.endpoint} scheduled slot failed "
@@ -3624,8 +4729,15 @@ def iter_scheduled_additive_results(
                 client.close()
             except Exception:
                 pass
-            before, after = _account_remote_slot_exit(ep)
-            if retiring:
+            before, after = _account_remote_slot_exit(ep, emitter_id)
+            if listener_rejoin_retiring:
+                print(
+                    f"[remote] {ep} listener_rejoin_retire "
+                    f"slots={before}->{after} "
+                    "(replaced refused persistent socket)",
+                    flush=True,
+                )
+            elif retiring:
                 print(
                     f"[remote] {ep} demand_shrink "
                     f"slots={before}->{after} "
@@ -3661,7 +4773,9 @@ def iter_scheduled_additive_results(
         except Exception:
             demand0 = {}
         remote_slots, owned_clients = _parallel_remote_slots(
-            remote_clients, demand_by_endpoint=demand0 or None
+            remote_clients,
+            demand_by_endpoint=demand0 or None,
+            kind=kind,
         )
         if no_local_fallback and not remote_slots:
             raise RemoteJobsError(
@@ -3695,6 +4809,8 @@ def iter_scheduled_additive_results(
                 threading.Thread(target=_emit_local, name="sched-local", daemon=True)
             )
         for slot_index, client in enumerate(remote_slots):
+            with grow_lock:
+                emitter_id = _new_remote_emitter_id_locked(client.endpoint)
             slots_by_endpoint[client.endpoint] = (
                 slots_by_endpoint.get(client.endpoint, 0) + 1
             )
@@ -3705,7 +4821,7 @@ def iter_scheduled_additive_results(
             _register_producer(
                 threading.Thread(
                     target=_emit_remote,
-                    args=(client, slot_index),
+                    args=(client, slot_index, emitter_id),
                     name=f"sched-remote-{client.endpoint}-{slot_index}",
                     daemon=True,
                 )
@@ -3728,14 +4844,47 @@ def iter_scheduled_additive_results(
                 f"depths={endpoint_queue_depths} "
                 f"high_water={dict(endpoint_queue_high_water)} "
                 f"safety_ceiling={dict(endpoint_queue_safety_ceiling)} "
-                "shared_endpoint_race=disabled",
+                "shared_endpoint_race=disabled units=logical_games",
+                flush=True,
+            )
+        multi_pack_by_endpoint = {
+            client.endpoint: (
+                _client_public_multi_env_pack(client)
+                if str(kind) == "play"
+                else client_self_play_multi_pack(client, kind=kind)
+            )
+            for client in remote_clients
+        }
+        if public_transport_enabled:
+            safe_allowlisted = sum(
+                1 for job in jobs if public_multi_env_safe_job(job)
+            )
+            named_legacy_singleton = sum(
+                1
+                for job in jobs
+                if str(job.get("opponent_id") or "")
+                in PUBLIC_MULTI_ENV_LEGACY_OPPONENT_IDS
+            )
+            default_singleton = max(
+                0,
+                total_jobs - safe_allowlisted - named_legacy_singleton,
+            )
+            print(
+                "[remote] public_multi_env_plan "
+                f"logical_games={total_jobs} "
+                f"safe_allowlisted={safe_allowlisted} "
+                f"legacy_id_singleton={named_legacy_singleton} "
+                f"default_singleton={default_singleton} "
+                f"endpoint_pack_cap={multi_pack_by_endpoint} "
+                "default_deny=true",
                 flush=True,
             )
         print(
             f"[remote] scheduled_dispatch kind={kind} jobs={total_jobs} "
-            f"remote_slots={len(remote_slots)} "
+            f"remote_slots={len(remote_slots)}(request_sockets) "
             f"remote_chunk={int(scheduler.decision().remote_chunk)} "
             f"refill_games={remote_refill_games_per_socket()} "
+            f"multi_env_pack={multi_pack_by_endpoint} "
             f"demand={demand0 or '-'} "
             f"result_buffer=ram:{out_q.memory_capacity}+"
             f"disk:{out_q.max_spool_bytes / (1024**3):.1f}GiB "
@@ -3769,7 +4918,9 @@ def iter_scheduled_additive_results(
             with grow_lock:
                 for template in remote_clients:
                     ep = template.endpoint
-                    want = remote_socket_target(int(demand.get(ep, 0)))
+                    want = remote_socket_target(
+                        int(demand.get(ep, 0)), kind=kind
+                    )
                     have = int(slots_by_endpoint.get(ep, 0))
                     if want <= have:
                         continue
@@ -3784,13 +4935,15 @@ def iter_scheduled_additive_results(
                                 flush=True,
                             )
                             break
+                        emitter_id = _new_remote_emitter_id_locked(ep)
                         t = threading.Thread(
                             target=_emit_remote,
-                            args=(clone,),
+                            args=(clone, None, emitter_id),
                             name=f"sched-remote-grow-{ep}-{have + i}",
                             daemon=True,
                         )
                         if not _register_producer(t):
+                            _discard_remote_emitter_id_locked(emitter_id)
                             clone.close()
                             break
                         owned_clients.append(clone)
@@ -3827,7 +4980,7 @@ def iter_scheduled_additive_results(
                 for template in remote_clients:
                     ep = template.endpoint
                     want = remote_socket_target(
-                        max(0, int(demand.get(ep, 0)))
+                        max(0, int(demand.get(ep, 0))), kind=kind
                     )
                     # A low-water refill reserve is held for the rest of this
                     # collection wave.  Shrinking it immediately on the next
@@ -3855,12 +5008,15 @@ def iter_scheduled_additive_results(
             """Fill every low remote queue to high water in one probe pass.
 
             ``health.active_jobs`` is the authoritative server-side count of
-            executing plus locally queued games.  Refill is based on queued
-            games (active minus execution workers), not TCP socket estimates.
-            Both endpoint probes and all required reserve connections happen
-            concurrently, so a low Bert queue cannot wait behind Elmo.  This
-            function is called by an independent cadence thread; result ingest
-            can never pause the 0.2-second queue controller.
+            executing plus locally queued *request packets*. An r182 safe
+            public packet can contain up to four logical games, so the exact
+            logical credits remain separate in progress telemetry. Refill is
+            based on queued request packets (active minus execution workers),
+            not TCP socket estimates. Both endpoint probes and all required
+            reserve connections happen concurrently, so a low Bert queue
+            cannot wait behind Elmo. This function is called by an independent
+            cadence thread; result ingest can never pause the 0.2-second queue
+            controller.
             """
             nonlocal pending
             with claim_lock:
@@ -3930,7 +5086,17 @@ def iter_scheduled_additive_results(
                 demand = {}
             fraction = remote_queue_low_water_fraction()
             plans: list[
-                tuple[RemoteJobClient, int, int, int, int, int, int]
+                tuple[
+                    RemoteJobClient,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                    tuple[int, ...],
+                ]
             ] = []
             for template in remote_clients:
                 health = samples.get(template.endpoint)
@@ -3952,7 +5118,19 @@ def iter_scheduled_additive_results(
                 queued = max(0, active - execution)
                 with grow_lock:
                     have = int(slots_by_endpoint.get(template.endpoint, 0))
-                max_slots = remote_socket_max_target(execution)
+                # ``active_jobs`` / ``queued`` below are remote-server request
+                # packets.  The separate controller credit is the exact
+                # logical-game count shown as eout/bout in trainer progress.
+                with claim_lock:
+                    logical_credits = max(
+                        0,
+                        int(
+                            endpoint_credits.inflight.get(
+                                template.endpoint, 0
+                            )
+                        ),
+                    )
+                max_slots = remote_socket_max_target(execution, kind=kind)
                 if self_play_elmo_tail_only:
                     # Self-play request sockets are the execution wave. They
                     # persist and claim one next game after each return; a
@@ -3988,15 +5166,32 @@ def iter_scheduled_additive_results(
                 if endpoint not in low_water_recovery:
                     continue
                 restore_active = execution + server_high_water
+                restore_deficit = max(0, restore_active - active)
+                with grow_lock:
+                    # Normal room uses the physical request-socket ceiling.
+                    # A listener-rejoin replacement can exceed that count
+                    # only one-for-one with a specifically refused old
+                    # emitter, which is retired before it can make another
+                    # claim.  Thus a stale ``have=72`` cannot suppress the
+                    # fresh public prefetch wave, but repeated probes cannot
+                    # grow an unbounded second fleet.
+                    normal_slot_room = max(0, max_slots - have)
+                    stale_replacements = _listener_rejoin_replacements_locked(
+                        endpoint,
+                        active=active,
+                        execution=execution,
+                        deficit=restore_deficit,
+                    )
                 # One poll means one complete top-up.  The old ``execution``
                 # term capped this at a single 48/16-worker wave, so a drained
                 # queue needed several result-driven probes to recover.
                 extras = min(
-                    max(0, max_slots - have),
-                    max(0, restore_active - active),
+                    normal_slot_room + len(stale_replacements),
+                    restore_deficit,
                     jobs_left,
                 )
                 if extras > 0:
+                    rejoin_count = max(0, extras - normal_slot_room)
                     plans.append(
                         (
                             template,
@@ -4006,6 +5201,8 @@ def iter_scheduled_additive_results(
                             low_water,
                             server_high_water,
                             max_slots,
+                            logical_credits,
+                            tuple(stale_replacements[:rejoin_count]),
                         )
                     )
 
@@ -4016,8 +5213,11 @@ def iter_scheduled_additive_results(
             # This starts the *entire* high-water deficit in this one pass.
             max_extras = max(plan[1] for plan in plans)
             started: dict[str, int] = {plan[0].endpoint: 0 for plan in plans}
+            rejoin_started: dict[str, int] = {
+                plan[0].endpoint: 0 for plan in plans
+            }
             limits = {plan[0].endpoint: int(plan[6]) for plan in plans}
-            requests: list[RemoteJobClient] = []
+            requests: list[tuple[RemoteJobClient, Optional[int]]] = []
             for depth in range(max_extras):
                 for (
                     template,
@@ -4027,10 +5227,20 @@ def iter_scheduled_additive_results(
                     _low_water,
                     _high_water,
                     _max_slots,
+                    _logical_credits,
+                    rejoin_replacements,
                 ) in plans:
                     if depth >= extras:
                         continue
-                    requests.append(template)
+                    ordinary_extras = max(
+                        0, int(extras) - len(rejoin_replacements)
+                    )
+                    replacement_id = (
+                        int(rejoin_replacements[depth - ordinary_extras])
+                        if depth >= ordinary_extras
+                        else None
+                    )
+                    requests.append((template, replacement_id))
 
             def _open_refill_client(template: RemoteJobClient) -> RemoteJobClient:
                 client = RemoteJobClient(
@@ -4049,13 +5259,16 @@ def iter_scheduled_additive_results(
                 thread_name_prefix="remote-refill-connect",
             ) as connector_pool:
                 future_templates = {
-                    connector_pool.submit(_open_refill_client, template): template
-                    for template in requests
+                    connector_pool.submit(_open_refill_client, template): (
+                        template,
+                        replacement_id,
+                    )
+                    for template, replacement_id in requests
                     if not producer_stop.is_set()
                     and not refill_monitor_stop.is_set()
                 }
                 for future in as_completed(future_templates):
-                    template = future_templates[future]
+                    template, replacement_id = future_templates[future]
                     ep = template.endpoint
                     try:
                         clone = future.result()
@@ -4068,31 +5281,59 @@ def iter_scheduled_additive_results(
                         continue
                     with grow_lock:
                         have = int(slots_by_endpoint.get(ep, 0))
+                        replaces_stale_emitter = bool(
+                            replacement_id is not None
+                            and remote_emitter_endpoint.get(int(replacement_id))
+                            == ep
+                            and int(replacement_id)
+                            in remote_emitter_reconnect_backoff
+                            and int(replacement_id)
+                            not in remote_emitter_rejoin_retire
+                        )
                         if (
                             producer_stop.is_set()
                             or refill_monitor_stop.is_set()
-                            or have >= int(limits.get(ep, have))
+                            or (
+                                not replaces_stale_emitter
+                                and have >= int(limits.get(ep, have))
+                            )
                         ):
                             clone.close()
                             continue
+                        emitter_id = _new_remote_emitter_id_locked(ep)
                         thread = threading.Thread(
                             target=_emit_remote,
-                            args=(clone,),
-                            name=f"sched-remote-low-water-{ep}-{have}",
+                            args=(clone, None, emitter_id),
+                            name=(
+                                f"sched-remote-listener-rejoin-{ep}-{have}"
+                                if replaces_stale_emitter
+                                else f"sched-remote-low-water-{ep}-{have}"
+                            ),
                             daemon=True,
                         )
                         if not _register_producer(thread):
+                            _discard_remote_emitter_id_locked(emitter_id)
                             clone.close()
                             continue
                         owned_clients.append(clone)
                         slots_by_endpoint[ep] = have + 1
                         retire_tokens[ep] = 0
-                        refill_slot_floor[ep] = slots_by_endpoint[ep]
+                        refill_slot_floor[ep] = max(
+                            int(refill_slot_floor.get(ep, 0)),
+                            min(
+                                int(slots_by_endpoint[ep]),
+                                int(limits.get(ep, slots_by_endpoint[ep])),
+                            ),
+                        )
+                        if replaces_stale_emitter:
+                            remote_emitter_rejoin_retire.add(int(replacement_id))
                         with claim_lock:
                             endpoint_credits.register(ep)
                     with pending_lock:
                         pending += 1
                     started[ep] += 1
+                    if replaces_stale_emitter:
+                        rejoin_started[ep] += 1
                     thread.start()
 
             for (
@@ -4103,6 +5344,8 @@ def iter_scheduled_additive_results(
                 low_water,
                 high_water,
                 _max_slots,
+                logical_credits,
+                rejoin_replacements,
             ) in plans:
                 ep = template.endpoint
                 added = int(started.get(ep, 0))
@@ -4115,9 +5358,22 @@ def iter_scheduled_additive_results(
                     f"{int(demand.get(ep, 0)) + high_water} "
                     f"high_water={high_water} "
                     f"slots={slots_by_endpoint.get(ep, 0)}/"
-                    f"{remote_socket_max_target(int(demand.get(ep, 0)))}",
+                    f"{remote_socket_max_target(int(demand.get(ep, 0)), kind=kind)} "
+                    "server_request_units=packets "
+                    f"logical_credits_at_probe={logical_credits}",
                     flush=True,
                 )
+                rejoined = int(rejoin_started.get(ep, 0))
+                if rejoined:
+                    print(
+                        f"[remote] {ep} LISTENER_REJOIN_REFILL "
+                        f"stale_emitters={len(rejoin_replacements)} "
+                        f"replaced={rejoined} have_before="
+                        f"{max(0, int(slots_by_endpoint.get(ep, 0)) - added)} "
+                        f"socket_ceiling={int(_max_slots)} "
+                        "logical_credits_preserved=true",
+                        flush=True,
+                    )
             _publish_remote_slots()
 
         def _remote_queue_refill_monitor() -> None:
@@ -4219,6 +5475,13 @@ def iter_scheduled_additive_results(
             raise RemoteJobsError(
                 "scheduled dispatch exhausted all emitters with "
                 f"{stranded} unclaimed job(s)"
+            )
+        if public_transport_enabled:
+            print(
+                "[remote] public_multi_env_transport complete "
+                "units=logical_games/transport_requests "
+                f"by_endpoint={_public_transport_summary()}",
+                flush=True,
             )
         try:
             dec_f = scheduler.maybe_tick(remaining=0, force=True)

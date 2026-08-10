@@ -1,0 +1,23 @@
+{
+  "schema": "poke_bot.dashboard_active_run_bind/v1",
+  "updated_at_unix": 1786052655.316674,
+  "specialist_id": "teal-mask-ogerpon-ex",
+  "display_name": "Slop Box",
+  "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+  "MainPID": 1706695,
+  "host": "train",
+  "run_dir": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_slop_box_h10_rtp_fresh_r171",
+  "state_json": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_slop_box_h10_rtp_fresh_r171/state.json",
+  "log": "/home/inzi/poke-bot-agent/outputs/final_format_slop_box_h10_rtp/logs/bootstrap-fresh-r171.log",
+  "mode": "final_format_slop_box_h10_rtp_fresh_bootstrap_r171",
+  "label": "Slop Box H10 bootstrap LIVE",
+  "forbid_labels": [
+    "CE intensify",
+    "ce_intensify",
+    "chao-hard",
+    "chao_hard"
+  ],
+  "forbid_units": [
+    "pokebot-slop-box-chao-hard-ce-r170.service"
+  ]
+}

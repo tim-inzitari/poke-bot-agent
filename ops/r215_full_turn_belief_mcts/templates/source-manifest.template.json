@@ -1,0 +1,41 @@
+{
+  "schema": "poke_bot.alakazam_local_approximate_belief_mcts_bo1000_r216_source_template/v1",
+  "kind": "content_addressed_source_template",
+  "description": "Template only. The launcher writes an immutable source-manifest.json whose identity binds these fields to exact file digests.",
+  "owner_contract": {
+    "revision": 216,
+    "contract_path": "state/alakazam-local-approximate-belief-mcts-bo1000-r216.json",
+    "contract_sha256": "@R216_CONTRACT_SHA256@",
+    "local_approximate_exploratory_only": true,
+    "promotion_or_serving_permitted": false
+  },
+  "frozen_runtime": {
+    "r195_bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "r195_checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "matchup_adapter_required": true,
+    "rtp_enabled": false,
+    "legacy_rtp_enabled": false,
+    "guide_linear_enabled": false,
+    "guide_logit_enabled": false,
+    "guide2vec_enabled": false
+  },
+  "runtime": {
+    "python_major_minor": "3.11",
+    "seeded_engine_required": true,
+    "seeded_engine_overlay_sha256": "sha256:b77afbd363fe80de968c7cf20a0bbf5eb616fefcacbeab7eeeda94213fad9ea6",
+    "fresh_process_per_game_required": true,
+    "controller_callable": "poke_bot.r215_full_turn_belief_mcts:R215FullTurnBeliefMCTS",
+    "source_identity_sha256": "@SOURCE_IDENTITY_SHA256@",
+    "source_files": "@SOURCE_FILE_SHA256_MAP@"
+  },
+  "authority": {
+    "evaluation_only": true,
+    "training_authority": false,
+    "submission_authority": false,
+    "external_submission_api_authority": false,
+    "external_submission_queue_authority": false,
+    "external_submission_upload_authority": false,
+    "selector_authority": false,
+    "promotion_authority": false
+  }
+}

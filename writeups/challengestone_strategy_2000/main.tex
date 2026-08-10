@@ -1,0 +1,128 @@
+\documentclass[10pt]{article}
+\usepackage[letterpaper,margin=0.72in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{ink}{HTML}{17233B}
+\definecolor{blue}{HTML}{2457A6}
+\definecolor{pale}{HTML}{EAF1FB}
+\definecolor{mint}{HTML}{E8F5EF}
+\definecolor{sand}{HTML}{FFF3D9}
+\definecolor{red}{HTML}{A52A2A}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue,pdftitle={Card-Count Control: An Auditable Causal Transformer for Alakazam},pdfsubject={Local Kaggle Strategy-track draft; not submitted}}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\footnotesize Card-Count Control}
+\rhead{\footnotesize\color{red}\textbf{LOCAL DRAFT --- NOT SUBMITTED}}
+\cfoot{\footnotesize\thepage}
+\setlength{\headheight}{14pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.48em}
+\setlist[itemize]{leftmargin=1.25em,itemsep=0.1em,topsep=0.2em}
+\renewcommand{\arraystretch}{1.12}
+\newcommand{\boxcell}[2]{\cellcolor{#1}\parbox[c][0.58in][c]{0.90\linewidth}{\centering\small #2}}
+
+\begin{document}
+
+{\color{ink}\LARGE\bfseries Card-Count Control: An Auditable Causal Transformer for Alakazam\par}
+\vspace{0.22em}
+{\large Legal action factorization, bounded strategic fusion, and receipt-backed specialist learning\par}
+\vspace{0.45em}
+{\small\textbf{Track:} Main Track \quad \textbf{Status:} local write-up draft; not submitted \quad \textbf{Official cap:} 2,000 words}
+
+\section*{Summary}
+
+Pok\'emon TCG play is a partially observed, long-horizon control problem disguised as a sequence of legal menu choices. A decision can change hand size, bench capacity, future evolution routes, prize tempo, and the opponent's best reply. Our agent addresses this with a causal Transformer that sees only the acting player's deployment-visible history, scores only options supplied as legal by the engine, and executes a frozen greedy policy in the contest package. The distinctive part is not unrestricted search. It is an auditable connection between legal action structure, independently supervised strategic predictions, and the final action score.
+
+We train one deck specialist at a time, preserve immutable checkpoints and evaluation receipts, and reject or roll back candidates without rewriting their history. The current program returns to Powerful Hand Alakazam because the deck makes planning measurable: every attack has an explicit hand-size threshold, yet reaching that threshold competes with board development and deck-out risk.
+
+\begin{figure}[htbp]
+\centering
+\begin{tabularx}{\linewidth}{>{\centering\arraybackslash}X c >{\centering\arraybackslash}X c >{\centering\arraybackslash}X}
+\boxcell{pale}{Visible board\\+ causal history} & $\longrightarrow$ &
+\boxcell{mint}{Shared Transformer\\state encoding} & $\longrightarrow$ &
+\boxcell{sand}{Factorized legal\\option decoder} \\
+&& $\Big\uparrow$ && $\Big\downarrow$ \\
+\boxcell{pale}{Training-only causal\\targets and guide} & $\longrightarrow$ &
+\boxcell{mint}{19-head inventory\\+ bounded fusion} & $\longrightarrow$ &
+\boxcell{sand}{Greedy legal action\\or legal fallback}
+\end{tabularx}
+\caption{The packaged controller. The guide never enters the runtime observation or supplies an action logit. Matchup routing is causal and bypasses to the base policy when identity is unknown.}
+\end{figure}
+
+\section*{Model: from legal choices to strategic scores}
+
+The encoder maintains a causal representation of ordered observations and realized actions, with the same information boundary used in training and incremental serving. Instead of flattening multi-card choices into a factorial action set, the decoder selects one remaining legal option at a time and emits an explicit STOP after the required minimum. This supports ordered searches, bench selections, and other variable-card actions while preserving exact legality.
+
+The base policy and value are joined by learned views of opponent hand and remaining deck, lethal threat, prize race, action value, action type, target, resource use, immediate utility, short-horizon tactics, likely opponent response, next-decision resources, game phase, outcome distribution, remaining turns, and setup-board outcome. Each view is computed from causal state and, where relevant, the current option. Fusion v3 gives every architecture-present learned view its own bounded, option-conditioned route. Learned positive reliability is constrained; the action-type route is further capped. Missing auxiliary labels are masked, never encoded as numeric zero. Thus policy loss may shape a route, but unavailable supervision cannot fabricate a fact.
+
+The staged Router Format 6 design reserves 64 shape-stable adapter slots. Whenever adapter routing is enabled, at most one route can be selected per decision from causal evidence. Unknown, ambiguous, retired, or unsupported identities take an exact base-policy bypass; the mere presence of adapter weights is not reported as activation. The verified historical Alakazam bundle is about 10.8 million tensor elements and carries a 19-head/19-route physical inventory. Its normal contest controller disables MCTS and uses per-stage greedy selection. If model loading or inference fails, the wrapper still returns a seeded legal choice rather than an illegal action.
+
+\section*{Learning system and generalization discipline}
+
+The current Alakazam contract begins with five dated days of acting-seat expert games, then performs a 25-epoch supervised rebootstrap from the prior Alakazam parent. The guide contributes only to observed causal strategic targets at weight 0.05; it cannot provide policy cross-entropy, read hidden information, enter serving, or override the policy. All non-combo heads train from the first epoch. The combo tensors remain checkpoint-compatible but their loss, route, and backpropagation are disabled for this deck.
+
+Each RL iteration is exactly 8,196 games: 1,024 Alakazam mirrors and 7,172 games against the public package mix, including at least 1,024 against one checksum-pinned Marnie/Grimmsnarl checkpoint. Seats are balanced. Checksum-exact compatible opponents may run in four-game simulator packs; legacy, changed, malformed, or unknown packages remain singleton so batching cannot silently change game identity. Every fifth iteration refreshes expert data and runs five rehearsal epochs. Evaluation and downloaded competition replays are training-ineligible.
+
+Iterations are immutable. Collection identity, deck, parent, opponent package, seat, configuration, and checkpoint digests are recorded before promotion. A candidate can replace its parent only at a receipt-backed boundary; frozen specialists are opponents or teachers, not optimizer inputs. This discipline has practical consequences: a direct H10 Alakazam migration failed closed rather than accepting a partial tensor overlay, a Slowking experiment failed its gate and was never frozen or served, and a Marnie sampling change was rolled back after its paired monitor deteriorated. Failed evidence stays visible.
+
+Our Recursive Turn Planner is deliberately outside the packaged claim. It is enabled as a training/collection sidecar: encode once, route simple turns directly, refine only bounded complex turns, recheck legality and resources, then fall back to greedy policy. Receipts establish wiring and planner-sourced collection, not a strength gain. The submitted-style package does not include its sidecar checkpoint, so results below describe the frozen greedy policy lineage.
+
+\section*{Deck: exact damage without reckless draw}
+
+The 60-card pilot list contains 19 Pok\'emon, 34 Trainers, and 7 Energy. Its core is 4 Abra, 4 Kadabra, 3 Alakazam, 3 Dunsparce, and 3 Dudunsparce, with single Fezandipiti ex and Shaymin. The Trainer engine includes four each of Buddy-Buddy Poffin, Pok\'e Pad, Hilda, Dawn, and Battle Cage; three each of Rare Candy and Enhanced Hammer; two each of Night Stretcher, Boss's Orders, and Xerosic's Machinations; and one each of Sacred Ash and Lana's Aid. Energy is four Telepath Psychic, two basic Psychic, and one Enriching Energy.
+
+Powerful Hand places two damage counters per card in hand, so the live target is
+\[
+  h_{\mathrm{KO}}=\left\lceil\frac{\text{remaining HP}}{20}\right\rceil,
+\]
+adjusted only for visible effects. The policy must not maximize hand size blindly. It seeks the smallest safe hand that takes the planned prize while leaving a replacement attacker, recovery, bench space, and enough deck for unavoidable draws.
+
+The default board builds two Abra routes and one Dunsparce line while retaining a flexible bench slot. Deterministic search comes before broad draw when the target is known. Kadabra is valuable because it preserves Rare Candy and adds controlled draw; Dudunsparce draws only when those cards solve a named setup, energy, recovery, or knockout gap, then recycles. Fezandipiti ex is benched reactively after a knockout, not exposed by habit. Shaymin and Battle Cage protect against visible bench pressure. Enhanced Hammer is saved for Special Energy that actually prevents damage or changes the prize race; Xerosic is most valuable when reducing an opposing Alakazam hand while it also needs to rebuild. Near deck-out, attachment and evolution draw are budgeted before the attack.
+
+\section*{Evidence, stability, and limitations}
+
+A historical r79 iteration-15 gate offers controlled context: 4,250 balanced held-out games produced a 63.56\% skill-weighted rate and 62.44\% lower bound; a separate 1,000-game control produced 80.05\%. The control floor passed, but the strict 75\% internal terminal criterion failed. This is parent-family evidence, not r175 performance.
+
+Downloaded public replays provide descriptive diagnostics, not a controlled strength estimate. Historical Alakazam checkpoints recorded 41/75, 41/71, 37/61, 31/50, and 34/59 wins at iterations 0, 4, 9, 14, and 20 respectively (54.7\%, 57.7\%, 60.7\%, 62.0\%, 57.6\%). The final slice's 95\% Wilson interval was 45.0--69.4\%; it went 23/35 when first and 11/24 when second. Opponents, sample sizes, and seat mix were not fixed, so the peak is not a promotion claim. The seat gap and 5/14 record against Marnie variants instead motivated balanced collection, a pinned Marnie minimum, and setup-recovery emphasis.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Evidence is reported at the level each artifact supports.}
+\begin{tabularx}{\linewidth}{p{0.23\linewidth}p{0.25\linewidth}X}
+\toprule
+Artifact & Observation & Supported conclusion \\
+\midrule
+r79 formal gate & 4,250 games; 63.56\% & Controlled parent-family failure, not r175 strength \\
+r79 iter20 public slice & 34/59; seat gap & Descriptive diagnosis only \\
+r175 integration proof & 675 games; 442 RTP-origin & Trusted planner collection wiring only \\
+Runtime inspector & 126 bound games; 2 exact traces & Bundle/replay provenance and action reconstruction \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Two checksum-bound runtime traces reproduce the recorded action with all 19 heads and routes visible, while a read-only inspector binds 126 downloaded games to exact replay, model, runtime, and bundle digests. Recomputed activations are labeled as recomputed rather than historical telemetry.
+
+The current r175 program is ongoing. Its parent was frozen by explicit ceiling acceptance, not by a measured terminal gate pass. We therefore claim a reproducible controller, an exact deck plan, and a conservative learning/evaluation boundary---not leaderboard superiority or an RTP improvement. Our main conclusion is methodological: repeated-match stability is easier to improve when legal action support, causal targets, route influence, deck arithmetic, and failed experiments are all inspectable.
+
+\section*{Selected sources}
+
+\small
+Official requirements and evaluation: \href{https://www.kaggle.com/competitions/pokemon-tcg-ai-battle-challenge-strategy/overview}{Kaggle Strategy overview}; runtime task: \href{https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/overview/description}{Kaggle Simulation overview}. Architecture background: A. Vaswani et al., ``Attention Is All You Need,'' 2017; X. B. Peng et al., ``Advantage-Weighted Regression,'' 2019. Deck research: \href{https://www.tcgplayer.com/content/article/Alakazam-Deck-Guide-Pok%C3%A9mon-TCG/7eb46b82-9dc5-40d8-adf9-28cca05f070f/}{TCGplayer Alakazam guide} and \href{https://ptcgonews.com/tips/ptcgl-alakazam-deck-guide/}{PTCGO News Alakazam guide}. Internal claims are bound to the source manifest included with this local draft.
+
+\vfill
+\begin{center}
+\color{red}\textbf{LOCAL DRAFT --- NO SUBMISSION ACTION HAS BEEN TAKEN}
+\end{center}
+
+\end{document}

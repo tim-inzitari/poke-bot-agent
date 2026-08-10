@@ -1,0 +1,126 @@
+{
+  "schema": "poke_bot.r70_r182_runtime_hardening_activation/v1",
+  "goal_revision": 194,
+  "status": "activated_at_receipt_backed_terminal_boundary",
+  "created_at_utc": "2026-08-09T05:40:17Z",
+  "authority": {
+    "fixed_local_capacity_owner_revision": 70,
+    "public_multi_env_owner_revision": 182,
+    "new_owner_design_change": false,
+    "terminal_completion_receipt": "/home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-completion-v1.json",
+    "terminal_completion_receipt_sha256": "sha256:34444545d40ed47504334e90e95835193c5e9ac61fbc4abe46f0dbc2b789aaca",
+    "completed_iteration": 20,
+    "forbidden_next_iteration": 21,
+    "iteration_21_artifact_count": 0
+  },
+  "train_activation": {
+    "host": "192.168.1.151",
+    "backup_directory": "/home/inzi/poke-bot-agent/outputs/state/r70-r182-hardening-r194-20260809T0145EDT",
+    "managed_training_service": "pokebot-final-format-alakazam-rtp-r175-rl.service",
+    "service_main_pid_before": 0,
+    "service_main_pid_after": 0,
+    "service_restart_count_before": 2,
+    "service_restart_count_after": 2,
+    "training_restarted": false,
+    "artifacts": [
+      {
+        "role": "fixed_96_guard_live",
+        "path": "/home/inzi/poke-bot-agent/poke_bot/pure_rl/live_pool_apply.py",
+        "pre_sha256": "sha256:e4f5ddbe00d754c7f18c1256084b6a933aa44e3f67b5feb62d1e62ab04586284",
+        "post_sha256": "sha256:58952c2192039afa2bc8f7e11c8a11909bba889a1089bbb4acd1c03af524b0a7"
+      },
+      {
+        "role": "fixed_96_guard_active_twin",
+        "path": "/home/inzi/poke-bot-agent-deployments/final-format-alakazam-marnie-splusplus-r192/poke_bot/pure_rl/live_pool_apply.py",
+        "pre_sha256": "sha256:e4f5ddbe00d754c7f18c1256084b6a933aa44e3f67b5feb62d1e62ab04586284",
+        "post_sha256": "sha256:58952c2192039afa2bc8f7e11c8a11909bba889a1089bbb4acd1c03af524b0a7"
+      },
+      {
+        "role": "listener_rejoin_live",
+        "path": "/home/inzi/poke-bot-agent/poke_bot/remote_jobs.py",
+        "pre_sha256": "sha256:d86be67f4d31bfe732a4931dfd3bffced5a80cc9fac7ff388df437c3f40e0beb",
+        "post_sha256": "sha256:3987c9fb6408dc883f3560d82111842617af8d1f39f3d19a0989c46f8f62c1a3"
+      },
+      {
+        "role": "listener_rejoin_active_twin",
+        "path": "/home/inzi/poke-bot-agent-deployments/final-format-alakazam-marnie-splusplus-r192/poke_bot/remote_jobs.py",
+        "pre_sha256": "sha256:d86be67f4d31bfe732a4931dfd3bffced5a80cc9fac7ff388df437c3f40e0beb",
+        "post_sha256": "sha256:3987c9fb6408dc883f3560d82111842617af8d1f39f3d19a0989c46f8f62c1a3"
+      }
+    ],
+    "behavior": {
+      "fully_pinned_96_profile_ignores_advisory_lower_plan": true,
+      "fully_pinned_96_profile_bypasses_generic_ram_downscale": true,
+      "generic_profiles_retain_ram_clamp": true,
+      "public_listener_rejoin_requires_refused_data_socket": true,
+      "public_listener_rejoin_requires_fresh_successful_health_probe": true,
+      "listener_replacement_is_bounded_one_for_one": true,
+      "old_emitter_retires_between_claims": true,
+      "logical_credits_and_packed_children_preserved": true,
+      "self_play_second_wave_remains_forbidden": true
+    },
+    "validation": {
+      "py_compile_passed": true,
+      "fixed_96_focused_pytest": "2 passed, 8 deselected",
+      "listener_rejoin_focused_pytest": "1 passed",
+      "test_ram_worker_cap_sha256": "sha256:e069c665b2b70c29726f6d9fd6b2e5a55de0465839c4e32faeabbc754e8ba951",
+      "test_remote_checkpoint_staging_sha256": "sha256:b2908a4259b4d31a55adc55caadb38440c4d6b05d301d3c863fa5504c247be75"
+    }
+  },
+  "remote_memory_lifecycle_verification": {
+    "activated_by_this_transaction": false,
+    "verified_active_before_train_controller_activation": true,
+    "checkpoint_sha256": "sha256:87caf05bdeda3a798268905a5670841125b1797f31b9a823343c393d7f0ced65",
+    "shared_artifacts": {
+      "remote_sim_jobs_sha256": "sha256:c9f0942bd498dfcf5aa79a9e072eea11ec77ff5935a538a87f41f191f607dd5a",
+      "run_remote_worker_sha256": "sha256:b2231220b5526b9bb2fa49e4b6b56b7fce1b27b29d8315d01ed5a7dea804ca14",
+      "multi_env_self_play_sha256": "sha256:d9ac42ab0648fd6a2cd7748724d3f1d3f9e8addb9adfcc03f21f0d4e4a93e3b6"
+    },
+    "elmo": {
+      "endpoint": "192.168.1.143:8765",
+      "container_id": "745c84cb42edf2bf084ba797b185d363a74cb98fbf6c5463d59ee42478a10f61",
+      "container_status": "running_healthy",
+      "worker_pool_sha256": "sha256:d9197b26c18dfd124771b93b5e63254bec66b51a368c2e93a296d7a53b94fce3",
+      "workers": 36,
+      "leaf_servers": 4,
+      "active_jobs": 0,
+      "jobs_failed": 0,
+      "accepting_jobs": true,
+      "worker_capacity_healthy": true,
+      "max_games_per_pool_task": 4,
+      "max_pool_tasks_per_child": 64,
+      "worker_recycle_games": 256,
+      "guard_memory_gb": 25.354270935058594,
+      "guard_memory_source": "cgroup_v2_memory_current",
+      "tree_rss_limit_gb": 45.0
+    },
+    "bert": {
+      "endpoint": "192.168.1.158:8766",
+      "launchd_pid": 67755,
+      "launchd_status": "running",
+      "worker_pool_sha256": "sha256:d3fd583fa899e1e20ff006f4d24641ee2890552dd8d810d880ee51605a15641c",
+      "workers": 16,
+      "leaf_servers": 4,
+      "active_jobs": 0,
+      "jobs_failed": 0,
+      "accepting_jobs": true,
+      "worker_capacity_healthy": true,
+      "max_games_per_pool_task": 4,
+      "max_pool_tasks_per_child": 8,
+      "worker_recycle_games": 32,
+      "guard_memory_gb": 9.154342651367188,
+      "guard_memory_source": "process_tree_rss_fallback",
+      "tree_rss_limit_gb": 45.0
+    }
+  },
+  "non_authority": {
+    "does_not_start_training": true,
+    "does_not_collect_iteration_21": true,
+    "does_not_change_worker_counts": true,
+    "does_not_change_public_pack_cap": true,
+    "does_not_raise_memory_guard": true,
+    "does_not_activate_slop_box": true,
+    "does_not_activate_crustle": true,
+    "does_not_activate_population_training": true
+  }
+}

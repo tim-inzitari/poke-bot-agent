@@ -176,10 +176,28 @@ def resolve_baseline_spec_payload(
             f"{manifest_spec.group}/{manifest_spec.dir_name}"
         )
 
-    local_path = (paths.BASELINES_DIR / group / dir_name).resolve()
     base = paths.BASELINES_DIR.resolve()
+    group_path = paths.BASELINES_DIR / group
+    if group_path.resolve().parent != base:
+        raise ValueError(f"baseline group escapes local library: {group_path}")
+    lexical_path = group_path / dir_name
+    manifest_path = Path(manifest_spec.path)
+    if lexical_path.absolute() != manifest_path.absolute():
+        raise ValueError(
+            f"baseline manifest path mismatch for {baseline_id}: {manifest_path}"
+        )
+    local_path = lexical_path.resolve()
     if base not in local_path.parents:
-        raise ValueError(f"baseline path escapes local library: {local_path}")
+        # Frozen specialist packages may be installed as manifest-owned leaf
+        # symlinks into an immutable deployment tree. Admit only that exact
+        # lexical manifest entry and only when the portable job binds its
+        # bytes; arbitrary traversal and unbound external symlinks stay closed.
+        if (
+            not require_content_identity
+            or not lexical_path.is_symlink()
+            or not expected_digest
+        ):
+            raise ValueError(f"baseline path escapes local library: {local_path}")
     if expected_digest:
         actual_digest = baseline_content_digest(local_path)
         if actual_digest != expected_digest:

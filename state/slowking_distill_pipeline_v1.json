@@ -1,0 +1,41 @@
+{
+  "schema": "poke_bot.slowking_distill.pipeline_status/v1",
+  "status": "implemented_research_only",
+  "authority": "none",
+  "training_authority": false,
+  "serving_authority": false,
+  "selector_authority": false,
+  "package": "poke_bot/slowking_distill",
+  "stages": {
+    "corpus_extract": "scripts/slowking_distill_build_corpus.py",
+    "multi_day_aggregate": "scripts/slowking_distill_aggregate_multi_day.py",
+    "day_split": "poke_bot/slowking_distill/day_split.py",
+    "stage_a_bc": "poke_bot/slowking_distill/bc_stage.py",
+    "stage_b_iql": "poke_bot/slowking_distill/iql.py",
+    "stage_c_search": "poke_bot/slowking_distill/critical_search.py",
+    "stage_c_belief_backend": "poke_bot/slowking_distill/belief_search_backend.py",
+    "stage_d_self_play": "poke_bot/slowking_distill/self_play.py",
+    "stage_e_distill": "poke_bot/slowking_distill/distill_search.py",
+    "eval_gate": "poke_bot/slowking_distill/eval_gate.py",
+    "promotion": "poke_bot/slowking_distill/promotion.py",
+    "runtime": "poke_bot/slowking_distill/runtime.py",
+    "policy_bridge": "poke_bot/slowking_distill/policy_bridge.py",
+    "orchestrator": "scripts/slowking_distill_run_pipeline.py",
+    "self_play_cli": "scripts/slowking_distill_self_play.py"
+  },
+  "runtime_env": {
+    "POKEBOT_SLOWKING_DISTILL_ENABLED": "default_off",
+    "POKEBOT_SLOWKING_DISTILL_MODE": "disabled|shadow|active",
+    "POKEBOT_SLOWKING_DISTILL_ACTOR_CKPT": "path to stage_e/b actor"
+  },
+  "host_blocked_without_archives": [
+    "full_768_game_rescan",
+    "exact_belief_mcts_search_backend"
+  ],
+  "notes": [
+    "Pipeline never sets promoted=true.",
+    "Heuristic scores are offline features only; prior_logit_bias remains exact zero.",
+    "BeliefMCTS backend activates only with model + posterior + sha256 checkpoint digest + cg.",
+    "PolicyAgent wiring is opt-in and default-off; shadow never changes actions."
+  ]
+}

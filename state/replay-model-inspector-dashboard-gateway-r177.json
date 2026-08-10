@@ -1,0 +1,72 @@
+{
+  "schema": "poke_bot.replay_model_inspector_dashboard_gateway/v1",
+  "owner_decision_revision": 177,
+  "recorded_at_utc": "2026-08-07T23:20:00Z",
+  "status": "implemented_active_authenticated_gateway",
+  "product": {
+    "name": "Replay Model Inspector",
+    "dashboard_link_label": "Replay inspector",
+    "external_url": "https://mc.tsinzitari.com/replay-inspector/",
+    "opens_separate_page": true,
+    "embedded_in_dashboard": false,
+    "dashboard_api_integration": false
+  },
+  "service_boundary": {
+    "inspector_host": "elmo",
+    "inspector_bind": "127.0.0.1:8791",
+    "inspector_service_remains_separate": true,
+    "direct_lan_bind_allowed": false,
+    "direct_public_bind_allowed": false,
+    "training_or_selector_authority": false,
+    "evaluation_replays_training_eligible": false
+  },
+  "gateway": {
+    "edge_host": "bert",
+    "edge": "existing_dashboard_caddy_https",
+    "route_prefix": "/replay-inspector/",
+    "external_access_policy": "existing_dashboard_edge_policy",
+    "allowed_methods": [
+      "GET"
+    ],
+    "upstream": "127.0.0.1:8792",
+    "transport": "managed_ssh_local_forward",
+    "transport_binding": "127.0.0.1:8792_to_elmo_127.0.0.1:8791",
+    "transport_encrypted": true,
+    "client_configurable_upstream": false,
+    "strip_route_prefix_before_upstream": true,
+    "strip_browser_authorization_before_upstream": true,
+    "strip_browser_cookies_before_upstream": true,
+    "strip_browser_origin_before_upstream": true,
+    "upstream_host_header": "127.0.0.1:8791"
+  },
+  "dashboard_change": {
+    "presentation_only_link_allowed": true,
+    "dashboard_backend_proxy_allowed": false,
+    "dashboard_fetches_inspector_api": false,
+    "iframe_allowed": false,
+    "target": "_blank",
+    "rel": "noopener noreferrer"
+  },
+  "activation": {
+    "status": "active",
+    "activated_at_utc": "2026-08-07T23:24:53Z",
+    "boundary": "independent_read_only_gateway",
+    "may_run_during_healthy_training": true,
+    "must_not_restart_training": true,
+    "required_validation": [
+      "dashboard_link_static_test",
+      "inspector_prefix_asset_test",
+      "caddy_config_validation",
+      "launchd_plist_validation",
+      "loopback_tunnel_health_check",
+      "authenticated_edge_root_and_api_check",
+      "external_unauthenticated_challenge_check",
+      "non_get_rejection_check",
+      "dashboard_status_non_regression_check"
+    ],
+    "receipt": {
+      "path": "state/replay-model-inspector-dashboard-gateway-activation-r177.json",
+      "sha256": "sha256:f4ff6a662cb868cbb72997002f41037f709bde96f2e1d1cb9a0c7628fd0bc931"
+    }
+  }
+}

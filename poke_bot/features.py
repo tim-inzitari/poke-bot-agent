@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import itertools
 import math
-from typing import Optional, Union
+from typing import Any, Mapping, Optional, Sequence, Union
 
 from . import cg_env
 
@@ -70,7 +70,7 @@ DECODER_BINDING_ENERGY: int = 3
 
 #: Hard materialization ceiling. Trusted callers fail if the complete ordered
 #: action space exceeds this bound; they never train/evaluate on a truncated set.
-MAX_ACTION_COMBOS: int = 4096
+MAX_ACTION_COMBOS: int = 65536
 
 #: Bump whenever feature indices or action enumeration semantics change. It is
 #: included in dataset cache keys so incompatible pickles are never reused.
@@ -83,6 +83,57 @@ class ActionSpaceTooLarge(RuntimeError):
 
 class FeatureContractError(ValueError):
     """An observation or option cannot be represented without ambiguity."""
+
+
+def _enum_token(value: object) -> str:
+    """Normalize a competition enum without importing the model runtime."""
+
+    if hasattr(value, "name"):
+        value = getattr(value, "name")
+    return "".join(character for character in str(value).lower() if character.isalnum())
+
+
+def forced_go_first_action(obs_dict: dict) -> Optional[list[int]]:
+    """Return the legal ``Yes`` action for the external turn-order prompt.
+
+    This small parser deliberately lives in the torch-free feature module: the
+    submission boundary and isolated evaluation runner must resolve the
+    engine-mandated prompt without importing a candidate model.  A recognized
+    prompt fails closed unless it exposes exactly one legal ``Yes`` option.
+    """
+
+    select = obs_dict.get("select") if isinstance(obs_dict, dict) else None
+    if not isinstance(select, dict):
+        return None
+    raw_context = select.get("context")
+    try:
+        is_first = int(raw_context) == 41
+    except (TypeError, ValueError):
+        is_first = _enum_token(raw_context) == "isfirst"
+    if not is_first:
+        return None
+    options = select.get("option") or []
+    yes_indices: list[int] = []
+    for index, option in enumerate(options):
+        raw_type = (
+            option.get("type")
+            if isinstance(option, dict)
+            else getattr(option, "type", None)
+        )
+        try:
+            is_yes = int(raw_type) == 1
+        except (TypeError, ValueError):
+            is_yes = _enum_token(raw_type) == "yes"
+        if is_yes:
+            yes_indices.append(index)
+    lo = int(select.get("minCount", 0) or 0)
+    hi = min(int(select.get("maxCount", 0) or 0), len(options))
+    if len(yes_indices) != 1 or not (lo <= 1 <= hi):
+        raise RuntimeError(
+            "IsFirst prompt does not expose one legal Yes option; refusing "
+            "to choose turn order ambiguously"
+        )
+    return [yes_indices[0]]
 
 
 def _exact_int(value, *, field: str) -> int:
@@ -166,6 +217,70 @@ def ordered_action_count(obs) -> int:
     """Count complete ordered legal actions without materializing permutations."""
     _obs, n_opt, lo, hi = _selection_bounds(obs)
     return sum(math.perm(n_opt, k) for k in range(lo, hi + 1))
+
+
+def complete_ordered_action_space_summary(
+    obs: Any,
+    *,
+    max_combos: int,
+) -> dict[str, Any]:
+    """Describe an action space without enumerating any complete action.
+
+    This is intentionally stricter than :func:`_selection_bounds`.  The
+    latter predates the r198 audit boundary and accepts coercible engine
+    values before clamping them.  An immutable evaluator trace must instead
+    bind the *raw* JSON-like selection scalars: floats, strings, and bools
+    cannot silently become valid counts in an over-cap attestation.
+
+    The returned shape is deliberately small and JSON-native so a torch-free
+    compiler/promotion consumer can independently recompute the cardinality.
+    No complete ordered action is constructed here.
+    """
+
+    if type(max_combos) is not int or max_combos < 0:
+        raise FeatureContractError("max_combos must be a nonnegative exact integer")
+
+    if isinstance(obs, Mapping):
+        select = obs.get("select")
+        if not isinstance(select, Mapping):
+            raise FeatureContractError("observation select must be an object")
+        options = select.get("option")
+        raw_min = select.get("minCount")
+        raw_max = select.get("maxCount")
+    else:
+        select = getattr(obs, "select", None)
+        options = getattr(select, "option", None)
+        raw_min = getattr(select, "minCount", None)
+        raw_max = getattr(select, "maxCount", None)
+
+    if not isinstance(options, Sequence) or isinstance(options, (str, bytes)):
+        raise FeatureContractError("observation select.option must be a sequence")
+    if type(raw_min) is not int or type(raw_max) is not int:
+        raise FeatureContractError(
+            "selection minCount/maxCount must be exact integers, not coercible values"
+        )
+    n_options = len(options)
+    if not (0 <= raw_min <= raw_max <= n_options):
+        raise FeatureContractError(
+            "selection minCount/maxCount are outside the exact option bounds"
+        )
+    counts = list(range(raw_min, raw_max + 1))
+    cardinality = sum(math.perm(n_options, count) for count in counts)
+    return {
+        "n_options": n_options,
+        "min_count": raw_min,
+        "max_count": raw_max,
+        "counts": counts,
+        "complete_ordered_action_cardinality": cardinality,
+        "complete_ordered_action_cap": max_combos,
+        "over_cap": cardinality > max_combos,
+        # These attest implementation behavior, rather than substituting for
+        # the independently recomputed cardinality above.  They are useful to
+        # a sealed evaluator because truncated enumeration would otherwise
+        # resemble a successful factorized selection.
+        "complete_ordered_actions_materialized": False,
+        "complete_ordered_action_truncated": False,
+    }
 
 
 def factorized_teacher_forcing_stages(

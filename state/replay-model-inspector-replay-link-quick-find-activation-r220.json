@@ -1,0 +1,58 @@
+{
+  "schema": "poke_bot.replay_model_inspector_replay_link_quick_find_activation/v1",
+  "owner_decision_revision": 220,
+  "activated_at_utc": "2026-08-10T19:34:45Z",
+  "status": "active_read_only_pending_browser_interaction_confirmation",
+  "deployment": {
+    "host": "elmo",
+    "source_root": "/mnt/Main/main/poke-bot-agent/replay-model-inspector-r176",
+    "rollback_backup": "/mnt/Main/main/poke-bot-agent/replay-model-inspector-r176.pre-r220-20260810T193347Z",
+    "assets": {
+      "index_html_sha256": "sha256:cf8e66b044326e941db4b69707a7fb479725f84c9dc7202aea507849d26c2acb",
+      "app_js_sha256": "sha256:0c567d7682a48118b4fe4bc65d47ed92694d304a92b7cb104d49c3bcf23ffa94",
+      "styles_css_sha256": "sha256:9dc5fc37cc57d04d51c6bd022f8047d4b3ba63098c1920bbfd977c06f7e1b3fd"
+    },
+    "inspector_service_restart": false,
+    "inspector_main_pid_before_and_after": 1805154,
+    "inspector_restart_count": 0,
+    "inspector_active_state": "active",
+    "inspector_sub_state": "running"
+  },
+  "live_gateway_validation": {
+    "url": "http://bert:8780/replay-inspector/",
+    "http_status": 200,
+    "cache_control": "no-store",
+    "quick_find_form_present": true,
+    "served_app_js_sha256_matches_deployment": true,
+    "served_styles_css_sha256_matches_deployment": true,
+    "example": {
+      "submission_id": "55410353",
+      "episode_id": "91735935",
+      "submission_game_count": 45,
+      "episode_present": true,
+      "episode_decision_step_count": 107,
+      "first_decision_step": 1
+    },
+    "service_health": "ok",
+    "browser_interaction": {
+      "status": "pending_no_connected_automation_browser",
+      "available_browser_connections": 0,
+      "owner_refresh_confirmation_required": true
+    }
+  },
+  "validation": {
+    "focused_static_ui_tests_passed": 17,
+    "javascript_syntax": "passed",
+    "typed_contract_json": "passed",
+    "live_asset_sha256_matches": true,
+    "exact_live_submission_episode_api": "passed",
+    "missing_episode_no_fallback_static_guard": "passed"
+  },
+  "safety": {
+    "pasted_url_fetch_or_navigation_added": false,
+    "replay_or_provenance_mutation": false,
+    "automatic_replay_sync": false,
+    "training_or_selector_service_control_invoked": false,
+    "submission_authority_added": false
+  }
+}

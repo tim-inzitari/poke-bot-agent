@@ -1,0 +1,20 @@
+{
+  "bind_host": "127.0.0.1",
+  "port": 8791,
+  "replay_root": "/data/replays",
+  "rollout_root": "/data/rollouts",
+  "provenance_manifest": "/data/inspector/provenance/submissions-v1.json",
+  "training_recipe_registry": "/inspector/ops/elmo/replay-model-inspector-training-recipes-r187.json",
+  "artifact_roots": [
+    "/data/checkpoints",
+    "/data/inspector/artifacts",
+    "/data/inspector/provenance",
+    "/data/submitted-runtime"
+  ],
+  "runtime_source_root": "/data/submitted-runtime",
+  "web_root": "/inspector/replay_inspector/web",
+  "torch_threads": 2,
+  "max_parameter_slice": 2048,
+  "max_tensor_values": 512,
+  "verify_digests": true
+}

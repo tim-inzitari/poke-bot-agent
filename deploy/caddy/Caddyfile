@@ -3,18 +3,87 @@
 }
 
 mc.tsinzitari.com {
-	# LAN and Tailscale clients may use the public hostname without a prompt.
-	# Direct access to :8780 remains unchanged as well.
-	@external not remote_ip private_ranges 100.64.0.0/10
-	basic_auth @external {
-		access $2a$14$8A/3/y4ISJP7ro9cGlM6iezE3wCOplEonmPSuQbhU5vGF4CRXYW0u
-	}
+	route {
+		# LAN and Tailscale clients may use the public hostname without a prompt.
+		# Direct access to :8780 remains unchanged as well.
+		@external not remote_ip private_ranges 100.64.0.0/10
+		basic_auth @external {
+			access $2a$14$8A/3/y4ISJP7ro9cGlM6iezE3wCOplEonmPSuQbhU5vGF4CRXYW0u
+		}
 
-	header {
-		Referrer-Policy "no-referrer"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-	}
+		header {
+			Referrer-Policy "no-referrer"
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+		}
 
-	reverse_proxy 127.0.0.1:8780
+		@inspector_sync {
+			path /replay-inspector/api/sync
+			method POST
+			header X-Replay-Sync-Intent manual
+		}
+		handle @inspector_sync {
+			reverse_proxy 127.0.0.1:8780 {
+				header_up Host 127.0.0.1:8780
+				header_up -Authorization
+				header_up -Cookie
+				header_up -Origin
+				header_up -Referer
+				header_up -Forwarded
+				header_up -X-Forwarded-For
+				header_up -X-Forwarded-Host
+				header_up -X-Forwarded-Proto
+				header_up -Sec-Fetch-Site
+			}
+		}
+
+		@inspector_sync_status {
+			path /replay-inspector/api/sync-status
+			method GET
+		}
+		handle @inspector_sync_status {
+			reverse_proxy 127.0.0.1:8780 {
+				header_up Host 127.0.0.1:8780
+				header_up -Authorization
+				header_up -Cookie
+				header_up -Origin
+				header_up -Referer
+				header_up -Forwarded
+				header_up -X-Forwarded-For
+				header_up -X-Forwarded-Host
+				header_up -X-Forwarded-Proto
+				header_up -Sec-Fetch-Site
+			}
+		}
+
+		@inspector_non_get {
+			path /replay-inspector /replay-inspector/*
+			not method GET
+		}
+		respond @inspector_non_get "method not allowed" 405
+
+		@inspector_no_slash path /replay-inspector
+		redir @inspector_no_slash /replay-inspector/ 308
+
+		handle_path /replay-inspector/* {
+			reverse_proxy 127.0.0.1:8792 {
+				header_up Host 127.0.0.1:8791
+				header_up -Authorization
+				header_up -Cookie
+				header_up -Origin
+				header_up -Referer
+				header_up -Forwarded
+				header_up -X-Forwarded-For
+				header_up -X-Forwarded-Host
+				header_up -X-Forwarded-Proto
+				header_up -Sec-Fetch-Site
+				header_down -Access-Control-Allow-Origin
+				header_down -Set-Cookie
+			}
+		}
+
+		handle {
+			reverse_proxy 127.0.0.1:8780
+		}
+	}
 }

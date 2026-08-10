@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Read-only inspection of checksum-bound Kaggle replay decisions and their submitted model weights."
+    />
+    <title>Replay Model Inspector</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to analysis</a>
+    <div class="app-shell">
+      <header class="site-header">
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <div>
+            <p class="eyebrow">READ ONLY · CHECKSUM VERIFIED</p>
+            <h1>Replay Model Inspector</h1>
+            <p class="subtitle">
+              Causal replay reconstruction and immutable submitted-model evidence.
+            </p>
+          </div>
+        </div>
+        <div class="header-status" aria-label="Inspector status">
+          <span id="health-badge" class="status-badge status-pending">Checking service</span>
+          <span class="safety-note">One verified model resident · no training authority</span>
+        </div>
+      </header>
+
+      <section class="selection-shell" aria-labelledby="selection-title">
+        <div class="selection-heading">
+          <p class="eyebrow">TRACE ADDRESS</p>
+          <h2 id="selection-title">Choose the recorded decision</h2>
+        </div>
+        <form id="replay-link-form" class="replay-link-quick-find" novalidate>
+          <label class="replay-link-field" for="replay-link-input">
+            <span>Quick find replay</span>
+            <input
+              id="replay-link-input"
+              type="search"
+              placeholder="Paste a link with submissionId and episodeId"
+              inputmode="url"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              aria-describedby="replay-link-status"
+              disabled
+            />
+          </label>
+          <button id="replay-link-button" class="button" type="submit" disabled>
+            Open replay
+          </button>
+          <p id="replay-link-status" class="replay-link-status" role="status" aria-live="polite">
+            Paste the replay link; quick find uses its submissionId and episodeId.
+          </p>
+        </form>
+        <div class="selection-grid">
+          <div class="selector-search-field">
+            <label class="selector-search-label" for="submission-search">
+              <span>Find submission</span>
+              <input id="submission-search" type="search" placeholder="Type submission ID or label" inputmode="search" autocomplete="off" aria-describedby="submission-filter-status" disabled />
+            </label>
+            <label for="submission-select">
+              <span>Submission</span>
+              <select id="submission-select" disabled>
+                <option value="">Loading submissions…</option>
+              </select>
+            </label>
+            <p id="submission-filter-status" class="selector-filter-status" role="status" aria-live="polite">Loading submissions…</p>
+          </div>
+          <div class="game-selector-field">
+            <label class="game-search-label" for="game-search">
+              <span>Find game</span>
+              <input
+                id="game-search"
+                type="search"
+                placeholder="Type game ID or player name"
+                inputmode="search"
+                autocomplete="off"
+                aria-describedby="game-filter-status"
+                disabled
+              />
+            </label>
+            <label for="game-select">
+              <span>Game</span>
+              <select id="game-select" disabled>
+                <option value="">Choose a submission first</option>
+              </select>
+            </label>
+            <p id="game-filter-status" class="game-filter-status" role="status" aria-live="polite">
+              Choose a submission to search its games.
+            </p>
+          </div>
+          <div class="selector-search-field">
+            <label class="selector-search-label" for="step-search">
+              <span>Go to step #</span>
+              <input id="step-search" type="search" placeholder="Type exact step number" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-describedby="step-filter-status" disabled />
+            </label>
+            <label for="step-select">
+              <span>Decision step</span>
+              <select id="step-select" disabled>
+                <option value="">Choose a game first</option>
+              </select>
+            </label>
+            <p id="step-filter-status" class="selector-filter-status" role="status" aria-live="polite">Choose a game to enter a step number.</p>
+          </div>
+          <label>
+            <span>Factorized stage</span>
+            <select id="stage-select" disabled>
+              <option value="">Choose a decision step first</option>
+            </select>
+          </label>
+        </div>
+        <div id="selection-identity" class="selection-identity" aria-live="polite">
+          <p class="empty-state">Choose a submission to see its exact label and the replay players.</p>
+        </div>
+        <div class="selection-footer">
+          <p id="selection-context" class="selection-context" aria-live="polite">
+            The inspector will only show evidence returned by the selected replay and checkpoint.
+          </p>
+          <div class="selection-footer-actions">
+            <button id="sync-now-button" class="button button-quiet" type="button">
+              Check Kaggle now
+            </button>
+            <button id="refresh-button" class="button button-quiet" type="button">
+              Refresh index
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <nav class="view-tabs" aria-label="Inspector views">
+        <button class="view-tab is-active" type="button" data-view="decision" aria-selected="true">
+          Decision trace
+        </button>
+        <button class="view-tab" type="button" data-view="weights" aria-selected="false">
+          Model weights
+        </button>
+      </nav>
+
+      <p id="global-notice" class="global-notice" role="status" aria-live="polite"></p>
+
+      <main id="main-content" class="analysis-main" tabindex="-1">
+        <section id="decision-view" class="view-panel" aria-labelledby="decision-title">
+          <div class="panel-title-row">
+            <div>
+            <p class="eyebrow">CAUSAL RE-EVALUATION</p>
+            <h2 id="decision-title">Reconstructed decision trace</h2>
+            </div>
+            <span id="trace-status" class="status-badge status-pending">Awaiting selection</span>
+          </div>
+
+          <section class="provenance-card" aria-labelledby="provenance-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">EVIDENCE CHAIN</p>
+                <h3 id="provenance-title">Provenance &amp; availability</h3>
+              </div>
+              <span id="provenance-availability" class="availability-note">No trace selected</span>
+            </div>
+            <div id="provenance-content" class="provenance-content empty-state">
+              Select a recorded decision to inspect its bundle, checkpoint, and reconstruction evidence.
+            </div>
+            <p id="reproduction-status" class="reproduction-status" role="status" aria-live="polite">
+              Reproduction status is not available until a trace is selected.
+            </p>
+          </section>
+
+          <section class="overview-grid" aria-label="Decision overview">
+            <article class="analysis-card action-card">
+              <p class="card-kicker">Recorded action</p>
+              <div id="recorded-action" class="action-value muted-value">—</div>
+              <p id="recorded-action-note" class="card-note">Not available until a trace is loaded.</p>
+            </article>
+            <article class="analysis-card action-card">
+              <p class="card-kicker">Model action</p>
+              <div id="model-action" class="action-value muted-value">—</div>
+              <p id="model-action-note" class="card-note">Not available until a trace is loaded.</p>
+            </article>
+            <article class="analysis-card agreement-card">
+              <p class="card-kicker">Action comparison</p>
+              <div id="action-agreement" class="action-value muted-value">—</div>
+              <p id="action-agreement-note" class="card-note">Recorded versus model action is not yet loaded.</p>
+            </article>
+            <article class="analysis-card value-card">
+              <p class="card-kicker">Value / decision route</p>
+              <div id="model-value" class="action-value muted-value">—</div>
+              <p id="model-route-note" class="card-note">No inference payload loaded.</p>
+            </article>
+          </section>
+
+          <section class="analysis-card matchup-adapter-card" aria-labelledby="matchup-adapter-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">MATCHUP ADAPTER</p>
+                <h3 id="matchup-adapter-title">Matchup Adapter for this decision</h3>
+              </div>
+              <span id="matchup-adapter-availability" class="availability-note">Awaiting trace</span>
+            </div>
+            <p id="matchup-adapter-status" class="matchup-adapter-status" role="status" aria-live="polite">
+              Adapter status is not available until a trace is selected.
+            </p>
+            <div id="matchup-adapter-content" class="structured-content empty-state">
+              This section reports decision activation, not whether an adapter checkpoint happens to be installed.
+            </div>
+          </section>
+
+          <section class="analysis-card guide-shadow-card" aria-labelledby="guide-shadow-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">GUIDE DECISION LAYER</p>
+                <h3 id="guide-shadow-title">What did the deck guide do?</h3>
+              </div>
+              <span id="guide-shadow-availability" class="availability-note">Awaiting trace</span>
+            </div>
+            <p class="guide-shadow-notice">
+              Ordinary training guides appear here as zero-authority second opinions. If the exact submitted package included a guide decision layer, this section instead shows its real bounded logit bonus, neural-only policy, and final submitted-runtime choice.
+            </p>
+            <div class="guide-shadow-toolbar">
+              <label class="guide-shadow-toggle" for="guide-shadow-toggle">
+                <input id="guide-shadow-toggle" type="checkbox" disabled />
+                <span>Compare Guide ON / OFF</span>
+              </label>
+              <span id="guide-shadow-toggle-state" class="guide-shadow-toggle-state">Guide comparison off</span>
+            </div>
+            <div id="guide-shadow-content" class="structured-content empty-state">
+              Choose a decision to show either the exact production guide adjustment or a clearly labeled shadow-only recommendation.
+            </div>
+          </section>
+
+          <section class="analysis-card observation-card" aria-labelledby="observation-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">CAUSAL INPUT</p>
+                <h3 id="observation-title">Recorded event &amp; observation</h3>
+              </div>
+              <span id="observation-availability" class="availability-note">Awaiting trace</span>
+            </div>
+            <div id="observation-content" class="structured-content empty-state">
+              The causal observation supplied to the submitted model will appear here when reconstructable.
+            </div>
+          </section>
+
+          <section class="analysis-card options-card" aria-labelledby="options-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">RE-EVALUATED POLICY SURFACE</p>
+                <h3 id="options-title">Legal options</h3>
+              </div>
+              <span id="options-availability" class="availability-note">Awaiting trace</span>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table option-table">
+                <thead>
+                  <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Action in plain English</th>
+                    <th scope="col">Base logit</th>
+                    <th scope="col">Final logit</th>
+                    <th scope="col">Policy probability</th>
+                    <th scope="col">Route evidence</th>
+                    <th scope="col">Recorded / model</th>
+                  </tr>
+                </thead>
+                <tbody id="options-body">
+                  <tr><td colspan="7" class="empty-cell">No decision trace loaded.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="option-contribution-detail" class="inline-availability">
+              Action transcripts come from the replay/model response. Expand technical action data to keep the exact encoded action visible.
+            </div>
+          </section>
+
+          <section class="analysis-card fusion-card" aria-labelledby="fusion-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">FUSION-V3</p>
+                <h3 id="fusion-title">Route evidence &amp; source data</h3>
+              </div>
+              <span id="fusion-availability" class="availability-note">Awaiting trace</span>
+            </div>
+            <div id="fusion-content" class="structured-content empty-state">
+              Fusion routing information is shown exactly as supplied by the causal re-evaluation payload.
+            </div>
+          </section>
+
+          <section class="analysis-card heads-card" aria-labelledby="heads-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">ARCHITECTURE-PRESENT HEADS</p>
+                <h3 id="heads-title">What each model head changed</h3>
+              </div>
+              <span id="heads-availability" class="availability-note">Awaiting trace</span>
+            </div>
+            <p id="head-impact-summary" class="head-impact-summary">
+              Each card explains the source's "what if this head were removed?" result in plain language. Raw outputs and full ablation evidence remain below.
+            </p>
+            <div id="head-impact-grid" class="head-impact-grid" aria-live="polite">
+              <p class="empty-state">Choose a decision to see each head's policy impact.</p>
+            </div>
+            <div class="table-scroll head-technical-table">
+              <table class="data-table heads-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Head</th>
+                    <th scope="col">Scope</th>
+                    <th scope="col">Raw value</th>
+                    <th scope="col">Normalized</th>
+                    <th scope="col">Mask / availability</th>
+                    <th scope="col">Route reliability</th>
+                    <th scope="col">Route delta</th>
+                    <th scope="col">Ablation effect</th>
+                    <th scope="col">Policy impact if removed</th>
+                  </tr>
+                </thead>
+                <tbody id="heads-body">
+                  <tr><td colspan="9" class="empty-cell">No head payload is loaded.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p id="heads-note" class="inline-availability">
+              Missing historic head outputs are reported by the source as unavailable; they are never inferred in this view. Technical values can be expanded without hiding provenance.
+            </p>
+          </section>
+
+          <section class="analysis-card head-faq-card" aria-labelledby="head-faq-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">PLAIN-ENGLISH REFERENCE</p>
+                <h3 id="head-faq-title">Head FAQ — what is each head trying to notice?</h3>
+              </div>
+              <span class="availability-note">19 policy inputs explained</span>
+            </div>
+            <div class="head-faq-callout">
+              <strong>Looking for “are we going to lose?”</strong>
+              Use <code>outcome_distribution</code> and <code>value</code> for the whole game. For danger before our next decision, look at <code>opponent_response → knockout</code>; for the next few decisions, use <code>tactical_outcomes → own knockout</code>. Despite its name, <code>lethal_threat</code> asks whether <em>we</em> can take a prize soon—it is offensive danger to the opponent.
+            </div>
+            <p class="head-faq-intro">
+              A head is one learned opinion the model uses alongside the others. Its description says what it was trained to predict; it does not prove that the head mattered on the selected step. “Current decision effect” below is the exact policy change when that one head is removed while everything else stays fixed. Head effects are nonlinear and should not be added together as percentages.
+            </p>
+            <div id="head-faq-list" class="head-faq-list" aria-live="polite"></div>
+          </section>
+
+          <section class="analysis-card decision-influence-playground" aria-labelledby="decision-influence-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">DECISION-ONLY COUNTERFACTUAL</p>
+                <h3 id="decision-influence-title">Decision Influence Playground</h3>
+              </div>
+              <span id="decision-influence-availability" class="availability-note">Awaiting trace</span>
+            </div>
+            <p class="decision-influence-notice">
+              A source-backed request here recomputes only this decision with hypothetical fused-head scales. It never sums leave-one-out effects to approximate a changed policy. It is not training, is not saved, and is not a historical replay/model trace.
+            </p>
+            <div class="decision-influence-toolbar">
+              <button id="decision-influence-reset" class="button button-quiet" type="button" disabled>Reset to 1× baseline</button>
+              <button id="decision-influence-apply" class="button" type="button" disabled>Recompute decision</button>
+              <span id="decision-influence-debounce" class="decision-influence-debounce">Awaiting exact nonlinear recomputation source</span>
+            </div>
+            <div id="decision-influence-controls" class="decision-influence-controls" aria-live="polite">
+              <p class="empty-state">Choose a reconstructed decision to see its fused-head controls.</p>
+            </div>
+            <p id="decision-influence-choice" class="decision-influence-choice" role="status" aria-live="polite">
+              Baseline and changed chosen actions will appear only after an exact source-backed recomputation.
+            </p>
+            <div class="table-scroll">
+              <table class="data-table decision-influence-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Legal action</th>
+                    <th scope="col">Baseline probability</th>
+                    <th scope="col">Changed probability</th>
+                    <th scope="col">Difference</th>
+                    <th scope="col">Chosen action</th>
+                  </tr>
+                </thead>
+                <tbody id="decision-influence-body">
+                  <tr><td colspan="5" class="empty-cell">No decision counterfactual loaded.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="decision-influence-detail" class="decision-influence-detail"></div>
+          </section>
+
+          <section class="analysis-card training-recipe-card" aria-labelledby="training-recipe-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">TRAINING-ONLY REFERENCE</p>
+                <h3 id="training-recipe-title">Training Weight Recipe</h3>
+              </div>
+              <span id="training-recipe-availability" class="availability-note">Awaiting checkpoint recipe</span>
+            </div>
+            <p class="training-recipe-notice">
+              Training-loss weights require a real, isolated fine-tune and a new checksum-distinct checkpoint. They do not change this submitted model’s current forward pass, and cached replays remain evaluation-only.
+            </p>
+            <div id="training-recipe-content" class="structured-content empty-state">
+              An exact checkpoint-bound training recipe has not been supplied for this selected submission.
+            </div>
+          </section>
+
+          <section id="warnings-section" class="warnings-section" aria-labelledby="warnings-title" hidden>
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">SOURCE NOTICE</p>
+                <h3 id="warnings-title">Trace warnings</h3>
+              </div>
+            </div>
+            <ul id="warnings-list" class="warning-list"></ul>
+          </section>
+        </section>
+
+        <section id="weights-view" class="view-panel" aria-labelledby="weights-title" hidden>
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">IMMUTABLE CHECKPOINT</p>
+              <h2 id="weights-title">Model weights</h2>
+            </div>
+            <span id="weights-status" class="status-badge status-pending">Awaiting submission</span>
+          </div>
+
+          <section class="provenance-card weights-provenance" aria-labelledby="weights-provenance-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">CHECKPOINT SCOPE</p>
+                <h3 id="weights-provenance-title">Parameter inventory</h3>
+              </div>
+              <span id="weights-availability" class="availability-note">Awaiting submission</span>
+            </div>
+            <div id="weights-provenance-content" class="provenance-content empty-state">
+              Select a submission to inspect only its checksum-bound parameter metadata and bounded slices.
+            </div>
+          </section>
+
+          <section class="weight-layout">
+            <article class="analysis-card parameter-list-card" aria-labelledby="parameter-list-title">
+              <div class="section-heading parameter-heading">
+                <div>
+                  <p class="eyebrow">INDEXED TENSORS</p>
+                  <h3 id="parameter-list-title">Parameters</h3>
+                </div>
+                <span id="parameter-count" class="count-badge">0</span>
+              </div>
+              <label class="search-label" for="parameter-search">
+                <span>Find parameter</span>
+                <input id="parameter-search" type="search" placeholder="Search by tensor or module name" autocomplete="off" disabled />
+              </label>
+              <div class="table-scroll parameter-table-wrap">
+                <table class="data-table parameter-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Name</th>
+                      <th scope="col">Shape</th>
+                      <th scope="col">Type</th>
+                      <th scope="col">Elements</th>
+                      <th scope="col">Trainable</th>
+                    </tr>
+                  </thead>
+                  <tbody id="parameters-body">
+                    <tr><td colspan="5" class="empty-cell">Choose a submission to load its parameter index.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="analysis-card parameter-detail-card" aria-labelledby="parameter-detail-title">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">BOUNDED TENSOR INSPECTION</p>
+                  <h3 id="parameter-detail-title">Selected parameter</h3>
+                </div>
+                <span id="parameter-detail-status" class="availability-note">No parameter selected</span>
+              </div>
+              <div id="parameter-detail" class="parameter-detail empty-state">
+                Choose a parameter from the exact checkpoint inventory. Full tensors are intentionally not exposed.
+              </div>
+            </article>
+          </section>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <span>Read-only inspector. Replay and checkpoint bytes are never changed here.</span>
+        <span id="endpoint-note">Same-origin API · separate inspector service</span>
+      </footer>
+    </div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

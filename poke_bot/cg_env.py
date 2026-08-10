@@ -16,10 +16,12 @@ Nothing here imports torch or numpy — the simulator path stays lightweight.
 
 from __future__ import annotations
 
+import ctypes
 import random
 import sys
+import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Protocol, runtime_checkable
 
 from . import paths
 
@@ -260,6 +262,272 @@ def search_release(search_id: int) -> None:
 def search_end() -> None:
     """End the current search; its memory is reused by the next search."""
     _cg_api().search_end()
+
+
+# ---------------------------------------------------------------------------
+# Handle-scoped Search API (staged multi-lane submission path)
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class SearchBackend(Protocol):
+    """The search operations consumed by :class:`BeliefMCTS`.
+
+    The module-level functions above intentionally retain the competition
+    wrapper's historical singleton behavior.  A concurrent caller must instead
+    inject a backend whose lifecycle is scoped to one native ``ApiData*``.
+    """
+
+    def search_begin(
+        self,
+        obs_dict: dict,
+        search_inputs: dict,
+        manual_coin: bool = False,
+    ) -> Any:
+        ...
+
+    def search_step(self, search_id: int, select: list[int]) -> Any:
+        ...
+
+    def search_release(self, search_id: int) -> None:
+        ...
+
+    def search_end(self) -> None:
+        ...
+
+
+def prewarm_native_search_runtime() -> tuple[Any, Any]:
+    """Import and initialize the official binding on the coordinator thread.
+
+    ``cg.sim`` performs the one process-global ``GameInitialize`` call while it
+    imports.  Multi-lane workers receive these already initialized modules and
+    never race card-table or metadata initialization.
+    """
+
+    ensure_cg_importable()
+    import cg.api as api
+    import cg.sim as sim
+
+    return api, sim
+
+
+class NativeSearchLane:
+    """One thread-affine official Search API arena.
+
+    The shipped Python wrapper stores one module-global ``agent_ptr``.  The
+    native ABI is narrower and safer: every Search call accepts the ``ApiData*``
+    returned by ``AgentStart``.  This adapter calls that ABI directly, owns one
+    pointer for the process lifetime, and refuses calls from any thread other
+    than the thread that created it.
+
+    There is no documented ``AgentFinish`` symbol.  ``search_end`` clears only
+    this handle's search arena; the fixed lane pool retains the handle until
+    process exit rather than guessing that ``BattleFinish`` is a destructor.
+    """
+
+    def __init__(
+        self,
+        lane_id: int,
+        *,
+        lib: Any | None = None,
+        api_module: Any | None = None,
+    ) -> None:
+        if int(lane_id) < 0:
+            raise ValueError("lane_id must be non-negative")
+        if lib is None or api_module is None:
+            default_api, default_sim = prewarm_native_search_runtime()
+            api_module = api_module if api_module is not None else default_api
+            lib = lib if lib is not None else default_sim.lib
+        self.lane_id = int(lane_id)
+        self._lib = lib
+        self._api = api_module
+        self._owner_thread_id = threading.get_ident()
+        handle = self._lib.AgentStart()
+        if not handle:
+            raise RuntimeError(f"AgentStart failed for search lane {self.lane_id}")
+        self._handle = handle
+        self._live_search_ids: set[int] = set()
+        self._ended_calls = 0
+
+    @property
+    def owner_thread_id(self) -> int:
+        return self._owner_thread_id
+
+    @property
+    def handle_identity(self) -> int | str:
+        try:
+            return int(self._handle)
+        except (TypeError, ValueError):
+            return repr(self._handle)
+
+    @property
+    def live_search_ids(self) -> frozenset[int]:
+        return frozenset(self._live_search_ids)
+
+    @property
+    def search_end_calls(self) -> int:
+        return self._ended_calls
+
+    def _assert_owner(self) -> None:
+        current = threading.get_ident()
+        if current != self._owner_thread_id:
+            raise RuntimeError(
+                f"search lane {self.lane_id} belongs to thread "
+                f"{self._owner_thread_id}, not {current}"
+            )
+
+    @staticmethod
+    def _int_array(values: list[int]) -> Any:
+        clean = [int(value) for value in values]
+        return (ctypes.c_int * len(clean))(*clean)
+
+    def _decode_result(self, payload: Any) -> Any:
+        return self._api.json_to_dataclass(payload, self._api.ApiResult)
+
+    @staticmethod
+    def _raise_begin_error(error: int) -> None:
+        if error == 1:
+            raise ValueError("Invalid Card ID.")
+        if error == 2:
+            raise ValueError("Active card must be the ID of a Pokémon card.")
+        if error == 30:
+            raise ValueError("agent_ptr broken.")
+        raise RuntimeError(f"SearchBegin failed with error {error}")
+
+    @staticmethod
+    def _raise_step_error(error: int) -> None:
+        messages = {
+            1: "There is no element with the specified search_id.",
+            2: "Released item.",
+            3: "Cannot be selected because the battle has ended.",
+            4: (
+                "Must be Observation.select.minCount <= len(select) <= "
+                "Observation.select.maxCount."
+            ),
+            5: "Must be 0 <= select elements < len(Observation.select.option).",
+            6: "Duplicate select elements.",
+            30: "agent_ptr broken.",
+        }
+        if error in messages:
+            raise ValueError(messages[error])
+        raise RuntimeError(f"SearchStep failed with error {error}")
+
+    def search_begin(
+        self,
+        obs_dict: dict,
+        search_inputs: dict,
+        manual_coin: bool = False,
+    ) -> Any:
+        self._assert_owner()
+        observation = (
+            self._api.to_observation_class(obs_dict)
+            if isinstance(obs_dict, dict)
+            else obs_dict
+        )
+        search_begin_input = getattr(observation, "search_begin_input", None)
+        if search_begin_input is None:
+            raise ValueError("Not agent observation.")
+        state = getattr(observation, "current", None)
+        if state is None:
+            raise ValueError("SearchBegin requires a current state.")
+        your_index = int(state.yourIndex)
+        your_deck = [int(card) for card in search_inputs.get("your_deck", ())]
+        your_prize = [int(card) for card in search_inputs.get("your_prize", ())]
+        opponent_deck = [
+            int(card) for card in search_inputs.get("opponent_deck", ())
+        ]
+        opponent_prize = [
+            int(card) for card in search_inputs.get("opponent_prize", ())
+        ]
+        opponent_hand = [
+            int(card) for card in search_inputs.get("opponent_hand", ())
+        ]
+        opponent_active = [
+            int(card) for card in search_inputs.get("opponent_active", ())
+        ]
+        select = getattr(observation, "select", None)
+        if select is not None and getattr(select, "deck", None) is not None:
+            your_deck = []
+        elif len(your_deck) < int(state.players[your_index].deckCount):
+            raise ValueError("your_deck does not match the number of cards in your deck.")
+        if len(your_prize) < len(state.players[your_index].prize):
+            raise ValueError("your_prize does not match the number of cards in your prize.")
+        if len(opponent_deck) < int(state.players[1 - your_index].deckCount):
+            raise ValueError(
+                "opponent_deck does not match the number of cards in opponent's deck."
+            )
+        if len(opponent_prize) < len(state.players[1 - your_index].prize):
+            raise ValueError(
+                "opponent_prize does not match the number of cards in opponent's prize."
+            )
+        if len(opponent_hand) < int(state.players[1 - your_index].handCount):
+            raise ValueError(
+                "opponent_hand does not match the number of cards in opponent's hand."
+            )
+        active = state.players[1 - your_index].active
+        if len(active) > 0 and active[0] is None:
+            if not opponent_active:
+                raise ValueError("You need to predict the opponent's Active Pokémon.")
+        else:
+            opponent_active = []
+
+        encoded = str(search_begin_input).encode("ascii")
+        payload = self._lib.SearchBegin(
+            self._handle,
+            encoded,
+            len(encoded),
+            self._int_array(your_deck),
+            self._int_array(your_prize),
+            self._int_array(opponent_deck),
+            self._int_array(opponent_prize),
+            self._int_array(opponent_hand),
+            self._int_array(opponent_active),
+            int(bool(manual_coin)),
+        )
+        result = self._decode_result(payload)
+        error = int(result.error)
+        if error:
+            self._raise_begin_error(error)
+        search_id = int(result.state.searchId)
+        self._live_search_ids.add(search_id)
+        return result.state
+
+    def search_step(self, search_id: int, select: list[int]) -> Any:
+        self._assert_owner()
+        search_id = int(search_id)
+        if search_id not in self._live_search_ids:
+            raise ValueError(
+                f"search id {search_id} is not owned by lane {self.lane_id}"
+            )
+        chosen = [int(index) for index in select]
+        payload = self._lib.SearchStep(
+            self._handle,
+            search_id,
+            self._int_array(chosen),
+            len(chosen),
+        )
+        result = self._decode_result(payload)
+        error = int(result.error)
+        if error:
+            self._raise_step_error(error)
+        self._live_search_ids.add(int(result.state.searchId))
+        return result.state
+
+    def search_release(self, search_id: int) -> None:
+        self._assert_owner()
+        search_id = int(search_id)
+        if search_id not in self._live_search_ids:
+            raise ValueError(
+                f"search id {search_id} is not owned by lane {self.lane_id}"
+            )
+        self._lib.SearchRelease(self._handle, search_id)
+        self._live_search_ids.remove(search_id)
+
+    def search_end(self) -> None:
+        self._assert_owner()
+        self._lib.SearchEnd(self._handle)
+        self._live_search_ids.clear()
+        self._ended_calls += 1
 
 
 def legal_select_from_searchstate(search_state, rng: Optional[random.Random] = None) -> list[int]:

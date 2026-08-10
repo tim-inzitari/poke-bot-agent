@@ -1,0 +1,94 @@
+{
+  "schema": "poke_bot.slop_box_combo_state_targets_contract/v1",
+  "goal_revision": 173,
+  "created_at_utc": "2026-08-06T19:32:00Z",
+  "specialist_id": "teal-mask-ogerpon-ex",
+  "display_name": "Slop Box",
+  "target_schema": "poke_bot.slop_box_combo_state_targets/v1",
+  "head": {
+    "name": "combo_state",
+    "outputs": 32,
+    "retained_h10_generic_shell": true,
+    "width_remap": false
+  },
+  "slot_mapping": {
+    "top_deck[5]": {
+      "semantics": "Crispin / Glass Trumpet selected Basic Energy class",
+      "classes": {
+        "0": "Grass(1)",
+        "1": "Water(3)",
+        "2": "Lightning(4)",
+        "3": "Psychic(5)",
+        "4": "Fighting(6)"
+      }
+    },
+    "seek_source[7]": {
+      "0": "Teal Dance",
+      "1": "Crispin",
+      "2": "Glass Trumpet",
+      "3": "Energy Switch",
+      "4": "Area Zero",
+      "5": "Night Stretcher recovery",
+      "6": "Ultra Ball / Nest Ball / Boss / Cyrano / Xerosic other engine"
+    },
+    "vector[20]": {
+      "0:6": "engine legality (Teal Dance, Crispin, Glass Trumpet, Energy Switch, Area Zero available, any engine)",
+      "6:11": "visible pieces (Teal, Bolt, Kangaskhan/Meowth, energy-engine piece, recovery/search)",
+      "11:16": "energy-route readiness (Grass, non-Grass basic, Energy Switch in hand, multi-type ready, Teal+Grass/Dance proxy)",
+      "16:20": "engine continuity (Teal active/bench, Bolt active/bench)"
+    }
+  },
+  "implementation": {
+    "builder": "poke_bot/slop_box_combo_targets.py",
+    "shared_observation_helpers": "poke_bot/combo_observation.py",
+    "contract": "poke_bot/combo_state_contract.py",
+    "attach_paths": [
+      "poke_bot/dataset.py::convert_record",
+      "scripts/train_pure_rl.py::_record_to_compact_game",
+      "poke_bot/authoritative_visual_trace.py",
+      "scripts/rematerialize_slop_box_combo_labels.py"
+    ],
+    "ordinary_rl_loss_weight": 0.025,
+    "tests": "tests/test_slop_box_combo_targets.py"
+  },
+  "smoke_rematerialization": {
+    "receipt": "state/slop-box-combo-state-rematerialization-r173.smoke500.json",
+    "games": 500,
+    "decisions": 39899,
+    "combo_loss_can_be_nonzero": true
+  },
+  "full_rematerialization": {
+    "receipt": "state/slop-box-combo-state-rematerialization-r173.json",
+    "receipt_sha256": "sha256:4766dc424cc85adc77a2dc1bbe3c4abb913db40ad40303dffbfe459dcd24f35c",
+    "input": "outputs/bootstrap/slop-box-h10-rtp/expert_trajectory_shard.jsonl",
+    "input_sha256": "sha256:162105d7ae9435205af9e91ed793a4064a2acc8a0347fe111d6dc1040c90a830",
+    "output": "outputs/bootstrap/slop-box-h10-rtp/expert_trajectory_shard.combo_v1.jsonl",
+    "output_sha256": "sha256:a22b1ac07e04e9c063397fc06afc6e9017ac4e0ab2b2fcd105dff550aa1ab56e",
+    "games": 42453,
+    "decisions": 2979468,
+    "seek_source_labels": 918459,
+    "top_deck_labels": 197528,
+    "vector_cells": 58238960,
+    "seek_teal_dance": 305182,
+    "seek_crispin": 234702,
+    "seek_glass_trumpet": 65971,
+    "seek_energy_switch": 100840,
+    "seek_recovery": 19587,
+    "seek_other_engine": 192177,
+    "combo_loss_can_be_nonzero": true,
+    "status": "ready"
+  },
+  "loss_nonzero_now": {
+    "live_rl_compaction": true,
+    "labeled_expert_trajectory": true,
+    "existing_expert_cpu_packs": false,
+    "note": "Rebuild expert CPU pack from labeled trajectory/features before expert CE/rehearsal can see nonzero combo masks; RL self-play attach is live."
+  },
+  "coordination": {
+    "b90dbf9e": "share combo_observation / convert_record featurization with self-play-equivalent expert markup for adapters",
+    "fd64ee15": "closes Slowking-only combo label gap from all-heads bootstrap audit",
+    "leave_healthy_trainers_alone": true,
+    "no_crustle_deletes": true
+  },
+  "status": "implemented_full_remat_ready"
+}

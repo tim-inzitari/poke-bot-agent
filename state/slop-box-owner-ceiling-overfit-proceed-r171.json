@@ -1,0 +1,35 @@
+{
+  "schema": "poke_bot.slop_box_owner_ceiling_overfit_proceed_r171/v1",
+  "status": "authorized_pending_trigger",
+  "goal_revision": 171,
+  "completion_authority": "explicit_owner_ceiling_acceptance",
+  "measured_gate_passed": false,
+  "never_relabel_as_measured_pass": true,
+  "trigger": {
+    "train_policy_acc_ge": 0.95,
+    "held_policy_acc_le": 0.80,
+    "held_flat_epochs_min": 3,
+    "or_natural_end_with_held_lt": 0.90
+  },
+  "evidence_at_authorization_utc": "2026-08-06T19:00:00+00:00",
+  "midrun_held_select": {
+    "receipt": "/home/inzi/poke-bot-agent/outputs/state/slop-box-chao-hard-held-select-midrun-r170.json",
+    "epochs_8_to_12_held": [0.776, 0.772, 0.776],
+    "best_held": 0.7762971936200282,
+    "prior_deep_ce_held": 0.7652127086698977,
+    "plateau": "same ~0.76-0.80 as pre-Chao-hard"
+  },
+  "actions_on_trigger": [
+    "systemctl --user stop pokebot-slop-box-chao-hard-ce-r170.service",
+    "Chao-held select all epochs",
+    "freeze best checkpoint as final-format-slop-box-h10-rtp-expert-bootstrap-v1",
+    "publish ready under explicit_owner_ceiling_acceptance",
+    "queue first_if_allowed Kaggle milestone with Cox/Chao deck",
+    "register + start Slop Box H10 RL with expert rehearsal every 5 iters"
+  ],
+  "execute_script": "scripts/execute_slop_box_owner_ceiling_r171.py",
+  "register_script": "scripts/register_slop_box_h10_rtp_r171.py",
+  "crustle_data_deleted": false,
+  "remat_parallel": "Jul31-Aug5 fixed-catalog remat continues; fold into later rehearsals",
+  "updated_at_utc": "2026-08-06T19:00:00+00:00"
+}

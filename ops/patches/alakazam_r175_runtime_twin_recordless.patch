@@ -1,0 +1,22 @@
+diff --git a/scripts/train_pure_rl.py b/scripts/train_pure_rl.py
+--- a/scripts/train_pure_rl.py
++++ b/scripts/train_pure_rl.py
+@@ -8437,6 +8437,18 @@ def _consume_results(
+             except Exception:
+                 parsed = None
+             if isinstance(parsed, dict):
+                 records.append(parsed)
++        if practice_contract is not None and not records:
++            # A completed simulation without a usable trajectory is a missing
++            # schedule cell, not an iteration-fatal schema event. Leave it
++            # unretained so the exact per-cell replacement loop can repair it.
++            if practice_successful_indices is not None:
++                practice_successful_indices.discard(int(practice_job_index))
++            stats["strong_public_practice_recordless_results"] = int(
++                stats.get("strong_public_practice_recordless_results", 0)
++            ) + 1
++            if progress is not None:
++                progress.tick(decisions=writer.n_decisions)
++            continue
+         if practice_contract is not None and len(records) != 1:
+             raise RuntimeError(

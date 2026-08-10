@@ -83,6 +83,36 @@ STRATEGIC_REQUIRED_CHECKS = (
 )
 
 
+# Revision 192 is deliberately scoped to this exact additional H10 package.
+# A generic S++ row must not become launchable by accident.
+R192_MARNIE_H10_OPPONENT_ID = (
+    "specialist-marnie-final-format-h10-f20efb20f5c3"
+)
+R192_MARNIE_H10_CHECKPOINT_DIGEST = (
+    "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381"
+)
+R192_MARNIE_H10_CONTENT_DIGEST = (
+    "sha256:f7c25cfd0bba674ceb4c2156a6e2fef87a3ff9effc74ed41b33fbb17fd627787"
+)
+R192_HISTORICAL_MARNIE_OPPONENT_ID = (
+    "specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98"
+)
+R192_SPLUSPLUS_SEMANTICS_KEY = "exact_additional_splusplus_specialist"
+_STANDARD_OPPONENT_TIER_POLICY = {
+    "eligible_non_active_h10_specialist": {"tier": "S", "weight": 2.0},
+    "other_frozen_specialist": {"tier": "A", "weight": 1.0},
+    "remaining_public_opponent": {"tier": "A", "weight": 1.0},
+}
+_R192_MARNIE_SPLUSPLUS_SEMANTICS = {
+    "opponent_id": R192_MARNIE_H10_OPPONENT_ID,
+    "checkpoint_digest": R192_MARNIE_H10_CHECKPOINT_DIGEST,
+    "content_digest": R192_MARNIE_H10_CONTENT_DIGEST,
+    "tier": "S++",
+    "weight": 4.0,
+    "strong_public_practice_floor_games": 1024,
+}
+
+
 def _canonical_expert_ids() -> tuple[str, ...]:
     registry = load_slot_registry(ROOT / "state/matchup_adapter_roster.json")
     return tuple(str(value) for value in registry["active_expert_ids"])
@@ -1065,6 +1095,66 @@ def _resolve(
     return row, checkpoint, expert, runtime_tree, adapter_authorization
 
 
+def _r192_marnie_splusplus_semantics(
+    semantics: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Return the one authorized additive S++ binding, if present."""
+
+    override = semantics.get(R192_SPLUSPLUS_SEMANTICS_KEY)
+    if override is None:
+        return None
+    if (
+        override != _R192_MARNIE_SPLUSPLUS_SEMANTICS
+        or type(override.get("strong_public_practice_floor_games")) is not int
+    ):
+        raise RuntimeError("active specialist r192 Marnie S++ semantics changed")
+    return dict(override)
+
+
+def _validate_r192_marnie_splusplus_binding(
+    *,
+    roster: list[dict[str, Any]],
+    gate_by_id: dict[str, dict[str, Any]],
+    frozen_by_id: dict[str, dict[str, Any]],
+) -> None:
+    """Fail closed unless r192 retains two distinct checksum-bound Marnies."""
+
+    roster_ids = [str(row.get("opponent_id") or "") for row in roster]
+    content_digests = [str(row.get("content_digest") or "") for row in roster]
+    if (
+        not all(roster_ids)
+        or len(set(roster_ids)) != len(roster_ids)
+        or not all(content_digests)
+        or len(set(content_digests)) != len(content_digests)
+    ):
+        raise RuntimeError("active specialist r192 Marnie roster has an alias")
+
+    h10_gate = gate_by_id.get(R192_MARNIE_H10_OPPONENT_ID)
+    historical_gate = gate_by_id.get(R192_HISTORICAL_MARNIE_OPPONENT_ID)
+    h10_frozen = frozen_by_id.get(R192_MARNIE_H10_OPPONENT_ID)
+    historical_frozen = frozen_by_id.get(R192_HISTORICAL_MARNIE_OPPONENT_ID)
+    if not all((h10_gate, historical_gate, h10_frozen, historical_frozen)):
+        raise RuntimeError(
+            "active specialist r192 Marnie requires distinct H10 and historical rows"
+        )
+    if (
+        h10_gate.get("frozen_checkpoint_digest")
+        != R192_MARNIE_H10_CHECKPOINT_DIGEST
+        or h10_gate.get("content_digest") != R192_MARNIE_H10_CONTENT_DIGEST
+        or h10_gate.get("strong_public_practice_floor_games") != 1024
+        or type(h10_gate.get("strong_public_practice_floor_games")) is not int
+        or h10_frozen.get("checkpoint_digest")
+        != R192_MARNIE_H10_CHECKPOINT_DIGEST
+        or h10_frozen.get("content_digest") != R192_MARNIE_H10_CONTENT_DIGEST
+        or h10_frozen.get("final_format_h10_refresh") is not True
+        or not str(historical_gate.get("content_digest") or "")
+        or historical_gate.get("content_digest") == R192_MARNIE_H10_CONTENT_DIGEST
+        or historical_gate.get("content_digest")
+        != historical_frozen.get("content_digest")
+    ):
+        raise RuntimeError("active specialist r192 Marnie checksum binding changed")
+
+
 def _gate_runtime(active_gate: Path, frozen_registry: Path) -> tuple[str, int]:
     gate_contract = json.loads(active_gate.read_text(encoding="utf-8"))
     registry = json.loads(frozen_registry.read_text(encoding="utf-8"))
@@ -1089,6 +1179,7 @@ def _gate_runtime(active_gate: Path, frozen_registry: Path) -> tuple[str, int]:
     games_total = int(evaluation.get("games_total", -1))
     semantics = dict(gate_contract.get("active_gate_semantics") or {})
     tier_policy = dict(semantics.get("opponent_tier_policy") or {})
+    r192_marnie_semantics = _r192_marnie_splusplus_semantics(semantics)
     superseded_archetypes = superseded_external_archetypes(registry)
     base_premium_agents = int(
         semantics.get(
@@ -1110,6 +1201,12 @@ def _gate_runtime(active_gate: Path, frozen_registry: Path) -> tuple[str, int]:
         or int(evaluation.get("seat1_games_per_opponent", -1)) != 125
     ):
         raise RuntimeError("active specialist gate/registry contract changed")
+    if r192_marnie_semantics is not None:
+        _validate_r192_marnie_splusplus_binding(
+            roster=roster,
+            gate_by_id=gate_by_id,
+            frozen_by_id=frozen_by_id,
+        )
     for opponent_id, frozen_row in frozen_by_id.items():
         gate_row = gate_by_id[opponent_id]
         if gate_row.get("frozen_checkpoint_digest") != frozen_row.get(
@@ -1118,7 +1215,18 @@ def _gate_runtime(active_gate: Path, frozen_registry: Path) -> tuple[str, int]:
             raise RuntimeError(
                 f"active specialist checkpoint mismatch: {opponent_id}"
             )
-        if tier_policy:
+        if (
+            r192_marnie_semantics is not None
+            and opponent_id == R192_MARNIE_H10_OPPONENT_ID
+        ):
+            if (gate_row.get("tier"), float(gate_row.get("weight", -1))) != (
+                "S++",
+                4.0,
+            ):
+                raise RuntimeError(
+                    f"active specialist r192 Marnie S++ tier mismatch: {opponent_id}"
+                )
+        elif tier_policy:
             is_h10 = bool(frozen_row.get("final_format_h10_refresh")) or (
                 opponent_id
                 == "specialist-alakazam-final-format-h10-02c014ad7c33"
@@ -1130,16 +1238,20 @@ def _gate_runtime(active_gate: Path, frozen_registry: Path) -> tuple[str, int]:
                 raise RuntimeError(
                     f"active specialist tier-policy mismatch: {opponent_id}"
                 )
+        elif r192_marnie_semantics is not None:
+            if (gate_row.get("tier"), float(gate_row.get("weight", -1))) != (
+                "S+",
+                2.0,
+            ):
+                raise RuntimeError(
+                    f"active specialist S+ tier mismatch: {opponent_id}"
+                )
         elif gate_row.get("tier") != "S+":
             raise RuntimeError(
                 f"active specialist S+ tier mismatch: {opponent_id}"
             )
     if tier_policy:
-        expected_policy = {
-            "eligible_non_active_h10_specialist": {"tier": "S", "weight": 2.0},
-            "other_frozen_specialist": {"tier": "A", "weight": 1.0},
-            "remaining_public_opponent": {"tier": "A", "weight": 1.0},
-        }
+        expected_policy = _STANDARD_OPPONENT_TIER_POLICY
         public_rows = [row for row in roster if row.get("frozen_specialist") is not True]
         if tier_policy != expected_policy or any(
             (row.get("tier"), float(row.get("weight", -1))) != ("A", 1.0)
@@ -1262,8 +1374,8 @@ def _build_command(
         str(target)
         for target in row.get("expert_required_target_coverage") or ()
     ]
-    if specialist_id == "slowking" and "combo_state_rows" not in (
-        expert_required_targets
+    if specialist_id in {"slowking", "teal-mask-ogerpon-ex"} and (
+        "combo_state_rows" not in expert_required_targets
     ):
         expert_required_targets.append("combo_state_rows")
     run_root = (
@@ -1305,11 +1417,19 @@ def _build_command(
         # a later checkpoint here during resume conflicts with that lineage;
         # the checksum-validated loop state is authoritative instead.
         initial_checkpoint_args = []
+    _combo_default_specialists = {
+        "slowking",
+        "marnie-s-grimmsnarl-ex",
+        "teal-mask-ogerpon-ex",
+    }
     combo_state_loss_weight = float(
         row.get(
             "combo_state_loss_weight",
-            0.025 if specialist_id == "slowking" else 0.0,
+            0.025 if specialist_id in _combo_default_specialists else 0.0,
         )
+    )
+    setup_board_outcome_loss_weight = float(
+        row.get("setup_board_outcome_loss_weight", 0.025)
     )
     command = [
         python,
@@ -1342,6 +1462,8 @@ def _build_command(
         str(adapter_authorization),
         "--current-deck-guide-loss-weight",
         str(float(row.get("guide_loss_weight") or 0.0)),
+        "--setup-board-outcome-loss-weight",
+        str(setup_board_outcome_loss_weight),
         "--combo-state-loss-weight",
         str(combo_state_loss_weight),
         *(

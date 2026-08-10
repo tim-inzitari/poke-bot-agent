@@ -1,0 +1,47 @@
+{
+  "ActiveState": "activating",
+  "ExecMainStatus": "0",
+  "MainPID": 1140068,
+  "Result": "success",
+  "SubState": "start",
+  "cox_chao_gate": {
+    "note": "do not declare ready until Cox/Chao held policy_acc >= 0.90",
+    "prior_measured": 0.7603661820140011,
+    "ready_declared": false,
+    "threshold": 0.9
+  },
+  "created_at_utc": "2026-08-06T15:55:54.765826+00:00",
+  "crustle_untouched": true,
+  "epochs_completed": 28,
+  "epochs_max": 40,
+  "goal_revision": 170,
+  "gpu": {
+    "blackwell_expected": "cuda:1 H10 CE",
+    "compute_apps_csv": "1140068, /home/inzi/miniconda3/envs/poke-bot-agent/bin/python, 250 MiB\n1140129, /home/inzi/miniconda3/envs/poke-bot-agent/bin/python, 422 MiB\n1140068, /home/inzi/miniconda3/envs/poke-bot-agent/bin/python, 35950 MiB",
+    "rtp_expected": "cuda:0 parallel full-shard cut",
+    "summary_csv": "0, NVIDIA GeForce RTX 3080 Ti, 18 %, 1152 MiB, 12288 MiB\n1, NVIDIA RTX PRO 5000 Blackwell, 72 %, 35974 MiB, 48935 MiB"
+  },
+  "guide_bootstrap_schedule": {
+    "hold_through_epoch": 40,
+    "maximum_loss_weight": 0.25,
+    "ramp_end_weight": 0.25,
+    "ramp_epochs": [
+      1,
+      5
+    ],
+    "ramp_start_weight": 0.05
+  },
+  "latest_epoch": 28,
+  "latest_validation_accuracy": 0.7706785059357205,
+  "manager": "systemd --user",
+  "prior_failure": {
+    "at_local": "2026-08-06T11:52:22-04:00",
+    "cause": "setup_board_outcome_loss_weight 0.05 rejected by strategic curriculum assert requiring 0.025",
+    "fixed_by": "poke_bot/train.py allow 0.05 for Slop Box CE intensify",
+    "stale_dashboard_signal": "failed/inactive from prior oneshot; superseded by live activating unit"
+  },
+  "run_dir": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_slop_box_h10_rtp",
+  "schema": "poke_bot.slop_box_h10_rtp_ce_intensify_live_r170/v1",
+  "status": "healthy_continue_active",
+  "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service"
+}

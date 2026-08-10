@@ -1,0 +1,8 @@
+[Service]
+# Inactive future-activation template.  It is not installable under the
+# current staged-only r192 contract: a visible finite pause is not a
+# trainer-owned fence.  A later checksum-bound controller may use this only
+# after the source is already inactive or has acknowledged such a fence.
+TimeoutStopSec=8s
+KillMode=control-group
+SendSIGKILL=yes

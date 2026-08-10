@@ -1,0 +1,40 @@
+{
+  "schema": "poke_bot.replay_model_inspector_head_and_training_weight_playground_activation/v1",
+  "owner_decision_revision": 187,
+  "created_at_utc": "2026-08-08T01:47:00Z",
+  "status": "active_read_only",
+  "decision_influence": {
+    "live_trace": "55315274/90620383/7/stage-0",
+    "method": "exact_nonlinear_fusion_source_recomputation",
+    "scale_bounds": [
+      0.0,
+      2.0
+    ],
+    "one_x_matches_runtime_baseline": true,
+    "zero_x_action_type_matches_exact_leave_one_out": true,
+    "zero_x_total_variation_distance": 0.00006477472197730094,
+    "two_x_total_variation_distance": 0.000004137295036343858,
+    "checkpoint_mutated": false,
+    "historical_claim": false
+  },
+  "training_recipe": {
+    "checkpoint_bound": true,
+    "submission_id_text": "55315274",
+    "guide_loss_weight": 0.05,
+    "training_only": true,
+    "fine_tune_execution_authority": false,
+    "evaluation_replays_training_eligible": false,
+    "deployed_registry_sha256": "sha256:de940c77c0268825503d23fd460e5883bc62635452004f47ae93a2f067dd9ec7",
+    "typed_contract_sha256": "sha256:4e82b2972c8c02781f487c71a3ef9c62e25e9be644103e6ea9012d801f54feb2"
+  },
+  "validation": {
+    "full_exact_runtime_inspector_tests_passed": 88,
+    "live_zero_one_two_scale_checks": "passed",
+    "static_ui_checks": "passed"
+  },
+  "safety": {
+    "checkpoint_or_replay_mutation": false,
+    "training_service_control_invoked": false,
+    "request_scoped_only": true
+  }
+}

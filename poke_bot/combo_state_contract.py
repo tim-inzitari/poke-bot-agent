@@ -7,6 +7,13 @@ from typing import Any
 
 COMBO_STATE_KEY = "combo_state"
 COMBO_STATE_TARGET_SCHEMA = "poke_bot.slowking_combo_state_targets/v1"
+SLOP_BOX_COMBO_STATE_TARGET_SCHEMA = "poke_bot.slop_box_combo_state_targets/v1"
+ALLOWED_COMBO_STATE_TARGET_SCHEMAS = frozenset(
+    {
+        COMBO_STATE_TARGET_SCHEMA,
+        SLOP_BOX_COMBO_STATE_TARGET_SCHEMA,
+    }
+)
 TOP_DECK_CLASSES = 5
 SEEK_SOURCE_CLASSES = 7
 COPIED_ATTACK_WIDTH = 6
@@ -25,7 +32,7 @@ COMBO_STATE_OUTPUT_WIDTH = TOP_DECK_CLASSES + SEEK_SOURCE_CLASSES + VECTOR_WIDTH
 def validate_combo_state_labels(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("combo-state target must be a mapping")
-    if value.get("schema") != COMBO_STATE_TARGET_SCHEMA:
+    if value.get("schema") not in ALLOWED_COMBO_STATE_TARGET_SCHEMAS:
         raise ValueError("combo-state target schema mismatch")
 
     def class_target(name: str, width: int) -> tuple[int, bool]:

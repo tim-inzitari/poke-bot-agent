@@ -9,6 +9,7 @@ from poke_bot.model import ActionConditionedLatentLookahead
 from poke_bot.recursive_turn_planner import (
     GLOBAL_TRANSFORMER,
     PURE_RL,
+    PURE_RL_R197,
     LatentTransitionDynamics,
     LookaheadBackedDynamics,
     NodeKind,
@@ -17,6 +18,7 @@ from poke_bot.recursive_turn_planner import (
     PlanExecutor,
     PlanNode,
     RTPConfig,
+    RTP_MAX_AUTHORIZED_NEURAL_PASSES,
     RecursiveTurnPlanner,
     SubgoalKind,
     TurnProgram,
@@ -24,6 +26,7 @@ from poke_bot.recursive_turn_planner import (
     VERIFY_ABLATONS,
     get_profile,
     profile_inventory,
+    required_recursive_passes,
 )
 
 
@@ -223,7 +226,70 @@ def test_executor_repairs_when_plan_becomes_illegal() -> None:
     executor.load(bad)
     step = executor.next_action(memory)
     assert step.action == (1,)
-    assert step.repaired is True or executor.repairs_used == 1
+    assert step.repaired is True
+    assert executor.repairs_used == 1
+
+
+@pytest.mark.unit
+def test_executor_illegal_extraction_without_callback_is_not_repaired() -> None:
+    mixed = TurnProgram(
+        root=PlanNode(
+            kind=NodeKind.SEQUENCE,
+            children=(
+                PlanNode(kind=NodeKind.PRIMITIVE, action=(9,)),
+                PlanNode(kind=NodeKind.PRIMITIVE, action=(1,)),
+            ),
+        ),
+        plan_id="mixed-no-repair",
+    )
+    memory = PersistentTurnMemory(
+        H=torch.zeros(8),
+        legal_actions=((1,),),
+    )
+    executor = PlanExecutor(RTPConfig(d_model=8, repair_budget=1))
+    executor.load(mixed)
+
+    step = executor.next_action(memory)
+
+    assert step.action is None
+    assert step.done is True
+    assert step.repaired is False
+    assert step.reason == "extracted_action_illegal"
+    assert executor.repairs_used == 0
+
+
+@pytest.mark.unit
+def test_executor_illegal_extraction_with_callback_reports_actual_repair() -> None:
+    mixed = TurnProgram(
+        root=PlanNode(
+            kind=NodeKind.SEQUENCE,
+            children=(
+                PlanNode(kind=NodeKind.PRIMITIVE, action=(9,)),
+                PlanNode(kind=NodeKind.PRIMITIVE, action=(1,)),
+            ),
+        ),
+        plan_id="mixed-repair",
+    )
+    good = TurnProgram(
+        root=PlanNode(kind=NodeKind.PRIMITIVE, action=(1,)),
+        plan_id="actual-repair",
+    )
+    memory = PersistentTurnMemory(
+        H=torch.zeros(8),
+        legal_actions=((1,),),
+    )
+    executor = PlanExecutor(
+        RTPConfig(d_model=8, repair_budget=1),
+        repair_fn=lambda _memory, _program: good,
+    )
+    executor.load(mixed)
+
+    step = executor.next_action(memory)
+
+    assert step.action == (1,)
+    assert step.repaired is True
+    assert step.reason == "ok"
+    assert executor.repairs_used == 1
 
 
 @pytest.mark.unit
@@ -259,6 +325,8 @@ def test_sizing_profiles_match_in_repo_parents() -> None:
     assert GLOBAL_TRANSFORMER.dynamics_width == 512
     assert PURE_RL.d_model == 96
     assert PURE_RL.dynamics_width == 192
+    assert GLOBAL_TRANSFORMER.max_neural_passes == 4
+    assert PURE_RL.max_neural_passes == 4
     assert GLOBAL_TRANSFORMER.complexity_option_threshold == 8
     assert PURE_RL.complexity_option_threshold == 8
     cfg = get_profile("pure_rl").to_config(online_sim_verify_budget=8)
@@ -271,6 +339,47 @@ def test_sizing_profiles_match_in_repo_parents() -> None:
     assert default.config.d_model == 256
     assert default.config.dynamics_width == 512
     assert default.inventory()["sizing_profile"] == "global_transformer"
+
+
+@pytest.mark.unit
+def test_r197_profile_completes_normal_and_forced_recursive_paths() -> None:
+    cfg = get_profile("pure_rl_r197").to_config()
+    assert cfg == PURE_RL_R197.to_config()
+    assert (cfg.d_model, cfg.num_plan_candidates, cfg.max_recursion_depth) == (
+        96,
+        4,
+        2,
+    )
+    assert cfg.max_neural_passes == 256
+    assert required_recursive_passes(cfg) == 6
+    assert required_recursive_passes(cfg, force_recurse=True) == 5
+
+    planner = RecursiveTurnPlanner(cfg)
+    legal = [(index,) for index in range(8)]
+    normal_memory = planner.encode_memory(torch.randn(96), legal_actions=legal)
+    normal = planner.plan_turn(
+        normal_memory,
+        policy_logits=torch.zeros(len(legal)),
+    )
+    assert normal.mode == "recursive_plan"
+    assert normal.neural_passes == 6
+
+    forced_memory = planner.encode_memory(torch.randn(96), legal_actions=legal)
+    forced = planner.plan_turn(forced_memory, force_recurse=True)
+    assert forced.mode == "recursive_plan"
+    assert forced.neural_passes == 5
+
+
+@pytest.mark.unit
+def test_neural_pass_hard_ceiling_is_bounded() -> None:
+    assert (
+        RTPConfig(
+            max_neural_passes=RTP_MAX_AUTHORIZED_NEURAL_PASSES
+        ).max_neural_passes
+        == 256
+    )
+    with pytest.raises(ValueError, match="authorized hard ceiling"):
+        RTPConfig(max_neural_passes=RTP_MAX_AUTHORIZED_NEURAL_PASSES + 1)
 
 
 @pytest.mark.unit

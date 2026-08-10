@@ -1,0 +1,10 @@
+--- a/CardMove.h
++++ b/CardMove.h
+@@ -259,6 +259,7 @@
+ 	PlayerState& ps = state.players.at(playerIndex);
+ 	if (ps.deck.size() > 0) {
+ 		state.changed = true;
++		state.game->plannerAudit.markNonCoinRandom();
+ 		if (state.game->config.deviceRand) {
+ 			std::shuffle(ps.deck.begin(), ps.deck.end(), std::random_device());
+ 		} else {

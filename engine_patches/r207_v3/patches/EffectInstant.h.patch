@@ -1,0 +1,10 @@
+--- a/EffectInstant.h
++++ b/EffectInstant.h
+@@ -581,6 +581,7 @@
+ 		break;
+ 	case EffectType::ToDeckBottomClose:
+ 		if (state.targetList.size() >= 2) {
++			state.game->plannerAudit.markNonCoinRandom();
+ 			if (state.game->config.deviceRand) {
+ 				std::shuffle(state.targetList.begin(), state.targetList.end(), std::random_device());
+ 			} else {

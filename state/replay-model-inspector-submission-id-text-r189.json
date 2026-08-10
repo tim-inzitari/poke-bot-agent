@@ -1,0 +1,46 @@
+{
+  "schema": "poke_bot.replay_model_inspector_submission_id_text/v1",
+  "owner_decision_revision": 189,
+  "recorded_at_utc": "2026-08-08T00:40:41Z",
+  "status": "active",
+  "activated_at_utc": "2026-08-08T01:45:51Z",
+  "activation_receipt": "state/replay-model-inspector-submission-id-text-activation-r189.json",
+  "presentation": {
+    "representation": "exact_base10_string",
+    "example": "55315274",
+    "scientific_notation_allowed": false,
+    "rounding_or_abbreviation_allowed": false,
+    "generic_metric_formatter_allowed": false,
+    "required_surfaces": [
+      "submission_selector",
+      "selected_submission_summary",
+      "game_context",
+      "trace_context",
+      "model_weight_parameter_inventory",
+      "provenance_detail_panels"
+    ]
+  },
+  "api": {
+    "exact_decimal_text_field_required": true,
+    "internal_integer_lookup_allowed": true,
+    "route_identifier_must_remain_strict_decimal": true
+  },
+  "safety": {
+    "read_only": true,
+    "checkpoint_or_replay_mutation": false,
+    "training_or_selector_authority": false,
+    "training_service_restart_allowed": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_inspector_api_and_static_ui",
+    "may_run_during_healthy_training": true,
+    "requires_inspector_service_restart": true,
+    "required_validation": [
+      "public_exact_decimal_text_field_test",
+      "selector_no_scientific_notation_test",
+      "selected_summary_no_scientific_notation_test",
+      "game_and_trace_context_no_scientific_notation_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-submission-id-text-activation-r189.json"
+  }
+}

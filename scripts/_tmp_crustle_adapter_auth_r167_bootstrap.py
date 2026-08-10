@@ -22,6 +22,9 @@ def _run_overlay(name: str) -> None:
 # Adapter-auth repair (ActivationReceipt-safe rebind).
 _run_overlay("crustle_adapter_auth_r167_patch.py")
 
+# Iter5 corpus restore/resume (no recollection).
+_run_overlay("crustle_iter5_corpus_restore_r167_patch.py")
+
 
 def _load_replacement_fn():
     overlay = str(_OVERLAY)
@@ -52,16 +55,33 @@ def _apply_promote_patch_to_mapping(mapping) -> bool:
     file = str(mapping.get("__file__", "") or "")
     if "train_pure_rl.py" not in file.replace("\\", "/"):
         return False
+    try:
+        from crustle_iter5_corpus_restore_r167_patch import (
+            apply_iter5_restore_patches,
+        )
+
+        apply_iter5_restore_patches(mapping)
+    except Exception:
+        try:
+            ns = runpy.run_path(
+                str(_OVERLAY / "crustle_iter5_corpus_restore_r167_patch.py"),
+                run_name="crustle_iter5_corpus_restore_r167_patch",
+            )
+            fn_restore = ns.get("apply_iter5_restore_patches")
+            if callable(fn_restore):
+                fn_restore(mapping)
+        except Exception:
+            pass
     if "_replacement_schedule_contract_from_result" not in mapping:
         return False
     fn = _load_replacement_fn()
     if fn is None:
         return False
     current = mapping.get("_replacement_schedule_contract_from_result")
-    if getattr(current, "__name__", "") == "replacement_schedule_contract_from_result":
-        return True
-    mapping["_replacement_schedule_contract_from_result"] = fn
+    if getattr(current, "__name__", "") != "replacement_schedule_contract_from_result":
+        mapping["_replacement_schedule_contract_from_result"] = fn
     return True
+
 
 
 def _apply_promote_patch() -> None:
@@ -94,6 +114,29 @@ def _try_patch_frame_globals(frame) -> bool:
     return _apply_promote_patch_to_mapping(frame.f_globals)
 
 
+def _write_patch_flag(source: str) -> None:
+    try:
+        import json
+        import os
+        import time
+
+        flag = Path("/tmp/crustle_promote_patch_applied_r167.json")
+        flag.write_text(
+            json.dumps(
+                {
+                    "schema": "poke_bot.crustle_promote_patch_applied_r167/v1",
+                    "pid": os.getpid(),
+                    "source": source,
+                    "created_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+    except Exception:
+        pass
+
+
 def _promote_trace(frame, event, arg):  # noqa: ANN001
     """One-shot line tracer for CPython `python train_pure_rl.py` launches.
 
@@ -107,6 +150,7 @@ def _promote_trace(frame, event, arg):  # noqa: ANN001
         if _try_patch_frame_globals(frame):
             current = frame.f_globals.get("_replacement_schedule_contract_from_result")
             if getattr(current, "__name__", "") == "replacement_schedule_contract_from_result":
+                _write_patch_flag("settrace")
                 sys.settrace(None)
                 return None
     except Exception:
@@ -119,6 +163,41 @@ if getattr(sys, "_crustle_r167_promote_trace", False) is not True:
     # Only install when no trace is already active.
     if sys.gettrace() is None:
         sys.settrace(_promote_trace)
+
+
+def _poll_main_for_promote_patch() -> None:
+    """Daemon fallback: rebind __main__ as soon as the helper exists.
+
+    settrace can be cleared by later imports/profilers before train_pure_rl's
+    helper definition runs. Polling __main__ is cheap during startup and exits
+    immediately once the promote helper is rebound.
+    """
+    import time
+
+    for _ in range(12_000):  # ~10 minutes at 50ms
+        try:
+            main = sys.modules.get("__main__")
+            if main is not None and _apply_promote_patch_to_mapping(vars(main)):
+                current = getattr(main, "_replacement_schedule_contract_from_result", None)
+                if getattr(current, "__name__", "") == "replacement_schedule_contract_from_result":
+                    _write_patch_flag("poll_main")
+                    if sys.gettrace() is _promote_trace:
+                        sys.settrace(None)
+                    return
+        except Exception:
+            pass
+        time.sleep(0.05)
+
+
+if getattr(sys, "_crustle_r167_promote_poller", False) is not True:
+    sys._crustle_r167_promote_poller = True  # type: ignore[attr-defined]
+    import threading
+
+    threading.Thread(
+        target=_poll_main_for_promote_patch,
+        name="crustle-r167-promote-poller",
+        daemon=True,
+    ).start()
 
 
 _orig_import_module = importlib.import_module

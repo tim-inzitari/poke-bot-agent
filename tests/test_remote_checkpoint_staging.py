@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 import json
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,6 +15,7 @@ from poke_bot.checkpoint import checkpoint_digest
 from poke_bot import remote_jobs
 from poke_bot.remote_jobs import (
     RemoteJobClient,
+    RemoteJobsError,
     RemoteResultError,
     RemoteWorkerInfo,
     cache_exact_resident_remote_checkpoint,
@@ -248,6 +251,177 @@ def test_elmo_stage_receipt_is_content_addressed_across_source_aliases(
         "192.168.1.143", str(source_b)
     )
     assert mapped.endswith(destination.name)
+
+
+def test_elmo_resolve_uses_control_plane_when_smb_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "trainer" / "seed.pt"
+    source.parent.mkdir()
+    source.write_bytes(b"resident without trainer smb mount")
+    digest = checkpoint_digest(source)
+    dest_name = digest_addressed_basename(source, digest=digest)
+    remote_path = f"/workspace/checkpoint/{dest_name}"
+
+    monkeypatch.setattr(remote_jobs, "_smb_checkpoint_dir", lambda: None)
+    monkeypatch.setattr(
+        remote_jobs,
+        "_elmo_remote_checkpoint_digest",
+        lambda _host, path: digest if path == remote_path else None,
+    )
+    remote_jobs._ELMO_STAGE_CACHE.clear()
+
+    assert (
+        remote_jobs.resolve_remote_checkpoint_path(
+            "192.168.1.143", str(source)
+        )
+        == remote_path
+    )
+    # Second call must hit the resident cache and not re-probe.
+    monkeypatch.setattr(
+        remote_jobs,
+        "_elmo_remote_checkpoint_digest",
+        lambda *_a, **_k: (_ for _ in ()).throw(
+            AssertionError("resident cache must skip re-verify")
+        ),
+    )
+    assert (
+        remote_jobs.resolve_remote_checkpoint_path(
+            "192.168.1.143", str(source)
+        )
+        == remote_path
+    )
+
+
+def test_elmo_missing_smb_stages_new_digest_over_verified_ssh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A new digest uses atomically published SSH staging, never GUI GVFS."""
+
+    source = tmp_path / "trainer" / "candidate.pt"
+    source.parent.mkdir()
+    source.write_bytes(b"new immutable candidate weights")
+    digest = checkpoint_digest(source)
+    destination_name = digest_addressed_basename(source, digest=digest)
+    remote_path = f"/workspace/checkpoint/{destination_name}"
+    checks: list[str] = []
+    commands: list[list[str]] = []
+
+    def remote_digest(_host: str, path: str) -> str | None:
+        checks.append(path)
+        # The first storage-local check proves this fresh candidate is absent;
+        # the second proves the SSH-published object before it may be reloaded.
+        return None if len(checks) == 1 else digest
+
+    def run(command, **kwargs):
+        commands.append(list(command))
+        assert kwargs["check"] is False
+        assert kwargs["timeout"] >= 30.0
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(remote_jobs, "_smb_checkpoint_dir", lambda: None)
+    monkeypatch.setattr(
+        remote_jobs, "_elmo_remote_checkpoint_digest", remote_digest
+    )
+    monkeypatch.setattr(remote_jobs.subprocess, "run", run)
+    monkeypatch.setenv("POKEBOT_ELMO_SSH_STAGE", "1")
+    monkeypatch.setenv("POKEBOT_ELMO_SSH", "admin@elmo")
+    monkeypatch.setenv("POKEBOT_ELMO_CHECKPOINT_HOST_DIR", "/srv/checkpoint")
+    monkeypatch.delenv("POKEBOT_ELMO_SSH_IDENTITY_FILE", raising=False)
+    remote_jobs._ELMO_STAGE_CACHE.clear()
+
+    assert (
+        remote_jobs.resolve_remote_checkpoint_path("192.168.1.143", str(source))
+        == remote_path
+    )
+    assert checks == [remote_path, remote_path]
+    assert [command[0] for command in commands] == ["scp", "ssh"]
+    assert commands[0][-1].startswith(
+        "admin@elmo:/srv/checkpoint/.candidate."
+    )
+    assert ".partial." in commands[0][-1]
+    assert "sha256sum" in commands[1][-1]
+    assert "mv -f" in commands[1][-1]
+    assert "smb://" not in commands[1][-1]
+
+    # The resident mapping is cached only after the second storage-local
+    # digest proof, so future jobs do not duplicate a large SSH transfer.
+    assert (
+        remote_jobs.resolve_remote_checkpoint_path("192.168.1.143", str(source))
+        == remote_path
+    )
+    assert len(commands) == 2
+
+
+def test_elmo_missing_smb_refuses_new_digest_without_explicit_ssh_stage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "trainer" / "candidate.pt"
+    source.parent.mkdir()
+    source.write_bytes(b"new immutable candidate weights")
+
+    monkeypatch.setattr(remote_jobs, "_smb_checkpoint_dir", lambda: None)
+    monkeypatch.setattr(
+        remote_jobs, "_elmo_remote_checkpoint_digest", lambda *_args: None
+    )
+    monkeypatch.delenv("POKEBOT_ELMO_SSH_STAGE", raising=False)
+    remote_jobs._ELMO_STAGE_CACHE.clear()
+
+    with pytest.raises(RemoteJobsError, match="SSH stage"):
+        remote_jobs.resolve_remote_checkpoint_path("192.168.1.143", str(source))
+
+
+@pytest.mark.parametrize(
+    "env_name,value",
+    (
+        ("POKEBOT_ELMO_CHECKPOINT_HOST_DIR", "/srv/checkpoint;not-a-path"),
+        ("POKEBOT_ELMO_CHECKPOINT_HOST_DIR", "/srv/check point"),
+        ("POKEBOT_ELMO_SSH", "admin@elmo;not-a-target"),
+    ),
+)
+def test_elmo_ssh_stage_rejects_remote_spec_metacharacters(
+    monkeypatch: pytest.MonkeyPatch,
+    env_name: str,
+    value: str,
+) -> None:
+    monkeypatch.setenv("POKEBOT_ELMO_SSH_STAGE", "1")
+    monkeypatch.setenv("POKEBOT_ELMO_SSH", "admin@elmo")
+    monkeypatch.setenv("POKEBOT_ELMO_CHECKPOINT_HOST_DIR", "/srv/checkpoint")
+    monkeypatch.setenv(env_name, value)
+
+    with pytest.raises(RemoteJobsError, match="safe SSH target|absolute safe path"):
+        remote_jobs._elmo_ssh_stage_config()
+
+
+def test_elmo_ssh_stage_publishes_runtime_companions_atomically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tree = tmp_path / "runtime-tree.json"
+    tree.write_bytes(b'{"runtime_contract":"exact"}\n')
+    marker = b'{"runtime_enabled":true}\n'
+    staged: list[tuple[str, str, str]] = []
+
+    def stage(source: Path, *, destination_name: str, digest: str) -> bool:
+        staged.append((source.name, destination_name, digest))
+        return True
+
+    monkeypatch.setattr(
+        remote_jobs, "_matchup_runtime_companions", lambda: (tree, marker)
+    )
+    monkeypatch.setattr(remote_jobs, "_stage_elmo_file_via_ssh", stage)
+
+    assert remote_jobs._stage_elmo_runtime_companions_via_ssh() is True
+    assert staged[0] == (
+        tree.name,
+        tree.name,
+        "sha256:" + hashlib.sha256(tree.read_bytes()).hexdigest(),
+    )
+    assert staged[1][1] == "matchup-runtime-activation.json"
+    assert staged[1][2] == "sha256:" + hashlib.sha256(marker).hexdigest()
 
 
 def test_elmo_missing_receipt_uses_storage_local_digest_verification(
@@ -573,6 +747,200 @@ def test_valid_remote_result_is_unchanged() -> None:
     assert require_remote_result_success(result) is result
 
 
+def test_public_play_stays_single_game_while_self_play_packs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POKEBOT_REMOTE_SELF_PLAY_MULTI_GAMES", "4")
+    client = type(
+        "PackedClient",
+        (),
+        {
+            "info": RemoteWorkerInfo(
+                endpoint="worker.example:8765",
+                workers=4,
+                leaf_servers=0,
+                gpu_name="",
+                device="cpu",
+                checkpoint_digest=None,
+                hostname="worker.example",
+                job_kinds=("play", "self_play", "self_play_multi"),
+            )
+        },
+    )()
+
+    assert remote_jobs.client_self_play_multi_pack(client, kind="self_play") == 4
+    assert remote_jobs.client_self_play_multi_pack(client, kind="play") == 0
+
+
+def test_remote_multi_rejects_mixed_play_and_self_play_children() -> None:
+    from poke_bot.remote_sim_jobs import remote_self_play_multi_job
+
+    with pytest.raises(ValueError, match="mixes play and self-play"):
+        remote_self_play_multi_job(
+            {"jobs": [{"job_index": 1, "spec": {}}, {"job_index": 2}]}
+        )
+
+
+@pytest.mark.parametrize("count", [1, 5])
+def test_remote_multi_rejects_public_packet_outside_exact_pack_size(
+    count: int,
+) -> None:
+    """A forged public envelope may never reach LibcgMultiEnv outside 2..4."""
+
+    from poke_bot.remote_sim_jobs import remote_self_play_multi_job
+
+    with pytest.raises(
+        ValueError,
+        match="public self_play_multi packet must contain 2..4",
+    ):
+        remote_self_play_multi_job(
+            {
+                "jobs": [
+                    {"job_index": index, "spec": {"id": f"public-{index}"}}
+                    for index in range(count)
+                ]
+            }
+        )
+
+
+def test_client_rejects_same_count_multi_results_with_wrong_child_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Socket:
+        timeout = 30.0
+
+        def gettimeout(self) -> float:
+            return self.timeout
+
+        def settimeout(self, timeout: float) -> None:
+            self.timeout = timeout
+
+    jobs = [
+        {
+            "job_index": index,
+            "opponent_id": f"self:opponent-{index}",
+            "our_seat": index % 2,
+            "game_timeout_s": 1,
+        }
+        for index in range(4)
+    ]
+
+    def _row(job: dict[str, object]) -> dict[str, object]:
+        return {
+            "job_index": job["job_index"],
+            "opponent_id": job["opponent_id"],
+            "our_seat": job["our_seat"],
+            "winner": 0,
+            "our_failed": False,
+            "resource_error": False,
+            "cancelled": False,
+            "error": None,
+            "record_json": "{}",
+        }
+
+    rows = [_row(job) for job in jobs]
+    reply = {
+        "type": "result",
+        "ok": True,
+        "result": {"self_play_multi": True, "results": rows},
+    }
+    monkeypatch.setattr(remote_jobs, "send_frame", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(remote_jobs, "read_frame", lambda _sock: reply)
+    client = RemoteJobClient("unmapped.example")
+    client._sock = _Socket()  # type: ignore[assignment]
+
+    reply["result"] = {
+        "self_play_multi": True,
+        "results": [rows[2], rows[0], rows[3], rows[1]],
+    }
+    assert client.submit_self_play_multi(jobs) == rows
+
+    reply["result"] = {
+        "self_play_multi": True,
+        "results": [rows[0], rows[0], rows[2], rows[3]],
+    }
+    with pytest.raises(remote_jobs.RemoteJobsError, match="duplicate child"):
+        client.submit_self_play_multi(jobs)
+
+    malformed = dict(rows[0])
+    malformed["job_index"] = "not-an-index"
+    reply["result"] = {
+        "self_play_multi": True,
+        "results": [malformed, rows[1], rows[2], rows[3]],
+    }
+    with pytest.raises(remote_jobs.RemoteJobsError, match="non-integer identity"):
+        client.submit_self_play_multi(jobs)
+
+
+def test_client_requires_public_multi_child_seed_and_checkpoint_proof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public Libcg packets may not credit a same-index stale child result."""
+
+    class _Socket:
+        timeout = 30.0
+
+        def gettimeout(self) -> float:
+            return self.timeout
+
+        def settimeout(self, timeout: float) -> None:
+            self.timeout = timeout
+
+    jobs = [
+        {
+            "job_index": index,
+            "opponent_id": f"public:opponent-{index}",
+            "our_seat": index % 2,
+            "seed": 70_000 + index,
+            "checkpoint_digest": "sha256:" + str(index) * 64,
+            "spec": {"id": f"public:opponent-{index}"},
+            "game_timeout_s": 1,
+        }
+        for index in range(2)
+    ]
+
+    def _row(job: dict[str, object]) -> dict[str, object]:
+        return {
+            "job_index": job["job_index"],
+            "opponent_id": job["opponent_id"],
+            "our_seat": job["our_seat"],
+            "seed": job["seed"],
+            "checkpoint_digest": job["checkpoint_digest"],
+            "winner": 0,
+            "our_failed": False,
+            "resource_error": False,
+            "cancelled": False,
+            "error": None,
+            "record_json": "{}",
+        }
+
+    rows = [_row(job) for job in jobs]
+    reply: dict[str, object] = {
+        "type": "result",
+        "ok": True,
+        "result": {"self_play_multi": True, "results": rows},
+    }
+    monkeypatch.setattr(remote_jobs, "send_frame", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(remote_jobs, "read_frame", lambda _sock: reply)
+    client = RemoteJobClient("unmapped.example")
+    client._sock = _Socket()  # type: ignore[assignment]
+
+    assert client.submit_self_play_multi(jobs) == rows
+
+    for field, wrong_value in (
+        ("seed", 9_999_999),
+        ("checkpoint_digest", "sha256:" + "f" * 64),
+    ):
+        bad_rows = [dict(row) for row in rows]
+        bad_rows[0][field] = wrong_value
+        reply["result"] = {"self_play_multi": True, "results": bad_rows}
+        with pytest.raises(
+            remote_jobs.RemoteJobsError,
+            match="public child proof mismatch",
+        ):
+            client.submit_self_play_multi(jobs)
+
+
 def test_client_rejects_semantic_failure_before_returning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -857,8 +1225,69 @@ def test_scheduled_dispatch_reports_remote_execution_origin(
             "origin": "remote",
             "endpoint": _ScheduledRemote.endpoint,
             "kind": "self_play",
+            "transport_kind": "self_play",
+            "pack_games": 1,
         }
     ]
+
+
+def test_scheduled_packed_self_play_reports_four_logical_executions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A four-game transport pack remains four logical self-play results."""
+
+    monkeypatch.setenv("POKEBOT_REMOTE_ONLY", "1")
+    monkeypatch.setenv("POKEBOT_REMOTE_SELF_PLAY_MULTI_GAMES", "4")
+
+    class PackedRemote(_ScheduledRemote):
+        def __init__(self) -> None:
+            super().__init__(fail=False)
+            self.info = RemoteWorkerInfo(
+                endpoint=self.endpoint,
+                workers=1,
+                leaf_servers=0,
+                gpu_name="",
+                device="cpu",
+                checkpoint_digest=None,
+                hostname=self.host,
+                max_workers=1,
+                default_workers=1,
+                job_kinds=("play", "self_play", "self_play_multi"),
+            )
+
+        def submit_self_play_multi(self, jobs):
+            return [
+                {"job_index": job["job_index"], "source": "remote"}
+                for job in jobs
+            ]
+
+    executions: list[dict[str, object]] = []
+    rows = list(
+        iter_scheduled_additive_results(
+            local_pool=_ScheduledPool(),
+            local_fn=lambda job: {
+                "job_index": job["job_index"],
+                "source": "local",
+            },
+            jobs=[{"job_index": index} for index in range(4)],
+            remote_clients=[PackedRemote()],  # type: ignore[list-item]
+            kind="self_play",
+            scheduler=_ScheduledScheduler(),
+            local_workers=1,
+            remote_workers=1,
+            on_execution=executions.append,
+        )
+    )
+
+    assert [row["job_index"] for row in rows] == [0, 1, 2, 3]
+    assert len(executions) == 4
+    assert {
+        (event["kind"], event["transport_kind"], event["pack_games"])
+        for event in executions
+    } == {("self_play", "self_play_multi", 1)}
+    # The strict endpoint proof receives one logical completion per game,
+    # while consumers that sum pack_games still see exactly four games.
+    assert sum(int(event["pack_games"]) for event in executions) == 4
 
 
 def test_scheduled_dispatch_notifies_after_producers_before_result_drain(
@@ -1521,6 +1950,11 @@ def test_low_water_refills_elmo_and_bert_in_the_same_probe_round(
     assert "bert.test:8766 LOW_WATER_REFILL" in output
     assert output.count("fill=high_water") >= 2
     assert output.count("added=3") >= 2
+    # The server sample is request-packet grain while controller credits are
+    # exact logical games.  Keep both units visible so a packed public wave
+    # cannot look starved merely because four child games share one request.
+    assert "server_request_units=packets" in output
+    assert "logical_credits_at_probe=" in output
 
 
 def test_self_play_execution_wave_never_low_water_refills_second_socket_wave(
@@ -1608,6 +2042,226 @@ def test_self_play_execution_wave_never_low_water_refills_second_socket_wave(
     assert clone_submissions == []
     assert max(int(row.get("active", 0)) for row in slot_updates) <= 2
     assert "LOW_WATER_REFILL" not in capsys.readouterr().out
+
+
+def test_public_listener_rejoin_replaces_refused_stale_prefetch_slots(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A restarted public listener cannot let stale ``have`` block r182 refill.
+
+    The two original persistent sockets own their exact initial packets, then
+    observe a refused reconnect while the listener is down.  Once a *fresh*
+    health connection succeeds, the refill controller must open two bounded
+    replacement sockets even though ``slots_by_endpoint`` still reports the
+    prefetch-2 ceiling.  The old sockets retire only between packets, so no
+    logical child/credit is released, duplicated, or repacked.
+    """
+
+    endpoint = "rejoin-public.test:8765"
+    monkeypatch.setenv("POKEBOT_REMOTE_ONLY", "1")
+    monkeypatch.setenv("POKEBOT_REMOTE_PUBLIC_SOCKET_PREFETCH", "2")
+    monkeypatch.setenv("POKEBOT_REMOTE_PUBLIC_SOCKET_PREFETCH_MAX", "2")
+    monkeypatch.setenv("POKEBOT_REMOTE_QUEUE_PROBE_S", "0.02")
+    monkeypatch.setenv("POKEBOT_REMOTE_QUEUE_LOW_WATER_FRAC", "0.5")
+    monkeypatch.setenv("POKEBOT_REMOTE_JOB_RETRIES", "16")
+    monkeypatch.setenv(
+        "POKEBOT_REMOTE_ENDPOINT_CHUNKS", f"{endpoint}=16"
+    )
+
+    listener_rejoined = threading.Event()
+    stale_can_resume = threading.Event()
+    both_refused = threading.Event()
+    refused_lock = threading.Lock()
+    refused_count = 0
+    data_client_ids: set[int] = set()
+    data_client_lock = threading.Lock()
+    rejoin_packets: list[list[int]] = []
+    rejoin_packets_lock = threading.Lock()
+
+    def _info() -> RemoteWorkerInfo:
+        return RemoteWorkerInfo(
+            endpoint=endpoint,
+            workers=1,
+            leaf_servers=0,
+            gpu_name="",
+            device="cpu",
+            checkpoint_digest=None,
+            hostname="rejoin-public.test",
+            max_workers=1,
+            default_workers=1,
+            job_kinds=("play", "self_play", "self_play_multi"),
+            capabilities=("public_multi_env_allowlist_r182_v1",),
+        )
+
+    class StaleSlot:
+        host = "rejoin-public.test"
+        port = 8765
+        endpoint = "rejoin-public.test:8765"
+        timeout_s = 5.0
+        connect_timeout_s = 5.0
+        control_timeout_s = 5.0
+
+        def __init__(self) -> None:
+            self.info = _info()
+
+        def reconnect(self):
+            nonlocal refused_count
+            if listener_rejoined.is_set():
+                return self.info
+            with refused_lock:
+                refused_count += 1
+                if refused_count >= 2:
+                    both_refused.set()
+            raise ConnectionRefusedError("listener restart in progress")
+
+        def submit_self_play_multi(self, jobs):
+            if not listener_rejoined.is_set():
+                raise ConnectionResetError("listener restarted")
+            # The replacement must be admitted before an old client may use
+            # its existing packet again.  This simulates a dead socket still
+            # sleeping in retry backoff while the restarted listener is live.
+            assert stale_can_resume.wait(timeout=2.0)
+            return [
+                {"job_index": job["job_index"], "source": "stale-resumed"}
+                for job in jobs
+            ]
+
+        def submit_job(self, job, *, kind="play"):
+            if not listener_rejoined.is_set():
+                raise ConnectionResetError("listener restarted")
+            assert stale_can_resume.wait(timeout=2.0)
+            return {"job_index": job["job_index"], "source": "stale-resumed"}
+
+        def close(self) -> None:
+            return None
+
+    class RejoinedClient:
+        timeout_s = 5.0
+        connect_timeout_s = 5.0
+        control_timeout_s = 5.0
+
+        def __init__(self, host, port, **_kwargs) -> None:
+            self.host = str(host)
+            self.port = int(port)
+            self.endpoint = f"{self.host}:{self.port}"
+            self.info = _info()
+            self._control = False
+
+        def connect(self):
+            if not listener_rejoined.is_set():
+                raise ConnectionRefusedError("listener restart in progress")
+            return self.info
+
+        def health(self):
+            self._control = True
+            return {"active_jobs": 0}
+
+        def submit_self_play_multi(self, jobs):
+            assert not self._control
+            with data_client_lock:
+                data_client_ids.add(id(self))
+            packet = [int(job["job_index"]) for job in jobs]
+            with rejoin_packets_lock:
+                rejoin_packets.append(packet)
+            stale_can_resume.set()
+            return [
+                {"job_index": job_index, "source": "rejoined"}
+                for job_index in packet
+            ]
+
+        def submit_job(self, job, *, kind="play"):
+            assert not self._control
+            with data_client_lock:
+                data_client_ids.add(id(self))
+            stale_can_resume.set()
+            return {"job_index": job["job_index"], "source": "rejoined"}
+
+        def close(self) -> None:
+            return None
+
+    class Decision(_ScheduledDecision):
+        remote_chunk = 16
+        remote_demand = {endpoint: 1}
+
+    class Scheduler(_ScheduledScheduler):
+        def decision(self):
+            return Decision()
+
+        def remote_demand(self):
+            return dict(Decision.remote_demand)
+
+    def _fast_backoff(_seconds: float) -> None:
+        threading.Event().wait(0.003)
+
+    def _rejoin_listener() -> None:
+        assert both_refused.wait(timeout=2.0)
+        listener_rejoined.set()
+
+    opponent_id = "generic-heuristic"
+    digest = (
+        "sha256:6f89fa7b6c9734731809fc9782374e94e1d0eb75cde989b0c37ac5b4b4f15e65"
+    )
+
+    def _safe_job(index: int) -> dict[str, object]:
+        return {
+            "job_index": index,
+            "opponent_id": opponent_id,
+            "require_portable_baseline_contract": True,
+            "spec": {
+                "id": opponent_id,
+                "content_digest": digest,
+                "contract_schema": "poke_bot.portable_baseline_spec/v1",
+            },
+            "target_provenance": {
+                "opponent_id": opponent_id,
+                "opponent_content_digest": digest,
+                "opponent_training_group": "diverse_public",
+            },
+        }
+
+    template = StaleSlot()
+    stale_slots = [StaleSlot(), StaleSlot()]
+    monkeypatch.setattr(remote_jobs, "RemoteJobClient", RejoinedClient)
+    monkeypatch.setattr(remote_jobs.time, "sleep", _fast_backoff)
+    monkeypatch.setattr(
+        remote_jobs,
+        "_parallel_remote_slots",
+        lambda *_args, **_kwargs: (stale_slots, []),
+    )
+    listener_thread = threading.Thread(target=_rejoin_listener, daemon=True)
+    listener_thread.start()
+
+    rows = list(
+        iter_scheduled_additive_results(
+            local_pool=_ScheduledPool(),
+            local_fn=lambda job: {
+                "job_index": job["job_index"],
+                "source": "local",
+            },
+            jobs=[_safe_job(index) for index in range(64)],
+            remote_clients=[template],  # type: ignore[list-item]
+            kind="play",
+            scheduler=Scheduler(),
+            local_workers=1,
+            remote_workers=2,
+        )
+    )
+
+    listener_thread.join(timeout=1.0)
+    assert listener_rejoined.is_set()
+    assert stale_can_resume.is_set()
+    # Exactly two stale prefetch slots were replaced, not an unbounded second
+    # wave. Both fresh clones carried true four-child r182 transport packets.
+    assert len(data_client_ids) == 2
+    assert any(len(packet) == 4 for packet in rejoin_packets)
+    assert all(1 <= len(packet) <= 4 for packet in rejoin_packets)
+    assert sorted(int(row["job_index"]) for row in rows) == list(range(64))
+    assert len({int(row["job_index"]) for row in rows}) == len(rows)
+    output = capsys.readouterr().out
+    assert "LISTENER_REJOIN_REFILL" in output
+    assert "replaced=2" in output
+    assert "logical_credits_preserved=true" in output
 
 
 def test_endpoint_credit_keeps_slow_bert_fed_across_a_long_wave() -> None:

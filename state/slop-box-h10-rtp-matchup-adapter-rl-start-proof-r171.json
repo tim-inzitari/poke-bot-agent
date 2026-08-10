@@ -1,0 +1,24 @@
+{
+  "bootstrap_authorization_exists": true,
+  "chao_hard_note": "Chao-hard CE does not run dormant adapter epochs; learning begins in RL.",
+  "coordination_for_1f90a2c3": "Keep matchup_adapter_epochs_per_rl_iteration=1 and slop-box-h10-rtp-matchup-adapter-bootstrap-r171.json when repairing RL start. Do not fall back to historical teal-mask-ogerpon-ex-matchup-adapter-bootstrap-v1.json or epochs=0. No Crustle deletes; Chao-hard already stopped for ceiling.",
+  "crustle_data_deleted": false,
+  "how_adapters_learn": "launch_active_specialist injects --dormant-matchup-adapter-epochs from matchup_adapter_epochs_per_rl_iteration and --dormant-matchup-adapter-activation-receipt from matchup_adapter_authorization. After each ordinary pure-RL epoch, train.py::_train_dormant_matchup_adapter_phase freezes the base and AdamW-trains only matchup_adapter_bank under the bootstrap authorization (runtime off during fit).",
+  "learning_wired_receipt_exists": true,
+  "live_cmdline_proof": {
+    "activation_receipt_r171": true,
+    "dormant_matchup_adapter_epochs_1": true,
+    "max_decisions_3072": true,
+    "observed_in_rl_log": true
+  },
+  "matchup_adapter_authorization": "/home/inzi/poke-bot-agent/outputs/state/slop-box-h10-rtp-matchup-adapter-bootstrap-r171.json",
+  "matchup_adapter_authorization_sha256": "70536ebd58bfc8c229541c837dc3a0906b07a63e785e8ca1f993bc4b75d9fece",
+  "matchup_adapter_epochs_per_rl_iteration": 1,
+  "owner_decision_revision": 171,
+  "rl_blocker": "checkpoint_profile_mismatch_not_adapter",
+  "rl_blocker_detail": "First RL attempt launched with adapter flags then failed closed on H10 checkpoint profile mismatch (changed_fields include h10_capacity_enabled/ff_dim/layers). Restart ExecStartPre then failed on incomplete directional guide training contract. Adapter wiring itself is correct; RL runtime needs H10 profile/registry repair before gradient proof can be collected.",
+  "schema": "poke_bot.slop_box_h10_rtp_matchup_adapter_rl_start_proof_r171/v1",
+  "specialist_id": "teal-mask-ogerpon-ex",
+  "status": "wired_config_proof_rl_start_blocked",
+  "updated_at_utc": "2026-08-06T19:17:27.723787+00:00"
+}

@@ -1,0 +1,16 @@
+{
+  "completed_iteration": -1,
+  "created_at_utc": "2026-08-06T19:13:33.018135+00:00",
+  "first_eligible_iteration": 0,
+  "optimizer_scope": "matchup_adapter_bank_only",
+  "parent_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/final-format-slop-box-h10-rtp-expert-bootstrap-v1/model.pt",
+  "parent_checkpoint_digest": "sha256:91cf90a03206ca69eb379d3144904df5ff05470d91a931d53492282fc88efdfa",
+  "parent_untouched": true,
+  "protected_manifest": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/final-format-slop-box-h10-rtp-expert-bootstrap-v1/manifest.json",
+  "protected_manifest_digest": "sha256:c57c934b6b0bf72bed397e9d90441d6d9ee85aeebdbdd16fe1376b0eb7f32ede",
+  "purpose": "specialist-bootstrap-causal-router-aligned-adapter-fitting",
+  "required_target_coverage": [],
+  "runtime_enabled": false,
+  "schema": "poke_bot.matchup_adapter_specialist_bootstrap_authorization/v1",
+  "specialist_id": "teal-mask-ogerpon-ex"
+}

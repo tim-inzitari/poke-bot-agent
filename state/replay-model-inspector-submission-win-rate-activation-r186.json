@@ -1,0 +1,39 @@
+{
+  "schema": "poke_bot.replay_model_inspector_submission_win_rate_activation/v1",
+  "owner_decision_revision": 186,
+  "created_at_utc": "2026-08-08T01:47:00Z",
+  "status": "active_read_only",
+  "live_submissions": [
+    {
+      "submission_id_text": "55217604",
+      "wins": 48,
+      "eligible_games": 79,
+      "win_rate": 0.6075949367088608
+    },
+    {
+      "submission_id_text": "55315274",
+      "wins": 55,
+      "eligible_games": 78,
+      "win_rate": 0.7051282051282052
+    },
+    {
+      "submission_id_text": "55324802",
+      "wins": 40,
+      "eligible_games": 58,
+      "win_rate": 0.6896551724137931
+    }
+  ],
+  "outcome_source": "archived_episode_metadata.own_agent.reward",
+  "nonwin_definition": "source_backed_own_agent_reward_lte_zero",
+  "draws_inferred": false,
+  "validation": {
+    "full_exact_runtime_inspector_tests_passed": 88,
+    "live_selector_and_summary": "passed",
+    "missing_or_malformed_outcome_exclusion": "passed"
+  },
+  "safety": {
+    "read_only": true,
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_service_control_invoked": false
+  }
+}

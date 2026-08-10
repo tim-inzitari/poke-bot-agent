@@ -1,0 +1,14 @@
+{
+  "cox_chao_gate": 0.95,
+  "created_at_utc": "2026-08-06T16:36:39.848874+00:00",
+  "epochs_to": 300,
+  "goal_revision": 170,
+  "inner_rehearsal_epochs": 5,
+  "joint_full_model": true,
+  "manager": "systemd --user",
+  "message_for_other_agents": "Slop Box deep CE cap is now 300 epochs with 5 inner full-model CE passes/epoch. Leave the managed unit alone unless unhealthy. Poll receipts >=5 min; do not hammer dash.",
+  "receipt_sha256": "sha256:c43917fc629e11fbaf186b097c982d7dce2419430ae996485d8c6588c2692edd",
+  "schema": "poke_bot.slop_box_h10_rtp_bootstrap_epoch_cap_300_r170/v1",
+  "status": "owner_active",
+  "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service"
+}

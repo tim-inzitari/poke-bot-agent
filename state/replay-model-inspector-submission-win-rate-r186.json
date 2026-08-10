@@ -1,0 +1,43 @@
+{
+  "schema": "poke_bot.replay_model_inspector_submission_win_rate/v1",
+  "owner_decision_revision": 186,
+  "recorded_at_utc": "2026-08-08T00:13:53Z",
+  "status": "active",
+  "activated_at_utc": "2026-08-08T01:24:17Z",
+  "activation_receipt": "state/replay-model-inspector-submission-win-rate-activation-r186.json",
+  "presentation": {
+    "submission_id_always_visible": true,
+    "label_replaces_submission_id": false,
+    "win_rate_visible_in_selector": true,
+    "wins_and_denominator_visible": true,
+    "mobile_readable": true
+  },
+  "outcome_contract": {
+    "source": "archived_episode_own_agent_reward",
+    "win_predicate": "finite_numeric_reward_greater_than_zero",
+    "eligible_denominator": "cached_games_with_one_source_backed_finite_own_agent_reward",
+    "missing_or_malformed_outcome": "excluded_with_availability_reason",
+    "zero_eligible_outcomes": "win_rate_unavailable",
+    "inferred_outcomes_allowed": false
+  },
+  "safety": {
+    "read_only": true,
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_authority": false,
+    "training_service_restart_allowed": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_inspector_catalog_and_static_ui",
+    "may_run_during_healthy_training": true,
+    "requires_inspector_service_restart": true,
+    "required_validation": [
+      "submission_id_retained_with_label_test",
+      "source_backed_win_rate_test",
+      "missing_outcome_exclusion_test",
+      "zero_eligible_outcome_unavailable_test",
+      "mobile_selector_static_test",
+      "live_submission_summary_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-submission-win-rate-activation-r186.json"
+  }
+}

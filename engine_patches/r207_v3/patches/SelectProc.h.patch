@@ -1,0 +1,47 @@
+--- a/SelectProc.h
++++ b/SelectProc.h
+@@ -40,6 +40,10 @@
+ inline void SelectedCoinSingle(State& state, int playerIndex) {
+ 	bool head = state.selectedYes();
+ 	state.clearSelect();
++	bool forcedHead = false;
++	if (state.game->plannerConsumeSingleCoin(forcedHead) && forcedHead != head) {
++		state.game->plannerAudit.markNonCoinRandom();
++	}
+ 	if (head) {
+ 		state.coinHeadCount++;
+ 	}
+@@ -49,11 +53,17 @@
+ // コインの回数をリセットしないので、単体では呼ばない
+ inline void SelectCoinSingle(State& state, int playerIndex) {
+ 	if (state.game->config.manualCoin) {
++		const GameFunction& current = state.lastFunction();
++		if (current.callCount == 1 && current.calledCount == 0) {
++			state.game->plannerAudit.armSingleCoin(playerIndex);
++		} else {
++			state.game->plannerAudit.markNonCoinRandom();
++		}
+ 		state.setSelect(SelectType::YesNo, SelectContext::CoinHead, playerIndex);
+ 		AddOptionYesAndNo(state);
+ 		state.pushFunction(SelectedCoinSingle, playerIndex);
+ 	} else {
+-		auto r = (state.game->config.deviceRand ? std::random_device()() : state.game->rng());
++		auto r = (state.game->config.deviceRand ? (state.game->plannerAudit.markNonCoinRandom(), std::random_device()()) : state.game->plannerRandom());
+ 		bool head = (r % 2 == 0);
+ 		if (head) {
+ 			state.coinHeadCount++;
+@@ -86,12 +96,13 @@
+ inline void SelectCoinUntilTail(State& state, int playerIndex) {
+ 	state.coinHeadCount = 0;
+ 	if (state.game->config.manualCoin) {
++		state.game->plannerAudit.markNonCoinRandom();
+ 		state.setSelect(SelectType::YesNo, SelectContext::CoinHead, playerIndex);
+ 		AddOptionYesAndNo(state);
+ 		state.pushFunction(SelectedCoinUntilTail, playerIndex);
+ 	} else {
+ 		while (true) {
+-			auto r = (state.game->config.deviceRand ? std::random_device()() : state.game->rng());
++			auto r = (state.game->config.deviceRand ? (state.game->plannerAudit.markNonCoinRandom(), std::random_device()()) : state.game->plannerRandom());
+ 			bool head = (r % 2 == 0);
+ 			LogCoin(state, playerIndex, head);
+ 			if (head) {

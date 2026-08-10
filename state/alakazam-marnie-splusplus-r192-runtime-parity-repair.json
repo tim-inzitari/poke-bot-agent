@@ -1,0 +1,33 @@
+{
+  "schema": "poke_bot.alakazam_marnie_splusplus_r192_runtime_parity_repair/v1",
+  "owner_decision_revision": 192,
+  "status": "activated_runtime_parity_repaired_dispatch_verified",
+  "completed_at_utc": "2026-08-08T22:01:49Z",
+  "service": "pokebot-final-format-alakazam-rtp-r175-rl.service",
+  "service_main_pid": 2418443,
+  "service_restarts_after_final_start": 0,
+  "activation_receipt": "/home/inzi/poke-bot-agent/outputs/state/alakazam-marnie-splusplus-r192-activation.json",
+  "activation_receipt_sha256": "sha256:6a2ccf609c0ab3d2b4fc618f432b7fda8eeabc5cbd5426350b0130860b1e1497",
+  "repaired_stage_receipt": "/home/inzi/poke-bot-agent-deployments/final-format-alakazam-marnie-splusplus-r192/runtime/alakazam-marnie-splusplus-r192-stage.json",
+  "repaired_stage_receipt_sha256": "sha256:946bde8f35cfebd9a2b6ef7fac2eac1f00b7e3d7dd811f7394dbd2165d57ee9d",
+  "runtime_parity": {
+    "train_pure_rl_sha256": "sha256:3285b061583d102d20aa44e4f35a98be8bd8d814533aad6b4679b7ed47f19cc0",
+    "config_sha256": "sha256:582e745b9061e35f967f4e4d6c0fba110560effd4b9b406358f9b5fb5530acc2",
+    "model_sha256": "sha256:de78642fecc0fdf46a1c7e9c4ef4625812db0f18863c2cfe6c1f27224ea4b816",
+    "train_sha256": "sha256:991d8378c6bf94fdd41a7b5a6af7f62b4f48a94a79e3235a975e6c57244d0084",
+    "expert_rehearsal_sha256": "sha256:1d9aa5310a23e88c8ce2b7d1f8d14c44269eda9d103fdf76ccd6c71252c7eaf7",
+    "poke_rlm_init_sha256": "sha256:5cd96139b2ce645c292cae0f17553ced7a5076c4fe895b4760b7ad2d38e02820",
+    "rtp_init_sha256": "sha256:df758ce62020605c1b496da30962e6392b402baf5a81d4e4ef5a488c342ccc4d"
+  },
+  "final_dispatch": {
+    "iteration": 17,
+    "phase": "collect:self_play",
+    "observed_games": 234,
+    "total_games": 1024,
+    "local_workers": 96,
+    "remote_workers": 52,
+    "self_play_multi_pack": 4,
+    "rtp_required": true,
+    "no_non_rtp_fallback": true
+  }
+}

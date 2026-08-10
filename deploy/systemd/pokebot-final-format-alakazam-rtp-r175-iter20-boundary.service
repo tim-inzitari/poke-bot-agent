@@ -1,0 +1,15 @@
+[Unit]
+Description=Stop final-format Alakazam RTP r175 at exact committed iteration 20
+After=pokebot-final-format-alakazam-rtp-r175-rl.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/pause_at_committed_iteration.py --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_rtp_r175_i_v6_8k --unit pokebot-final-format-alakazam-rtp-r175-rl.service --completed-iteration 20 --status /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-boundary-r193.json --poll-seconds 0.10 --timeout-seconds 604800 --next-unit pokebot-final-format-alakazam-rtp-r175-iter20-finalize.service
+Restart=on-failure
+RestartSec=30
+MemoryHigh=512M
+MemoryMax=1G
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/logs/iter20_boundary.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/logs/iter20_boundary.log

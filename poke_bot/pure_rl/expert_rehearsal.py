@@ -286,6 +286,37 @@ def _sha256(path: Path) -> str:
     return "sha256:" + digest.hexdigest()
 
 
+def _canonical_training_seat_receipt_identity(
+    value: Optional[dict[str, Any]],
+) -> dict[str, str]:
+    """Verify and normalize one immutable rehearsal-seat receipt identity.
+
+    Deployment output directories may be symlinked to the canonical live run
+    directory.  Checkpoints retain the path spelling used when they were
+    written, so recovery compares the resolved file identity plus checksum
+    rather than treating two aliases of the same immutable receipt as drift.
+    """
+
+    raw = dict(value or {})
+    if not raw:
+        return {}
+    path = Path(str(raw.get("path") or ""))
+    schema = str(raw.get("schema") or "")
+    claimed_sha256 = str(raw.get("sha256") or "")
+    if not (
+        schema == "poke_bot.alakazam_refresh_rehearsal_seat_split_index/v1"
+        and path.is_file()
+        and claimed_sha256.startswith("sha256:")
+        and _sha256(path) == claimed_sha256
+    ):
+        raise RuntimeError("expert training-seat receipt identity is invalid")
+    return {
+        "schema": schema,
+        "path": str(path.resolve()),
+        "sha256": claimed_sha256,
+    }
+
+
 def _write_json_exclusive(path: Path, payload: dict[str, Any]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -486,6 +517,28 @@ def rehearsal_due(before_iteration: int, every: int) -> bool:
     return int(every) > 0 and int(before_iteration) > 0 and int(before_iteration) % int(every) == 0
 
 
+def rehearsal_epochs_for_iteration(
+    before_iteration: int,
+    *,
+    ordinary_epochs: int,
+    one_time_before: int = -1,
+    one_time_epochs: int = 0,
+) -> int:
+    """Resolve a receipt-bound one-time refresh without changing later cadence."""
+    ordinary = int(ordinary_epochs)
+    target = int(one_time_before)
+    override = int(one_time_epochs)
+    if ordinary <= 0:
+        raise ValueError("ordinary expert rehearsal epochs must be positive")
+    if target < -1:
+        raise ValueError("one-time expert rehearsal iteration must be -1 or nonnegative")
+    if (target == -1) != (override == 0) or override < 0:
+        raise ValueError(
+            "one-time expert rehearsal requires both an iteration and positive epochs"
+        )
+    return override if target == int(before_iteration) else ordinary
+
+
 def rehearsal_paths(run_dir: Path, before_iteration: int) -> tuple[Path, Path]:
     stem = f"before_iter_{int(before_iteration):05d}"
     return (
@@ -583,22 +636,14 @@ def _validate_receipt(
         )
     if int(receipt.get("corpus_split_seed", -1)) != int(corpus_split_seed):
         raise RuntimeError("expert receipt corpus split-seed mismatch")
-    expected_seat_receipt = dict(training_seat_split_receipt or {})
-    actual_seat_receipt = dict(
-        receipt.get("training_seat_split_receipt") or {}
+    expected_seat_receipt = _canonical_training_seat_receipt_identity(
+        training_seat_split_receipt
+    )
+    actual_seat_receipt = _canonical_training_seat_receipt_identity(
+        receipt.get("training_seat_split_receipt")
     )
     if actual_seat_receipt != expected_seat_receipt:
         raise RuntimeError("expert receipt training-seat contract mismatch")
-    if expected_seat_receipt:
-        seat_path = Path(str(expected_seat_receipt.get("path") or ""))
-        if not (
-            expected_seat_receipt.get("schema")
-            == "poke_bot.alakazam_refresh_rehearsal_seat_split_index/v1"
-            and seat_path.is_file()
-            and _sha256(seat_path)
-            == str(expected_seat_receipt.get("sha256") or "")
-        ):
-            raise RuntimeError("expert training-seat receipt identity is invalid")
     if expected_expanded:
         _validate_expanded_training_record(
             dict(receipt.get("expanded_head_training") or {}),
@@ -678,9 +723,9 @@ def recover_rehearsal(
         raise RuntimeError("orphan expert checkpoint loss-weight mismatch")
     if int(record.get("corpus_split_seed", -1)) != int(corpus_split_seed):
         raise RuntimeError("orphan expert checkpoint corpus split-seed mismatch")
-    if dict(record.get("training_seat_split_receipt") or {}) != dict(
-        training_seat_split_receipt or {}
-    ):
+    if _canonical_training_seat_receipt_identity(
+        record.get("training_seat_split_receipt")
+    ) != _canonical_training_seat_receipt_identity(training_seat_split_receipt):
         raise RuntimeError("orphan expert checkpoint training-seat mismatch")
     expanded_training = dict(
         (payload.get("extra") or {}).get("expanded_head_training") or {}
@@ -827,9 +872,9 @@ def commit_rehearsal_receipt(
         raise RuntimeError("rehearsal result loss-weight contract mismatch")
     if int(rehearsal.get("corpus_split_seed", -1)) != int(corpus_split_seed):
         raise RuntimeError("rehearsal result corpus split-seed mismatch")
-    if dict(rehearsal.get("training_seat_split_receipt") or {}) != dict(
-        training_seat_split_receipt or {}
-    ):
+    if _canonical_training_seat_receipt_identity(
+        rehearsal.get("training_seat_split_receipt")
+    ) != _canonical_training_seat_receipt_identity(training_seat_split_receipt):
         raise RuntimeError("rehearsal result training-seat contract mismatch")
     expanded_training = dict(result.get("expanded_head_training") or {})
     if expected_expanded:

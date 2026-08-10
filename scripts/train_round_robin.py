@@ -606,19 +606,25 @@ def _worker_play(job: dict) -> dict:
         # Remote GPU leaf-eval server active? Then OUR net forwards run on the
         # server (this worker stays CPU-only and holds NO local model — it only
         # featurizes + searches on CPU). Otherwise fall back to a local model.
+        # RTP requires a local parent encoder (leaf-only model=None never arms).
+        from poke_bot.pure_rl.leaf_self_play import rtp_requires_local_model
+
         leaf_backend = batched_infer.remote_leaf_backend_from_worker()
-        if leaf_backend is not None:
+        force_rtp_local = rtp_requires_local_model()
+        if leaf_backend is not None and not force_rtp_local:
             model = None
         else:
             ckpt = job["checkpoint"]
             device = job["device"]
-            key = f"{ckpt}|{device}"
+            key = f"{ckpt}|{device}|rtp={int(force_rtp_local)}"
             if _WORKER_STATE.get("key") != key:
                 _WORKER_STATE["model"] = load_model_from_checkpoint(
                     ckpt, device=torch.device(device)
                 )
                 _WORKER_STATE["key"] = key
             model = _WORKER_STATE["model"]
+            if force_rtp_local:
+                leaf_backend = None
 
         try:
             spec = resolve_baseline_spec_payload(
@@ -1058,7 +1064,7 @@ def _build_selfplay_record(
             "target_source": "belief_mcts",
             "trusted": True,
         }
-    elif target_source != "history_policy":
+    elif target_source not in ("history_policy", "recursive_turn_planner"):
         raise ValueError(f"untrusted target source {target_source!r}")
 
     steps: list[dict] = []
@@ -1099,6 +1105,16 @@ def _build_selfplay_record(
             pol = [float(p) for p in (recorded.get("policy") or [])]
             if not pol and len(combos) == 1:
                 pol = [1.0]
+            if (
+                not pol
+                and target_source == "recursive_turn_planner"
+                and 0 <= int(target_index) < len(combos)
+            ):
+                # RTP hard action without stage soft targets → one-hot BC.
+                pol = [
+                    1.0 if index == int(target_index) else 0.0
+                    for index in range(len(combos))
+                ]
             if len(pol) != len(combos) or sum(pol) <= 0.0:
                 raise ValueError("missing or invalid factorized behavior policy")
             total = sum(pol)
@@ -1140,6 +1156,12 @@ def _build_selfplay_record(
         "opponent_archetype_id": opponent_archetype_id,
         "expanded_strategic_targets": strategic_contract,
     }
+    if target_source == "belief_mcts":
+        record_source = "trusted_belief_mcts_round_robin"
+    elif target_source == "recursive_turn_planner":
+        record_source = "trusted_rtp_round_robin"
+    else:
+        record_source = "trusted_policy_round_robin"
     return {
         "episode_id": f"rl-{archetype}-{opp_id}-{our_seat}-{seed}",
         "seat": int(our_seat),
@@ -1151,11 +1173,7 @@ def _build_selfplay_record(
         "policy_targets": [None] * len(steps),
         "factorized_policy_targets": factorized_policy_targets,
         "info_set_ok": True,
-        "source": (
-            "trusted_belief_mcts_round_robin"
-            if target_source == "belief_mcts"
-            else "trusted_policy_round_robin"
-        ),
+        "source": record_source,
         "target_provenance": target_provenance,
     }
 
@@ -1344,7 +1362,11 @@ def _load_recent_only_dataset(
             source = str(seq.target_provenance.get("target_source") or "")
             if not seq.target_provenance.get("trusted"):
                 continue
-            if source not in ("history_policy", "belief_mcts"):
+            if source not in (
+                "history_policy",
+                "belief_mcts",
+                "recursive_turn_planner",
+            ):
                 continue
             history_pool.append(seq)
             history_source_counts[source] += 1

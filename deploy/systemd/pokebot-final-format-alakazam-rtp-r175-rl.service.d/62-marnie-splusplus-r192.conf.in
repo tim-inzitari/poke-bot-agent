@@ -1,0 +1,29 @@
+[Unit]
+# Inactive future-activation template.  The current r175 source has no
+# trainer-owned pre-collect fence, so observing its finite post-iteration-5
+# pause does not authorize rendering or installing this file.  This source
+# deliberately does not end in .conf, so merely syncing the repo cannot alter
+# the live r175 unit.
+ConditionPathExists=@RUNTIME_REGISTRY@
+ConditionPathExists=@PIN_FLOORS@
+
+[Service]
+Environment=PYTHONPATH=@RUNTIME_ROOT@
+# If a later fence-enabled or already-inactive activation controller is
+# separately authorized, state the normal candidate budget explicitly so a
+# stale manager property cannot constrain a later managed stop.
+TimeoutStopSec=45s
+
+# The staged r192 sidecar deliberately removes the legacy H10 Marnie pin.
+# The checksum-bound strong-public gate row is its sole executable 1,024-game
+# floor; preserve no diverse-public alias for the same package ID.
+Environment=POKEBOT_OWNER_PUBLIC_MIX_PIN_FLOORS=@PIN_FLOORS@
+
+# Replace, rather than append to, r175's registry preflight/start commands so
+# the next managed interpreter resolves one canonical r192 registry.
+ExecStartPre=
+ExecStartPre=/usr/bin/test -s @TRAINING_ARM_FILE@
+ExecStartPre=/usr/bin/test -s @RUNTIME_REGISTRY@
+ExecStartPre=@PYTHON@ -u @LAUNCH_ACTIVE_SPECIALIST@ --registry @RUNTIME_REGISTRY@ --check
+ExecStart=
+ExecStart=@PYTHON@ -u @LAUNCH_ACTIVE_SPECIALIST@ --registry @RUNTIME_REGISTRY@

@@ -1,27 +1,53 @@
 {
-  "schema": "poke_bot.crustle_dashboard_active_rl_projection/v1",
-  "status": "activated_display_only",
-  "goal_revision": 167,
-  "recorded_at_utc": "2026-08-06T01:10:00Z",
-  "updated_at_utc": "2026-08-06T02:01:37.948427+00:00",
-  "specialist_id": "crustle",
-  "repair": {
-    "active_service": "pokebot-final-format-crustle-r113-h10-rl.service",
+  "after": {
+    "active_state": "active",
+    "disk_free_gib": 114,
+    "dual_marnie_surface": true,
+    "iteration": 4,
+    "main_pid": 538332,
+    "min_free_disk_gb_gate": 100,
+    "nrestarts": 0,
+    "phase": "train:policy",
     "run_name": "final_format_crustle_r113_h10_i_v6_8k",
-    "phase": "collect:self_play",
-    "iteration": 0,
-    "rtp_cotrain_service": "pokebot-crustle-rtp-cotrain-r167.service",
-    "rtp_cotrain_receipt": "/home/inzi/poke-bot-agent/outputs/state/crustle-rtp-rl-cotrain-r167.json",
-    "ordinary_rl_overridden": false,
-    "training_restarted": false,
-    "runtime_changed": false,
-    "fleet_changed": false
+    "service": "pokebot-final-format-crustle-r113-h10-rl.service",
+    "source_integrity_required_sources": "17/18"
   },
+  "artifacts": {
+    "compatibility_projection": "ops/current_goal_requirements.json",
+    "dashboard_snapshot": "scripts/dashboard_snapshot.py",
+    "dual_marnie_roster_repair_receipt": "/home/inzi/poke-bot-agent/outputs/state/crustle-dual-marnie-roster-repair-r167.json",
+    "dual_marnie_roster_repair_receipt_sha256": "sha256:86e4e6b63f7c635dc54463900cd2e82b63d7de4e8226c66b9f29a20dcfbf1fc1",
+    "mutable_program_state": "state/specialists.yaml"
+  },
+  "before": {
+    "active_state": "inactive",
+    "iteration": 20,
+    "phase": "stopped:measure:research_controls",
+    "required_sources": "10/16",
+    "service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "source_integrity_current": false
+  },
+  "goal_revision": 167,
+  "recorded_at_utc": "2026-08-06T12:39:51Z",
+  "repair": {
+    "bert_baseline_f20efb20_published": true,
+    "dashboard_snapshot_updated": true,
+    "elmo_baseline_f20efb20_present": true,
+    "host_selector": "/home/inzi/.config/pokebot/specialist_runtime.env",
+    "runtime_root": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136",
+    "selector_value": "crustle",
+    "training_recovered_via_systemd_after_remote_baseline_gap": true,
+    "training_restarted_for_dashboard": false
+  },
+  "schema": "poke_bot.crustle_dashboard_active_rl_projection/v1",
+  "specialist_id": "crustle",
+  "status": "activated_display_only",
   "validation": {
-    "managed_training_service": "pokebot-final-format-crustle-r113-h10-rl.service",
-    "managed_training_active_state": "active",
-    "managed_training_sub_state": "running",
-    "rtp_cotrain_active_state": "active",
-    "host_selector_value": "crustle"
+    "bert_manifest_has_f20efb20": true,
+    "bert_model_sha256": "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381",
+    "elmo_model_present": true,
+    "heldout_remote_capability_passed": true,
+    "managed_training_active": true,
+    "remotes_hard_gated": true
   }
 }

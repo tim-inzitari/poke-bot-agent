@@ -1,25 +1,24 @@
 {
   "schema": "poke_bot.cursor_loop_goalmd_crustle/v1",
   "local_goal_revision": "167",
-  "updated_at_unix": 1785981125,
+  "updated_at_unix": 1786065394,
   "watcher_primary": true,
   "watcher_shell_pid": 35021,
   "fallback_heartbeat_seconds": 900,
   "sentinel": "AGENT_LOOP_WAKE_goalmd",
   "resident": true,
   "last_pass_summary": {
-    "healthy": true,
-    "rl": "inactive/overridden",
-    "rtp": "active/running",
-    "rtp_pid": 3012190,
-    "fail": null,
-    "local_goal": "167",
-    "train_goal": "165",
-    "gate": "waiting_for_exact_gate_pass",
-    "delta": "sibling restarted RTP after first complete; dash tracks pokebot-crustle-rtp-r167 pid 3012190 train:rtp_shadow",
-    "dash": "crustle_rtp_r167 running"
+    "healthy": false,
+    "rl": "inactive/0",
+    "rtp": "inactive/0",
+    "nrestarts": "0",
+    "disk_free_GiB": 383.31,
+    "goal_rev": "175",
+    "line": "pack Blackwell corpus:  35%|\u2588\u2588\u2588\u258c      | 9460/26856 [00:48<01:25, 202.30game/s]",
+    "action": "leave_alone",
+    "at": 1786064751
   },
-  "heartbeat_shell_pid": 31985,
+  "heartbeat_shell_pid": 1890,
   "prior_pass_summary": {
     "healthy": true,
     "rl": "inactive/overridden",
@@ -31,9 +30,9 @@
     "delta": "dashboard projects crustle_rtp_r167 complete; ordinary RL superseded; sibling RTP pipeline finished success",
     "dash": "crustle_rtp_r167 complete epoch3/n_steps22346"
   },
-  "pass_count": 4,
+  "pass_count": 182,
   "watcher_python_pids": [
-    34796
+    35021
   ],
   "dash_sync": {
     "updated_at_unix": 1785981649,
@@ -95,5 +94,21 @@
         "svc_active": true
       }
     }
-  }
+  },
+  "rearm_note": "resident goalmd_resident_loop.py handling AGENT_LOOP_WAKE_goalmd; no Crustle restarts; gh device 113C-D5CF reused until expiry",
+  "parent_must_resume_on_wake": false,
+  "monitored_terminal": "463083",
+  "gh_auth": {
+    "code": "CE54-CF8E",
+    "status": "waiting_user",
+    "started_terminal": "463088.txt",
+    "prev_codes_expired": [
+      "113C-D5CF",
+      "CE54-CF8E"
+    ],
+    "note": "Both device codes timed out waiting for browser approval. Shell exec currently unavailable to arm a third flow; user/parent should run: gh auth login -h github.com -p https -w --skip-ssh-key then git push -u origin HEAD",
+    "no_new_device_flow": true
+  },
+  "need_monitored_hb": false,
+  "matcher_note": "goalmd heartbeat sleep matched via parent AGENT_LOOP_WAKE_goalmd; ignores dashboard sleep 900"
 }

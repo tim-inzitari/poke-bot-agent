@@ -1,0 +1,60 @@
+{
+  "schema": "poke_bot.guide2vec_training_manifest/v1",
+  "status": "dormant",
+  "compatibility": {
+    "frozen_base_identity_sha256": null,
+    "latent_abi_sha256": null,
+    "adapter_runtime_context_sha256": null,
+    "extractor_code_sha256": null,
+    "dtype_policy_sha256": null,
+    "stage_index_sha256": null,
+    "legal_option_key_sha256": null
+  },
+  "stage_join_key_fields": [
+    "source_day",
+    "episode_id",
+    "seat",
+    "decision_index",
+    "factorized_stage_index",
+    "policy_visible_observation_sha256",
+    "legal_options_sha256"
+  ],
+  "digest_tensor_layout": {
+    "dtype": "uint8",
+    "shape": [
+      "rows",
+      32
+    ],
+    "encoding": "raw_sha256_digest_bytes",
+    "stage_key_digest": "stage_key_sha256",
+    "legal_option_digest": "legal_options_sha256"
+  },
+  "stage_count": null,
+  "inputs": {
+    "stage_index_manifest": null,
+    "frozen_latent_store_manifest": null,
+    "guide_label_overlay_manifest": null,
+    "causal_split_manifest": null
+  },
+  "input_identities": {
+    "stage_index_sha256": null,
+    "frozen_latent_store_sha256": null,
+    "guide_label_overlay_sha256": null,
+    "causal_split_sha256": null
+  },
+  "authority": {
+    "training_service_start_authorized": false,
+    "gradient_updates_authorized": false,
+    "candidate_publication_authorized": false,
+    "runtime_attachment_authorized": false,
+    "bo1000_authorized": false,
+    "mcts_change_authorized": false,
+    "rtp_authorized": false,
+    "selector_change_authorized": false,
+    "serving_authorized": false,
+    "promotion_authorized": false,
+    "kaggle_api_or_submission_authorized": false,
+    "evaluation_games_training_eligible": false
+  },
+  "activation_receipt": null
+}

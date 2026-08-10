@@ -113,8 +113,9 @@ class PokeRLMAgentBridge:
             )
             return [list(c) for c in combos]
         except ActionSpaceTooLarge:
-            stage = features.factorized_action_candidates(obs_dict, [])
-            return [list(c) for c in stage]
+            # Incomplete factorized prefixes are not complete legal actions.
+            # Let the caller fall back to factorized greedy / non-RLM select.
+            raise
 
     @torch.no_grad()
     def encode(

@@ -1,0 +1,44 @@
+[Unit]
+Description=Alakazam r197 RTP shadow sidecar (no selector or action authority)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_terminal_expert_bootstrap_no_rtp_r195/checkpoints/expert_before_iter_00021.pt
+ConditionPathExists=/home/inzi/poke-bot-agent/data/bootstrap/expert-alakazam-last5-2026-08-01-2026-08-05-r175/alakazam/PROTECTED_EXPERT_CORPUS.json
+ConditionPathExists=/home/inzi/poke-bot-agent/data/episodes/raw/pokemon-tcg-ai-battle-episodes-2026-08-01.zip
+ConditionPathExists=/home/inzi/poke-bot-agent/data/episodes/raw/pokemon-tcg-ai-battle-episodes-2026-08-02.zip
+ConditionPathExists=/home/inzi/poke-bot-agent/data/episodes/raw/pokemon-tcg-ai-battle-episodes-2026-08-03.zip
+ConditionPathExists=/home/inzi/poke-bot-agent/data/episodes/raw/pokemon-tcg-ai-battle-episodes-2026-08-04.zip
+ConditionPathExists=/home/inzi/poke-bot-agent/data/episodes/raw/pokemon-tcg-ai-battle-episodes-2026-08-05.zip
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_registry_h10_r175_iter20_terminal.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-completion-v1.json
+ConditionPathExists=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-rtp-r197-shadow-v1/scripts/stage_alakazam_rtp_r197.py
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-rtp-r197-shadow-v1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-rtp-r197-shadow-v1
+# Bind the snapshot-local cg runtime; do not inherit an arbitrary manager CG_LIB_PATH.
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-rtp-r197-shadow-v1/kaggle/input/cg-lib
+Environment=POKEBOT_ACTIVE_SPECIALIST=alakazam
+# Expose only the production Blackwell, so the r197 preflight's logical cuda:0
+# cannot resolve to the 12 GiB 3080 Ti.  This must remain the full GPU UUID.
+Environment=CUDA_VISIBLE_DEVICES=GPU-79cf504f-6573-0b8c-c90e-eb567b7bcfa6
+# This independent candidate must never be armed as a runtime planner.
+Environment=POKEBOT_USE_RECURSIVE_TURN_PLANNER=0
+Environment=POKEBOT_RTP_CHECKPOINT=
+# The stage's read-only preflight checks both r175 user services, their PID 0
+# terminal boundary, and the exact registry/completion receipts.  Do not add a
+# systemd conflict relationship: it could stop a future healthy r175 job.
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/stage_alakazam_rtp_r197.py --check --device cuda:0 --raw-archive-root /home/inzi/poke-bot-agent/data/episodes/raw --max-train-games 512 --max-heldout-games 128 --max-train-batches 32000 --max-heldout-batches 8000 --heldout-fraction 0.20
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/stage_alakazam_rtp_r197.py --run --device cuda:0 --raw-archive-root /home/inzi/poke-bot-agent/data/episodes/raw --max-train-games 512 --max-heldout-games 128 --max-train-batches 32000 --max-heldout-batches 8000 --heldout-fraction 0.20
+Restart=no
+TimeoutStartSec=infinity
+TimeoutStopSec=900
+MemoryHigh=64G
+MemoryMax=80G
+MemorySwapMax=0
+
+[Install]
+WantedBy=default.target

@@ -27,6 +27,27 @@ TIERS = (
     (2048, None, 10.0),
 )
 MAX_IMPORTANCE_WEIGHT = max(float(weight) for _, _, weight in TIERS)
+# Owner Chao-hard CE (r170) may declare higher exact-team upweights
+# (e.g. Chao×25) while still using the same importance index schema.
+MAX_DECLARED_IMPORTANCE_WEIGHT = 50.0
+
+
+def max_allowed_importance_weight(payload: dict[str, Any]) -> float:
+    declared = [
+        float(payload[key])
+        for key in (
+            "cox_chao_train_weight",
+            "james_cox_train_weight",
+            "max_importance_weight",
+        )
+        if key in payload
+    ]
+    if not declared:
+        return float(MAX_IMPORTANCE_WEIGHT)
+    return min(
+        float(MAX_DECLARED_IMPORTANCE_WEIGHT),
+        max(float(MAX_IMPORTANCE_WEIGHT), max(declared)),
+    )
 
 
 def canonical_digest(value: object) -> str:
@@ -214,7 +235,8 @@ def load_aligned_training_weights(
         raise ValueError("expert pilot importance weight count changed")
     if canonical_digest(weights) != payload.get("train_game_weights_sha256"):
         raise ValueError("expert pilot importance weights changed")
-    if any(value < 1.0 or value > MAX_IMPORTANCE_WEIGHT for value in weights):
+    max_weight = max_allowed_importance_weight(payload)
+    if any(value < 1.0 or value > max_weight for value in weights):
         raise ValueError("expert pilot importance weight is out of bounds")
     contract = {
         key: payload[key]
@@ -280,7 +302,8 @@ def load_training_weights_for_corpus(
         raise ValueError("expert pilot importance weight count changed")
     if canonical_digest(weights) != payload.get("train_game_weights_sha256"):
         raise ValueError("expert pilot importance weights changed")
-    if any(value < 1.0 or value > MAX_IMPORTANCE_WEIGHT for value in weights):
+    max_weight = max_allowed_importance_weight(payload)
+    if any(value < 1.0 or value > max_weight for value in weights):
         raise ValueError("expert pilot importance weight is out of bounds")
     contract = {
         key: payload[key]

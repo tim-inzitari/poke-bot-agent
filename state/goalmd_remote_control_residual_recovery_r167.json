@@ -1,0 +1,64 @@
+{
+  "schema": "poke_bot.goalmd_remote_control_residual_recovery/v1",
+  "updated_at_utc": "2026-08-06T12:43:51Z",
+  "crustle": {
+    "rl_unit": "pokebot-final-format-crustle-r113-h10-rl.service",
+    "rl": "active/running",
+    "rl_main_pid": 538332,
+    "trainer_pid": 538484,
+    "nrestarts": 0,
+    "rtp_unit": "pokebot-crustle-rtp-cotrain-r167.service",
+    "rtp": "active/running",
+    "rtp_main_pid": 3025385,
+    "phase": "rl-train iter4 ep3 (~26% at audit)",
+    "commits_present": [
+      "iter_00000",
+      "iter_00001",
+      "iter_00002",
+      "iter_00003"
+    ],
+    "iter4_collection_receipt": true,
+    "iter4_commit": false,
+    "action": "leave_alone",
+    "monitor_alive": true,
+    "sibling_auditor": "1d81b3ab (coordinate via live state; no restart)",
+    "still_active_expected": "Y",
+    "still_active": "Y"
+  },
+  "loop": {
+    "sentinel": "AGENT_LOOP_WAKE_goalmd",
+    "watcher_reused": true,
+    "heartbeat_rearmed": true,
+    "fallback_seconds": 900,
+    "resident_subagent": false,
+    "parent_must_resume_on_wake": true,
+    "rearmed": "Y",
+    "watcher_pid": 35021,
+    "heartbeat_shell_pid": 63649,
+    "heartbeat_sleep_pid": 63656,
+    "monitored_terminal": "463083",
+    "notify_pattern": "^AGENT_LOOP_WAKE_goalmd"
+  },
+  "remote_control": {
+    "origin": "https://github.com/tim-inzitari/poke-bot-agent.git",
+    "inzi_lan_preserved": true,
+    "origin_fetch_fixed_to_all_heads": true,
+    "github_known_hosts_added": true,
+    "gh_auth": "waiting_device_login",
+    "branch": "cursor/crustle-rtp-cotrain-5301",
+    "branch_wants_origin_track": true,
+    "push_pending_auth": true,
+    "device_code": "113C-D5CF",
+    "device_url": "https://github.com/login/device",
+    "upstream": "origin/cursor/crustle-rtp-cotrain-5301 [gone until push]"
+  },
+  "disk": {
+    "free_gib_before": 113.72,
+    "free_gib_now": 461.95,
+    "reclaimed_gib_total": 348.23,
+    "receipt_train": "/home/inzi/poke-bot-agent/outputs/state/crustle-disk-reclaim-r167c.json",
+    "receipt_local": "state/crustle_disk_reclaim_r167c.json",
+    "cleanup": "chmod+rm stale /tmp validation+pokebot test trees (prior r167 reclaim pattern); left quarantine RTP seed + active Crustle run + _protected untouched",
+    "blocker": "CLEARED (was trending to <100GiB; now ~462GiB free)"
+  }
+}

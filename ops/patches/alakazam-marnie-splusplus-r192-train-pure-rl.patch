@@ -1,0 +1,300 @@
+diff --git a/scripts/train_pure_rl.py b/scripts/train_pure_rl.py
+--- a/scripts/train_pure_rl.py
++++ b/scripts/train_pure_rl.py
+@@ -2417,8 +2417,9 @@ def _design_contract(
+     endpoints: list[str],
+     collect_specs: list[Any],
+     research_control_specs: list[Any],
+     practice_specs: list[Any],
++    practice_minimum_games: Optional[dict[str, int]],
+     heldout_specs: list[Any],
+     research_control_registry: dict[str, Any],
+     frozen_specialist_registry: dict[str, Any],
+     active_gate: Optional[dict[str, Any]],
+@@ -2752,7 +2753,12 @@ def _design_contract(
+                 "sample_actions": True,
+                 "training_eligible": True,
+                 "formal_eval": False,
+                 "roster": _opponent_specs_contract(practice_specs),
++                "minimum_games_by_opponent": (
++                    dict(practice_minimum_games)
++                    if practice_minimum_games is not None
++                    else None
++                ),
+                 "seed_contract": dict(seed_namespace_contract),
+             },
+             "research_control_phase": {
+@@ -6904,6 +6910,55 @@ def _planned_collection_group_counts(
+         raise RuntimeError("collection group quotas do not conserve the game budget")
+     return result
+ 
++
++def _strong_public_practice_minimum_games(
++    *,
++    active_gate: dict[str, Any],
++    expected_practice_games: int,
++    minimum_share: float,
++) -> dict[str, int]:
++    """Reserve explicit gate-row floors without starving the other gate rows.
++
++    Ordinary gates retain their established weighted scheduler. Once a gate
++    declares an explicit practice floor, every row receives at least the normal
++    share floor and the named row receives the larger explicit value. The
++    remaining slots are the only ones available to adaptive Hamilton weights.
++    """
++    roster = list(active_gate.get("roster") or [])
++    ids = tuple(str(row.get("opponent_id") or "") for row in roster)
++    if not ids or "" in ids or len(set(ids)) != len(ids):
++        raise RuntimeError("active practice roster IDs must be non-empty and unique")
++    generic_floor = math.floor(
++        int(expected_practice_games) * float(minimum_share)
++    )
++    if generic_floor < 0:
++        raise RuntimeError("strong-public practice minimum share is invalid")
++    explicit: dict[str, int] = {}
++    for row, opponent_id in zip(roster, ids):
++        raw = row.get("strong_public_practice_floor_games")
++        if raw is None:
++            continue
++        if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
++            raise RuntimeError(
++                "strong-public practice floor must be a positive integer: "
++                f"{opponent_id}={raw!r}"
++            )
++        explicit[opponent_id] = int(raw)
++    if not explicit:
++        return {}
++    floors = {
++        opponent_id: max(generic_floor, explicit.get(opponent_id, 0))
++        for opponent_id in ids
++    }
++    reserved = sum(floors.values())
++    if reserved > int(expected_practice_games):
++        raise RuntimeError(
++            "strong-public practice floors exceed the fixed quota: "
++            f"reserved={reserved} quota={int(expected_practice_games)} "
++            f"minimum_share={float(minimum_share)} floors={floors}"
++        )
++    return floors
++
+ 
+ def _assert_seed_namespace_contract(
+     *,
+@@ -7171,6 +7226,7 @@ def _assert_strong_public_practice_jobs(
+     formal_games: int,
+     minimum_share: float,
+     practice_temperature: float,
++    minimum_games_by_opponent: Optional[dict[str, int]] = None,
+ ) -> dict[str, Any]:
+     """Audit the training-only active-roster slice before any game launches."""
+     from collections import Counter
+@@ -7220,11 +7276,34 @@ def _assert_strong_public_practice_jobs(
+ 
+     counts = Counter(str(job["opponent_id"]) for job in practice_jobs)
+     seat_counts: dict[str, dict[str, int]] = {}
+-    quota_floor = math.floor(int(expected_practice_games) * float(minimum_share))
++    if minimum_games_by_opponent is None:
++        quota_floors = {
++            opponent_id: math.floor(
++                int(expected_practice_games) * float(minimum_share)
++            )
++            for opponent_id in roster_ids
++        }
++    else:
++        if set(minimum_games_by_opponent) != set(roster_ids):
++            raise RuntimeError(
++                "strong-public practice minimums must cover the exact active roster"
++            )
++        quota_floors = {}
++        for opponent_id in roster_ids:
++            value = minimum_games_by_opponent[opponent_id]
++            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
++                raise RuntimeError(
++                    "strong-public practice minimum must be a nonnegative integer: "
++                    f"{opponent_id}={value!r}"
++                )
++            quota_floors[opponent_id] = int(value)
++        if sum(quota_floors.values()) > int(expected_practice_games):
++            raise RuntimeError("strong-public practice minimums exceed the quota")
+     gate_id = str(active_gate.get("id") or "")
+     for opponent_id in roster_ids:
+         rows = [job for job in practice_jobs if str(job["opponent_id"]) == opponent_id]
+-        if int(counts[opponent_id]) < quota_floor:
++        quota_floor = quota_floors[opponent_id]
++        if int(counts[opponent_id]) < quota_floor:
+             raise RuntimeError(
+                 f"practice opponent {opponent_id} is below its minimum quota"
+             )
+@@ -7258,6 +7337,12 @@ def _assert_strong_public_practice_jobs(
+                     f"practice archetype mismatch for {opponent_id}: "
+                     f"{job.get('opp_archetype')} != {archetypes[opponent_id]}"
+                 )
++            if minimum_games_by_opponent is not None and int(
++                provenance.get("strong_public_practice_floor_games", -1)
++            ) != quota_floor:
++                raise RuntimeError(
++                    f"practice floor provenance mismatch for {opponent_id}"
++                )
+             if not math.isclose(
+                 float(job.get("action_temperature", -1.0)),
+                 float(practice_temperature),
+@@ -7288,9 +7373,11 @@ def _assert_strong_public_practice_jobs(
+         "formal_seed_namespace": "eval/strong-public-fixed-manifest-v1",
+         "seed_disjoint": True,
+         "games": len(practice_jobs),
++        "minimum_games_by_opponent": dict(quota_floors),
+         "per_opponent": {
+             opponent_id: {
+                 "games": int(counts[opponent_id]),
++                "minimum_games": int(quota_floors[opponent_id]),
+                 **seat_counts[opponent_id],
+                 "archetype_id": archetypes[opponent_id],
+             }
+@@ -7308,6 +7395,7 @@ def _interleaved_opponent_schedule(
+     seed: int,
+     iteration: int,
+     priority_weights: Optional[dict[str, float]] = None,
++    priority_minimum_games: Optional[dict[str, int]] = None,
+     priority_group: str = "official_target",
+ ) -> tuple[tuple[Any, str], ...]:
+     """Build an exact, evenly interleaved practice/diverse training schedule.
+@@ -7360,9 +7448,15 @@ def _interleaved_opponent_schedule(
+     priority_sequence: list[Any] = []
+-    if priority_weights is not None and n_priority > 0:
++    if (
++        (priority_weights is not None or priority_minimum_games is not None)
++        and n_priority > 0
++    ):
+         ids = [str(spec.id) for spec in priority]
+         if len(set(ids)) != len(ids):
+             raise ValueError("weighted official target specs must be unique")
+-        if set(priority_weights) != set(ids):
+-            raise ValueError("official target weights must cover the exact roster")
+-        raw = [float(priority_weights[opponent_id]) for opponent_id in ids]
++        if priority_weights is None:
++            raw = [1.0] * len(ids)
++        else:
++            if set(priority_weights) != set(ids):
++                raise ValueError("official target weights must cover the exact roster")
++            raw = [float(priority_weights[opponent_id]) for opponent_id in ids]
+         if any(not math.isfinite(value) or value < 0.0 for value in raw):
+@@ -7370,7 +7464,29 @@ def _interleaved_opponent_schedule(
+         raw_total = sum(raw)
+         if raw_total <= 0.0:
+             raise ValueError("official target weights must contain positive mass")
+-        ideals = [n_priority * value / raw_total for value in raw]
+-        quotas = [int(math.floor(value)) for value in ideals]
+-        remaining = n_priority - sum(quotas)
++        if priority_minimum_games is None:
++            floor_by_id = {opponent_id: 0 for opponent_id in ids}
++        else:
++            if set(priority_minimum_games) != set(ids):
++                raise ValueError("priority minimums must cover the exact roster")
++            floor_by_id = {}
++            for opponent_id in ids:
++                value = priority_minimum_games[opponent_id]
++                if isinstance(value, bool) or not isinstance(value, int) or value < 0:
++                    raise ValueError(
++                        "priority minimum games must be nonnegative integers"
++                    )
++                floor_by_id[opponent_id] = int(value)
++        quotas = [floor_by_id[opponent_id] for opponent_id in ids]
++        reserved = sum(quotas)
++        if reserved > n_priority:
++            raise ValueError(
++                "priority minimum games exceed the fixed priority quota: "
++                f"reserved={reserved} quota={n_priority}"
++            )
++        remaining_slots = n_priority - reserved
++        ideals = [remaining_slots * value / raw_total for value in raw]
++        increments = [int(math.floor(value)) for value in ideals]
++        quotas = [quota + increment for quota, increment in zip(quotas, increments)]
++        remaining = remaining_slots - sum(increments)
+         tie_rank = {
+@@ -7380,7 +7496,7 @@ def _interleaved_opponent_schedule(
+         remainder_order = sorted(
+             range(len(priority)),
+             key=lambda index: (
+-                -(ideals[index] - quotas[index]),
++                -(ideals[index] - increments[index]),
+                 tie_rank[index],
+             ),
+         )
+@@ -7508,6 +7624,7 @@ def _build_collect_jobs(
+     priority_specs: Optional[list[Any]] = None,
+     priority_frac: float = 0.0,
+     priority_weights: Optional[dict[str, float]] = None,
++    priority_minimum_games: Optional[dict[str, int]] = None,
+     priority_group: str = "official_target",
+     priority_temperature: Optional[float] = None,
+     priority_archetypes: Optional[dict[str, str]] = None,
+@@ -7597,6 +7714,7 @@ def _build_collect_jobs(
+             seed=int(seed),
+             iteration=int(iteration),
+             priority_weights=priority_weights,
++            priority_minimum_games=priority_minimum_games,
+             priority_group=str(priority_group),
+         )
+     # Portable baseline identity hashing walks each installed source tree.
+@@ -7835,6 +7953,18 @@ def _build_collect_jobs(
+                             and priority_weights is not None
+                             else None
+                         ),
++                        **(
++                            {
++                                "strong_public_practice_floor_games": int(
++                                    priority_minimum_games[str(spec.id)]
++                                )
++                            }
++                            if is_priority
++                            and str(priority_group)
++                            == STRONG_PUBLIC_PRACTICE_GROUP
++                            and priority_minimum_games is not None
++                            else {}
++                        ),
+                         "opponent_schedule": (
+                             "adaptive_exact_gate_gap_tier_weighted_v1"
+                             if is_priority
+@@ -11632,6 +11762,18 @@ def run_full_loop(args: argparse.Namespace) -> int:
+         strong_public_fraction_of_public=float(args.official_collect_frac),
+         research_control_games=int(args.research_control_games_per_iter),
+     )
++    practice_minimum_games = (
++        _strong_public_practice_minimum_games(
++            active_gate=active_gate,
++            expected_practice_games=int(
++                collection_group_plan[STRONG_PUBLIC_PRACTICE_GROUP]
++            ),
++            minimum_share=float(args.official_adaptive_min_share),
++        )
++        if active_gate is not None
++        and float(args.official_collect_frac) > 0.0
++        else {}
++    )
+ 
+     hw = full_hardware_profile()
+     if args.allow_single_gpu:
+@@ -12081,6 +12223,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
+         collect_specs=collect_specs,
+         research_control_specs=research_control_specs,
+         practice_specs=practice_specs,
++        practice_minimum_games=(practice_minimum_games or None),
+         heldout_specs=heldout_specs,
+         research_control_registry=research_control_registry_identity,
+         frozen_specialist_registry=frozen_specialist_registry_identity,
+@@ -12698,6 +12841,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
+                 ),
+                 priority_frac=effective_practice_fraction,
+                 priority_weights=official_target_weights,
++                priority_minimum_games=(practice_minimum_games or None),
+                 priority_group=(
+                     STRONG_PUBLIC_PRACTICE_GROUP
+                     if active_gate is not None
+@@ -12810,6 +12954,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
+                     practice_temperature=float(
+                         args.strong_public_practice_temperature
+                     ),
++                    minimum_games_by_opponent=(practice_minimum_games or None),
+                 )
+                 practice_plan["adaptive_weights"] = dict(
+                     official_target_weights or {}

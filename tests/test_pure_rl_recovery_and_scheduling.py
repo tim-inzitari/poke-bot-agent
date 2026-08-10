@@ -578,6 +578,16 @@ def test_rehearsal_seat_receipts_bind_balanced_pack_at_all_three_stages(
         pack_info={"key": "c" * 64, "manifest": str(pack_manifest)},
     ) == identity
 
+    # A later checksum-gated source repair must reuse the already sealed seat
+    # selection rather than trying to rewrite it under a new design digest.
+    assert train_pure_rl._commit_expert_rehearsal_seat_split_receipts(
+        run_dir=tmp_path,
+        before_iteration=5,
+        design_fingerprint="sha256:" + "d" * 64,
+        evidence=evidence,
+        pack_info={"key": "c" * 64, "manifest": str(pack_manifest)},
+    ) == identity
+
 
 def test_exact_regression_rollback_uses_runtime_activated_anchor(
     tmp_path: Path,
@@ -2882,6 +2892,98 @@ def test_initial_empty_run_allows_receipted_source_migration(
     assert digest == train_pure_rl._design_fingerprint(current)
     assert state["design_fingerprint"] == digest
     assert len(list((tmp_path / "design_migrations").glob("*.json"))) == 1
+
+
+def test_initial_empty_alakazam_run_receipts_combo_route_shutdown(
+    tmp_path: Path,
+) -> None:
+    stored = {
+        "learner": {
+            "games_per_batch": 240,
+            "max_decisions_per_batch": 1536,
+            "current_deck_guide_archetype": "alakazam",
+            "profile": {"combo_state_head_enabled": True},
+        },
+        "run": {"iterations": 301},
+        "source": {"source_tree_sha256": "sha256:old"},
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 0,
+        "last_completed_iteration": -1,
+        "history": [],
+    }
+    manifest = {
+        "design_fingerprint": stored_digest,
+        "design_contract": stored,
+    }
+    current = json.loads(json.dumps(stored))
+    current["learner"]["profile"]["combo_state_route_enabled"] = False
+    current["source"]["source_tree_sha256"] = "sha256:new"
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="receipt_backed_completed_collection_resume_v1",
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    receipt = json.loads(
+        next((tmp_path / "design_migrations").glob("migration_*.json")).read_text()
+    )
+    assert receipt["changed_paths"] == [
+        "learner.profile.combo_state_route_enabled",
+        "source.source_tree_sha256",
+    ]
+
+
+def test_combo_route_shutdown_migration_is_alakazam_only() -> None:
+    stored = {
+        "learner": {
+            "current_deck_guide_archetype": "crustle",
+            "profile": {"combo_state_head_enabled": True},
+        }
+    }
+    current = json.loads(json.dumps(stored))
+    current["learner"]["profile"]["combo_state_route_enabled"] = False
+
+    assert not train_pure_rl._safe_alakazam_combo_route_disable_migration(
+        stored=stored,
+        current=current,
+        changed=["learner.profile.combo_state_route_enabled"],
+        reason="receipt_backed_completed_collection_resume_v1",
+    )
+
+
+def test_r193_large_refresh_migration_is_exact_and_one_time() -> None:
+    stored = {
+        "learner": {"current_deck_guide_archetype": "alakazam"},
+        "expert_rehearsal": {"every_iterations": 5, "epochs": 5},
+    }
+    current = json.loads(json.dumps(stored))
+    current["expert_rehearsal"]["one_time_override"] = {
+        "before_iteration": 15,
+        "epochs": 25,
+    }
+
+    assert train_pure_rl._safe_alakazam_r193_large_refresh_migration(
+        stored=stored,
+        current=current,
+        changed=["expert_rehearsal.one_time_override"],
+        reason="owner_r193_large_expert_refresh_resubmit_post_iteration14",
+    )
+
+    current["expert_rehearsal"]["one_time_override"]["epochs"] = 20
+    assert not train_pure_rl._safe_alakazam_r193_large_refresh_migration(
+        stored=stored,
+        current=current,
+        changed=["expert_rehearsal.one_time_override"],
+        reason="owner_r193_large_expert_refresh_resubmit_post_iteration14",
+    )
 
 
 def test_initial_collection_resume_preserves_verified_iteration_zero_shard(

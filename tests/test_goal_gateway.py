@@ -39,6 +39,141 @@ def test_goal_gateway_references_existing_canonical_sources() -> None:
         assert (ROOT / relative).is_file(), relative
 
 
+def test_revision_192_stages_exact_marnie_splusplus_without_runtime_authority() -> None:
+    goal = (ROOT / "GOAL.md").read_text(encoding="utf-8")
+    compatibility = json.loads(
+        (ROOT / "ops/current_goal_requirements.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    typed = json.loads(
+        (ROOT / "state/alakazam-marnie-splusplus-opponent-r192.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    projected = compatibility["current_owner_overrides"][
+        "alakazam_marnie_splusplus_opponent"
+    ]
+
+    assert "| 192 |" in goal
+    assert typed["schema"] == "poke_bot.alakazam_marnie_splusplus_opponent_r192/v1"
+    assert typed["status"] == (
+        "staged_candidate_not_armed_pending_trainer_owned_fence_or_"
+        "proven_inactive_boundary"
+    )
+    assert typed["opponent"]["opponent_id"] == (
+        "specialist-marnie-final-format-h10-f20efb20f5c3"
+    )
+    assert typed["opponent"]["checkpoint_sha256"] == (
+        "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3"
+        "bbb431f9c8b44381"
+    )
+    assert typed["opponent"]["tier"] == "S++"
+    assert typed["opponent"]["weight"] == 4.0
+    assert typed["opponent"]["floor_games_per_set"] == 1024
+    assert typed["collection_contract"]["strong_public_practice_games"] == 4586
+    assert typed["collection_contract"]["diverse_public_games"] == 2586
+    assert typed["collection_contract"]["ordinary_strong_public_minimum_share"] == 0.04
+    assert typed["historical_marnie"]["must_remain_distinct"] is True
+    assert typed["activation"]["boundary"] == (
+        "receipt_backed_inactive_boundary_or_trainer_owned_fence_enabled_"
+        "clean_pause_after_completed_iteration5"
+    )
+    assert typed["activation"]["first_guaranteed_activation_boundary_completed_iteration"] == 5
+    assert typed["activation"]["boundary_pause_seconds"] == 30
+    assert typed["activation"]["allow_clean_boundary_design_migration"] is True
+    assert typed["activation"]["boundary_design_migration_reason"] == (
+        "owner_r192_marnie_splusplus_post_iteration5_receipt_backed_migration"
+    )
+    assert (
+        typed["activation"][
+            "managed_restart_during_verified_post_iteration5_hard_pause_allowed"
+        ]
+        is False
+    )
+    assert typed["activation"]["automatic_managed_restart_armed"] is False
+    assert typed["activation"]["trainer_owned_handoff_fence_required"] is True
+    assert (
+        typed["activation"]["current_r175_source_has_trainer_owned_handoff_fence"]
+        is False
+    )
+    assert (
+        typed["activation"][
+            "proven_inactive_receipt_boundary_alternative_required"
+        ]
+        is True
+    )
+    assert typed["activation"]["interrupt_active_collection_allowed"] is False
+    assert typed["transport"] == {
+        "r182_default_deny_unchanged": True,
+        "other_r182_pairs_unchanged": True,
+        "prior_pack4_eligible_group": "diverse_public",
+        "activation_training_group": "strong_public_practice",
+        "dispatch_mode": "singleton_remote_play",
+        "pack4_attested_for_activation_group": False,
+        "separate_exact_group_retention_attestation_required_for_pack4": True,
+    }
+
+    assert projected["goal_revision"] == 192
+    assert projected["status"] == typed["status"]
+    assert projected["typed_source"] == (
+        "state/alakazam-marnie-splusplus-opponent-r192.json"
+    )
+    assert projected["opponent"]["opponent_id"] == typed["opponent"][
+        "opponent_id"
+    ]
+    assert {
+        key: projected["opponent"][key] for key in typed["opponent"]
+    } == typed["opponent"]
+    assert projected["opponent"]["checkpoint_sha256"] == typed["opponent"][
+        "checkpoint_sha256"
+    ]
+    assert projected["opponent"]["content_digest"] == typed["opponent"][
+        "content_digest"
+    ]
+    assert projected["opponent"]["tier"] == "S++"
+    assert projected["opponent"]["weight"] == 4.0
+    assert projected["opponent"]["floor_games_per_set"] == 1024
+    assert projected["collection_contract"] == typed["collection_contract"]
+    assert projected["transport"] == typed["transport"]
+    assert projected["activation"]["boundary"] == typed["activation"]["boundary"]
+    assert (
+        projected["activation"][
+            "first_guaranteed_activation_boundary_completed_iteration"
+        ]
+        == 5
+    )
+    assert projected["activation"]["boundary_pause_seconds"] == 30
+    assert projected["activation"]["allow_clean_boundary_design_migration"] is True
+    assert projected["activation"]["boundary_design_migration_reason"] == (
+        "owner_r192_marnie_splusplus_post_iteration5_receipt_backed_migration"
+    )
+    assert projected["activation"]["activation_receipt"] is None
+    assert projected["activation"]["active_before_receipt_backed_activation"] is False
+    assert (
+        projected["activation"][
+            "managed_restart_during_verified_post_iteration5_hard_pause_allowed"
+        ]
+        is False
+    )
+    assert projected["activation"]["automatic_managed_restart_armed"] is False
+    assert projected["activation"]["trainer_owned_handoff_fence_required"] is True
+    assert (
+        projected["activation"][
+            "current_r175_source_has_trainer_owned_handoff_fence"
+        ]
+        is False
+    )
+    assert (
+        projected["activation"][
+            "proven_inactive_receipt_boundary_alternative_required"
+        ]
+        is True
+    )
+    assert projected["activation"]["training_restart_before_validation_allowed"] is False
+    assert projected["activation"]["interrupt_active_collection_allowed"] is False
+
+
 def test_active_core_fallback_matches_latest_accepted_v9_receipt() -> None:
     goal = (ROOT / "GOAL.md").read_text(encoding="utf-8")
     dashboard = (ROOT / "dashboard/lan/index.html").read_text(

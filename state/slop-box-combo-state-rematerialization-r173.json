@@ -1,0 +1,43 @@
+{
+  "combo_loss_can_be_nonzero": true,
+  "coverage": {
+    "combo_state_rows": 2979468,
+    "decisions": 2979468,
+    "games": 42453,
+    "rows_with_any_seek_or_top": 918459,
+    "rows_with_vector_cells": 2979468,
+    "seek_area_zero": 0,
+    "seek_crispin": 234702,
+    "seek_energy_switch": 100840,
+    "seek_glass_trumpet": 65971,
+    "seek_other_engine": 192177,
+    "seek_recovery": 19587,
+    "seek_source": 918459,
+    "seek_teal_dance": 305182,
+    "top_deck": 197528,
+    "vector_cells": 58238960
+  },
+  "created_at_utc": "2026-08-06T20:05:46.664223+00:00",
+  "display_name": "Slop Box",
+  "goal_revision": 173,
+  "head_width": 32,
+  "input_path": "/home/inzi/poke-bot-agent/outputs/bootstrap/slop-box-h10-rtp/expert_trajectory_shard.jsonl",
+  "input_sha256": "sha256:162105d7ae9435205af9e91ed793a4064a2acc8a0347fe111d6dc1040c90a830",
+  "output_path": "/home/inzi/poke-bot-agent/outputs/bootstrap/slop-box-h10-rtp/expert_trajectory_shard.combo_v1.jsonl",
+  "output_sha256": "sha256:a22b1ac07e04e9c063397fc06afc6e9017ac4e0ab2b2fcd105dff550aa1ab56e",
+  "receipt_sha256": "sha256:4766dc424cc85adc77a2dc1bbe3c4abb913db40ad40303dffbfe459dcd24f35c",
+  "schema": "poke_bot.slop_box_combo_state_rematerialization/v1",
+  "skipped_non_slop_box": 0,
+  "slot_mapping": {
+    "seek_source[7]": "Teal Dance / Crispin / Glass Trumpet / Energy Switch / Area Zero / Night Stretcher / other engine",
+    "top_deck[5]": "Crispin/Glass Trumpet selected Basic Energy class",
+    "vector[0:6]": "engine legality (Teal Dance\u2026any engine)",
+    "vector[11:16]": "energy-route readiness",
+    "vector[16:20]": "engine continuity (Teal/Bolt active/bench)",
+    "vector[6:11]": "visible combo pieces"
+  },
+  "specialist_id": "teal-mask-ogerpon-ex",
+  "status": "ready",
+  "target_schema": "poke_bot.slop_box_combo_state_targets/v1",
+  "width_remap": false
+}

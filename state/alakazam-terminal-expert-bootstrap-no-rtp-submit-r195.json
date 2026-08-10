@@ -1,0 +1,126 @@
+{
+  "schema": "poke_bot.alakazam_terminal_expert_bootstrap_no_rtp_submit_r195/v1",
+  "owner_decision_revision": 195,
+  "status": "completed_dual_submission",
+  "specialist_id": "alakazam",
+  "owner_intent": "run another large terminal Alakazam expert bootstrap and submit the same checkpoint twice: one explicit NO RTP runtime and one explicit RTP runtime",
+  "activation": {
+    "boundary": "inactive_receipt_backed_terminal_iteration_20",
+    "managed_training_service": "pokebot-final-format-alakazam-rtp-r175-rl.service",
+    "active_training_may_be_interrupted": false,
+    "slop_box_bootstrap_and_rl_holds_remain": true
+  },
+  "parent": {
+    "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_rtp_r175_i_v6_8k/checkpoints/iter_00020.pt",
+    "checkpoint_sha256": "sha256:87caf05bdeda3a798268905a5670841125b1797f31b9a823343c393d7f0ced65",
+    "commit": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_rtp_r175_i_v6_8k/commits/iter_00020.json",
+    "commit_sha256": "sha256:8db907507c73cc0b6131b1724c5a86d769d5b74c1ab5607ce644bda724586a65",
+    "terminal_registration": "/home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-registration-v1.json",
+    "terminal_registration_sha256": "sha256:f885644b0efaeec26be27c6fb14329bfbbea4c06569f07cdf5b0bf5192f7194a",
+    "immutable": true
+  },
+  "expert_bootstrap": {
+    "expert_manifest": "/home/inzi/poke-bot-agent/data/bootstrap/expert-alakazam-last5-2026-08-01-2026-08-05-r175/alakazam/PROTECTED_EXPERT_CORPUS.json",
+    "expert_manifest_sha256": "sha256:2427c2b51cc93beccc3618085d9c77c83f49fb69cabf0208040608c384a659cd",
+    "window_start": "2026-08-01",
+    "window_end": "2026-08-05",
+    "epochs": 25,
+    "full_model": true,
+    "trainable_heads": "every_architecture_present_non_combo_learner_head",
+    "current_deck_guide_training_mode": "strategic_directional_v2",
+    "current_deck_guide_loss_weight": 0.05,
+    "setup_board_outcome_loss_weight": 0.025,
+    "combo_state_loss_weight": 0.0,
+    "combo_state_route_enabled": false,
+    "matchup_adapter_fit": "preserve_existing_trained_bank_under_checksum_bound_alakazam_contract",
+    "output_policy": "new_immutable_checkpoint_and_atomic_receipt",
+    "required_receipt_fields": [
+      "parent_checkpoint_path_size_sha256",
+      "expert_manifest_path_sha256",
+      "completed_epochs_25_of_25",
+      "optimizer_schedule_and_loss_weights",
+      "validation_metrics",
+      "model_structure_and_parameter_count",
+      "output_checkpoint_path_size_sha256"
+    ]
+  },
+  "submission": {
+    "exact_count": 2,
+    "competition": "pokemon-tcg-ai-battle",
+    "turn_order_preference": "first_if_allowed",
+    "deck_id": "alakazam-owner-rtp-pilot-r175",
+    "deck_path": "decks/archetype-samples/alakazam-owner-rtp-pilot-r175.csv",
+    "deck_csv_sha256": "sha256:1705f0f4db0c54b32f297fc9292a417b0c3abc9fdb6edf6a5370af6a635efe65",
+    "deck_cards_sha256": "sha256:660c1274aac19d88c40fd2bb52187f53dc639d944506760e386f2686b91cc247",
+    "runtime_comparison_only": true,
+    "profiles": [
+      {
+        "copy_number": 1,
+        "label_required_literal": "NO RTP",
+        "label_template": "Alakazam terminal expert bootstrap 25ep NO RTP first",
+        "rtp_enabled": false
+      },
+      {
+        "copy_number": 2,
+        "label_required_literal": "RTP",
+        "label_template": "Alakazam terminal expert bootstrap 25ep RTP first",
+        "rtp_enabled": true,
+        "rtp_checkpoint": "/home/inzi/poke-bot-agent/outputs/rtp_fleet/alakazam-r175.live/rtp_shadow_planner.pt",
+        "rtp_checkpoint_sha256": "sha256:dde7b813e69cabc9c3ad0c3c24eedfc85f05469cf739697c818111bb7acc3aee",
+        "rtp_checkpoint_bytes": 523557
+      }
+    ],
+    "forbidden_runtime_activation": [
+      "POKEBOT_USE_RECURSIVE_TURN_PLANNER=1",
+      "POKEBOT_RTP_CHECKPOINT",
+      "recursive_turn_planner_sidecar",
+      "startup_code_that_enables_rtp"
+    ],
+    "matchup_adapter_runtime_required_if_bank_present": true,
+    "package_proofs": [
+      "checkpoint_and_parameter_identity",
+      "exact_60_card_deck_identity",
+      "copy_1_has_no_rtp_activation_or_sidecar_and_smoke_reports_disabled",
+      "copy_2_has_exact_rtp_sidecar_and_smoke_reports_enabled",
+      "runtime_enabled_checksum_verified_matchup_tree",
+      "trained_matchup_adapter_bank_activation",
+      "step_zero_parity_without_rtp",
+      "single_use_submission_authorization",
+      "immutable_bundle_and_build_receipt"
+    ],
+    "queue_policy": "two_first_if_allowed_runtime_comparison_copies_under_existing_quota_and_spacing",
+    "do_not_claim_submitted_without_upload_receipt": true
+  },
+  "non_regression": {
+    "rewrite_terminal_parent_or_registration": false,
+    "rewrite_revision_193_or_194_artifacts": false,
+    "enable_rtp_outside_copy_2": false,
+    "disable_matchup_adapters": false,
+    "activate_slop_box_training": false,
+    "declare_new_measured_gate_pass": false
+  },
+  "completion": {
+    "expert_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_terminal_expert_bootstrap_no_rtp_r195/checkpoints/expert_before_iter_00021.pt",
+    "expert_checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "expert_checkpoint_bytes": 127914385,
+    "epochs_completed": 25,
+    "parameter_count": 10750146,
+    "packaging_receipt": "/home/inzi/poke-bot-agent/outputs/state/alakazam-terminal-runtime-comparison-submission-r195.json",
+    "no_rtp_bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "rtp_bundle_sha256": "sha256:2f982f2518568c1cb8635449f7cc511a2c7fc49115f31cf1e88f49b5852000f9",
+    "matchup_tree_sha256": "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe0194c9049",
+    "no_rtp_submission": {
+      "submission_id": 55378392,
+      "message": "alakazam training milestone iter 21 copy 1/2 first 261d367e131e NO RTP",
+      "status": "COMPLETE",
+      "public_score": 500.4
+    },
+    "rtp_submission": {
+      "submission_id": 55378477,
+      "message": "alakazam training milestone iter 21 copy 2/2 first 261d367e131e RTP",
+      "status": "COMPLETE",
+      "public_score": 600.0,
+      "rtp_checkpoint_sha256": "sha256:dde7b813e69cabc9c3ad0c3c24eedfc85f05469cf739697c818111bb7acc3aee"
+    }
+  }
+}

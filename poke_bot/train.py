@@ -37,6 +37,7 @@ from .blackwell_heads import (
 from .dataset import BootstrapDataset, GameSequence, PolicyStage
 from .device_corpus import DEFAULT_MIN_FREE_GIB, DeviceResidentBootstrapCorpus
 from .expert_pilot_importance import (
+    MAX_DECLARED_IMPORTANCE_WEIGHT as EXPERT_PILOT_MAX_DECLARED_IMPORTANCE_WEIGHT,
     MAX_IMPORTANCE_WEIGHT as EXPERT_PILOT_MAX_IMPORTANCE_WEIGHT,
     OWNER_DECISION_REVISION as EXPERT_PILOT_OWNER_DECISION_REVISION,
     SCHEMA as EXPERT_PILOT_IMPORTANCE_SCHEMA,
@@ -950,14 +951,24 @@ def assert_strategic_curriculum_model_contract(
 ) -> None:
     """Fail before a future curriculum can silently use the legacy model path."""
 
-    if not math.isfinite(float(setup_board_outcome_loss_weight)) or not math.isclose(
-        float(setup_board_outcome_loss_weight),
+    # Ordinary strategic curriculum uses 0.025. Owner r170 Slop Box CE
+    # intensify may raise setup-board pressure to 0.05 for epochs 26-40.
+    allowed_setup_board_weights = (
         SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT,
-        rel_tol=0.0,
-        abs_tol=1e-12,
+        0.05,
+    )
+    if not math.isfinite(float(setup_board_outcome_loss_weight)) or not any(
+        math.isclose(
+            float(setup_board_outcome_loss_weight),
+            allowed,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+        for allowed in allowed_setup_board_weights
     ):
         raise ValueError(
-            "strategic curriculum requires setup-board base loss weight 0.025"
+            "strategic curriculum requires setup-board base loss weight "
+            "0.025 (or 0.05 for Slop Box CE intensify)"
         )
     if str(getattr(model, "decision_context", "")) != "history":
         raise ValueError(
@@ -5587,15 +5598,17 @@ def supervised_rehearsal_step(
             raise ValueError(
                 "expert pilot importance weights do not align with train games"
             )
+        # Allow owner-declared Chao-hard upweights (e.g. ×25) up to the
+        # declared ceiling; ordinary tier weights remain <= MAX_IMPORTANCE_WEIGHT.
         if not bool(torch.isfinite(weights).all()) or bool(
             (
                 (weights < 1.0)
-                | (weights > EXPERT_PILOT_MAX_IMPORTANCE_WEIGHT)
+                | (weights > EXPERT_PILOT_MAX_DECLARED_IMPORTANCE_WEIGHT)
             ).any()
         ):
             raise ValueError(
                 "expert pilot importance weights must be finite in "
-                f"[1, {EXPERT_PILOT_MAX_IMPORTANCE_WEIGHT:g}]"
+                f"[1, {EXPERT_PILOT_MAX_DECLARED_IMPORTANCE_WEIGHT:g}]"
             )
         training_game_sampling_weights = weights
     elif importance_contract:
@@ -8588,6 +8601,43 @@ def rl_train_step(
     }
 
 
+def _combo_state_route_env_override_applies(
+    ckpt: dict[str, Any],
+    *,
+    path: Optional[Union[str, Path]] = None,
+) -> bool:
+    """Whether the explicit combo route gate applies to this checkpoint.
+
+    A remote worker can cache the active candidate alongside frozen opponents.
+    The optional specialist scope keeps an Alakazam-only route override from
+    changing another model's checkpoint-resolved behavior.
+    """
+
+    if "POKEBOT_COMBO_STATE_ROUTE_ENABLED" not in os.environ:
+        return False
+    scope = os.environ.get(
+        "POKEBOT_COMBO_STATE_ROUTE_SPECIALIST", ""
+    ).strip().casefold()
+    if not scope:
+        return True
+    checkpoint_specialist = str(
+        ckpt.get("archetype_id") or ""
+    ).strip().casefold()
+    if checkpoint_specialist:
+        return checkpoint_specialist == scope
+
+    # The immutable r175 seed predates checkpoint-level archetype identity.
+    # Bind that one unlabeled checkpoint by its exact content digest rather
+    # than inheriting a process-wide specialist label, which could alter an
+    # unrelated unlabeled frozen opponent loaded by the same worker.
+    expected_digest = os.environ.get(
+        "POKEBOT_COMBO_STATE_ROUTE_CHECKPOINT_DIGEST", ""
+    ).strip().casefold()
+    if not expected_digest or path is None:
+        return False
+    return checkpoint.checkpoint_digest(path).casefold() == expected_digest
+
+
 def load_model_from_checkpoint(
     path: Union[str, Path],
     *,
@@ -8638,6 +8688,18 @@ def load_model_from_checkpoint(
         # launched with future-specialist environment defaults.
         snap.setdefault("setup_board_outcome_head_enabled", False)
         snap.setdefault("combo_state_head_enabled", False)
+        # The combo route gate is deliberately non-architectural: an H10
+        # checkpoint must retain its combo head and dedicated-route tensors
+        # even when an active specialist disables their policy influence.  Old
+        # checkpoints predate the field and keep historical route behavior;
+        # an explicit process gate is allowed to override only this runtime
+        # control, never the physical combo architecture.
+        snap.setdefault("combo_state_route_enabled", True)
+        if _combo_state_route_env_override_applies(ckpt, path=path):
+            snap["combo_state_route_enabled"] = (
+                os.environ["POKEBOT_COMBO_STATE_ROUTE_ENABLED"].strip().lower()
+                in ("1", "true", "yes", "on")
+            )
         snap.setdefault("decision_fusion_dedicated_routes_enabled", False)
         snap.setdefault(
             "decision_fusion_dedicated_routes_runtime_enabled",

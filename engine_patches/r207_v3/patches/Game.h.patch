@@ -1,0 +1,126 @@
+--- a/Game.h
++++ b/Game.h
+@@ -53,12 +53,74 @@
+ 	int moveCounter;
+ };
+ 
++// Private, evaluation-only transition provenance. A V3 successor expansion
++// enables this on one cloned transition and accepts a child only when no
++// private card identity or unresolved random source was used. The sole
++// permitted chance is one explicitly armed fair coin with two siblings.
++struct PlannerTransitionAudit {
++	bool active = false;
++	signed char controlledPlayer = -1;
++	bool privateCardRead = false;
++	bool nonCoinRandom = false;
++	bool singleCoinPending = false;
++	signed char singleCoinPlayer = -1;
++	bool forcedCoinActive = false;
++	bool forcedCoinHead = false;
++	unsigned int privateCardReadCount = 0;
++	unsigned int nonCoinRandomCount = 0;
++	unsigned int forcedCoinCount = 0;
++
++	void clear() {
++		*this = {};
++	}
++
++	void begin(int playerIndex) {
++		clear();
++		active = true;
++		controlledPlayer = (signed char)playerIndex;
++	}
++
++	void markPrivateCardRead() {
++		if (active) {
++			privateCardRead = true;
++			privateCardReadCount++;
++		}
++	}
++
++	void markNonCoinRandom() {
++		if (active) {
++			nonCoinRandom = true;
++			nonCoinRandomCount++;
++		}
++	}
++
++	void armSingleCoin(int playerIndex) {
++		if (!active || singleCoinPending || forcedCoinActive) {
++			markNonCoinRandom();
++			return;
++		}
++		singleCoinPending = true;
++		singleCoinPlayer = (signed char)playerIndex;
++	}
++
++	bool hasUnsafeProvenance() const {
++		return privateCardRead || nonCoinRandom;
++	}
++
++	bool isClear() const {
++		return !active && !privateCardRead && !nonCoinRandom &&
++			!singleCoinPending && !forcedCoinActive &&
++			privateCardReadCount == 0 && nonCoinRandomCount == 0 &&
++			forcedCoinCount == 0;
++	}
++};
+ struct Game {
+ 	bool selecting = false;
+ 	int actionCount = 0;
+ 	GameConfig config = {};
+ 
+ 	std::mt19937 rng;
++	PlannerTransitionAudit plannerAudit;
+ 
+ 	std::array<double, 2> remainingTime; // 秒単位
+ 	std::chrono::high_resolution_clock::time_point startTime;
+@@ -78,12 +140,48 @@
+ 
+ 	void init(const GameConfig& config) {
+ 		this->config = config;
++		plannerAudit.clear();
+ 		if (this->config.seed == 0) {
+ 			this->config.seed = std::random_device()();
+ 		}
+ 		rng = std::mt19937(this->config.seed);
+ 	}
+ 
++	std::mt19937::result_type plannerRandom() {
++		plannerAudit.markNonCoinRandom();
++		return rng();
++	}
++
++	void plannerForceSingleCoin(bool head) {
++		if (!plannerAudit.active || !plannerAudit.singleCoinPending ||
++			plannerAudit.forcedCoinActive || config.deviceRand) {
++			plannerAudit.markNonCoinRandom();
++			return;
++		}
++		plannerAudit.forcedCoinActive = true;
++		plannerAudit.forcedCoinHead = head;
++	}
++
++	bool plannerConsumeSingleCoin(bool& head) {
++		if (!plannerAudit.active) {
++			return false;
++		}
++		if (!plannerAudit.singleCoinPending || !plannerAudit.forcedCoinActive ||
++			config.deviceRand) {
++			plannerAudit.markNonCoinRandom();
++			return false;
++		}
++		const bool forcedHead = plannerAudit.forcedCoinHead;
++		plannerAudit.singleCoinPending = false;
++		plannerAudit.singleCoinPlayer = -1;
++		plannerAudit.forcedCoinActive = false;
++		// Consume exactly one real draw. Any later random transition is
++		// rejected, so preserving the post-coin RNG position is sufficient.
++		(void)rng();
++		plannerAudit.forcedCoinCount++;
++		head = forcedHead;
++		return true;
++	}
+ 	bool isAddLog() const {
+ 		return !selecting && config.recordLog;
+ 	}

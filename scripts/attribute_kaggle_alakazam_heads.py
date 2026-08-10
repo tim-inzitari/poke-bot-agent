@@ -139,7 +139,10 @@ def record_stage(
     full_choice = int(torch.argmax(full[0]).item())
     guide_target, guide_confidence = unique_guide_target(obs, combos, deck)
     head_records: dict[str, Any] = {}
-    for name in fusion.required_heads:
+    # Preserve physical H10 inventory for checkpoint audit, but attribute only
+    # routes active in this runtime (r175 keeps combo tensors resident while
+    # explicitly disabling its action/guide route).
+    for name in getattr(fusion, "active_required_heads", fusion.required_heads):
         changed_state = dict(state_sources)
         changed_option = dict(option_sources)
         if name in changed_state:

@@ -1,0 +1,55 @@
+{
+  "schema": "poke_bot.replay_model_inspector_submission_special_case/v1",
+  "owner_decision_revision": 184,
+  "recorded_at_utc": "2026-08-08T00:13:53Z",
+  "status": "active_weights_only_dynamic_trace_fail_closed",
+  "activated_at_utc": "2026-08-08T01:24:17Z",
+  "activation_receipt": "state/replay-model-inspector-submission-55217604-special-case-activation-r184.json",
+  "submission": {
+    "submission_id": 55217604,
+    "label": "new list experiment, h10 alakazam, no train",
+    "label_source": "state/alakazam_h10_no_train_list_experiment_r115.json",
+    "checkpoint_sha256": "sha256:02c014ad7c3318d9871a2b16b57b25adb721d5c88cacb2a3d23db3c2f3ca0d92",
+    "checkpoint_checksum": "sha256:02c014ad7c3318d9871a2b16b57b25adb721d5c88cacb2a3d23db3c2f3ca0d92",
+    "checkpoint_path": "/data/checkpoints/iter_00020.02c014ad7c3318d9.pt",
+    "derived_bundle_sha256": "sha256:5696a66f47f1f9fd7999cf70b5fc93908e97537a76678a728a228339f526a5b0",
+    "bundle_checksum": "sha256:5696a66f47f1f9fd7999cf70b5fc93908e97537a76678a728a228339f526a5b0",
+    "bundle_path": "/data/inspector/artifacts/bundles/sha256-5696a66f47f1f9fd7999cf70b5fc93908e97537a76678a728a228339f526a5b0/submission.tar.gz",
+    "source_bundle_sha256": "sha256:e596630536d5052ae172ba2a42d72023709eba8b98c17a47243d1275b33a5b75",
+    "matchup_tree_checksum": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588",
+    "matchup_tree_path": "/data/inspector/artifacts/runtimes/sha256-5696a66f47f1f9fd7999cf70b5fc93908e97537a76678a728a228339f526a5b0/package/matchup_tree.json",
+    "specialist_id": "alakazam"
+  },
+  "sync": {
+    "mode": "explicit_default_discovery_union",
+    "hourly_timer_changed": false,
+    "minimum_discovery_submission_id_changed": false,
+    "automatic_new_owner_submission_discovery_changed": false,
+    "recheck_special_case_each_hour": true,
+    "explicit_cli_submission_override_semantics_changed": false
+  },
+  "inspector": {
+    "replay_browseability_independent_of_model_provenance": true,
+    "checkpoint_parameter_analysis_available_with_verified_checkpoint": true,
+    "dynamic_decision_analysis_requires_exact_submitted_runtime_and_parity": true,
+    "allow_inherit_r175_artifacts": false,
+    "missing_runtime_parity_behavior": "weights_available_dynamic_trace_unavailable_with_reason"
+  },
+  "safety": {
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_authority": false,
+    "training_service_restart_allowed": false
+  },
+  "activation": {
+    "boundary": "independent_hourly_replay_sync_and_read_only_inspector_index",
+    "may_run_during_healthy_training": true,
+    "required_validation": [
+      "default_discovery_preserves_existing_minimum_test",
+      "default_discovery_unions_special_submission_test",
+      "explicit_cli_override_non_regression_test",
+      "hourly_new_game_recheck_test",
+      "replay_only_index_fail_closed_model_analysis_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-submission-55217604-special-case-activation-r184.json"
+  }
+}

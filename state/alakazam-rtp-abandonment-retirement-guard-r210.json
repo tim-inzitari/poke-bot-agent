@@ -1,0 +1,83 @@
+{
+  "schema": "poke_bot.alakazam_legacy_recursive_rtp_retirement_guard_receipt_r210/v1",
+  "owner_decision_revision": 210,
+  "recorded_at_utc": "2026-08-10T16:25:45Z",
+  "status": "activated_persistent_retirement_guard",
+  "abandonment_contract": {
+    "path": "state/alakazam-rtp-abandonment-r210.json",
+    "sha256": "sha256:bb9eaa02398175fc5c9bd8e29ce290f102afff234b6d27bf7588fc1e53f09961",
+    "bytes": 6978
+  },
+  "managed_boundary": {
+    "host": "train",
+    "host_address": "192.168.1.151",
+    "scope": "user",
+    "unit": "pokebot-alakazam-rtp-r198-three-arm-eval.service",
+    "canonical_fragment": "/home/inzi/.config/systemd/user/pokebot-alakazam-rtp-r198-three-arm-eval.service",
+    "canonical_fragment_target": "/home/inzi/poke-bot-agent-deployments/alakazam-rtp-r198-three-arm-eval-src-36a15c52a4c7/systemd/pokebot-alakazam-rtp-r198-three-arm-eval.service",
+    "canonical_fragment_sha256": "sha256:36133a5280a87184c35a754595e8bc7e2feffe7d6099cc27b751cd79ce7b8eb5",
+    "source_manifest_sha256": "sha256:a4e20e8836702ab5abae18b7dcf3f4c1c7f1336d60f172583a0dca6ceb9c41a1",
+    "canonical_fragment_preserved": true,
+    "unit_file_state": "linked"
+  },
+  "retirement_drop_in": {
+    "source_path": "deploy/systemd/pokebot-alakazam-rtp-r198-three-arm-eval.service.d/99-r210-retired.conf",
+    "installed_path": "/home/inzi/.config/systemd/user/pokebot-alakazam-rtp-r198-three-arm-eval.service.d/99-r210-retired.conf",
+    "sha256": "sha256:2dda98aeee06b3488bf32ade03aaca06f1fcd7a4de8e3d7617425fca55d5f24c",
+    "bytes": 186,
+    "directory_mode": "0755",
+    "file_mode": "0444",
+    "owner": "inzi:inzi",
+    "refuse_manual_start": true,
+    "exec_condition": "/usr/bin/false",
+    "manual_start_is_refused": true,
+    "indirect_activation_is_skipped_before_exec_start_pre_or_exec_start": true
+  },
+  "activation": {
+    "preflight_required_exact_stopped_state": true,
+    "atomic_no_clobber_same_directory_install": true,
+    "systemd_analyze_user_verify_passed": true,
+    "user_daemon_reload_count": 1,
+    "production_refusal_probe_performed": false,
+    "start_stop_restart_reset_failed_enable_disable_mask_unmask_or_unlink_during_guard_install": false,
+    "attempt10_output_mutated": false,
+    "historical_unit_or_evidence_link_mutated": false
+  },
+  "post_activation_service": {
+    "load_state": "loaded",
+    "active_state": "failed",
+    "sub_state": "failed",
+    "main_pid": 0,
+    "exec_main_pid": 1431670,
+    "result": "signal",
+    "exec_main_code": 2,
+    "exec_main_status": 15,
+    "n_restarts": 0,
+    "restart_policy": "no",
+    "invocation_id": "1aaed5eeae4349d78c27a29d80bd2441",
+    "drop_in_paths": [
+      "/home/inzi/.config/systemd/user/pokebot-alakazam-rtp-r198-three-arm-eval.service.d/99-r210-retired.conf"
+    ],
+    "refuse_manual_start": true,
+    "exec_condition": "/usr/bin/false",
+    "need_daemon_reload": false,
+    "active_or_queued_job_exists": false
+  },
+  "preserved_attempt10_boundary": {
+    "completed_receipts_and_transcripts": 761,
+    "fully_completed_matched_cells": 253,
+    "additional_completed_arms": 2,
+    "completed_evidence_snapshot_digest": "sha256:a561ed820d00b8b9460c0ea0d9aa17c8e0fa82c7834451e7bb13c370b742628b",
+    "evaluation_tree_content_and_mode_snapshot_digest": "sha256:6868ec957f9dd266c18e5d40f2f09fef391dce67a67864e4869be848a3e39ad7",
+    "terminal_result_compiler_hold_or_promotion_artifact_exists": false,
+    "complete_efficacy_claim_allowed": false
+  },
+  "authority": {
+    "legacy_recursive_rtp_restart_or_retry_allowed": false,
+    "legacy_recursive_rtp_training_evaluation_or_collection_allowed": false,
+    "legacy_recursive_rtp_serving_action_selector_publication_submission_or_promotion_allowed": false,
+    "removing_the_drop_in_alone_authorizes_restart": false,
+    "future_reversal_requires_new_owner_revision_and_receipt": true
+  },
+  "receipt_payload_sha256": "sha256:18852cd7726044da2de19bc5469a463f4af49d4153bdebf1b2b03ea0ebc6666c"
+}

@@ -1,25 +1,45 @@
-# Prompt to paste into Cursor
+# Prompt to paste into a NEW Codex / Cursor account
 
-Take over this repository and continue the active Pokemon RL goal autonomously and conservatively:
+Take over this repository for a **code fix** of a production failure:
 
 `/Users/tsinzitari/Documents/poke-agent-codex`
 
-Before doing anything, read `AGENTS.md`, `GOAL.md` revision **170**, and `CURSOR_HANDOFF.md` completely. Then read every canonical source named by `GOAL.md` that is relevant to the action you are about to take. Treat `GOAL.md` as authoritative; `ops/current_goal_requirements.json` is only a compatibility projection.
+## Read first (mandatory)
 
-Preserve the worktree. Do not run `git reset`, `git clean`, `git checkout --`, broad formatters, or mass rewrites. Do not overwrite concurrent or unrelated edits. Do not rewrite `GOAL.md` unless the owner explicitly changes the design.
+1. **`CODEX_ITER0_CONTRACT_LOOP.md`** — full knowledge pack (symptoms, quarantine tallies, ruled-out bugs, deployed changes, fix targets).
+2. `AGENTS.md`
+3. `GOAL.md` revision **175** + `state/alakazam-rtp-owner-hard-swap-r175.json`
+4. Top of `CURSOR_HANDOFF.md`
 
-Safety is non-negotiable: never terminate, signal, disconnect, replace, or classify an SSH, Codex, Cursor, terminal, editor, or other interactive session as stale. Never use `kill`, `pkill`, `killall`, shell signals, or process-tree termination. The LAN identity in `AGENTS.md` is owner-controlled and hard-allowed. Control training/dashboard workloads only through their declared service manager, and never restart healthy training to make metadata agree.
+Treat `GOAL.md` as authoritative. `ops/current_goal_requirements.json` is only a compatibility projection.
 
-## Active revision-170 contract
+## Mission
 
-1. **Crustle is abandoned for now.** Preserve every Crustle artifact (including sealed iter5 collection receipt). Do not delete, recollect, or restart Crustle RL/RTP while abandon receipts/masks remain. Receipt: `outputs/state/crustle-owner-abandon-r170.json`.
+**Break the Alakazam RTP r175 iter0 exact-collection loop.** The unit keeps failing:
 
-2. **Activate Slop Box H10 + RTP** (`teal-mask-ogerpon-ex`), separately versioned from historical Teal/Slop Box. Identity: `state/slop_box_h10_rtp_prestage_identity_r170.json`. Bootstrap unit: `pokebot-final-format-slop-box-h10-rtp-bootstrap.service`.
+`exact collection contract failed: self_play=1024/1024 public_mix=<short>/7172 retained=<short>/8196`
 
-3. **Fail-closed until** `outputs/bootstrap/slop-box-h10-rtp/expert_trajectory_shard.jsonl` exists; then start the bootstrap oneshot via systemd. Expert bootstrap must also emit the initial RTP cut (`rtp_shadow_planner.pt`). Guide stays RL-training-only; RTP stays neural-only.
+then quarantines and RESUMEs iter0 forever. Latest known fail: **attempt_0040** `public_mix=5673/7172` retained `6697/8196`. Earlier **attempt_0038** missing **816** were all `strong_public_practice` (10 non-roster18 gate specialists). Pins/self_play/diverse were OK. Refill bars complete but retention does not.
 
-4. Warm-start from checksum-bound Marnie H10 freeze `sha256:f20efb20…` (recommended primary) and optional Alakazam teacher `sha256:02c014ad…`. Never rewrite parents; require migration/parity before bootstrap.
+Owner wants a **code** fix so retention/promote/multi-play actually fills those cells. Do **not** weaken the exact collection contract. Do **not** set `PURE_RL_PUBLIC_MIX_LOCAL_ONLY=1` (owner rejected remotes=0). Keep RTP on; remotes engaged; multi packing preferred when safe — contract correctness beats GPS.
 
-5. Keep Bert Alakazam rejoin poller held via `launchctl bootout` until a canonical CPU/MPS selector receipt exists.
+## Safety
 
-6. Refresh heartbeats (`state/goalmd_loop_heartbeat_slop_box_r170.json` / train `outputs/state/…`) as you progress. Runtime truth: `GOAL.md` + receipts + managed-service state.
+Never kill/signal interactive sessions. No process-tree termination. Control workloads only via `systemctl --user` (train), `launchctl` (Bert), `sudo docker` (Elmo). Preserve worktree (no destructive git). Do not rewrite `GOAL.md` unless owner changes design.
+
+## Hosts
+
+SSH aliases + key `~/.ssh/id_ed25519_poke_lan` IdentitiesOnly yes: `train` 192.168.1.151 inzi, `bert` 192.168.1.158 tsinzitari, `elmo` 192.168.1.143 admin. Live PYTHONPATH `/home/inzi/poke-bot-agent`; unit `pokebot-final-format-alakazam-rtp-r175-rl.service`.
+
+## Already fixed (do not re-break)
+
+- Illegal ordered action prefix fallback on `ActionSpaceTooLarge` (not the current loop).
+- Guide text/registry rebound without refeature.
+
+## Deployed and suspect
+
+Play+self_play remote multi pack @4 (`run_play_multi` for jobs with `spec`). attempt_0040 shortfall **grew** after play multi — inspect promote + multi result schema vs single `remote_play_job`.
+
+## Done when
+
+iter0 commits with retained **8196** and training advances past collection (not another `attempt_00NN`).

@@ -1,0 +1,12 @@
+{
+  "schema": "poke_bot.dashboard_health_loop_resident/v1",
+  "updated_at_utc": "2026-08-07T07:48:05.530261+00:00",
+  "loop_pid": 85962,
+  "loop_token": "R170_20260807T074800Z_85962",
+  "loop_alive": true,
+  "dash_phase": "stopped:rehearsal:chao_hard_gate_remeasure",
+  "chao_hard_gate": 0.7762971936200282,
+  "unit": "inactive",
+  "trainer_restarted": false,
+  "exit_policy": "stay_resident_until_user_stops"
+}

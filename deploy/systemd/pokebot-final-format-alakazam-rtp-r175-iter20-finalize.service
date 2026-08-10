@@ -1,0 +1,15 @@
+[Unit]
+Description=Freeze and register exact final-format Alakazam RTP r175 iteration 20
+After=pokebot-final-format-alakazam-rtp-r175-iter20-boundary.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/finalize_alakazam_rtp_r175_iter20.py --check --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_rtp_r175_i_v6_8k --boundary /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-boundary-r193.json --unit pokebot-final-format-alakazam-rtp-r175-rl.service --registry-root /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models --terminal-registry /home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_registry_h10_r175_iter20_terminal.json --registration /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-registration-v1.json --completion /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-completion-v1.json --goal /home/inzi/poke-bot-agent/GOAL.md --r192 /home/inzi/poke-bot-agent/state/alakazam-marnie-splusplus-opponent-r192.json --r193 /home/inzi/poke-bot-agent/state/alakazam-large-expert-refresh-resubmit-r193.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/finalize_alakazam_rtp_r175_iter20.py --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_rtp_r175_i_v6_8k --boundary /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-boundary-r193.json --unit pokebot-final-format-alakazam-rtp-r175-rl.service --registry-root /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models --terminal-registry /home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_registry_h10_r175_iter20_terminal.json --registration /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-registration-v1.json --completion /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-completion-v1.json --goal /home/inzi/poke-bot-agent/GOAL.md --r192 /home/inzi/poke-bot-agent/state/alakazam-marnie-splusplus-opponent-r192.json --r193 /home/inzi/poke-bot-agent/state/alakazam-large-expert-refresh-resubmit-r193.json
+MemoryHigh=4G
+MemoryMax=8G
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/logs/iter20_finalize.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/logs/iter20_finalize.log

@@ -1,0 +1,204 @@
+{
+  "schema": "poke_bot.alakazam_guide2vec_no_mcts_bo1000_r212/v1",
+  "owner_decision_revision": 212,
+  "latest_owner_clarification_revision": 217,
+  "recorded_at_utc": "2026-08-10T16:45:50Z",
+  "status": "authorized_isolated_blackwell_distillation_and_no_mcts_bo1000_pending_prerequisites",
+  "owner_intent": "train one small Alakazam-only Guide2Vec head on the frozen revision-195 NO-RTP policy representation, then run one separate exact no-MCTS BO1000 mirror against that unchanged direct policy",
+  "relationship_to_existing_work": {
+    "separate_from_r205_r207_mcts": true,
+    "supersedes_r205_or_r207": false,
+    "r207_authorization_cancelled": false,
+    "legacy_recursive_rtp_abandoned_under_r210": true,
+    "legacy_rtp_sidecar_executor_or_partial_rows_allowed": false,
+    "slop_box_data_model_runtime_or_submission_authority": false
+  },
+  "frozen_base": {
+    "r195_contract_path": "state/alakazam-terminal-expert-bootstrap-no-rtp-submit-r195.json",
+    "r195_contract_sha256": "sha256:e37cf1d3e638c3aed56230c9fa970c61e6c1ed8b4bd3024de259cb9847c31e48",
+    "submission_id": 55378392,
+    "submission_message": "alakazam training milestone iter 21 copy 1/2 first 261d367e131e NO RTP",
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "checkpoint_bytes": 127914385,
+    "bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "deck_id": "alakazam-owner-rtp-pilot-r175",
+    "deck_path": "decks/archetype-samples/alakazam-owner-rtp-pilot-r175.csv",
+    "deck_cards_sha256": "sha256:660c1274aac19d88c40fd2bb52187f53dc639d944506760e386f2686b91cc247",
+    "matchup_tree_sha256": "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe0194c9049",
+    "matchup_adapter_runtime_enabled_for_training_latent_extraction_and_both_bo1000_arms": true,
+    "matchup_adapter_bank_and_public_tree_must_be_identical_enabled_frozen_and_route_parity_attested": true,
+    "same_checkpoint_deck_model_config_matchup_tree_and_non_guide_runtime_required_for_both_arms": true,
+    "rtp_enabled": false,
+    "base_checkpoint_or_parameter_mutation_allowed": false,
+    "base_hidden_state_must_remain_frozen": true
+  },
+  "guide_teacher_and_data": {
+    "guide_id": "alakazam",
+    "guide_version": "powerful-hand-v1",
+    "guide_contract_path": "config/deck_guides/alakazam-final-refresh.yaml",
+    "teacher_module_path": "poke_bot/alakazam_heuristics.py",
+    "source_ready_receipt": "state/final_format_alakazam_guide_ready_r79.json",
+    "source_manifest_and_teacher_contract_sha256_must_be_verified_at_materialization": true,
+    "acting_archetype_required": "alakazam",
+    "acting_seat_only": true,
+    "exact_teacher_compatible_alakazam_deck_required": true,
+    "compact_target_representation": {
+      "guide_target_index": true,
+      "guide_confidence": true,
+      "full_teacher_score_vector_available_or_required": false,
+      "target_index_and_legal_option_width_must_match": true,
+      "nonpositive_confidence_or_out_of_range_target_behavior": "mask_entire_stage"
+    },
+    "training_target": "confidence_weighted_listwise_cross_entropy_over_current_legal_stage_options",
+    "human_action_base_policy_logit_outcome_or_future_action_target_allowed": false,
+    "causal_inputs": {
+      "acting_seat_policy_visible_observation_only": true,
+      "current_factorized_legal_option_representation_only": true,
+      "select_context_and_effect_representation_required_when_present": true,
+      "opponent_hidden_cards_deck_order_prizes_or_future_state_allowed": false
+    },
+    "split": {
+      "whole_episode_disjoint": true,
+      "whole_source_day_disjoint": true,
+      "deck_list_disjoint": false,
+      "deck_list_overlap_expected_or_allowed": true,
+      "train_validation_heldout_overlap_allowed": false,
+      "heldout_used_for_model_selection_or_threshold_tuning": false,
+      "retained_row_episode_and_source_day_fingerprints_required_per_partition": true,
+      "whole_episode_and_source_day_split_fingerprints_must_be_reported": true
+    },
+    "excluded_from_training": [
+      "kaggle_submission_replays_and_scores",
+      "submission_55378392_replays",
+      "r197_r198_r199_legacy_rtp_rows",
+      "r205_r207_mcts_rows_or_receipts",
+      "all_guide2vec_bo1000_games_and_receipts",
+      "slop_box_or_non_alakazam_rows"
+    ]
+  },
+  "guide2vec_head": {
+    "strategy_id": "frozen_hidden_state_option_conditioned_guide2vec_ranker",
+    "language_model_or_text_corpus_allowed": false,
+    "frozen_r195_hidden_state_input_required": true,
+    "current_legal_option_conditioning_required": true,
+    "one_scalar_score_per_currently_legal_option": true,
+    "parameter_count_min": 100000,
+    "parameter_count_max": 500000,
+    "base_model_trainable": false,
+    "only_guide2vec_head_parameters_receive_gradients": true,
+    "maximum_epochs": 5,
+    "selection_metric": "validation_confidence_weighted_listwise_cross_entropy",
+    "heldout_teacher_agreement_minimum": 0.9,
+    "heldout_teacher_agreement_scope": "teacher_labeled_legal_stages_only",
+    "immutable_checkpoint_and_training_receipt_required": true
+  },
+  "candidate_runtime": {
+    "mode": "bounded_guide_logit_bonus",
+    "per_factorized_stage_score_normalization": "min_max_0_to_1",
+    "maximum_logit_bonus": 0.05,
+    "finite_legal_scores_and_unique_confident_top_choice_required": true,
+    "invalid_flat_tied_or_low_confidence_behavior": "exact_frozen_r195_direct_policy_fallback",
+    "direct_action_override_without_bounded_logit_recomputation_allowed": false,
+    "historical_guide_linear_or_guide_logit_layer_allowed": false,
+    "mcts_expectimax_rollout_recursive_turn_planner_rtp_or_simulator_leaf_reranking_allowed": false
+  },
+  "managed_blackwell_isolation": {
+    "managed_service": "pokebot-alakazam-guide2vec-r212.service",
+    "managed_systemd_boundary_required": true,
+    "required_device_name": "NVIDIA RTX PRO 5000 Blackwell",
+    "cuda_visible_devices_must_bind_exact_preflighted_device_uuid": true,
+    "safe_noninterference_preflight_required_before_start": true,
+    "separate_cgroup_environment_source_snapshot_and_content_addressed_output_required": true,
+    "training_output_root": "/home/inzi/poke-bot-agent/outputs/guide2vec/alakazam-r212",
+    "bo1000_output_root": "/home/inzi/poke-bot-agent/outputs/evaluations/alakazam-guide2vec-r212-bo1000",
+    "r197_r198_r205_r207_or_other_running_test_output_reuse_allowed": false,
+    "existing_protected_workload_stop_restart_reconfigure_or_worker_reduction_allowed": false,
+    "blackwell_96_worker_invariant_may_be_changed": false,
+    "interactive_sessions_may_be_signalled_terminated_or_replaced": false
+  },
+  "bo1000_evaluation": {
+    "evaluation_id": "alakazam-r212-guide2vec-no-mcts-bo1000",
+    "total_games": 1000,
+    "matched_rng_pairs": 500,
+    "games_per_pair": 2,
+    "complete_all_games_without_early_best_of_stop": true,
+    "arms": [
+      "frozen_r195_direct_policy_plus_frozen_guide2vec_bounded_logit_bonus",
+      "frozen_r195_no_rtp_direct_policy"
+    ],
+    "seat_balance": {
+      "guide2vec_as_seat_0": 500,
+      "guide2vec_as_seat_1": 500,
+      "no_rtp_as_seat_0": 500,
+      "no_rtp_as_seat_1": 500
+    },
+    "actual_turn_order_balance": {
+      "guide2vec_actual_first": 500,
+      "guide2vec_actual_second": 500,
+      "no_rtp_actual_first": 500,
+      "no_rtp_actual_second": 500,
+      "one_guide2vec_first_and_one_guide2vec_second_game_per_pair": true,
+      "initial_actor_is_explicit_sealed_pair_material_not_inferred_from_seat": true,
+      "first_actor_arm_seat_and_turn_order_digest_required_in_every_receipt": true,
+      "missing_duplicate_crossed_or_unbalanced_pair_fails_closed": true
+    },
+    "pairing": {
+      "identical_initial_rng_and_deck_order_material_within_pair": true,
+      "unique_pair_ids_and_pair_game_nonces_required": true,
+      "candidate_and_control_use_same_frozen_base_runtime": true
+    },
+    "runtime_graph_difference": {
+      "candidate_guide2vec_instances": 1,
+      "candidate_guide2vec_frozen": true,
+      "control_guide2vec_presence": "absent_from_runtime_graph",
+      "control_guide2vec_module_instances": 0,
+      "control_guide2vec_parameters": 0,
+      "control_guide2vec_state_keys": 0,
+      "control_guide2vec_forward_hooks": 0,
+      "control_guide2vec_linear_transforms": 0,
+      "control_disabled_or_zeroed_guide2vec_component_allowed": false,
+      "only_candidate_control_runtime_difference": "one_frozen_guide2vec_bounded_logit_bonus_component",
+      "per_game_runtime_graph_absence_and_difference_receipts_required": true
+    },
+    "mcts_or_r207_schedule_runner_or_receipt_reuse_allowed": false,
+    "evaluation_games_training_eligible": false,
+    "required_report": [
+      "paired_wins_draws_losses_and_confidence_interval",
+      "seat_split_and_actual_first_second_split_outcomes",
+      "legality_forfeit_crash_and_timeout_counts",
+      "guide2vec_eligible_abstain_and_action_change_rates",
+      "guide2vec_and_total_action_latency_distributions",
+      "raw_per_game_and_per_decision_receipts_preserved"
+    ]
+  },
+  "launch_prerequisites": {
+    "guide2vec_materialization_causality_and_target_alignment_receipt": true,
+    "whole_game_day_split_and_exclusion_audit": true,
+    "retained_row_episode_and_source_day_partition_fingerprint_receipt": true,
+    "parameter_count_frozen_base_and_teacher_identity_receipt": true,
+    "deterministic_head_and_exact_direct_fallback_parity_receipt": true,
+    "heldout_teacher_agreement_gate": true,
+    "blackwell_safe_noninterference_and_dedicated_output_receipt": true,
+    "no_mcts_no_rtp_dependency_and_runtime_receipt": true,
+    "runtime_on_frozen_matchup_adapter_tree_parity_receipt_for_training_and_both_arms": true,
+    "control_runtime_graph_complete_guide2vec_absence_receipt": true,
+    "bo1000_actual_first_second_schedule_and_receipt_integrity_tests": true,
+    "launch_before_every_prerequisite_is_immutable_and_valid": false
+  },
+  "authority": {
+    "guide2vec_head_gradient_updates_authorized": true,
+    "dedicated_guide2vec_training_service_start_authorized_after_preflight": true,
+    "immutable_guide2vec_artifact_publication_authorized": true,
+    "exact_no_mcts_bo1000_authorized_after_prerequisites": true,
+    "base_model_training_or_parameter_updates_authorized": false,
+    "training_service_start_authorized_for_any_other_lineage": false,
+    "serving_eligible": false,
+    "production_action_authority_enabled": false,
+    "selector_change_authorized": false,
+    "base_checkpoint_publication_authorized": false,
+    "kaggle_submission_authorized": false,
+    "promotion_authorized": false,
+    "r175_restart_authorized": false,
+    "iteration_21_collection_authorized": false
+  }
+}

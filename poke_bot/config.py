@@ -321,6 +321,14 @@ class ModelConfig:
     combo_state_head_enabled: bool = _env_bool(
         "COMBO_STATE_HEAD_ENABLED", False
     )
+    #: Non-architectural control for the combo-state dedicated fusion route.
+    #: Keep the physical head and route tensors resident so existing H10
+    #: checkpoints remain exactly loadable; this gate only removes combo from
+    #: action fusion and directional-guide route training.  Default ``True``
+    #: preserves every pre-gate checkpoint's historical behavior.
+    combo_state_route_enabled: bool = _env_bool(
+        "COMBO_STATE_ROUTE_ENABLED", True
+    )
     #: Learned residual that consumes every causal auxiliary/strategic head.
     #: It trains jointly when present, but serving remains separately gated so
     #: an architecture migration can begin as an exact flat-policy no-op.

@@ -1,0 +1,16 @@
+{
+  "bind_host": "127.0.0.1",
+  "port": 8791,
+  "replay_root": "/mnt/Main/main/poke-bot-agent/archive/submission-replays",
+  "rollout_root": "/mnt/Main/main/poke-bot-agent/archive/submission-replay-rollouts",
+  "provenance_manifest": "/mnt/Main/main/poke-bot-agent/archive/submission-provenance-v1.json",
+  "training_recipe_registry": "/mnt/Main/main/poke-bot-agent/ops/elmo/replay-model-inspector-training-recipes-r187.json",
+  "artifact_roots": [
+    "/mnt/Main/main/poke-bot-agent/archive/submission-bundles"
+  ],
+  "runtime_source_root": "/mnt/Main/main/poke-bot-agent/archive/submitted-runtime/package",
+  "torch_threads": 2,
+  "max_parameter_slice": 2048,
+  "max_tensor_values": 512,
+  "verify_digests": true
+}

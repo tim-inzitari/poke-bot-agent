@@ -1280,6 +1280,13 @@ def system_state() -> dict[str, Any]:
     except OSError:
         pass
     loads = os.getloadavg()
+    swap_total = mem.get("SwapTotal")
+    swap_free = mem.get("SwapFree")
+    swap_used = (
+        max(0, swap_total - swap_free)
+        if swap_total is not None and swap_free is not None
+        else None
+    )
     return {
         "hostname": socket.gethostname(),
         "cpu_count": os.cpu_count(),
@@ -1288,6 +1295,9 @@ def system_state() -> dict[str, Any]:
         "load_15m": loads[2],
         "memory_total_bytes": mem.get("MemTotal"),
         "memory_available_bytes": mem.get("MemAvailable"),
+        "swap_total_bytes": swap_total,
+        "swap_used_bytes": swap_used,
+        "swap_free_bytes": swap_free,
     }
 
 

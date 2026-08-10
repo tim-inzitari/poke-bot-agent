@@ -1,0 +1,61 @@
+{
+  "schema": "poke_bot.replay_model_inspector_matchup_adapter_counterfactual_activation/v1",
+  "owner_decision_revision": 191,
+  "activated_at_utc": "2026-08-08T02:06:04Z",
+  "status": "active_read_only",
+  "managed_service": {
+    "unit": "pokebot-replay-model-inspector.service",
+    "state": "active",
+    "bind": "127.0.0.1:8791",
+    "gateway_url": "http://bert:8780/replay-inspector/",
+    "health": "ok"
+  },
+  "deployed_assets": {
+    "server_py_sha256": "sha256:362f4a1859966381416fbaa04133e9712838f9a4cdaed38f605a0f983dfc7681",
+    "app_js_sha256": "sha256:955ae99d9e6d5fa085db7965aee375fb480511d687f700501ff0d2a1134c215e",
+    "styles_css_sha256": "sha256:0b5d5f3454010ca99086c021602dba452cf33a9c45d4a35bcdde5586c3d0ff0b",
+    "typed_contract_sha256": "sha256:f61943ca1cbd7941f66ff9c5e151334959cd8194b4dacd7464f8d5a727920ec2",
+    "source_backup": "/mnt/Main/main/poke-bot-agent/replay-model-inspector-r176.pre-r191-20260808T020119Z"
+  },
+  "live_exact_trace_validation": {
+    "submission_id_text": "55315274",
+    "game_id_text": "90620383",
+    "environment_step": 7,
+    "factorized_stage": 0,
+    "adapter_status": "active_for_decision",
+    "route": 6,
+    "matched_archetype": "alakazam",
+    "comparison_available": true,
+    "method": "exact_adapter_on_vs_no_adapter_forward_recomputation",
+    "sign_convention": "adapter_on_minus_adapter_off",
+    "legal_action_count": 13,
+    "adapter_on_choice": "Factorized stage 0: Choose your deck slot 1 (Kadabra).",
+    "adapter_off_choice": "Factorized stage 0: Choose your deck slot 1 (Kadabra).",
+    "choice_changed": false,
+    "reproduction_status": "recomputed_not_historical",
+    "cached_model_state_restored_after_request": true
+  },
+  "mobile_browser_validation": {
+    "viewport": "390x844",
+    "comparison_visible": true,
+    "table_rows": 13,
+    "table_client_width_px": 336,
+    "table_scroll_width_px": 720,
+    "horizontal_overflow": "auto",
+    "console_errors": 0
+  },
+  "tests": {
+    "focused_server_and_static": "32 passed",
+    "non_torch_inspector_suite": "72 passed",
+    "python_compile": "passed",
+    "javascript_syntax": "passed",
+    "ruff_format_and_check": "passed"
+  },
+  "safety": {
+    "checkpoint_or_parameter_mutation": false,
+    "replay_or_provenance_mutation": false,
+    "training_or_selector_service_control_invoked": false,
+    "unknown_route_force_on_allowed": false,
+    "unattested_runtime_force_on_allowed": false
+  }
+}

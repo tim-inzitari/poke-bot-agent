@@ -1,0 +1,218 @@
+{
+  "schema": "poke_bot.crustle_disk_reclaim_for_free_disk_guard/v1",
+  "created_at_utc": "2026-08-06T12:42:58.217594+00:00",
+  "reason": "Free disk trending toward 100GiB collect gate during Crustle iter4; reclaim prior /tmp test trees + conda/journal pattern from crustle-disk-reclaim-r167",
+  "df_avail_gb_before": 113.72,
+  "df_avail_gb_after": 219.39,
+  "reclaimed_gib": 105.67,
+  "actions": [
+    {
+      "action": "conda clean -p -y",
+      "error": "[Errno 2] No such file or directory: 'conda'"
+    },
+    {
+      "action": "journalctl --user --vacuum-size=400M",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ".journal~: Permission denied\nVacuuming done, freed 0B of archived journals from /var/log/journal/141c505cebd444e39f4afe6bdf1f5633.\nVacuuming done, freed 0B of archived journals from /var/log/journal.\n"
+    },
+    {
+      "action": "journalctl --vacuum-size=400M",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ".journal~: Permission denied\nVacuuming done, freed 0B of archived journals from /var/log/journal/141c505cebd444e39f4afe6bdf1f5633.\nVacuuming done, freed 0B of archived journals from /run/log/journal.\n"
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-guide-validation-v2",
+      "size_b": 1532868516
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-decision-fusion-boundary-test",
+      "size_b": 972665198
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-v29-tests",
+      "size_b": 736060902
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-v8-qa-20260721",
+      "size_b": 723361158
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-research-controls-v17-test",
+      "size_b": 116846076
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-dashboard-research-v17-test",
+      "size_b": 116095570
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-archetype-v16-test",
+      "size_b": 115341373
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-kaggle-identity-dryrun",
+      "size_b": 97584800
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-go-first-package-smoke",
+      "size_b": 76041372
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-v4-compat-20260722",
+      "size_b": 38232763
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-parallel-pack-test.HCY6zo",
+      "size_b": 37412269
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-guide-validation",
+      "size_b": 37072736
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-route-sequence-test-r79",
+      "size_b": 34827724
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-v33-tests",
+      "size_b": 25804128
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-specialist-routing-v41-test",
+      "size_b": 25679490
+    },
+    {
+      "action": "rm -rf /tmp/pokebot-dashboard-adapter-test-v1",
+      "size_b": 26312882
+    }
+  ],
+  "removed": [
+    {
+      "path": "/tmp/pokebot-guide-validation-v2",
+      "size_b": 1532868516,
+      "age_days": 12.04
+    },
+    {
+      "path": "/tmp/pokebot-decision-fusion-boundary-test",
+      "size_b": 972665198,
+      "age_days": 11.68
+    },
+    {
+      "path": "/tmp/pokebot-v29-tests",
+      "size_b": 736060902,
+      "age_days": 14.37
+    },
+    {
+      "path": "/tmp/pokebot-v8-qa-20260721",
+      "size_b": 723361158,
+      "age_days": 15.87
+    },
+    {
+      "path": "/tmp/pokebot-research-controls-v17-test",
+      "size_b": 116846076,
+      "age_days": 15.62
+    },
+    {
+      "path": "/tmp/pokebot-dashboard-research-v17-test",
+      "size_b": 116095570,
+      "age_days": 15.62
+    },
+    {
+      "path": "/tmp/pokebot-archetype-v16-test",
+      "size_b": 115341373,
+      "age_days": 15.62
+    },
+    {
+      "path": "/tmp/pokebot-kaggle-identity-dryrun",
+      "size_b": 97584800,
+      "age_days": 13.81
+    },
+    {
+      "path": "/tmp/pokebot-go-first-package-smoke",
+      "size_b": 76041372,
+      "age_days": 15.75
+    },
+    {
+      "path": "/tmp/pokebot-v4-compat-20260722",
+      "size_b": 38232763,
+      "age_days": 14.26
+    },
+    {
+      "path": "/tmp/pokebot-parallel-pack-test.HCY6zo",
+      "size_b": 37412269,
+      "age_days": 11.73
+    },
+    {
+      "path": "/tmp/pokebot-guide-validation",
+      "size_b": 37072736,
+      "age_days": 11.86
+    },
+    {
+      "path": "/tmp/pokebot-route-sequence-test-r79",
+      "size_b": 34827724,
+      "age_days": 6.01
+    },
+    {
+      "path": "/tmp/pokebot-v33-tests",
+      "size_b": 25804128,
+      "age_days": 13.88
+    },
+    {
+      "path": "/tmp/pokebot-specialist-routing-v41-test",
+      "size_b": 25679490,
+      "age_days": 13.86
+    },
+    {
+      "path": "/tmp/pokebot-dashboard-adapter-test-v1",
+      "size_b": 26312882,
+      "age_days": 15.33
+    }
+  ],
+  "skipped": [
+    {
+      "path": "/tmp/poke-agent-codex-v3-validation",
+      "reason": "rm_failed:[Errno 13] Permission denied: 'deck-agnostic-balanced.lucario.features'",
+      "size_b": 349916306586
+    },
+    {
+      "path": "/tmp/pokebot-goal-audit-v18",
+      "reason": "rm_failed:[Errno 13] Permission denied: 'deck-agnostic-balanced.lucario.features'",
+      "size_b": 17547545701
+    },
+    {
+      "path": "/tmp/pokebot-decision-fusion-test",
+      "reason": "open_handles",
+      "handles": [
+        "python  4039395 inzi  cwd    DIR 259,10    36864 79437456 /tmp/pokebot-decision-fusion-test",
+        "python  4039616 inzi  cwd    DIR 259,10    36864 79437456 /tmp/pokebot-decision-fusion-test",
+        "python  4039680 inzi  cwd    DIR 259,10    36864 79437456 /tmp/pokebot-decision-fusion-test"
+      ],
+      "size_b": 1233467221
+    }
+  ],
+  "untouched": [
+    "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k",
+    "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected",
+    "/home/inzi/poke-bot-agent/outputs/pure_rl/_quarantine_empty_design_drift_r167",
+    "/home/inzi/poke-bot-agent/data/cache",
+    "completed specialist pure_rl run dirs"
+  ],
+  "quarantine_only_estimate_gib": 1.2,
+  "blocker_if_under_100": false,
+  "followup_chmod_rm_utc": "2026-08-06T12:43:51.092380+00:00",
+  "df_avail_gb_after_primary": 219.39,
+  "df_avail_gb_after_followup": 461.95,
+  "reclaimed_gib_total": 348.23,
+  "blocker_cleared": true,
+  "margin_to_100GiB": 361.95,
+  "crustle_untouched": true,
+  "remaining_big_tmp_gone": true,
+  "quarantine_policy": {
+    "skipped_active_run": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k",
+    "skipped_rtp_seed_quarantine": "/home/inzi/poke-bot-agent/outputs/pure_rl/_quarantine_empty_design_drift_r167",
+    "skipped_protected": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected",
+    "quarantine_rejected_logs_spool_only_gib": 1.2,
+    "actual_lever": "prior reclaim pattern: /tmp pokebot*/validation trees via chmod+rm; conda clean no-op; journal vacuum no-op"
+  }
+}

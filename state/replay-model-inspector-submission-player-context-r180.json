@@ -1,0 +1,52 @@
+{
+  "schema": "poke_bot.replay_model_inspector_submission_player_context/v1",
+  "owner_decision_revision": 180,
+  "recorded_at_utc": "2026-08-07T23:45:00Z",
+  "status": "staged",
+  "submission_context": {
+    "submission_id_required": true,
+    "exact_submission_text_or_label_required_when_available": true,
+    "allowed_sources": [
+      "checksum_bound_submission_provenance",
+      "submission_id_bound_kaggle_queue_or_upload_receipt",
+      "archived_kaggle_submission_metadata"
+    ],
+    "filename_or_active_model_inference_allowed": false,
+    "missing_behavior": "submission text unavailable"
+  },
+  "player_context": {
+    "both_seats_required": true,
+    "fields": [
+      "seat",
+      "name",
+      "rank"
+    ],
+    "allowed_sources": [
+      "archived_episode_metadata",
+      "authoritative_replay_metadata"
+    ],
+    "score_reward_or_name_rank_inference_allowed": false,
+    "missing_rank_behavior": "rank unavailable"
+  },
+  "safety": {
+    "read_only": true,
+    "provenance_binding_required": true,
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_authority": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_inspector_metadata_and_ui",
+    "may_run_during_healthy_training": true,
+    "requires_inspector_service_restart": true,
+    "must_not_restart_training": true,
+    "required_validation": [
+      "submission_label_source_binding_test",
+      "two_player_metadata_mapping_test",
+      "missing_rank_unavailable_test",
+      "submission_selector_plain_english_static_test",
+      "live_submission_label_test",
+      "live_two_player_context_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-submission-player-context-activation-r180.json"
+  }
+}

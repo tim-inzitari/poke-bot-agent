@@ -233,3 +233,37 @@ def expanded_head_epoch_plan(
         target_schema=str(contract["target_schema"]),
         target_schema_digest=TARGET_SCHEMA_DIGEST,
     )
+
+
+def all_expanded_heads_live_epoch_plan(
+    raw: Mapping[str, Any], epoch: int
+) -> ExpandedHeadEpochPlan:
+    """Force every expanded head into the live nonzero loss schedule.
+
+    Owner r175 Alakazam CE/rebootstrap must not stage later heads at weight 0.
+    Preserves the protocol schedule digest; only the per-epoch enable mask and
+    loss weights change so every architecture-present head backprops.
+    """
+
+    contract = validated_expanded_head_schedule(raw)
+    epoch = int(epoch)
+    if not 1 <= epoch <= int(contract["total_epochs"]):
+        raise ValueError(f"expanded strategic epoch outside 1..25: {epoch}")
+    weights = {
+        name: float(contract["weights"][name]) for name in EXPANDED_HEAD_IDS
+    }
+    if any(weight <= 0.0 for weight in weights.values()):
+        raise ValueError(
+            "all-heads-live requires nonzero protocol expanded-head weights"
+        )
+    from .strategic_heads import TARGET_SCHEMA_DIGEST
+
+    return ExpandedHeadEpochPlan(
+        epoch=epoch,
+        stage_index=int(contract["stages"][-1]["index"]),
+        enabled_heads=tuple(EXPANDED_HEAD_IDS),
+        loss_weights=weights,
+        schedule_digest=expanded_schedule_digest(raw),
+        target_schema=str(contract["target_schema"]),
+        target_schema_digest=TARGET_SCHEMA_DIGEST,
+    )

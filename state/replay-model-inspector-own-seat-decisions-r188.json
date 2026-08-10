@@ -1,0 +1,52 @@
+{
+  "schema": "poke_bot.replay_model_inspector_own_seat_decisions/v1",
+  "owner_decision_revision": 188,
+  "recorded_at_utc": "2026-08-08T00:38:19Z",
+  "status": "active",
+  "activated_at_utc": "2026-08-08T01:24:17Z",
+  "activation_receipt": "state/replay-model-inspector-own-seat-decisions-activation-r188.json",
+  "identity": {
+    "owner_asserted_agent_name": "Challengestone",
+    "seat_authority": "archived_submission_bound_own_agent_seat",
+    "fixed_numeric_seat_allowed": false,
+    "name_only_seat_inference_allowed": false,
+    "seat_may_vary_by_game": true
+  },
+  "decision_visibility": {
+    "selector_scope": "own_agent_decisions_only",
+    "decision_step_api_scope": "own_agent_decisions_only",
+    "required_row_status": "ACTIVE",
+    "required_observation_identity": "integer_current.yourIndex_equals_archived_own_seat",
+    "inactive_row_stale_select_behavior": "ignore",
+    "missing_malformed_or_mismatched_your_index": "unavailable_with_explicit_reason",
+    "direct_opponent_trace_request": "reject_with_explicit_reason",
+    "missing_or_ambiguous_own_seat": "unavailable_with_explicit_reason"
+  },
+  "causal_reconstruction": {
+    "opponent_events_retained_as_hidden_history": true,
+    "opponent_events_selectable": false,
+    "opponent_model_outputs_recomputed": false,
+    "own_decision_history_must_remain_behaviorally_unchanged": true
+  },
+  "safety": {
+    "read_only": true,
+    "checkpoint_or_replay_mutation": false,
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_authority": false,
+    "training_service_restart_allowed": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_inspector_api_and_static_ui",
+    "may_run_during_healthy_training": true,
+    "requires_inspector_service_restart": true,
+    "required_validation": [
+      "own_agent_first_seat_filter_test",
+      "own_agent_second_seat_filter_test",
+      "direct_opponent_trace_rejection_test",
+      "missing_or_ambiguous_own_seat_fail_closed_test",
+      "opponent_events_retained_in_causal_history_test",
+      "challengestone_identity_display_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-own-seat-decisions-activation-r188.json"
+  }
+}

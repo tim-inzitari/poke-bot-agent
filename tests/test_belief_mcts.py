@@ -12,10 +12,11 @@ from poke_bot.belief import (
     simulator_version,
 )
 from poke_bot.belief_mcts import (
-    _BranchHistory,
     BeliefEdge,
     BeliefMCTS,
     BeliefNode,
+    _BranchHistory,
+    _DecisionEvaluationCache,
     factorize_visit_policy,
     information_state_fingerprint,
     is_explicit_chance,
@@ -349,6 +350,79 @@ def test_belief_tree_minimax_uses_root_relative_values() -> None:
     opp_node = BeliefNode("opp", actor=1, depth=1, edges=[high, low], visit=4)
     assert engine._select_edge(root_node, root_seat=0) is high
     assert engine._select_edge(opp_node, root_seat=0) is low
+
+
+def test_leaf_evaluation_cache_reuses_only_the_same_attested_scenario() -> None:
+    """The cache copies frozen output but keeps each node's visits separate."""
+
+    engine = object.__new__(BeliefMCTS)
+    engine.own_deck = tuple([1] * 60)
+    engine.matchup_model_route = -1
+    calls: list[list[list[int]]] = []
+
+    def leaf_eval(packets):
+        packet = packets[0]
+        combos = [list(combo) for combo in packet.action_combos_override]
+        calls.append(combos)
+        return [
+            SimpleNamespace(
+                combos=combos,
+                priors=[1.0 / len(combos)] * len(combos),
+                value=0.25,
+            )
+        ]
+
+    engine.leaf_eval = leaf_eval
+    obs = _observation()
+    branch = _BranchHistory(
+        boards={0: [], 1: []},
+        previous_actions={0: [], 1: []},
+        last_action={0: None, 1: None},
+    )
+    cache = _DecisionEvaluationCache()
+    first = BeliefNode("first", actor=0, depth=1)
+    value, issued = engine._evaluate_node_cached(
+        first,
+        obs,
+        root_seat=0,
+        particle=None,
+        branch=branch,
+        evaluation_cache=cache,
+        hidden_or_chance_scenario="native-attested-same-scenario",
+    )
+    assert issued is True
+    assert value == pytest.approx(0.25)
+
+    second = BeliefNode("second", actor=0, depth=1)
+    cached_value, cached_issued = engine._evaluate_node_cached(
+        second,
+        obs,
+        root_seat=0,
+        particle=None,
+        branch=branch,
+        evaluation_cache=cache,
+        hidden_or_chance_scenario="native-attested-same-scenario",
+    )
+    assert cached_issued is False
+    assert cached_value == pytest.approx(0.25)
+    assert len(calls) == 1
+    assert cache.hits == 1
+    assert cache.misses == 1
+    assert first.edges is not second.edges
+    assert first.edges[0].visit == second.edges[0].visit == 0
+
+    third = BeliefNode("third", actor=0, depth=1)
+    _value, changed_scenario_issued = engine._evaluate_node_cached(
+        third,
+        obs,
+        root_seat=0,
+        particle=None,
+        branch=branch,
+        evaluation_cache=cache,
+        hidden_or_chance_scenario="different-hidden-or-chance-scenario",
+    )
+    assert changed_scenario_issued is True
+    assert len(calls) == 2
 
 
 def test_visit_policy_factorization_preserves_ordered_mass() -> None:

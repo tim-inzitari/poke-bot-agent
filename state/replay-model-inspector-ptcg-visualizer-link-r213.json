@@ -1,0 +1,41 @@
+{
+  "schema": "poke_bot.replay_model_inspector_ptcg_visualizer_link/v1",
+  "owner_revision": 213,
+  "status": "active",
+  "effective_date": "2026-08-10",
+  "link": {
+    "label": "Open replay in PTCG Visualizer",
+    "url_template": "https://ptcgvis.heroz.jp/Visualizer/Replay/<replay-id>/0",
+    "identifier_source": "archived_exact_decimal_episode_id",
+    "target": "_blank",
+    "noopener": true,
+    "noreferrer": true,
+    "referrer_policy": "no-referrer"
+  },
+  "boundary": {
+    "replay_payload_forwarded": false,
+    "model_data_forwarded": false,
+    "dashboard_credentials_forwarded": false,
+    "external_write_authority": false,
+    "training_authority": false,
+    "submission_authority": false,
+    "replay_mutation_authority": false
+  },
+  "activation_receipt": {
+    "activated_at_utc": "2026-08-10T17:21:52Z",
+    "service": "pokebot-replay-model-inspector.service",
+    "dashboard_path": "http://bert:8780/replay-inspector/",
+    "rendered_game_id": "91706129",
+    "rendered_href": "https://ptcgvis.heroz.jp/Visualizer/Replay/91706129/0",
+    "source_sha256": {
+      "replay_inspector/web/app.js": "a53f11276eddd4f2977a3d3ea249ba55f11224b544ee95d612f1795eb2c33ceb",
+      "replay_inspector/web/styles.css": "5bc2b8b7816da6654fdbaf92db06a78977992f091d3fc7b9844b9d473e6f231d",
+      "tests/test_replay_inspector_web_static.py": "f536ce44f21496df6aad4b53cc6ae61900effa4a07730cdc8dcb89a030aa4a74"
+    },
+    "focused_tests": "16 passed",
+    "node_syntax_check": "passed",
+    "live_static_asset_check": "passed",
+    "rendered_link_check": "passed",
+    "external_site_automation_check": "blocked_by_client_site_policy"
+  }
+}

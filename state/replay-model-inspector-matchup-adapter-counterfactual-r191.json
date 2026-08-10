@@ -1,0 +1,51 @@
+{
+  "schema": "poke_bot.replay_model_inspector_matchup_adapter_counterfactual/v1",
+  "owner_decision_revision": 191,
+  "recorded_at_utc": "2026-08-08T02:00:00Z",
+  "status": "active_read_only",
+  "comparison": {
+    "scope": "single_checksum_bound_trace_ready_decision",
+    "adapter_on": "exact_submitted_runtime_policy_with_applied_routable_route",
+    "adapter_off": "exact_forward_with_only_matchup_adapter_route_bypassed",
+    "show_selected_action_both_states": true,
+    "show_legal_action_probabilities_both_states": true,
+    "show_signed_probability_change": true,
+    "sign_convention": "adapter_on_minus_adapter_off",
+    "historical_telemetry_claimed": false,
+    "reproduction_label": "recomputed_not_historical"
+  },
+  "availability": {
+    "requires_exact_submitted_runtime_parity": true,
+    "requires_runtime_activation_applied": true,
+    "requires_nonnegative_routable_route": true,
+    "unknown_or_unroutable_route": "unavailable_with_reason",
+    "unattested_runtime": "unavailable_with_reason",
+    "force_unknown_route_allowed": false
+  },
+  "safety": {
+    "read_only": true,
+    "checkpoint_or_parameter_mutation": false,
+    "replay_mutation": false,
+    "training_or_selector_authority": false,
+    "evaluation_replays_training_eligible": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_inspector_api_and_static_ui",
+    "may_run_during_healthy_training": true,
+    "requires_inspector_service_restart": true,
+    "activated_at_utc": "2026-08-08T02:06:04Z",
+    "managed_service": "pokebot-replay-model-inspector.service",
+    "live_url": "http://bert:8780/replay-inspector/",
+    "required_validation": [
+      "adapter_on_matches_runtime_baseline_test",
+      "adapter_off_matches_exact_no_adapter_forward_test",
+      "per_action_probability_delta_sign_test",
+      "choice_change_display_test",
+      "unknown_route_unavailable_test",
+      "unattested_runtime_unavailable_test",
+      "checkpoint_state_restoration_test",
+      "mobile_comparison_table_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-matchup-adapter-counterfactual-activation-r191.json"
+  }
+}

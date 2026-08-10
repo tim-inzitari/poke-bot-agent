@@ -1,0 +1,89 @@
+{
+  "schema": "poke_bot.replay_model_inspector_head_faq_guide_shadow/v1",
+  "owner_decision_revision": 204,
+  "recorded_at_utc": "2026-08-10T14:54:00Z",
+  "status": "active",
+  "scope": {
+    "service": "pokebot-replay-model-inspector.service",
+    "host": "elmo",
+    "read_only": true,
+    "policy_head_count": 19,
+    "guide_shadow_policy_authority": false
+  },
+  "head_faq": {
+    "audience": "nontechnical_friend",
+    "per_head_fields": [
+      "what_it_is_looking_for",
+      "what_that_means",
+      "time_horizon",
+      "important_caveat",
+      "current_decision_policy_effect"
+    ],
+    "current_policy_setting": "1x_baseline",
+    "current_effect_method": "exact_leave_one_head_out_final_policy_recomputation",
+    "nonlinear_effects_are_additive": false,
+    "death_risk_mapping": {
+      "eventual_loss": ["outcome_distribution", "value"],
+      "before_next_own_decision_knockout": ["opponent_response.knockout"],
+      "next_1_2_3_own_decisions_knockout": ["tactical_outcomes.own_knockout"],
+      "lethal_threat": "our_offensive_prize_take_within_eight_later_own_decision_frames"
+    }
+  },
+  "guide_shadow": {
+    "schema": "poke_bot.replay_model_inspector.guide_shadow/v1",
+    "source": "checksum_attested_exact_submitted_runtime_guide_registry",
+    "single_exact_deck_match_required": true,
+    "ambiguous_or_missing_match": "unavailable",
+    "training_only": true,
+    "historical_execution": false,
+    "policy_authority": false,
+    "policy_logit_delta": 0.0,
+    "action_override_allowed": false,
+    "ui_toggle": "model_only_or_show_guide_recommendation",
+    "toggle_changes_policy_probabilities": false,
+    "toggle_reports_model_guide_choice_agreement": true,
+    "toggle_names_model_action_and_hypothetical_guide_action": true
+  },
+  "index_ordering": {
+    "submissions": "newest_exact_decimal_id_first",
+    "games_and_episodes": "newest_exact_decimal_id_first",
+    "decision_steps": "chronological_earliest_first"
+  },
+  "live_verification": {
+    "submission_id": "55378392",
+    "episode_id": "91468417",
+    "step_index": 15,
+    "factorized_stage": 0,
+    "reproduction_status": "recomputed_not_historical",
+    "head_count": 19,
+    "guide_id": "alakazam",
+    "guide_version": "powerful-hand-v1",
+    "guide_recommended_index": 2,
+    "guide_score_margin": 2.5999999999999996,
+    "guide_agrees_with_recorded_action": true,
+    "guide_agrees_with_model_action": true,
+    "guide_policy_authority": false,
+    "guide_policy_logit_delta": 0.0,
+    "rendered_head_faq_count": 19,
+    "rendered_action_q_explanation_verified": true,
+    "newest_submission_ids_first": ["55378477", "55378392", "55367099", "55362452"],
+    "newest_episode_ids_first_for_selected_submission": ["91662418", "91642002", "91639203", "91632888"]
+  },
+  "deployment": {
+    "inference_sha256": "c67648139a4a9ab49c7f591e8dadc022b35c1d45c2e91042a7f14b5c7cc97733",
+    "server_sha256": "e63e351158c5d23e0b4299d39c3af919e5dacf2a2ca5ef35b3856e02208abb43",
+    "web_index_sha256": "5fd73ab6cb87578bde020f948e7521cce50d2b40eef9157d3191b7f8441806b4",
+    "web_app_sha256": "22b1055e571d6443ff3beed82306feffa2dc3c66aaed9118d3fb4378d9f2c2ee",
+    "web_styles_sha256": "554341411f05863c89f8c48ba2899ac92ff1f65bdc02b173798bf6b682a1fc1c",
+    "focused_tests_passed": 57,
+    "service_health": "ok"
+  },
+  "safety": {
+    "checkpoint_mutated": false,
+    "submitted_bundle_mutated": false,
+    "replay_mutated": false,
+    "training_state_mutated": false,
+    "guide_changes_policy": false,
+    "evaluation_replays_training_eligible": false
+  }
+}

@@ -35,6 +35,30 @@ class WorkerPoolStopped(RuntimeError):
     """The parent cancelled an active simulator pool."""
 
 
+def recycle_task_limit(*, recycle_games: int, max_games_per_task: int) -> int:
+    """Return a conservative ``maxtasksperchild`` bound for packed jobs.
+
+    ``multiprocessing.Pool`` counts submitted *tasks*, while the production
+    lifecycle contract is expressed in simulated games.  A packed task may
+    contain several independent Libcg games, so using ``recycle_games``
+    directly would silently multiply a child's native-state lifetime.  Round
+    down so a child can never exceed the configured game budget solely because
+    a packet is full.  A partial final packet therefore only recycles early.
+    """
+
+    budget = int(recycle_games)
+    packet = int(max_games_per_task)
+    if budget < 1:
+        raise ValueError("recycle_games must be positive")
+    if packet < 1:
+        raise ValueError("max_games_per_task must be positive")
+    if packet > budget:
+        raise ValueError(
+            "max_games_per_task cannot exceed the worker recycle game budget"
+        )
+    return budget // packet
+
+
 def _env_truthy(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() not in ("", "0", "false", "no", "off")
 
@@ -418,12 +442,22 @@ class WorkerPool:
         cg_lib_path: Optional[str] = None,
         remote_channel=None,
         capacity_recovery_grace_s: Optional[float] = None,
+        max_games_per_task: int = 1,
     ) -> None:
         # Default worker count comes from the central hardware profile (all 32
         # CPU threads on the dedicated box); recycle_games bounds libcg's slow
         # per-process leak so long unattended runs have no unbounded RAM growth.
         self.num_workers = num_workers or config.HARDWARE.sim_workers
         self.recycle_games = recycle_games or config.HARDWARE.worker_recycle_games
+        # A normal pool task contains one game.  The r182 remote transport
+        # deliberately permits up to four independent games in one task; bind
+        # that fact here rather than letting ``maxtasksperchild`` stretch the
+        # 256-game libcg lifetime to 1,024 games.
+        self.max_games_per_task = int(max_games_per_task)
+        self.max_tasks_per_child = recycle_task_limit(
+            recycle_games=int(self.recycle_games),
+            max_games_per_task=self.max_games_per_task,
+        )
         self.cg_lib_path = cg_lib_path or os.environ.get("CG_LIB_PATH")
         # Pool briefly retires children at ``maxtasksperchild`` before their
         # replacements are alive.  That is expected, but a capacity hole that
@@ -462,7 +496,7 @@ class WorkerPool:
 
     def __enter__(self) -> "WorkerPool":
         ctx = mp.get_context("spawn")
-        maxtasks = self.recycle_games
+        maxtasks = self.max_tasks_per_child
         remote_channel = self.remote_channel
         if isinstance(remote_channel, dict):
             resp_qs = list(remote_channel.get("resp_qs") or [])

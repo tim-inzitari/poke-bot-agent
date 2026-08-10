@@ -1,0 +1,250 @@
+{
+  "bounded_max_games": 2048,
+  "by_context": {
+    "main": {
+      "agreed": 15182,
+      "agreement_rate": 0.9166767298635431,
+      "disagreed": 1380,
+      "labeled": 16562
+    },
+    "setup_active": {
+      "agreed": 1086,
+      "agreement_rate": 0.9568281938325991,
+      "disagreed": 49,
+      "labeled": 1135
+    },
+    "setup_bench": {
+      "agreed": 364,
+      "agreement_rate": 0.33955223880597013,
+      "disagreed": 708,
+      "labeled": 1072
+    }
+  },
+  "by_opponent": {
+    "alakazam": {
+      "agreed": 257,
+      "agreement_rate": 0.8711864406779661,
+      "disagreed": 38,
+      "labeled": 295
+    },
+    "aman-crustle-fighting": {
+      "agreed": 79,
+      "agreement_rate": 0.9634146341463414,
+      "disagreed": 3,
+      "labeled": 82
+    },
+    "archaludon-ex": {
+      "agreed": 684,
+      "agreement_rate": 0.8496894409937888,
+      "disagreed": 121,
+      "labeled": 805
+    },
+    "biohack-day2-new": {
+      "agreed": 297,
+      "agreement_rate": 0.9252336448598131,
+      "disagreed": 24,
+      "labeled": 321
+    },
+    "biohack-meta-20260707": {
+      "agreed": 175,
+      "agreement_rate": 0.8373205741626795,
+      "disagreed": 34,
+      "labeled": 209
+    },
+    "crustle": {
+      "agreed": 441,
+      "agreement_rate": 0.8981670061099797,
+      "disagreed": 50,
+      "labeled": 491
+    },
+    "cynthia-garchomp-ex": {
+      "agreed": 136,
+      "agreement_rate": 0.8947368421052632,
+      "disagreed": 16,
+      "labeled": 152
+    },
+    "dedquoc-rule-based": {
+      "agreed": 72,
+      "agreement_rate": 0.9,
+      "disagreed": 8,
+      "labeled": 80
+    },
+    "dragapult-dusknoir": {
+      "agreed": 283,
+      "agreement_rate": 0.8984126984126984,
+      "disagreed": 32,
+      "labeled": 315
+    },
+    "dudunsparce": {
+      "agreed": 267,
+      "agreement_rate": 0.8725490196078431,
+      "disagreed": 39,
+      "labeled": 306
+    },
+    "garchomp": {
+      "agreed": 434,
+      "agreement_rate": 0.875,
+      "disagreed": 62,
+      "labeled": 496
+    },
+    "generic-heuristic": {
+      "agreed": 125,
+      "agreement_rate": 0.8802816901408451,
+      "disagreed": 17,
+      "labeled": 142
+    },
+    "hammer-pult": {
+      "agreed": 390,
+      "agreement_rate": 0.896551724137931,
+      "disagreed": 45,
+      "labeled": 435
+    },
+    "heuristic-baseline": {
+      "agreed": 162,
+      "agreement_rate": 0.8852459016393442,
+      "disagreed": 21,
+      "labeled": 183
+    },
+    "hops-trevenant": {
+      "agreed": 340,
+      "agreement_rate": 0.8831168831168831,
+      "disagreed": 45,
+      "labeled": 385
+    },
+    "kokinn-lucario-search-915": {
+      "agreed": 159,
+      "agreement_rate": 0.8833333333333333,
+      "disagreed": 21,
+      "labeled": 180
+    },
+    "lucario": {
+      "agreed": 490,
+      "agreement_rate": 0.9090909090909091,
+      "disagreed": 49,
+      "labeled": 539
+    },
+    "makthanithin-1084-5": {
+      "agreed": 109,
+      "agreement_rate": 0.9159663865546218,
+      "disagreed": 10,
+      "labeled": 119
+    },
+    "marnie-s-grimmsnarl-ex": {
+      "agreed": 97,
+      "agreement_rate": 0.8660714285714286,
+      "disagreed": 15,
+      "labeled": 112
+    },
+    "penguin-public-scores-915": {
+      "agreed": 118,
+      "agreement_rate": 0.9007633587786259,
+      "disagreed": 13,
+      "labeled": 131
+    },
+    "plamen06-pokemon-steel": {
+      "agreed": 144,
+      "agreement_rate": 0.8228571428571428,
+      "disagreed": 31,
+      "labeled": 175
+    },
+    "rauff-ptcg-advanced": {
+      "agreed": 90,
+      "agreement_rate": 0.9090909090909091,
+      "disagreed": 9,
+      "labeled": 99
+    },
+    "rockets-mewtwo": {
+      "agreed": 478,
+      "agreement_rate": 0.8786764705882353,
+      "disagreed": 66,
+      "labeled": 544
+    },
+    "roman-baseline-v10": {
+      "agreed": 225,
+      "agreement_rate": 0.8152173913043478,
+      "disagreed": 51,
+      "labeled": 276
+    },
+    "roman-v7-crustle-lucario": {
+      "agreed": 166,
+      "agreement_rate": 0.9120879120879121,
+      "disagreed": 16,
+      "labeled": 182
+    },
+    "rv1922-ai-battle": {
+      "agreed": 128,
+      "agreement_rate": 0.9343065693430657,
+      "disagreed": 9,
+      "labeled": 137
+    },
+    "ryota-alakazam-best5": {
+      "agreed": 177,
+      "agreement_rate": 0.8676470588235294,
+      "disagreed": 27,
+      "labeled": 204
+    },
+    "starmie": {
+      "agreed": 380,
+      "agreement_rate": 0.8857808857808858,
+      "disagreed": 49,
+      "labeled": 429
+    },
+    "teal-mask-ogerpon-ex": {
+      "agreed": 8879,
+      "agreement_rate": 0.888521965375763,
+      "disagreed": 1114,
+      "labeled": 9993
+    },
+    "team-rockets-spidops": {
+      "agreed": 343,
+      "agreement_rate": 0.8772378516624041,
+      "disagreed": 48,
+      "labeled": 391
+    },
+    "thwackey": {
+      "agreed": 285,
+      "agreement_rate": 0.8850931677018633,
+      "disagreed": 37,
+      "labeled": 322
+    },
+    "yaminh-ai-challenge": {
+      "agreed": 96,
+      "agreement_rate": 0.9504950495049505,
+      "disagreed": 5,
+      "labeled": 101
+    },
+    "yaroslav-lucario-v2-crustle": {
+      "agreed": 126,
+      "agreement_rate": 0.9130434782608695,
+      "disagreed": 12,
+      "labeled": 138
+    }
+  },
+  "by_outcome": {
+    "loss": {
+      "agreed": 8822,
+      "agreement_rate": 0.8911111111111111,
+      "disagreed": 1078,
+      "labeled": 9900
+    },
+    "win": {
+      "agreed": 7810,
+      "agreement_rate": 0.8805953320554741,
+      "disagreed": 1059,
+      "labeled": 8869
+    }
+  },
+  "decisions": 149916,
+  "games": 2048,
+  "guide_agreed_stages": 16632,
+  "guide_agreement_rate": 0.8861420427300336,
+  "guide_disagreed_stages": 2137,
+  "guide_labeled_stages": 18769,
+  "policy_stages": 165455,
+  "schema": "poke_bot.teal_guide_adherence_audit/v1",
+  "selected_index_derivation_mismatches": 0,
+  "setup_bench_decline_rate": 0.5923507462686567,
+  "setup_bench_declines": 635,
+  "setup_bench_prompts_with_nonempty_guide_preference": 1072,
+  "source_shard": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_teal-mask-ogerpon-ex_temporal1_8k_v1_20260723/shards/iter_00012.jsonl"
+}

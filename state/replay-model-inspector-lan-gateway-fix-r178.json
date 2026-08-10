@@ -1,0 +1,82 @@
+{
+  "schema": "poke_bot.replay_model_inspector_lan_gateway_fix/v1",
+  "owner_decision_revision": 178,
+  "recorded_at_utc": "2026-08-07T23:32:46Z",
+  "status": "active",
+  "problem": {
+    "summary": "The absolute public dashboard link cannot be reached by LAN clients because the router does not provide NAT hairpinning.",
+    "public_hostname": "mc.tsinzitari.com",
+    "public_ipv4": "70.143.63.122",
+    "bert_lan_ipv4": "192.168.1.158",
+    "direct_dashboard": "http://192.168.1.158:8780/",
+    "observed_direct_prefix_status_before_fix": 404,
+    "external_gateway_healthy": true,
+    "inspector_and_tunnel_healthy": true
+  },
+  "product": {
+    "dashboard_link_href": "/replay-inspector/",
+    "same_origin_relative_link": true,
+    "works_through_external_caddy": true,
+    "works_through_direct_lan_dashboard": true,
+    "opens_separate_page": true,
+    "embedded_in_dashboard": false
+  },
+  "lan_gateway": {
+    "host": "bert",
+    "manager": "launchd",
+    "dashboard_listener": "0.0.0.0:8780",
+    "route_prefix": "/replay-inspector/",
+    "allowed_clients": "loopback_private_or_link_local_only",
+    "allowed_methods": [
+      "GET"
+    ],
+    "reject_cross_site_fetches": true,
+    "reject_unsafe_or_ambiguous_paths": true,
+    "strip_route_prefix_before_upstream": true,
+    "upstream": "127.0.0.1:8792",
+    "upstream_client_configurable": false,
+    "upstream_host_header": "127.0.0.1:8791",
+    "follow_upstream_redirects": false,
+    "bounded_connect_and_read_timeouts": true,
+    "bounded_response_bytes": true,
+    "strip_browser_authorization": true,
+    "strip_browser_cookies": true,
+    "strip_browser_origin_and_referrer": true,
+    "strip_forwarding_and_fetch_metadata": true,
+    "strip_upstream_set_cookie_and_cors": true
+  },
+  "service_boundary": {
+    "inspector_service": "pokebot-replay-model-inspector.service",
+    "inspector_bind": "elmo:127.0.0.1:8791",
+    "encrypted_tunnel_bind": "bert:127.0.0.1:8792",
+    "inspector_service_remains_separate": true,
+    "dashboard_transport_proxy_only": true,
+    "dashboard_model_or_service_authority": false,
+    "direct_inspector_lan_bind_allowed": false,
+    "direct_inspector_public_bind_allowed": false,
+    "external_caddy_route_or_auth_changed": false,
+    "training_service_restart_allowed": false,
+    "evaluation_replays_training_eligible": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_dashboard_gateway",
+    "may_run_during_healthy_training": true,
+    "requires_managed_dashboard_restart": true,
+    "activated_at_utc": "2026-08-07T23:47:37Z",
+    "required_validation": [
+      "relative_link_static_test",
+      "fixed_upstream_and_prefix_strip_test",
+      "unsafe_path_and_ssrf_rejection_test",
+      "credential_and_origin_stripping_test",
+      "cross_site_rejection_test",
+      "get_only_test",
+      "dashboard_status_non_regression_test",
+      "bounded_upstream_failure_test",
+      "live_direct_lan_root_asset_api_and_trace_test",
+      "live_external_gateway_non_regression_test",
+      "loopback_listener_non_regression_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-lan-gateway-fix-activation-r178.json",
+    "receipt_sha256": "sha256:da5f9fd9b16762027946ef06d87a96ddf61af73d7e03ac461773a2eeb9c956c4"
+  }
+}

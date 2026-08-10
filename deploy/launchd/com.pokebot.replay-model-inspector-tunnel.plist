@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pokebot.replay-model-inspector-tunnel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/ssh</string>
+    <string>-N</string>
+    <string>-T</string>
+    <string>-n</string>
+    <string>-o</string><string>BatchMode=yes</string>
+    <string>-o</string><string>PasswordAuthentication=no</string>
+    <string>-o</string><string>KbdInteractiveAuthentication=no</string>
+    <string>-o</string><string>StrictHostKeyChecking=yes</string>
+    <string>-o</string><string>ExitOnForwardFailure=yes</string>
+    <string>-o</string><string>GatewayPorts=no</string>
+    <string>-o</string><string>ForwardAgent=no</string>
+    <string>-o</string><string>ControlMaster=no</string>
+    <string>-o</string><string>ServerAliveInterval=15</string>
+    <string>-o</string><string>ServerAliveCountMax=3</string>
+    <string>-o</string><string>ConnectTimeout=5</string>
+    <string>-o</string><string>ConnectionAttempts=1</string>
+    <string>-o</string><string>LogLevel=ERROR</string>
+    <string>-L</string>
+    <string>127.0.0.1:8792:127.0.0.1:8791</string>
+    <string>admin@192.168.1.143</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/tsinzitari/Library/Logs/pokebot-replay-model-inspector-tunnel.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/tsinzitari/Library/Logs/pokebot-replay-model-inspector-tunnel.stderr.log</string>
+</dict>
+</plist>

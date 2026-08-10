@@ -1,0 +1,45 @@
+{
+  "schema": "poke_bot.replay_model_inspector_tailscale_local_gateway/v1",
+  "owner_decision_revision": 183,
+  "recorded_at_utc": "2026-08-08T00:00:46Z",
+  "status": "staged",
+  "problem": {
+    "requested_url": "http://bert:8780/replay-inspector/",
+    "bert_hostname_ipv4": "100.106.229.91",
+    "observed_status_before_fix": 403,
+    "observed_body_before_fix": "private clients only",
+    "root_cause": "Python ipaddress does not classify the Tailscale shared-address IPv4 block as RFC1918 private, so the direct gateway rejected a valid private-overlay peer before proxying."
+  },
+  "gateway_change": {
+    "allowed_private_overlay": "100.64.0.0/10",
+    "purpose": "Tailscale IPv4 peers reaching the already-established direct dashboard listener",
+    "public_ipv4_allowed": false,
+    "hostname_or_forwarded_header_used_for_peer_authorization": false,
+    "existing_local_host_and_origin_validation_retained": true,
+    "existing_get_only_and_fixed_upstream_rules_retained": true,
+    "existing_path_and_response_bounds_retained": true,
+    "inspector_and_tunnel_loopback_only": true
+  },
+  "safety": {
+    "dashboard_transport_proxy_only": true,
+    "browser_credentials_forwarded": false,
+    "training_or_selector_authority": false,
+    "evaluation_replays_training_eligible": false,
+    "training_service_restart_allowed": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_dashboard_gateway",
+    "may_run_during_healthy_training": true,
+    "requires_managed_dashboard_restart": true,
+    "must_not_restart_training": true,
+    "required_validation": [
+      "tailscale_shared_address_boundary_unit_test",
+      "public_and_adjacent_address_rejection_test",
+      "live_bert_hostname_root_asset_api_test",
+      "live_lan_ipv4_non_regression_test",
+      "live_external_gateway_non_regression_test",
+      "loopback_listener_non_regression_test"
+    ],
+    "receipt_path": "state/replay-model-inspector-tailscale-local-gateway-activation-r183.json"
+  }
+}

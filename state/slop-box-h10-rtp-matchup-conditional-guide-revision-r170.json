@@ -1,0 +1,46 @@
+{
+  "schema": "poke_bot.slop_box_h10_rtp_matchup_conditional_guide_revision_r170/v1",
+  "goal_revision": 170,
+  "created_at_utc": "2026-08-06T15:46:01.483799+00:00",
+  "status": "synced_to_train_verified",
+  "owner_feedback": "cox_chao_distillation_focus_may_change_by_matchup_deck_less_linear",
+  "guide_contract": "config/deck_guides/slop-box-h10-rtp-north-star-v1.yaml",
+  "guide_contract_sha256": "sha256:cc52544ebe34498327c09774ee5aced3dca37d957f20c7438655d3adec25fd5b",
+  "teacher_module": "poke_bot/teal_mask_ogerpon_heuristics.py",
+  "teacher_module_sha256": "sha256:57c0d03e15f4bc4d2357f7f4e24cd736238a4e5df7431a671a75b118ccc0d004",
+  "guide_version_corpus_bound_unchanged": "teal-mask-ogerpon-ex-slop-box-north-star-v3",
+  "became_matchup_conditional": [
+    "setup_active_Kangaskhan_default_vs_Teal_on_spread_or_dragapult_pressure",
+    "setup_bench_skip_second_Teal_when_opponent_public_sparse_or_prize_ahead",
+    "setup_bench_Clefairy_only_on_public_clef_job",
+    "setup_bench_Wellspring_only_on_public_spread_job",
+    "setup_bench_Bolt_ready_slot_on_bolt_pressure_or_prize_behind",
+    "empty_bench_stop_when_public_jobs_covered_not_forced_Latias_Meowth_shell"
+  ],
+  "still_masked_fused_policy": [
+    "Bolt_KO_timing_and_Energy_discard_source",
+    "Wellspring_Torrential_Pump_bench_target",
+    "attack_selection_or_damage_target",
+    "hidden_opponent_archetype_when_board_exposes_no_signature"
+  ],
+  "gate_note": "\u226590% Cox/Chao held policy_acc remains acting-seat accuracy; MissingNo. excluded; labels must not force one-path setup in every matchup",
+  "audit_receipt": "state/slop-box-h10-rtp-cox-chao-guide-audit-r170.json",
+  "bootstrap": {
+    "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+    "left_untouched": true,
+    "reason": "prior oneshot inactive/success; sibling CE intensify owns systemd boundary if needed; guide reload not forced mid-healthy-run"
+  },
+  "crustle": {
+    "untouched": true,
+    "no_deletes": true
+  },
+  "train_verify": {
+    "teacher_sha256": "sha256:57c0d03e15f4bc4d2357f7f4e24cd736238a4e5df7431a671a75b118ccc0d004",
+    "guide_sha256": "sha256:cc52544ebe34498327c09774ee5aced3dca37d957f20c7438655d3adec25fd5b",
+    "teal_over_kang_spread_scores": [
+      2.6,
+      3.1
+    ],
+    "bootstrap_unit_active_state": "inactive"
+  }
+}

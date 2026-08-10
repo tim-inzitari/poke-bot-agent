@@ -1,0 +1,48 @@
+{
+  "schema": "poke_bot.slop_box_all_heads_training_fix_r174/v1",
+  "goal_revision": 174,
+  "created_at_utc": "2026-08-06T21:42:00Z",
+  "status": "staged_no_ce_restart",
+  "live_ce": {
+    "unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+    "MainPID_at_write": 1706695,
+    "do_not_kill": true,
+    "finding": "At outer epochs 1–5 only the five action expanded heads had nonzero loss weights; six strategic expanded heads were schedule-shadow (weight=0, gradient_enabled=false).",
+    "root_cause": "Canonical cumulative expanded schedule (25 epochs) staged enablement; CE maps plan via min(outer_epoch, 25).",
+    "natural_ce_resolution": {
+      "epochs_1_5": ["action_q", "action_type", "action_target", "action_resource", "action_utility"],
+      "epochs_6_10": ["+tactical_outcome", "+opponent_response"],
+      "epochs_11_15": ["+resource_forecast", "+game_phase"],
+      "epochs_16_25_and_outer_gt_25": "all 11 expanded heads nonzero (clamped plan epoch 25)"
+    },
+    "by_epoch40_boundary": "All expanded heads will have been gradient-enabled for outer epochs 16–40 without restart."
+  },
+  "primary_aux_already_learning": [
+    "policy",
+    "value",
+    "aux/archetype",
+    "opp_hand",
+    "opp_remainder",
+    "lethal_threat",
+    "prize_race",
+    "setup_board_outcome",
+    "combo_state",
+    "guide_strategic_directional"
+  ],
+  "rl_boundary_fix": {
+    "when": "after epoch-40 systemd stop, before/while lifting RL hold",
+    "actions": [
+      "Ensure POKEBOT_EXPANDED_HEADS_ENABLED=1 on RL env (already set)",
+      "Ensure specialist registry row keeps combo_state_loss_weight=0.025 and setup_board_outcome_loss_weight=0.025",
+      "Bind expert-matchup adapter bootstrap from markup ca157f97… / expert-matchup-marked-selfplay-equiv-r171",
+      "Pass dormant matchup adapter epochs on RL launcher (registry common_trainer_args already has dormant-matchup-adapter-max-decisions-per-batch)"
+    ],
+    "cannot_hot_bind_ce_schedule": true,
+    "no_ce_restart": true
+  },
+  "adapters": {
+    "ce_n_matchup_adapter_rows": 0,
+    "reason": "relaunch argv omitted adapter flags; CE bootstrap script has no --expert-matchup-adapter-*",
+    "attach_at": "RL start via outputs/state/slop-box-h10-rtp-matchup-adapter-bootstrap-r171.json from marked corpus"
+  }
+}

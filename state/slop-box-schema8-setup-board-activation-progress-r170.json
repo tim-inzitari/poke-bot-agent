@@ -1,0 +1,40 @@
+{
+  "chao_hard": {
+    "active": "inactive",
+    "retain_flag": true
+  },
+  "combo_state": {
+    "chao_hard_retains_flag": "--retain-inherited-h10-combo-state-head",
+    "combo_state_loss_weight": 0.025,
+    "launch_default_teal": 0.025,
+    "registry_bind": "slop-box-h10-combo-setup-weight-bind-r170.json",
+    "setup_board_outcome_loss_weight": 0.025
+  },
+  "coordination": {
+    "1f90a2c3": "RL inactive; guide_curriculum_revision 51!=104; H10 profile repair; combo/setup bound; adapter epochs=1",
+    "34aff525": "adapter learning wired"
+  },
+  "goal_revision": 171,
+  "heads_audit": "2599fa81",
+  "no_crustle_deletes": true,
+  "rl_status": {
+    "active": "inactive",
+    "combo_after_registry_bind": 0.025,
+    "last_failure": "directional guide training contract incomplete (rev 51 vs 104)",
+    "service": "pokebot-final-format-slop-box-h10-rtp-rl.service"
+  },
+  "schema": "poke_bot.slop_box_schema8_setup_board_activation_progress_r170/v1",
+  "schema8_remat": {
+    "activated_root": "/home/admin/pokebot-expert-guide-src-schema8-full-r170",
+    "inflight_schema6_left_alone": true,
+    "out_dir": "/mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v5-r170-schema8-jul24-30",
+    "setup_board_labels_yet": false,
+    "status": "activated_parallel_jul24_30_running",
+    "window": {
+      "end": "2026-07-30",
+      "start": "2026-07-24"
+    }
+  },
+  "status": "schema8_activated_remat_running_setup_labels_pending",
+  "updated_at_utc": "2026-08-06T19:30:26.625114+00:00"
+}

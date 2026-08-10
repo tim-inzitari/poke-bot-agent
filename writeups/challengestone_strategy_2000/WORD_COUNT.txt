@@ -1,0 +1,15 @@
+Official Kaggle Strategy-track cap: 2,000 words.
+
+Conservative final count: 1,547 tokens matching
+
+    [A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*
+
+in text extracted from all three PDF pages with pypdf 6.1.1. This count includes
+the title/subtitle, section headings, figure labels and caption, table-like
+content, selected sources, page numbers, and the repeated draft header/footer.
+It therefore leaves a 453-word margin even under a broader-than-body count.
+
+TeX source: main.tex
+PDF pages: 3
+Compiler used for the delivered PDF: Tectonic 0.17.0
+Count recorded: 2026-08-08 (America/New_York)

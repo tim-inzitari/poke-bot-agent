@@ -1,0 +1,81 @@
+{
+  "schema": "poke_bot.replay_model_inspector_submission_provenance_activation/v1",
+  "owner_decision_revision": 194,
+  "recorded_at_utc": "2026-08-09T05:14:49Z",
+  "status": "active_exact_replay_and_dynamic_trace",
+  "submission": {
+    "submission_id": 55362452,
+    "submission_id_text": "55362452",
+    "label": "alakazam owner second copy iter 15 copy 2 first c2b01f5a12a4",
+    "checkpoint_sha256": "sha256:c2b01f5a12a4164e282f278e104da3dd5d5b0c1467d592e01d832be141fcf69c",
+    "bundle_sha256": "sha256:c8cbad2718291db32ecacb6f7bcf5606ad38d0b8ab3e6b1b19d4a998e336b0f2",
+    "matchup_tree_sha256": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588"
+  },
+  "provenance": {
+    "evidence_sha256": "sha256:4b472040075817fbba4fbd104f2c402b8068041a7b9b6e216f95e235fe2063c7",
+    "runtime_parity_receipt_sha256": "sha256:3ecb401af2eb578db2ecb5a222e3c8955e19a880896da449970eff2a92df01c2",
+    "runtime_source_tree_sha256": "sha256:f466199aad6d5d154dabe0040c2de74d838769658c386c060f4748877694c46a",
+    "live_manifest_sha256": "sha256:68b6d296d5ec23a9683210c523c3e04f0e3962cce4f286cd81a43ea1025ef7e6",
+    "replay_bindings": 42,
+    "manifest_submission_count": 8,
+    "manifest_verified_submission_count": 4,
+    "manifest_unresolved_submission_count": 4,
+    "manifest_validation_issues": 0
+  },
+  "cached_replay_outcomes": {
+    "eligible_games": 42,
+    "wins": 27,
+    "nonwins": 15,
+    "win_rate": 0.6428571428571429,
+    "source": "archived_episode_metadata.own_agent.reward"
+  },
+  "dynamic_trace": {
+    "episode_id": 91206412,
+    "step_index": 3,
+    "factorized_stage": 0,
+    "reproduction_status": "recomputed_not_historical",
+    "model_available": true,
+    "architecture_head_count": 19,
+    "fusion_available": true,
+    "matchup_adapter_status": "bypassed",
+    "matchup_adapter_reason": "router selected its explicit unknown/bypass route",
+    "provenance_status": "verified",
+    "alternate_runtime_substituted": false
+  },
+  "multi_runtime_non_regression": {
+    "legacy_submission_id": 55315274,
+    "legacy_episode_id": 90620383,
+    "legacy_step_index": 135,
+    "legacy_model_available": true,
+    "legacy_architecture_head_count": 19,
+    "legacy_matchup_adapter_status": "active_for_decision",
+    "legacy_reproduction_status": "recomputed_not_historical",
+    "max_resident_models": 1,
+    "parent_cache_cleared_before_isolated_runtime": true
+  },
+  "deployed_code": {
+    "inspector_server_sha256": "sha256:ca26ca5113efa734c2486263dbaf91abf7cc1c442a16310699262605d6845564",
+    "isolated_trace_worker_sha256": "sha256:c4e43a3549609e8126481d1dca866b33d27c99e8d0f2d181b9f4cb4cd86d8394",
+    "provenance_builder_sha256": "sha256:ddda0a3f3143be3f3fa39a9a02bb0141ed7eec64544a60b3f1e046bf9c8e3317",
+    "hourly_sync_unit_sha256": "sha256:382a420cd06d2b5b3cf5cbd357b9999f542ecf23313612d4b09fe2653c94806f",
+    "conditional_refresh_sha256": "sha256:d8a070b922c856be01a74761fee5aded82989e0fa04d65e11a99569979734282",
+    "provenance_rebuild_sha256": "sha256:8d531435f09f1c5150014effb7310e0a59890702621610e99446735a22237369"
+  },
+  "managed_state": {
+    "inspector_active": true,
+    "inspector_main_pid": 3474679,
+    "inspector_restart_count": 0,
+    "hourly_timer_active": true,
+    "hourly_timer_enabled": true,
+    "conditional_behavior": "rebuild_and_try_restart_only_after_successful_nonzero_download_sync"
+  },
+  "safety": {
+    "inspector_loopback_only": true,
+    "evaluation_replays_training_eligible": false,
+    "checkpoint_or_bundle_mutated": false,
+    "training_or_selector_authority": false,
+    "training_service_restarted": false,
+    "remote_worker_restarted": false,
+    "unknown_submission_behavior": "replay_only_until_checksum_bound_provenance_exists"
+  }
+}

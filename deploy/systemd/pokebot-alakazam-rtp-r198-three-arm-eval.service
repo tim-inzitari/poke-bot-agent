@@ -1,0 +1,43 @@
+[Unit]
+Description=Alakazam r198 true-RNG three-arm evaluation (evaluation-only)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/rtp_fleet/alakazam-r197-shadow/candidates/r197-bc31f860b8154549b77f3e414127139b02ad4f4905dd76c78974e599ba868e6e/r197-receipt.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/final_format_alakazam_rtp_r175/runtime/specialist_runtime_registry_h10_r175_iter20_terminal.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-rtp-r175-iter20-completion-v1.json
+ConditionPathExists=/home/inzi/poke-bot-agent/.private/rtp-pairing-v2-probes-canonical-seal-v2/true-rng-pairing-capability-v2.json
+# Pairing proof, matched snapshots, cohort, and source-exclusion proof are
+# produced under this evaluation's isolated output root.  Do not require a
+# mutable or stale derived-input path before the one-shot stage can create it.
+ConditionPathExists=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-rtp-r198-three-arm-eval-v1/scripts/stage_alakazam_rtp_r198_three_arm_eval.py
+ConditionPathExists=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-rtp-r198-three-arm-eval-v1/state/matchup_adapter_roster.json
+ConditionPathExists=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-rtp-r198-three-arm-eval-v1/kaggle/input/rtp-eval-cg/eval-cg-closure.json
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-rtp-r198-three-arm-eval-v1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-rtp-r198-three-arm-eval-v1
+# This is an evaluation-only cg closure that initializes the private pairing
+# snapshot DSO, never the upstream submission/runtime cg library.
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-rtp-r198-three-arm-eval-v1/kaggle/input/rtp-eval-cg
+Environment=POKEBOT_ACTIVE_SPECIALIST=alakazam
+Environment=CUDA_VISIBLE_DEVICES=GPU-79cf504f-6573-0b8c-c90e-eb567b7bcfa6
+# The service process itself must never have planner authority.  The runner
+# creates short-lived arm children with a separately frozen arm profile.
+Environment=POKEBOT_USE_RECURSIVE_TURN_PLANNER=0
+Environment=POKEBOT_RTP_CHECKPOINT=
+# The stage performs a read-only r175 two-service/PID/receipt guard.  Do not
+# add Conflicts/BindsTo/PartOf/Requires: they could stop or restart r175.
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/stage_alakazam_rtp_r198_three_arm_eval.py --check --device cuda:0
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/stage_alakazam_rtp_r198_three_arm_eval.py --run --device cuda:0
+Restart=no
+TimeoutStartSec=infinity
+TimeoutStopSec=900
+MemoryHigh=64G
+MemoryMax=80G
+MemorySwapMax=0
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,48 @@
+{
+  "schema": "poke_bot.replay_model_inspector_submitted_adapter_runtime_activation/v1",
+  "owner_decision_revision": 185,
+  "created_at_utc": "2026-08-08T01:47:00Z",
+  "status": "active_inspector_reproduction_future_package_gate_staged",
+  "historical_inspector_reproduction": {
+    "active": true,
+    "scope": "single_checksum_bound_trace_request",
+    "submission_id_text": "55315274",
+    "episode_id": 90620383,
+    "step": 7,
+    "stage": 0,
+    "adapter_status": "active_for_decision",
+    "matched_archetype": "alakazam",
+    "route": 6,
+    "runtime_activation_status": "applied",
+    "serialized_enabled_before_request": false,
+    "cached_model_state_restored_after_request": true,
+    "selected_option_probability_delta": -0.00575941801071167,
+    "reproduction_status": "recomputed_not_historical"
+  },
+  "future_submission_gate": {
+    "implementation_status": "staged_for_next_submission_build_boundary",
+    "trained_bank_requires_runtime_enabled_tree": true,
+    "accepted_zero_output_adapter_routes_allowed": false,
+    "missing_exact_entrypoint_activation_behavior": "fail_closed",
+    "historical_submission_artifacts_changed": false
+  },
+  "deployed_source": {
+    "server_sha256": "sha256:432a3aacb9612a774789038d79a47b1c62ccc395ca49bbf8776a90b9693049a3",
+    "inference_sha256": "sha256:1ea1f989e144c69a7fb1890ad6f1f6b3a6b734822d4eb7ca84c25670f0785794",
+    "service": "pokebot-replay-model-inspector.service",
+    "active": true,
+    "listener": "127.0.0.1:8791"
+  },
+  "validation": {
+    "full_exact_runtime_inspector_tests_passed": 88,
+    "live_active_route_trace": "passed",
+    "live_cache_restoration": "passed",
+    "unknown_route_behavior": "exact_bypass",
+    "unverified_runtime_behavior": "unavailable"
+  },
+  "safety": {
+    "checkpoint_or_replay_mutation": false,
+    "training_service_control_invoked": false,
+    "evaluation_replays_training_eligible": false
+  }
+}

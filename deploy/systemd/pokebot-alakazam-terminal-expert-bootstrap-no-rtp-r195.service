@@ -1,0 +1,29 @@
+[Unit]
+Description=Alakazam terminal 25-epoch expert bootstrap for NO RTP Kaggle submission (r195)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent
+Environment=POKEBOT_ACTIVE_SPECIALIST=alakazam
+Environment=POKEBOT_H10_CAPACITY_ENABLED=1
+Environment=POKEBOT_EXPANDED_HEADS_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_RUNTIME_ENABLED=1
+Environment=POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED=1
+Environment=POKEBOT_COMBO_STATE_HEAD_ENABLED=1
+Environment=POKEBOT_COMBO_STATE_ROUTE_ENABLED=0
+Environment=POKEBOT_COMBO_STATE_ROUTE_SPECIALIST=alakazam
+Environment=POKEBOT_USE_RECURSIVE_TURN_PLANNER=0
+Environment=POKEBOT_OWNER_ALAKAZAM_ALL_HEADS_LIVE_R175=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_alakazam_terminal_expert_bootstrap_r195.py --parent /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_rtp_r175_i_v6_8k/checkpoints/iter_00020.pt --expert-manifest /home/inzi/poke-bot-agent/data/bootstrap/expert-alakazam-last5-2026-08-01-2026-08-05-r175/alakazam/PROTECTED_EXPERT_CORPUS.json --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_terminal_expert_bootstrap_no_rtp_r195 --cpu-pack-root /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_terminal_expert_bootstrap_no_rtp_r195/cpu_pack --curriculum-spec /home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104/state/final_format_alakazam_curriculum_r79/alakazam-strategic-curriculum-r104.json --head-role-map /home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104/state/final_format_alakazam_curriculum_r79/alakazam-strategic-head-roles-r104.json --curriculum-validation /home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104/state/final_format_alakazam_curriculum_r79/alakazam-strategic-curriculum-validation-r104.json --seat-split-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_rtp_r175_i_v6_8k/seat_split_receipts/rehearsal_before_iter_00015.index.json --epochs 25 --batch-size 3072 --learning-rate 2e-5
+Restart=no
+KillMode=mixed
+TimeoutStopSec=900
+MemoryHigh=100G
+MemoryMax=112G
+MemorySwapMax=0
+
+[Install]
+WantedBy=default.target

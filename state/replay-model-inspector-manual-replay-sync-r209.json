@@ -1,0 +1,72 @@
+{
+  "schema": "poke_bot.replay_model_inspector_manual_replay_sync/v1",
+  "owner_decision_revision": 209,
+  "recorded_at_utc": "2026-08-10T15:37:30Z",
+  "status": "active",
+  "control": {
+    "label": "Check Kaggle now",
+    "method": "POST",
+    "path": "/replay-inspector/api/sync",
+    "required_header": {
+      "X-Replay-Sync-Intent": "manual"
+    },
+    "request_body_allowed": false,
+    "managed_service": "pokebot-kaggle-submission-replay-sync.service",
+    "hourly_timer": "pokebot-kaggle-submission-replay-sync.timer",
+    "hourly_timer_unchanged": true,
+    "completion_behavior": "poll_fixed_status_endpoint_then_refresh_index"
+  },
+  "boundary": {
+    "inspector_container_privileged": false,
+    "dashboard_gateway_executes_fixed_command": true,
+    "request_controlled_command_fields": false,
+    "external_access_requires_existing_dashboard_auth": true,
+    "direct_access_requires_private_or_loopback_peer": true,
+    "all_other_inspector_post_requests_denied": true
+  },
+  "authority": {
+    "replay_cache_refresh": true,
+    "training": false,
+    "submission": false,
+    "model_mutation": false,
+    "evaluation_replays_training_eligible": false,
+    "ab_analysis": false
+  },
+  "activation": {
+    "required_validation": [
+      "static_ui_test",
+      "gateway_exact_post_allow_test",
+      "gateway_other_post_deny_test",
+      "fixed_ssh_systemd_command_test",
+      "caddy_validation",
+      "live_manual_sync_request",
+      "hourly_timer_still_enabled"
+    ],
+    "activated_at_utc": "2026-08-10T15:39:53Z",
+    "source_sha256": {
+      "replay_inspector/web/index.html": "b4e02b06437b87613c265cba5d3f3b458337d8fca9bd379ede48cf3184da3c73",
+      "replay_inspector/web/app.js": "8227d507c789b550686a102bf58c271b6f7a0495eedb38d7d195de7f04e870e3",
+      "replay_inspector/web/styles.css": "12a514dc865992914384ea7bd1ceefbceea4e39f55a3d1bf48b895d156cf89dc",
+      "dashboard/lan/server.py": "c6d26123f5065aa6286ef7af538c8b1e5a70e664e6f25713d7a1e61c06d9952c",
+      "deploy/caddy/Caddyfile": "350cdf1d518df512186c61e218cabf4302129c104456f0f595804c26751ab149"
+    },
+    "receipt": {
+      "live_dashboard_server_sha256": "7937d19d97c9edd1c8b48f7d1526ecbb1a3a090557a9707049f868d1aee07006",
+      "live_caddy_sha256": "350cdf1d518df512186c61e218cabf4302129c104456f0f595804c26751ab149",
+      "exact_post_http_status": 202,
+      "missing_intent_post_http_status": 405,
+      "other_post_http_status": 405,
+      "managed_sync_observed_state": "activating",
+      "managed_sync_terminal_state": "inactive_success",
+      "managed_sync_exec_main_status": 0,
+      "new_replay_files": 11,
+      "post_sync_submission_count": 20,
+      "post_sync_verified_record_count": 15,
+      "post_sync_inspector_health": "ok",
+      "hourly_timer_enabled": true,
+      "hourly_timer_changed": false,
+      "focused_tests": "25_passed",
+      "caddy_validation": "passed"
+    }
+  }
+}

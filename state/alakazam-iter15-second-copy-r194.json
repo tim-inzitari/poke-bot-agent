@@ -1,0 +1,47 @@
+{
+  "schema": "poke_bot.alakazam_iter15_second_copy_r194/v1",
+  "owner_decision_revision": 194,
+  "status": "completed_submission_accepted",
+  "specialist_id": "alakazam",
+  "iteration": 15,
+  "owner_intent": "submit one additional checksum-exact Kaggle copy without interrupting training",
+  "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_rtp_r175_i_v6_8k/checkpoints/iter_00015.pt",
+  "checkpoint_sha256": "sha256:c2b01f5a12a4164e282f278e104da3dd5d5b0c1467d592e01d832be141fcf69c",
+  "source_submission_id": 55359777,
+  "source_bundle": "/home/inzi/poke-bot-agent/outputs/submissions/final-format-alakazam-rtp-r175-milestones/iter-00015/copy-1/submission.tar.gz",
+  "source_bundle_sha256": "sha256:c8cbad2718291db32ecacb6f7bcf5606ad38d0b8ab3e6b1b19d4a998e336b0f2",
+  "second_copy": {
+    "copy_number": 2,
+    "turn_order_preference": "first_if_allowed",
+    "competition": "pokemon-tcg-ai-battle",
+    "label": "alakazam owner second copy iter 15 copy 2 first c2b01f5a12a4",
+    "bundle_path": "/home/inzi/poke-bot-agent/outputs/submissions/final-format-alakazam-rtp-r175-milestones/iter-00015/copy-2/submission.tar.gz",
+    "bundle_sha256": "sha256:c8cbad2718291db32ecacb6f7bcf5606ad38d0b8ab3e6b1b19d4a998e336b0f2",
+    "bundle_size_bytes": 117219791,
+    "turn_order_attestation": "/home/inzi/poke-bot-agent/outputs/submissions/final-format-alakazam-rtp-r175-milestones/iter-00015/copy-2/submission.tar.gz.go-first-verified.json",
+    "turn_order_attestation_sha256": "sha256:25ede597963d9914f5282b2f63d2bd9795e8a0a2d079df0487f12a1d1e2cc91d",
+    "queue_status": "accepted",
+    "kaggle_submission_id": 55362452,
+    "kaggle_status": "COMPLETE",
+    "submitted_at": "2026-08-08 23:50:42.590000",
+    "returned_score": 600.0
+  },
+  "authorization": {
+    "uses": 1,
+    "explicit_user_approval": true,
+    "source": "GOAL.md#/decision-ledger/revision-194",
+    "nonce": "alakazam-iter15-copy2-automatic-20260808T234637908813Z",
+    "consumed_receipt": "/home/inzi/.local/state/pokebot/kaggle-submission-attempts/20260808T234845.819913Z-alakazam-iter15-copy2-automatic-20260808T234637908813Z.authorization-consumed.json",
+    "consumed_receipt_sha256": "sha256:a3eb04a3ed551693a1575b9834163f72c40fdadba95c02698b2107f76be5fe9e"
+  },
+  "upload_receipt": "/home/inzi/.local/state/pokebot/kaggle-submission-attempts/20260808T235044.639129Z-alakazam-iter15-copy2-automatic-20260808T234637908813Z.json",
+  "upload_receipt_sha256": "sha256:046b15f032e0c3f46f75215f08138443e5977f0cb6c2594c9c19e640da2b87d7",
+  "pre_network_block_receipt": "/home/inzi/poke-bot-agent/outputs/state/alakazam-iter15-second-copy-r194-pre-network-block.json",
+  "pre_network_block_receipt_sha256": "sha256:e1536dc6863418f52998ca6a9f511a893ee59904accaf7bcd5fb9a1cb7aa6e2e",
+  "non_regression": {
+    "replace_source_submission": false,
+    "mutate_checkpoint_or_bundle": false,
+    "interrupt_training": false,
+    "quota_and_spacing_policy_unchanged": true
+  }
+}

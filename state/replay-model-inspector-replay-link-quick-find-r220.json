@@ -1,0 +1,50 @@
+{
+  "schema": "poke_bot.replay_model_inspector_replay_link_quick_find/v1",
+  "owner_decision_revision": 220,
+  "recorded_at_utc": "2026-08-10T19:26:39Z",
+  "status": "active_read_only_pending_browser_interaction_confirmation",
+  "quick_find": {
+    "surface": "replay_model_inspector_trace_address",
+    "control": "single_pasted_replay_url_input",
+    "query_parameters": {
+      "submission": "submissionId",
+      "episode": "episodeId"
+    },
+    "unrelated_query_parameters_ignored": true,
+    "identifier_representation": "exact_decimal_text_without_numeric_conversion",
+    "selection_sequence": [
+      "resolve_exact_indexed_submission",
+      "wait_for_selected_submission_game_index",
+      "resolve_exact_indexed_episode",
+      "open_episode_first_recorded_decision"
+    ],
+    "missing_submission_behavior": "report_not_indexed_and_suggest_explicit_check_kaggle_now_control",
+    "missing_episode_behavior": "report_not_indexed_without_selecting_a_different_episode",
+    "native_submission_and_game_selectors_reflect_final_selection": true
+  },
+  "network_and_safety": {
+    "pasted_url_fetched": false,
+    "pasted_url_navigated": false,
+    "automatic_replay_sync": false,
+    "existing_inspector_read_api_only": true,
+    "replay_or_provenance_mutation": false,
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_authority": false,
+    "submission_authority": false
+  },
+  "activation": {
+    "boundary": "independent_read_only_inspector_static_ui",
+    "may_run_during_healthy_training": true,
+    "requires_inspector_service_restart": false,
+    "activated_at_utc": "2026-08-10T19:34:45Z",
+    "activation_receipt": "state/replay-model-inspector-replay-link-quick-find-activation-r220.json",
+    "required_validation": [
+      "example_submission_and_episode_query_parameter_parse_test",
+      "exact_submission_then_episode_selection_test",
+      "missing_submission_no_navigation_test",
+      "missing_episode_no_fallback_test",
+      "exact_decimal_identifier_preservation_test",
+      "mobile_browser_interaction_test"
+    ]
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "schema": "poke_bot.slop_box_h10_all_heads_bootstrap_audit_r170/v1",
+  "goal_revision": 171,
+  "created_at_utc": "2026-08-06T19:20:00Z",
+  "owner_concern": "all heads should have been learning on the bootstrap",
+  "blunt_verdict": {
+    "all_heads_learning": false,
+    "learning_with_nonzero_loss": [
+      "policy",
+      "value",
+      "aux/archetype",
+      "opp_hand",
+      "opp_remainder",
+      "lethal_threat",
+      "prize_race",
+      "guide_strategic_curriculum",
+      "action_q",
+      "action_type",
+      "action_target",
+      "action_resource",
+      "action_utility",
+      "tactical_outcome",
+      "opponent_response",
+      "resource_forecast",
+      "game_phase",
+      "outcome_distribution",
+      "remaining_turns"
+    ],
+    "not_learning": [
+      {
+        "head": "combo_state",
+        "config_weight": 0.0,
+        "cause": "run_starmie_expert_bootstrap set combo_state_loss_weight only when --combo-state-head (Slowking flag), ignoring --retain-inherited-h10-combo-state-head",
+        "labels": "CPU pack combo_* masks are entirely zero (no Slowking-style combo labels on Slop Box expert shards)",
+        "compare": "Marnie dedicated bootstrap sets weight 0.025; Crustle used same retain path and also logged combo_state_loss=0.0",
+        "fix": "weight now follows combo_state_architecture; RL register/launch require 0.025 for teal-mask-ogerpon-ex"
+      },
+      {
+        "head": "setup_board_outcome",
+        "config_weight": "0.025/0.05 (nonzero)",
+        "cause": "eligible_rows=0 because expert feature shards are dataset schema 6 with select_context=-1 for every stage",
+        "labels": "Chao/deep CPU packs: select_context all -1; selected_is_stop all 0",
+        "compare": "same schema-6 fail-closed mask on Marnie/Crustle expert shards; intentional r76 compat, not a Slop-only bug",
+        "fix_blocked_on": "elmo remat source poke_bot.dataset DATASET_CACHE_SCHEMA_VERSION still 6 and lacks PolicyStage.select_context; must sync schema-8 writer then rematerialize"
+      }
+    ],
+    "not_frozen_but_capped": [
+      {
+        "head": "action_type",
+        "train_weight": 0.05,
+        "train_loss_nonzero": true,
+        "fusion_reliability_cap": 0.25,
+        "note": "cap is decision-fusion influence only, not a training freeze"
+      }
+    ],
+    "matchup_adapters": {
+      "in_scope_for_this_audit": false,
+      "note": "34aff525: adapters learn in RL dormant phase, not Chao-hard CE; RL start repair with 1f90a2c3"
+    },
+    "nineteen_h10_heads_scope": [
+      "policy",
+      "value",
+      "aux/archetype",
+      "opp_hand",
+      "opp_remainder",
+      "lethal_threat",
+      "prize_race",
+      "guide_strategic_curriculum",
+      "action_q",
+      "action_type",
+      "action_target",
+      "action_resource",
+      "action_utility",
+      "tactical_outcome",
+      "opponent_response",
+      "resource_forecast",
+      "game_phase",
+      "outcome_distribution",
+      "remaining_turns",
+      "setup_board_outcome",
+      "combo_state"
+    ]
+  },
+  "evidence": {
+    "deep_ce_run": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_slop_box_h10_rtp",
+    "chao_hard_run": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_slop_box_chao_hard_r170",
+    "deep_ce_latest_epoch": 152,
+    "chao_hard_latest_epoch_at_audit": 20,
+    "expanded_schedule_weights_all_positive": true,
+    "expanded_gradient_enabled_heads": [
+      "action_q",
+      "action_type",
+      "action_target",
+      "action_resource",
+      "action_utility",
+      "tactical_outcome",
+      "opponent_response",
+      "resource_forecast",
+      "game_phase",
+      "outcome_distribution",
+      "remaining_turns"
+    ]
+  },
+  "code_fixes": [
+    "scripts/run_starmie_expert_bootstrap.py: combo_state_loss_weight uses combo_state_architecture",
+    "scripts/train_pure_rl.py: require combo 0.025 for teal-mask-ogerpon-ex; authorize optional 0.025 for alakazam/crustle",
+    "scripts/launch_active_specialist.py: default combo 0.025 for Slop Box; pass setup_board_outcome_loss_weight",
+    "scripts/register_slop_box_h10_rtp_r171.py: set combo/setup weights 0.025 on registry row"
+  ],
+  "restart_justification": {
+    "chao_hard": "combo_state weight is bound at epoch construction; dead head cannot hot-bind; systemd restart from latest run_dir ckpt required",
+    "leave_alakazam_alone": true,
+    "no_crustle_deletes": true
+  },
+  "coordination": {
+    "34aff525": "matchup adapter RL wiring",
+    "1f90a2c3": "Chao-hard supervise / RL start — keep combo/setup weights and adapter epochs=1"
+  },
+  "post_fix_proof": {
+    "chao_hard_log_line": "non_guide_weight_scale=0.700 ... setup_board_outcome_loss_weight: 0.05, combo_state_loss_weight: 0.0175",
+    "combo_weight_was_zero_before": true,
+    "combo_weight_nonzero_after_fix": true,
+    "combo_and_setup_train_loss_still_zero": "mask-when-no-label (combo masks all-zero; select_context all -1)",
+    "chao_hard_stopped_by_owner_ceiling_path": true,
+    "rl_head_weights_wired_for_1f90a2c3": true
+  },
+  "status": "weights_fixed_schema8_remat_activated_labels_pending",
+  "schema8_activation": {
+    "activated_at_utc": "2026-08-06T19:23:31.464628+00:00",
+    "activated_root": "/home/admin/pokebot-expert-guide-src-schema8-full-r170",
+    "out_dir": "/mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v5-r170-schema8-jul24-30",
+    "window": {"start": "2026-07-24", "end": "2026-07-30"},
+    "inflight_schema6_left_alone": true,
+    "progress_receipt": "/home/inzi/poke-bot-agent/outputs/state/slop-box-schema8-setup-board-activation-progress-r170.json",
+    "combo_setup_registry_bind": "/home/inzi/poke-bot-agent/outputs/state/slop-box-h10-combo-setup-weight-bind-r170.json"
+  }
+}

@@ -53,7 +53,14 @@ def _player(
     }
 
 
-def _obs(me: dict, options: list[dict], *, context: int) -> dict:
+def _obs(
+    me: dict,
+    options: list[dict],
+    *,
+    context: int,
+    min_count: int = 1,
+    max_count: int = 1,
+) -> dict:
     return {
         "current": {
             "yourIndex": 0,
@@ -64,8 +71,8 @@ def _obs(me: dict, options: list[dict], *, context: int) -> dict:
         "select": {
             "context": context,
             "option": options,
-            "minCount": 1,
-            "maxCount": 1,
+            "minCount": min_count,
+            "maxCount": max_count,
         },
     }
 
@@ -136,6 +143,121 @@ def test_opening_bench_establishes_teal_mask_before_duplicate_support() -> None:
 
     assert scores is not None
     assert scores[0] > scores[1] + guide.ABSTENTION_MARGIN
+
+
+def test_setup_bench_declines_support_before_teal_engine() -> None:
+    obs = _obs(
+        _player(
+            active=[guide.MEGA_KANGASKHAN_EX],
+            hand=[guide.LATIAS_EX, guide.MEOWTH_EX],
+        ),
+        [
+            {"type": 3, "area": guide.AREA_HAND, "index": 0},
+            {"type": 3, "area": guide.AREA_HAND, "index": 1},
+        ],
+        context=guide.CTX_SETUP_BENCH,
+        min_count=0,
+        max_count=1,
+    )
+    scores = guide.guide_scores(
+        obs,
+        [[], [0], [1]],
+        deck=CANONICAL_DECK,
+        force_enabled=True,
+    )
+    assert scores is not None
+    assert scores[0] > scores[1] + guide.ABSTENTION_MARGIN
+    assert scores[0] > scores[2] + guide.ABSTENTION_MARGIN
+
+
+def test_setup_bench_stops_after_engines_when_opponent_public_board_sparse() -> None:
+    obs = _obs(
+        _player(
+            active=[guide.MEGA_KANGASKHAN_EX],
+            bench=[guide.TEAL_MASK_OGERPON_EX, guide.TEAL_MASK_OGERPON_EX],
+            hand=[guide.LATIAS_EX],
+        ),
+        [{"type": 3, "area": guide.AREA_HAND, "index": 0}],
+        context=guide.CTX_SETUP_BENCH,
+        min_count=0,
+        max_count=1,
+    )
+    scores = guide.guide_scores(
+        obs,
+        [[0], []],
+        deck=CANONICAL_DECK,
+        force_enabled=True,
+    )
+    assert scores is not None
+    # Sparse/unknown matchup: do not force Latias as a universal next step.
+    assert scores[1] > scores[0] + guide.ABSTENTION_MARGIN
+
+
+def test_setup_active_prefers_teal_when_public_spread_pressure() -> None:
+    obs = {
+        "current": {
+            "yourIndex": 0,
+            "players": [
+                _player(hand=[guide.MEGA_KANGASKHAN_EX, guide.TEAL_MASK_OGERPON_EX]),
+                _player(active=[119], bench=[120, 121]),
+            ],
+            "stadium": [],
+            "looking": [],
+        },
+        "select": {
+            "context": guide.CTX_SETUP_ACTIVE,
+            "option": [
+                {"type": 3, "area": guide.AREA_HAND, "index": 0},
+                {"type": 3, "area": guide.AREA_HAND, "index": 1},
+            ],
+            "minCount": 1,
+            "maxCount": 1,
+        },
+    }
+    scores = guide.guide_scores(
+        obs,
+        [[0], [1]],
+        deck=CANONICAL_DECK,
+        force_enabled=True,
+    )
+    assert scores is not None
+    assert scores[1] > scores[0] + guide.ABSTENTION_MARGIN
+
+
+def test_setup_bench_prefers_clefairy_when_public_clef_job_exists() -> None:
+    obs = {
+        "current": {
+            "yourIndex": 0,
+            "players": [
+                _player(
+                    active=[guide.MEGA_KANGASKHAN_EX],
+                    bench=[guide.TEAL_MASK_OGERPON_EX],
+                    hand=[guide.LILLIES_CLEFAIRY_EX, guide.LATIAS_EX],
+                ),
+                _player(active=[guide.MUNKIDORI], bench=[guide.PECHARUNT]),
+            ],
+            "stadium": [],
+            "looking": [],
+        },
+        "select": {
+            "context": guide.CTX_SETUP_BENCH,
+            "option": [
+                {"type": 3, "area": guide.AREA_HAND, "index": 0},
+                {"type": 3, "area": guide.AREA_HAND, "index": 1},
+            ],
+            "minCount": 0,
+            "maxCount": 1,
+        },
+    }
+    scores = guide.guide_scores(
+        obs,
+        [[0], [1], []],
+        deck=CANONICAL_DECK,
+        force_enabled=True,
+    )
+    assert scores is not None
+    assert scores[0] > scores[1] + guide.ABSTENTION_MARGIN
+    assert scores[0] > scores[2] + guide.ABSTENTION_MARGIN
 
 
 def test_main_prefers_currently_legal_teal_dance() -> None:

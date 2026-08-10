@@ -1,0 +1,56 @@
+{
+  "schema": "poke_bot.slowking_reverse_engineered_policy_audit/v1",
+  "status": "research_only_declared_host_audit",
+  "authority": "none",
+  "policy_version": "slowking-public-replay-surrogate-v1",
+  "policy_module": "poke_bot/slowking_reverse_engineered_policy.py",
+  "runtime_authority": "none",
+  "serving_logit_bypass": "exact_zero",
+  "corpus": {
+    "games": 768,
+    "nontrivial_single_selection_prompts": 25917,
+    "confirmed_covered_decisions": 430,
+    "agreements": 410,
+    "agreement_rate": 0.9534883720930233,
+    "shumpeinomura_games": 457,
+    "shumpeinomura_covered": 228,
+    "shumpeinomura_agreements": 226,
+    "shumpeinomura_agreement_rate": 0.9912280701754386
+  },
+  "by_stage": {
+    "opening_active": {
+      "confirmed": 337,
+      "agreements": 332,
+      "agreement_rate": 0.9851632047477745,
+      "priority": [
+        "Mega Kangaskhan ex",
+        "Smoochum",
+        "Latias ex",
+        "Slowpoke",
+        "Fezandipiti ex",
+        "Meowth ex",
+        "Kyurem"
+      ]
+    },
+    "night_stretcher_evolution_recovery": {
+      "confirmed": 6,
+      "agreements": 6,
+      "agreement_rate": 1.0
+    },
+    "academy_seek_topdeck": {
+      "confirmed": 87,
+      "agreements": 72,
+      "agreement_rate": 0.8275862068965517
+    }
+  },
+  "notes": [
+    "Coverage is intentionally sparse: ambiguous attachment, targeting, discard, pivot, and prize-map decisions are masked.",
+    "Rules were refined on the aggregate corpus; calendar splits are diagnostic strata, not an untouched final test.",
+    "This receipt records the host reverse-engineering audit summarized in the multi-day guide. Local unit fixtures validate rule behavior without re-scanning the 37,894-episode archive set."
+  ],
+  "related_artifacts": [
+    "docs/deck_guides/slowking-shumpeinomura-multi-day-guide-2026-07-06_to_2026-08-04.md",
+    "docs/SLOWKING_NEURAL_DISTILLATION_RESEARCH_PLAN.md",
+    "state/slowking_multi_day_replay_distillation_2026-07-06_to_2026-08-04.json"
+  ]
+}

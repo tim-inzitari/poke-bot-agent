@@ -44,6 +44,42 @@ KNOWN_SOURCE_DISCREPANCIES = {
         ),
         "reason": "published_kaggle_zip_omits_one_manifest_episode",
     },
+    # 2026-08-03 through 2026-08-05: the episodes-index row overcounts relative
+    # to both the paginated Kaggle dataset file listing and the immutable ZIP.
+    # Independent Mac and Elmo downloads produced identical SHA-256 digests and
+    # ZIP episode counts that exactly match the Kaggle file listing, so bind the
+    # published artifacts rather than treating the shortfall as a truncated
+    # transfer.
+    "2026-08-03": {
+        "index_episode_count": 4_724,
+        "validated_episode_count": 4_720,
+        "missing_episode_ids": [],
+        "kaggle_listed_json_files": 4_720,
+        "archive_sha256": (
+            "sha256:909cbd205f3afcfde6031ae93ef9625b796e8a0c2edf66eeb6edc88469273a04"
+        ),
+        "reason": "kaggle_index_overcounts_published_dataset_files",
+    },
+    "2026-08-04": {
+        "index_episode_count": 4_816,
+        "validated_episode_count": 4_811,
+        "missing_episode_ids": [],
+        "kaggle_listed_json_files": 4_811,
+        "archive_sha256": (
+            "sha256:17cd9cd92f4ae3b293ee3fab3452657316362af134c6d4a7b5dbfda99c3d3d42"
+        ),
+        "reason": "kaggle_index_overcounts_published_dataset_files",
+    },
+    "2026-08-05": {
+        "index_episode_count": 4_743,
+        "validated_episode_count": 4_740,
+        "missing_episode_ids": [],
+        "kaggle_listed_json_files": 4_740,
+        "archive_sha256": (
+            "sha256:ab961e0d98984b611cc4091801b618606cb03cab4413ab7908d3f8c6312030e3"
+        ),
+        "reason": "kaggle_index_overcounts_published_dataset_files",
+    },
 }
 
 

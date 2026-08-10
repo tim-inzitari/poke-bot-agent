@@ -1,6 +1,7 @@
 """Training utilities for the Recursive Turn Planner (shadow / offline)."""
 
 from .checkpoint import (
+    RTP_PROMOTION_SCHEMA,
     RTP_SHADOW_TRAIN_SCHEMA,
     load_rtp_checkpoint,
     save_rtp_checkpoint,
@@ -15,6 +16,7 @@ from .shadow_train import (
 
 __all__ = [
     "RTP_SHADOW_TRAIN_SCHEMA",
+    "RTP_PROMOTION_SCHEMA",
     "RTPLossBundle",
     "RTPTrainConfig",
     "RTPTrainResult",

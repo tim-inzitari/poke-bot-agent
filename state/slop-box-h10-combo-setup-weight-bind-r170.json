@@ -1,0 +1,23 @@
+{
+  "adapter_epochs": 1,
+  "after": {
+    "combo": 0.025,
+    "setup": 0.025
+  },
+  "before": {
+    "combo": null,
+    "guide_curriculum_revision_bundle": 51,
+    "guide_curriculum_revision_policy": 51,
+    "setup": null
+  },
+  "changed": true,
+  "coordination": {
+    "1f90a2c3": "guide_curriculum_revision 104 + H10 profile; leave those fields alone",
+    "2599fa81": "combo retain / setup schema8",
+    "34aff525": "adapter epochs=1 preserved"
+  },
+  "registry": "/home/inzi/poke-bot-agent/outputs/final_format_slop_box_h10_rtp/runtime/specialist_runtime_registry_h10_r171.json",
+  "schema": "poke_bot.slop_box_h10_combo_setup_weight_bind_r170/v1",
+  "status": "bound",
+  "updated_at_utc": "2026-08-06T19:22:59.744180+00:00"
+}

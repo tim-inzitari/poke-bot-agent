@@ -1,0 +1,479 @@
+{
+  "schema": "poke_bot.slowking_top_replay_distillation/v1",
+  "status": "research_only_no_training_or_runtime_authority",
+  "source": {
+    "date": "2026-07-31",
+    "archive": "/Users/tsinzitari/Documents/poke-agent-codex/data/episodes/raw/pokemon-tcg-ai-battle-episodes-2026-07-31.zip",
+    "archive_sha256": "sha256:c19ad47fa061c8838da1375d7cb0a49efd8ed9674d53be39b6246623a578ed31",
+    "archive_json_members": 4340,
+    "manifest_episode_count": 4340,
+    "manifest_minus_archive_members": 0,
+    "episodes_scanned": 4340
+  },
+  "identity": {
+    "unique_deck_lists": 1,
+    "unique_team_names": [
+      "ShumpeiNomura"
+    ],
+    "decks": [
+      {
+        "fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+        "games": 1,
+        "card_count": 60,
+        "cards": [
+          {
+            "card_id": 5,
+            "card_name": "Basic {P} Energy",
+            "count": 4
+          },
+          {
+            "card_id": 19,
+            "card_name": "Telepath Psychic Energy",
+            "count": 4
+          },
+          {
+            "card_id": 115,
+            "card_name": "Conkeldurr",
+            "count": 1
+          },
+          {
+            "card_id": 140,
+            "card_name": "Fezandipiti ex",
+            "count": 1
+          },
+          {
+            "card_id": 144,
+            "card_name": "Kyurem",
+            "count": 2
+          },
+          {
+            "card_id": 162,
+            "card_name": "Slowpoke",
+            "count": 4
+          },
+          {
+            "card_id": 163,
+            "card_name": "Slowking",
+            "count": 4
+          },
+          {
+            "card_id": 183,
+            "card_name": "Smoochum",
+            "count": 1
+          },
+          {
+            "card_id": 184,
+            "card_name": "Latias ex",
+            "count": 2
+          },
+          {
+            "card_id": 224,
+            "card_name": "Annihilape",
+            "count": 1
+          },
+          {
+            "card_id": 756,
+            "card_name": "Mega Kangaskhan ex",
+            "count": 3
+          },
+          {
+            "card_id": 880,
+            "card_name": "Spectrier",
+            "count": 1
+          },
+          {
+            "card_id": 1071,
+            "card_name": "Meowth ex",
+            "count": 1
+          },
+          {
+            "card_id": 1088,
+            "card_name": "Prime Catcher",
+            "count": 1
+          },
+          {
+            "card_id": 1097,
+            "card_name": "Night Stretcher",
+            "count": 4
+          },
+          {
+            "card_id": 1121,
+            "card_name": "Ultra Ball",
+            "count": 4
+          },
+          {
+            "card_id": 1123,
+            "card_name": "Switch",
+            "count": 1
+          },
+          {
+            "card_id": 1146,
+            "card_name": "Wondrous Patch",
+            "count": 3
+          },
+          {
+            "card_id": 1152,
+            "card_name": "Poké Pad",
+            "count": 4
+          },
+          {
+            "card_id": 1188,
+            "card_name": "Ciphermaniac’s Codebreaking",
+            "count": 4
+          },
+          {
+            "card_id": 1194,
+            "card_name": "Colress’s Tenacity",
+            "count": 1
+          },
+          {
+            "card_id": 1225,
+            "card_name": "Hilda",
+            "count": 1
+          },
+          {
+            "card_id": 1227,
+            "card_name": "Lillie's Determination",
+            "count": 4
+          },
+          {
+            "card_id": 1248,
+            "card_name": "Academy at Night",
+            "count": 4
+          }
+        ]
+      }
+    ]
+  },
+  "outcomes": {
+    "games": 1,
+    "wins": 0,
+    "losses": 1,
+    "draws": 0,
+    "win_rate": 0.0,
+    "turn_order": {
+      "first": {
+        "games": 1,
+        "wins": 0,
+        "win_rate": 0.0
+      },
+      "second": {
+        "games": 0,
+        "wins": 0,
+        "win_rate": null
+      },
+      "unknown": {
+        "games": 0,
+        "wins": 0,
+        "win_rate": null
+      }
+    },
+    "by_opponent_team": [
+      {
+        "opponent_team_name": "李秉叡（ntumlnoob）",
+        "games": 1,
+        "wins": 0,
+        "losses": 1,
+        "draws": 0,
+        "win_rate": 0.0
+      }
+    ]
+  },
+  "behavior": {
+    "initial_active": [
+      {
+        "key": 756,
+        "count": 1,
+        "fraction": 1.0,
+        "card_name": "Mega Kangaskhan ex"
+      }
+    ],
+    "initial_bench": [],
+    "main_action_types": [
+      {
+        "key": "play",
+        "count": 6,
+        "fraction": 0.5454545454545454
+      },
+      {
+        "key": "attach",
+        "count": 2,
+        "fraction": 0.18181818181818182
+      },
+      {
+        "key": "evolve",
+        "count": 2,
+        "fraction": 0.18181818181818182
+      },
+      {
+        "key": "retreat",
+        "count": 1,
+        "fraction": 0.09090909090909091
+      }
+    ],
+    "played_cards": [
+      {
+        "key": 1227,
+        "count": 2,
+        "fraction": 0.3333333333333333,
+        "card_name": "Lillie's Determination"
+      },
+      {
+        "key": 162,
+        "count": 1,
+        "fraction": 0.16666666666666666,
+        "card_name": "Slowpoke"
+      },
+      {
+        "key": 1225,
+        "count": 1,
+        "fraction": 0.16666666666666666,
+        "card_name": "Hilda"
+      },
+      {
+        "key": 880,
+        "count": 1,
+        "fraction": 0.16666666666666666,
+        "card_name": "Spectrier"
+      },
+      {
+        "key": 1194,
+        "count": 1,
+        "fraction": 0.16666666666666666,
+        "card_name": "Colress’s Tenacity"
+      }
+    ],
+    "attached_energy": [
+      {
+        "key": 19,
+        "count": 1,
+        "fraction": 0.5,
+        "card_name": "Telepath Psychic Energy"
+      },
+      {
+        "key": 5,
+        "count": 1,
+        "fraction": 0.5,
+        "card_name": "Basic {P} Energy"
+      }
+    ],
+    "attachment_targets": [
+      {
+        "key": 162,
+        "count": 2,
+        "fraction": 1.0,
+        "card_name": "Slowpoke"
+      }
+    ],
+    "evolved_cards": [
+      {
+        "key": 163,
+        "count": 2,
+        "fraction": 1.0,
+        "card_name": "Slowking"
+      }
+    ],
+    "ability_sources": [],
+    "academy_targets": [
+      {
+        "key": 144,
+        "count": 1,
+        "fraction": 1.0,
+        "card_name": "Kyurem"
+      }
+    ],
+    "effect_selected_cards": {
+      "19": {
+        "effect_card_name": "Telepath Psychic Energy",
+        "targets": [
+          {
+            "key": 184,
+            "count": 1,
+            "fraction": 1.0,
+            "card_name": "Latias ex"
+          }
+        ]
+      },
+      "1225": {
+        "effect_card_name": "Hilda",
+        "targets": [
+          {
+            "key": 19,
+            "count": 1,
+            "fraction": 1.0,
+            "card_name": "Telepath Psychic Energy"
+          }
+        ]
+      },
+      "1248": {
+        "effect_card_name": "Academy at Night",
+        "targets": [
+          {
+            "key": 144,
+            "count": 1,
+            "fraction": 1.0,
+            "card_name": "Kyurem"
+          }
+        ]
+      }
+    },
+    "seek_sources": [],
+    "seek_copied_attack_ids": [],
+    "attack_users": [],
+    "top_turn_bigrams": [
+      {
+        "key": "play:Slowpoke > attach:Telepath Psychic Energy->Slowpoke",
+        "count": 1,
+        "fraction": 0.14285714285714285
+      },
+      {
+        "key": "play:Hilda > evolve:Slowking",
+        "count": 1,
+        "fraction": 0.14285714285714285
+      },
+      {
+        "key": "evolve:Slowking > play:Lillie's Determination",
+        "count": 1,
+        "fraction": 0.14285714285714285
+      },
+      {
+        "key": "play:Spectrier > play:Colress’s Tenacity",
+        "count": 1,
+        "fraction": 0.14285714285714285
+      },
+      {
+        "key": "play:Colress’s Tenacity > play:Lillie's Determination",
+        "count": 1,
+        "fraction": 0.14285714285714285
+      },
+      {
+        "key": "play:Lillie's Determination > attach:Basic {P} Energy->Slowpoke",
+        "count": 1,
+        "fraction": 0.14285714285714285
+      },
+      {
+        "key": "attach:Basic {P} Energy->Slowpoke > retreat",
+        "count": 1,
+        "fraction": 0.14285714285714285
+      }
+    ],
+    "top_turn_trigrams": [
+      {
+        "key": "play:Spectrier > play:Colress’s Tenacity > play:Lillie's Determination",
+        "count": 1,
+        "fraction": 0.3333333333333333
+      },
+      {
+        "key": "play:Colress’s Tenacity > play:Lillie's Determination > attach:Basic {P} Energy->Slowpoke",
+        "count": 1,
+        "fraction": 0.3333333333333333
+      },
+      {
+        "key": "play:Lillie's Determination > attach:Basic {P} Energy->Slowpoke > retreat",
+        "count": 1,
+        "fraction": 0.3333333333333333
+      }
+    ]
+  },
+  "card_moves": {
+    "19": [
+      "n/a"
+    ],
+    "115": [
+      "Tantrum",
+      "Gutsy Swing"
+    ],
+    "140": [
+      "[Ability] Flip the Script",
+      "Cruel Arrow"
+    ],
+    "144": [
+      "[Ability] Plasma Bane",
+      "Trifrost"
+    ],
+    "162": [
+      "Dangle Tail",
+      "Tackle"
+    ],
+    "163": [
+      "Seek Inspiration",
+      "Super Psy Bolt"
+    ],
+    "183": [
+      "Delightful Kiss"
+    ],
+    "184": [
+      "[Ability] Skyliner",
+      "Eon Blade"
+    ],
+    "224": [
+      "Tantrum",
+      "Destined Fight"
+    ],
+    "756": [
+      "[Ability] Run Errand",
+      "Rapid-Fire Combo"
+    ],
+    "880": [
+      "Spooky Shot",
+      "Phantasmal Barrage"
+    ],
+    "1071": [
+      "[Ability] Last-Ditch Catch",
+      "Tuck Tail"
+    ],
+    "1088": [
+      "n/a"
+    ],
+    "1097": [
+      "n/a"
+    ],
+    "1121": [
+      "n/a"
+    ],
+    "1123": [
+      "n/a"
+    ],
+    "1146": [
+      "n/a"
+    ],
+    "1152": [
+      "n/a"
+    ],
+    "1188": [
+      "n/a"
+    ],
+    "1194": [
+      "n/a"
+    ],
+    "1225": [
+      "n/a"
+    ],
+    "1227": [
+      "n/a"
+    ],
+    "1248": [
+      "n/a"
+    ]
+  },
+  "games": [
+    {
+      "episode_id": "89214720",
+      "seat": 0,
+      "team_name": "ShumpeiNomura",
+      "opponent_team_name": "李秉叡（ntumlnoob）",
+      "deck_fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+      "reward": -1,
+      "result": "loss",
+      "turn_order": "first",
+      "decision_frames": 42,
+      "seek_sources": []
+    }
+  ],
+  "limitations": [
+    "Observational replay evidence cannot identify unchosen counterfactual actions.",
+    "Opponent team names are not equivalent to normalized deck archetypes.",
+    "Win rate is conditional on this public daily opponent mix, not a formal paired gate.",
+    "Repeated deterministic actions may reflect simulator or policy implementation artifacts."
+  ]
+}

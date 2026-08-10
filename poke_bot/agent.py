@@ -7,7 +7,7 @@ import os
 import random
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Mapping, Optional
 
 import torch
 
@@ -30,6 +30,7 @@ from .recursive_turn_planner.agent_bridge import (
     RTPAgentBridge,
     resolve_rtp_config_for_model,
 )
+from .recursive_turn_planner.profiles import PURE_RL_R197_MAX_ACTION_COMBOS
 
 # Slowking distill / reverse-engineered policy is Slowking-only research code.
 # Never import it at module load — Crustle and other specialists must not depend
@@ -120,51 +121,10 @@ def _fail_closed_legal(obs_dict: dict, preferred: list[int], rng: random.Random)
     return rng.sample(range(n), k)
 
 
-def _enum_token(value: object) -> str:
-    """Normalize competition JSON enums without depending on one cg version."""
-    if hasattr(value, "name"):
-        value = getattr(value, "name")
-    return "".join(character for character in str(value).lower() if character.isalnum())
-
-
-def forced_go_first_action(obs_dict: dict) -> Optional[list[int]]:
-    """Return the legal ``Yes`` choice for the explicit turn-order prompt.
-
-    The competition has represented enums as both integers and strings across
-    tools (``41``/``IsFirst`` and ``1``/``Yes``).  A recognized turn-order
-    prompt fails closed if it does not contain exactly selectable ``Yes``
-    semantics; it must never silently fall through to a learned or random
-    choice that could elect to go second.
-    """
-
-    select = obs_dict.get("select") if isinstance(obs_dict, dict) else None
-    if not isinstance(select, dict):
-        return None
-    raw_context = select.get("context")
-    try:
-        is_first = int(raw_context) == 41
-    except (TypeError, ValueError):
-        is_first = _enum_token(raw_context) == "isfirst"
-    if not is_first:
-        return None
-    options = select.get("option") or []
-    yes_indices: list[int] = []
-    for index, option in enumerate(options):
-        raw_type = option.get("type") if isinstance(option, dict) else getattr(option, "type", None)
-        try:
-            is_yes = int(raw_type) == 1
-        except (TypeError, ValueError):
-            is_yes = _enum_token(raw_type) == "yes"
-        if is_yes:
-            yes_indices.append(index)
-    lo = int(select.get("minCount", 0) or 0)
-    hi = min(int(select.get("maxCount", 0) or 0), len(options))
-    if len(yes_indices) != 1 or not (lo <= 1 <= hi):
-        raise RuntimeError(
-            "IsFirst prompt does not expose one legal Yes option; refusing "
-            "to choose turn order ambiguously"
-        )
-    return [yes_indices[0]]
+# Compatibility export for callers that historically imported the external
+# turn-order parser from ``agent``.  The implementation is deliberately in
+# torch-free ``features`` so isolated runner setup controls do not load torch.
+forced_go_first_action = features.forced_go_first_action
 
 
 @dataclass
@@ -184,7 +144,21 @@ class PolicyAgent:
     #: Optional sizing profile override: ``pure_rl`` / ``global_transformer``.
     rtp_sizing_profile: Optional[str] = None
     rtp_online_sim_verify_budget: int = 0
-    rtp_max_action_combos: int = 256
+    #: ``None`` preserves the legacy 256-action bridge cap.  The separately
+    #: versioned checksum-bound ``pure_rl_r197`` profile instead requires the
+    #: exact 1024-action cap so corpus/runtime action support cannot drift.
+    rtp_max_action_combos: Optional[int] = None
+    #: Isolated three-arm evaluation control.  The bridge remains active and
+    #: enumerates the same complete ordered actions, but it is constrained to
+    #: the direct-policy branch.  It is intentionally opt-in and has no
+    #: serving authority by itself.
+    force_direct_bridge_only: bool = False
+    #: One-child, immutable evaluator context for the shadow-only r197
+    #: sidecar.  It is accepted only by the sealed three-arm factory and is
+    #: revalidated by ``RTPAgentBridge`` immediately before each select.
+    #: Supplying it cannot grant serving, selector, replay, or submission
+    #: authority.
+    rtp_evaluation_action_execution: Optional[Mapping[str, Any]] = None
     #: Full PokeRLM kit attachment. Default disabled — preserves greedy/RTP/
     #: MCTS behavior until explicitly enabled via config or env flags.
     poke_rlm_config: Optional[PokeRLMConfig] = None
@@ -195,6 +169,10 @@ class PolicyAgent:
     slowking_distill_max_action_combos: int = 256
     oracle_mode: bool = False
     belief_mcts: bool = False
+    #: Staged root-parallel search topology.  ``1`` retains the historical
+    #: singleton path; ``8`` selects the handle-owned forest only when an
+    #: explicitly staged runtime profile requests it.
+    belief_mcts_lanes: int = 1
     belief_posterior: Optional[EmpiricalDeckPosterior] = None
     checkpoint_digest: Optional[str] = None
     model_generation: int = 0
@@ -209,6 +187,7 @@ class PolicyAgent:
     move_time_s: Optional[float] = None
     rng: random.Random = field(default_factory=random.Random)
     last_result: Optional[MCTSResult] = None
+    _belief_forest: Optional[Any] = field(default=None, init=False, repr=False)
     collect_targets: bool = False
     sample_actions: bool = False
     #: Softmax temperature for ``sample_actions`` (>1 explores, <1 sharpens).
@@ -250,6 +229,12 @@ class PolicyAgent:
         repr=False,
     )
     _rtp_bridge: Optional[RTPAgentBridge] = field(
+        default=None, init=False, repr=False
+    )
+    #: Stable, read-only-after-selection telemetry for isolated evaluation.
+    #: It is intentionally separate from target collection so formal RTP
+    #: evidence does not need to create training-eligible examples.
+    last_rtp_diagnostics: Optional[dict[str, Any]] = field(
         default=None, init=False, repr=False
     )
     _poke_rlm_bridge: Optional[PokeRLMAgentBridge] = field(
@@ -306,6 +291,18 @@ class PolicyAgent:
             pass
         if self.use_recursive_turn_planner and self.model is not None:
             self._init_rtp_bridge()
+        if self.rtp_evaluation_action_execution is not None:
+            if (
+                self._rtp_bridge is None
+                or self._rtp_bridge.config.sizing_profile != "pure_rl_r197"
+            ):
+                raise ValueError(
+                    "evaluation_action_execution requires a pure_rl_r197 RTP bridge"
+                )
+        if self.force_direct_bridge_only and self._rtp_bridge is None:
+            raise ValueError(
+                "force_direct_bridge_only requires an initialized RTP bridge"
+            )
         self.poke_rlm_config = load_poke_rlm_config_from_env(self.poke_rlm_config)
         if (
             self.poke_rlm_config is not None
@@ -371,6 +368,10 @@ class PolicyAgent:
                 raise ValueError("belief MCTS requires an anonymous deck posterior")
             if not (self.checkpoint_digest or "").startswith("sha256:"):
                 raise ValueError("belief MCTS requires immutable checkpoint digest")
+            if int(self.belief_mcts_lanes) not in (1, 8):
+                raise ValueError("belief MCTS lanes must be exactly 1 or 8")
+            if int(self.belief_mcts_lanes) == 8 and self.model is None:
+                raise ValueError("eight-lane belief MCTS requires a local frozen model")
         if self.opponent_deck is not None and not (
             self.use_mcts and self.oracle_mode and config.SEARCH.allow_oracle_deck
         ):
@@ -400,6 +401,27 @@ class PolicyAgent:
             profile_name=self.rtp_sizing_profile,
             online_sim_verify_budget=self.rtp_online_sim_verify_budget,
         )
+        if rtp_config.sizing_profile == "pure_rl_r197":
+            if (
+                self.rtp_max_action_combos is not None
+                and int(self.rtp_max_action_combos) != PURE_RL_R197_MAX_ACTION_COMBOS
+            ):
+                raise ValueError(
+                    "pure_rl_r197 requires rtp_max_action_combos="
+                    f"{PURE_RL_R197_MAX_ACTION_COMBOS}"
+                )
+            rtp_max_action_combos = PURE_RL_R197_MAX_ACTION_COMBOS
+        else:
+            # Preserve the historical legacy bridge cap.  The r197/r198
+            # complete-action expansion is explicit above and must not widen
+            # unrelated RTP profiles.
+            rtp_max_action_combos = (
+                256
+                if self.rtp_max_action_combos is None
+                else int(self.rtp_max_action_combos)
+            )
+            if rtp_max_action_combos < 1:
+                raise ValueError("rtp_max_action_combos must be positive")
         self._rtp_bridge = RTPAgentBridge(
             model=self.model,
             deck=list(self.deck),
@@ -410,7 +432,8 @@ class PolicyAgent:
             get_previous_action_token=lambda: self._previous_action_token,
             get_kv_cache=lambda: self._kv_cache,
             set_kv_cache=lambda cache: setattr(self, "_kv_cache", cache),
-            max_action_combos=int(self.rtp_max_action_combos),
+            max_action_combos=rtp_max_action_combos,
+            evaluation_action_execution=self.rtp_evaluation_action_execution,
         )
 
     def _init_poke_rlm_bridge(self) -> None:
@@ -506,6 +529,7 @@ class PolicyAgent:
         self._matchup_adapter_shadow_router.reset_for_new_game()
         if self._rtp_bridge is not None:
             self._rtp_bridge.reset_game()
+        self.last_rtp_diagnostics = None
         if self._poke_rlm_bridge is not None:
             self._poke_rlm_bridge.reset_game()
         self.last_poke_rlm_trace = None
@@ -525,6 +549,14 @@ class PolicyAgent:
         if isinstance(router, RuntimePublicMatchupRouter):
             return router.snapshot()
         return router.audit.snapshot()
+
+    def close_belief_search_lanes(self) -> None:
+        """Join staged native lane workers without guessing a handle destructor."""
+
+        forest = self._belief_forest
+        self._belief_forest = None
+        if forest is not None:
+            forest.close()
 
     def trusted_search_or_greedy_select(
         self,
@@ -851,6 +883,8 @@ class PolicyAgent:
         board = self._append_decision_history(obs_dict)
 
         def greedy_fallback(_obs: dict) -> list[int]:
+            # Keep a single trusted provenance for the game: fallbacks remain
+            # recursive_turn_planner with rtp_mode=fallback diagnostics.
             return self._factorized_greedy_prepared(
                 obs_dict,
                 board,
@@ -860,7 +894,7 @@ class PolicyAgent:
                         self._rtp_bridge.last_diagnostics.fallback_reason
                         if self._rtp_bridge is not None
                         else "bridge_missing"
-                    )
+                    ),
                 },
             )
 
@@ -868,8 +902,22 @@ class PolicyAgent:
             obs_dict,
             board=board,
             greedy_fallback=greedy_fallback,
+            force_direct_bridge_only=self.force_direct_bridge_only,
         )
         diag = self._rtp_bridge.last_diagnostics
+        # Fail closed on incomplete/illegal ordered actions instead of
+        # submitting them to the engine or teacher-forcing pipeline.
+        try:
+            features.factorized_teacher_forcing_stages(obs_dict, list(selected))
+        except ValueError:
+            if diag.mode != "fallback":
+                diag.mode = "fallback"
+                diag.fallback_code = "illegal_ordered_action"
+                diag.fallback_detail = "factorized_teacher_forcing_validation"
+                diag.fallback_reason = "illegal_ordered_action"
+                self._rtp_bridge.last_diagnostics = diag
+            selected = greedy_fallback(obs_dict)
+            diag = self._rtp_bridge.last_diagnostics
         # Fallback path already set the previous-action token inside greedy.
         if diag.mode != "fallback":
             self._previous_action_token = features.build_option_tokens(
@@ -895,7 +943,20 @@ class PolicyAgent:
                         },
                     }
                 )
+        self.last_rtp_diagnostics = diag.as_dict()
         return selected
+
+    def rtp_diagnostic_snapshot(self) -> Optional[dict[str, Any]]:
+        """Return the most recent bridge decision telemetry for evaluation.
+
+        The method deliberately returns a shallow serialized copy instead of
+        the bridge object or a mutable planner state.  Callers can audit a
+        decision but cannot alter the action path through this API.
+        """
+
+        if self.last_rtp_diagnostics is None:
+            return None
+        return dict(self.last_rtp_diagnostics)
 
     def _slowking_distill_shadow_after(
         self, obs_dict: dict, selected: list[int]
@@ -1170,33 +1231,71 @@ class PolicyAgent:
         move_time = configured_move_time
         if self.clock is not None:
             move_time = self.clock.next_move_budget(move_time)
-        engine = BeliefMCTS(
-            self.model,
-            self.deck,
-            self.belief_posterior,
-            checkpoint_digest=str(self.checkpoint_digest),
-            model_generation=int(self.model_generation),
-            device=self.device,
-            leaf_backend=self.leaf_backend,
-            rng=self.rng,
-            min_trusted_sims=min_trusted_sims,
-            max_context=max_context,
-            matchup_shadow_router=(
-                self._matchup_adapter_shadow_router.fork()
-                if self.matchup_adapter_shadow
-                else None
-            ),
-            matchup_model_route=self._matchup_model_route(),
-        )
-        result = engine.search(
-            obs_dict,
-            belief_history=self.belief_history,
-            root_history_boards=self.board_history,
-            root_history_previous_actions=self.previous_action_history,
-            clock=self.clock,
-            max_sims=max_sims,
-            move_time_s=move_time,
-        )
+        engine: Optional[BeliefMCTS]
+        if int(self.belief_mcts_lanes) == 8:
+            from .eight_lane_belief_forest import EightLaneBeliefForest
+
+            engine = None
+            if self._belief_forest is None:
+                self._belief_forest = EightLaneBeliefForest(
+                    self.model,
+                    self.deck,
+                    self.belief_posterior,
+                    checkpoint_digest=str(self.checkpoint_digest),
+                    model_generation=int(self.model_generation),
+                    device=self.device,
+                    min_trusted_sims=min_trusted_sims,
+                    particle_count=16,
+                    max_context=max_context,
+                    rng=self.rng,
+                )
+            result = self._belief_forest.search(
+                obs_dict,
+                belief_history=self.belief_history,
+                root_history_boards=self.board_history,
+                root_history_previous_actions=self.previous_action_history,
+                matchup_shadow_router=(
+                    self._matchup_adapter_shadow_router.fork()
+                    if self.matchup_adapter_shadow
+                    else None
+                ),
+                matchup_model_route=self._matchup_model_route(),
+                clock=self.clock,
+                max_sims=max_sims,
+                move_time_s=move_time,
+            )
+            # Workers receive private snapshots.  Commit the real observation
+            # to the live public history exactly once after all eight lanes and
+            # their deterministic reduction have succeeded.
+            self.belief_history.observe(obs_dict)
+        else:
+            engine = BeliefMCTS(
+                self.model,
+                self.deck,
+                self.belief_posterior,
+                checkpoint_digest=str(self.checkpoint_digest),
+                model_generation=int(self.model_generation),
+                device=self.device,
+                leaf_backend=self.leaf_backend,
+                rng=self.rng,
+                min_trusted_sims=min_trusted_sims,
+                max_context=max_context,
+                matchup_shadow_router=(
+                    self._matchup_adapter_shadow_router.fork()
+                    if self.matchup_adapter_shadow
+                    else None
+                ),
+                matchup_model_route=self._matchup_model_route(),
+            )
+            result = engine.search(
+                obs_dict,
+                belief_history=self.belief_history,
+                root_history_boards=self.board_history,
+                root_history_previous_actions=self.previous_action_history,
+                clock=self.clock,
+                max_sims=max_sims,
+                move_time_s=move_time,
+            )
         self.last_result = result
         selected = list(result.select)
         self.belief_history.record_action(obs_dict, selected)
@@ -1204,8 +1303,23 @@ class PolicyAgent:
             obs_dict, [selected]
         )
         if self.collect_targets:
-            provenance = engine.target_provenance(
-                max_sims=max_sims, move_time_s=configured_move_time
+            provenance = (
+                engine.target_provenance(
+                    max_sims=max_sims, move_time_s=configured_move_time
+                )
+                if engine is not None
+                else {
+                    "schema": "poke_bot.eight_lane_belief_forest_target/v1",
+                    "checkpoint_digest": str(self.checkpoint_digest),
+                    "model_generation": int(self.model_generation),
+                    "search_config": {
+                        "requested_lanes": 8,
+                        "selected_lanes": 8,
+                        "automatic_lane_reduction_allowed": False,
+                        "max_sims_per_lane": max_sims,
+                        "move_time_s": configured_move_time,
+                    },
+                }
             )
             provenance["search_config"]["clock_allocation"] = (
                 "adaptive_per_game_fair_share_with_watchdog_reserve"
@@ -1243,6 +1357,10 @@ class PolicyAgent:
         """Competition-style agent entry: deck when select is None."""
         if obs_dict is None or obs_dict.get("select") is None:
             return list(self.deck)
+        # Avoid exposing stale RTP diagnostics after a no-RTP selection.  The
+        # evaluator samples immediately after each candidate action and treats
+        # a missing record as evidence that the bridge was not used.
+        self.last_rtp_diagnostics = None
         if self.matchup_adapter_shadow or self.matchup_adapter_runtime:
             # The recognizer reads only causal public board/discard evidence.
             # Shadow failures are inert; activated routing is strict so a bad

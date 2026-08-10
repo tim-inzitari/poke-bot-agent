@@ -1,0 +1,37 @@
+{
+  "schema": "poke_bot.replay_model_inspector_submission_id_text_activation/v1",
+  "owner_decision_revision": 189,
+  "created_at_utc": "2026-08-08T01:47:00Z",
+  "status": "active_read_only",
+  "representation": "exact_base10_string",
+  "live_identifiers": [
+    "55217604",
+    "55315274",
+    "55324802"
+  ],
+  "verified_surfaces": [
+    "submission_selector",
+    "selected_submission_summary",
+    "game_context",
+    "trace_context",
+    "model_weight_parameter_inventory",
+    "provenance_detail_panels"
+  ],
+  "deployed_app_js_sha256": "sha256:470c415705ea04732c45a3eec8365c49dcc15163a61521d59e65eb576369d69a",
+  "rollback_backups": [
+    "/mnt/Main/main/poke-bot-agent/replay-model-inspector-r176/replay_inspector/web/app.js.pre-r189-idtext-20260808T014248Z",
+    "/mnt/Main/main/poke-bot-agent/replay-model-inspector-r176/replay_inspector/web/app.js.pre-runtime-wording-20260808T014551Z"
+  ],
+  "validation": {
+    "full_exact_runtime_inspector_tests_passed_before_final_display_only_patch": 88,
+    "final_static_ui_tests_passed": 10,
+    "javascript_syntax": "passed",
+    "live_scientific_notation_present": false,
+    "live_exact_55217604_occurrences": 6
+  },
+  "safety": {
+    "read_only": true,
+    "backend_route_identity_changed": false,
+    "training_or_selector_service_control_invoked": false
+  }
+}

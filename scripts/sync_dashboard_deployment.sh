@@ -30,10 +30,13 @@ fi
 
 rsync -a dashboard/lan/index.html "${LIVE_ROOT}/index.html"
 rsync -a dashboard/lan/server.py "${LIVE_ROOT}/server.py"
+rsync -a scripts/fleet_host_snapshot.py "${LIVE_ROOT}/fleet_host_snapshot.py"
 rsync -a ops/current_goal_requirements.json \
   "${LIVE_ROOT}/current_goal_requirements.json"
 rsync -a scripts/dashboard_snapshot.py \
   "${INZI}:/home/inzi/poke-bot-agent/scripts/dashboard_snapshot.py"
+rsync -a scripts/fleet_host_snapshot.py \
+  "${INZI}:/home/inzi/poke-bot-agent/scripts/fleet_host_snapshot.py"
 rsync -a ops/current_goal_requirements.json \
   "${INZI}:/home/inzi/poke-bot-agent/ops/current_goal_requirements.json"
 rsync -a scripts/dashboard_snapshot.py \

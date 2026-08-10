@@ -1,0 +1,93 @@
+{
+  "activation": {
+    "activate_at": "next_clean_pre_collection_boundary_after_iter5_commit_or_restore",
+    "do_not_activate_during_iter5_corpus_restore": true,
+    "live_frozen_path_unchanged": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/ops/frozen_specialist_registry_crustle_r163_h10_marnie.json",
+    "live_frozen_sha256": "sha256:dc48e023b1fac15239b74377238f8b2d076066e75753837ab46123ecc72ba1a3",
+    "live_gate_path_unchanged": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/runtime/final_format_crustle_gate_r163_h10_marnie.json",
+    "live_gate_sha256": "sha256:271c7c56bafc0ac17b6edd66d3a3a020c6520af63e828ab765efd05f9164777b",
+    "live_registry_rebound": false,
+    "mode": "staged",
+    "reason": "Iter5 resume/restore is in flight under immutable design fingerprint bound to gate sha256:271c7c56...; overwriting live gate would fail-closed the restore.",
+    "runtime_registry_rebind_required": {
+      "active_gate_contract": "runtime/final_format_crustle_gate_r168_lucario_a.json",
+      "frozen_specialist_registry": "ops/frozen_specialist_registry_crustle_r168_lucario_a.json",
+      "terminal_active_gate_id": "specialist-strong-public-roster-sw80-at-iter5-v1+h10-s-other-a-r111+marnie-h10-r163+lucario-a-r168"
+    },
+    "staged_frozen_registry": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/ops/frozen_specialist_registry_crustle_r168_lucario_a.json",
+    "staged_frozen_registry_sha256": "sha256:7dc9768f8ec9b6a624519128d5fa202d51ad083f43d4d41023b4d7b10e803e32",
+    "staged_gate": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/runtime/final_format_crustle_gate_r168_lucario_a.json",
+    "staged_gate_sha256": "sha256:611c67e6d4db1ae4995c307ec65180f49b4b2a9299c57c9eedcd66c7e8f1580a"
+  },
+  "constraints_honored": [
+    "no_game_shard_or_quarantine_deletion",
+    "no_iter5_recollect",
+    "no_live_r163_gate_overwrite_during_restore",
+    "systemd_launchd_only_no_interactive_kills"
+  ],
+  "created_at_utc": "2026-08-06T14:41:46.785314Z",
+  "live_next_iter_note": "Iter5 public_mix refill/restore remains bound to the 18-opponent r163 gate; Lucario A-tier binds at the next receipt-backed collection/holdout boundary after activation.",
+  "live_next_iter_uses_lucario": false,
+  "lucario": {
+    "archetype_id": "lucario",
+    "archetype_label": "Yaroslav Mega Lucario V2 Crustle-aware",
+    "checkpoint_digest": null,
+    "content_digest": "sha256:2738a2e4394155b0122eeaa68cec9bbe0cc7dbb4b79f5d055827778444b68bb3",
+    "deck_sha256": "sha256:b4464eb525a25e6598a972d00efc5e5b5156372e77f51853f4076d8ebb34fd7d",
+    "main_py_sha256": "sha256:fddcbcde82cd7b5b4f6a1c1644ec544fc0d7916184f12280c60b34e06076b540",
+    "opponent_id": "yaroslav-lucario-v2-crustle",
+    "package_kind": "public_roster_baseline",
+    "source": "yaroslavkholmirzayev/mega-lucario-v2-crustle-aware-best-submit",
+    "tier": "A",
+    "weight": 1.0
+  },
+  "owner_goal_revision": 168,
+  "package_install_checks": [
+    {
+      "content_digest": "sha256:2738a2e4394155b0122eeaa68cec9bbe0cc7dbb4b79f5d055827778444b68bb3",
+      "exists": true,
+      "matches_canonical": true,
+      "path": "/home/inzi/poke-bot-agent/baselines/roster/yaroslav-lucario-v2-crustle"
+    },
+    {
+      "content_digest": "sha256:2738a2e4394155b0122eeaa68cec9bbe0cc7dbb4b79f5d055827778444b68bb3",
+      "exists": true,
+      "matches_canonical": true,
+      "path": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v9/baselines/roster/yaroslav-lucario-v2-crustle"
+    },
+    {
+      "content_digest": null,
+      "exists": false,
+      "matches_canonical": false,
+      "path": "/mnt/Main/Elmo/poke-bot-agent/baselines/roster/yaroslav-lucario-v2-crustle"
+    },
+    {
+      "content_digest": "sha256:2738a2e4394155b0122eeaa68cec9bbe0cc7dbb4b79f5d055827778444b68bb3",
+      "host": "bert.local",
+      "matches_canonical": true,
+      "note": "verified on Bert workspace from controller host",
+      "path": "/Users/tsinzitari/workspace/poke-bot-agent/baselines/roster/yaroslav-lucario-v2-crustle"
+    },
+    {
+      "content_digest": "sha256:2738a2e4394155b0122eeaa68cec9bbe0cc7dbb4b79f5d055827778444b68bb3",
+      "host": "bert.local",
+      "matches_canonical": true,
+      "note": "remote-worker WorkingDirectory package",
+      "path": "/Users/tsinzitari/workspace/poke-bot-agent-h10-r79-stage/baselines/roster/yaroslav-lucario-v2-crustle"
+    }
+  ],
+  "roster": {
+    "dual_marnie_preserved": true,
+    "games_per_opponent": 250,
+    "gate_id": "specialist-strong-public-roster-sw80-at-iter5-v1+h10-s-other-a-r111+marnie-h10-r163+lucario-a-r168",
+    "new_gate_games_total": 4750,
+    "new_size": 19,
+    "previous_gate_games_total": 4500,
+    "previous_size": 18,
+    "seat0_games_per_opponent": 125,
+    "seat1_games_per_opponent": 125
+  },
+  "schema": "poke_bot.crustle_lucario_a_tier_roster/v1",
+  "specialist_id": "crustle",
+  "status": "staged_for_next_safe_collection_boundary"
+}

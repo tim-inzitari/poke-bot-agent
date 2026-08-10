@@ -125,10 +125,7 @@ narrowest recovery effect that restores the actual next-attacker path.
 Enhanced Hammer is conditional disruption. Use it when removing the visible
 Special Energy meaningfully delays the opponent, breaks an attack, or changes
 the prize race. Do not spend it because a Special Energy is merely present.
-Xerosic's Machinations and Nighttime Mine are likewise timing tools. Their
-value depends on the visible hand, board, discard, and prize clock. Preserve
-them when their current effect is smaller than the hand or board continuity
-they would cost.
+Xerosic's Machinations is a timing tool and value depends on the opponent’s hand size.
 
 Bench and prize discipline
 
@@ -163,7 +160,7 @@ Common errors
 - Drawing past the exact Powerful Hand threshold and losing to deck-out.
 - Spending Rare Candy without a replacement evolution route.
 - Filling the bench before the opponent's prize plan is known.
-- Using Boss, Enhanced Hammer, Xerosic, or Nighttime Mine only because it is
+- Using Boss, Enhanced Hammer, or Xerosic, only because it is
   legal.
 - Attaching draw Energy without counting forced draws and next-turn deck size.
 - Recovering the largest number of cards instead of the exact missing combo.
@@ -183,6 +180,19 @@ At every decision, answer these questions:
 7. What is the safest line if one unknown key card is prized?
 8. Can the game end before the deck must draw again?
 
+Matchup Specific
+While playing against another Alakazam deck, preserve Xerosic to play on a turn where limiting the opponent’s hand size meaningfully will impact their ability to do damage with Alakazam’s attack. Xerosic can be used on a turn where the opposing Alakazam will be knocked out, forcing the opponent to expend cards to rebuild their Alakazam and their hand size to do damage.
+
+When your opponent plays Xerosic, prioritize discarding cards that are not useful in that matchup. Discard Enhanced Hammer against decks that are not Cynthia’s Garchomp ex and Crustle. Discard Xerosic against decks that are not Alakazam.
+
+While playing against Cynthia’s Garchomp ex, preserve Enhanced Hammer to discard Rocky Fighting Energy. Rocky Fighting Energy makes Alakazam’s attack do nothing. It is critical to discard these energies with Enhanced Hammer before attacking the Pokemon they are attached to.
+
+Play Shaymin onto the bench reactively to avoid a damaged Pokemon from being knocked out by damage from an attack that damages benched Pokemon. Do not let Shaymin sit on the bench and take damage from Froslass against Grimsnarl ex if playing Shaymin does not save a Pokemon from being knocked out by Grimsnarl’s attack
+
+Similarly, while playing against Crustle decks, only use Enhanced Hammer on Mist Energy, unless not doing so will win the game. It is critical to discard Mist Energy with Enhanced Hammer before attacking the Pokemon they are attached to.
+
+Battle Cage should be prioritized against decks that use Froslass and Munkidori. 
+
 Source basis
 
 This pilot guide consolidates the already validated powerful-hand-v1 evidence
@@ -195,7 +205,7 @@ set used by the Alakazam heuristic teacher:
 - Kaggle Pokemon TCG AI Battle discussion 717697:
   https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/discussion/717697
 
-Training appendix
+Training authority
 
 The model guide is curriculum metadata, not a runtime policy. On guide-qualified
 rows it weights observed causal strategic-head targets at the receipt-backed

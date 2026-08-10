@@ -33,8 +33,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 #: Advertised capability set for trainer dispatch / redeploy gates.
-REMOTE_JOB_KINDS = ("play", "promotion", "self_play", "runtime_probe")
-REMOTE_WORKER_CAPABILITIES = (
+REMOTE_JOB_KINDS = (
+    "play",
+    "promotion",
+    "self_play",
+    "self_play_multi",
+    "runtime_probe",
+)
+_BASE_REMOTE_WORKER_CAPABILITIES = (
     "greedy_play_v1",
     "active_checkpoint_job_barrier_v1",
     "play_result_contract_v1",
@@ -43,8 +49,33 @@ REMOTE_WORKER_CAPABILITIES = (
     "controlled_rotation_v1",
     "checkpoint_digest_verify_v1",
 )
+
+
+def _validated_public_multi_env_capabilities() -> tuple[str, ...]:
+    """Advertise public packing only with a readable exact r182 manifest."""
+
+    try:
+        from poke_bot.public_multi_env_safety import (
+            public_multi_env_legacy_opponent_ids,
+        )
+
+        if len(public_multi_env_legacy_opponent_ids()) != 10:
+            return ()
+    except (ImportError, OSError, RuntimeError, ValueError):
+        return ()
+    return ("public_multi_env_allowlist_r182_v1",)
+
+
+REMOTE_WORKER_CAPABILITIES = (
+    *_BASE_REMOTE_WORKER_CAPABILITIES,
+    *_validated_public_multi_env_capabilities(),
+)
 REMOTE_WORKER_SAFETY_VERSION = "20260717"
 REMOTE_WORKER_ARM_FILE = REPO_ROOT / "outputs" / "state" / "REMOTE_WORKER_ARMED"
+# r182 permits exactly this many independent games in a LibcgMultiEnv packet.
+# Keep the worker-pool lifecycle derived from the same maximum so the declared
+# 256-game child recycle budget remains a game budget, not a packet budget.
+REMOTE_MAX_GAMES_PER_POOL_TASK = 4
 # Production supervisors may opt into this reserved code to distinguish a
 # completed max-service-jobs rotation from a resource or health failure. The
 # default remains zero for existing canary/Bert wrappers.
@@ -1168,12 +1199,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     from poke_bot import config
     from poke_bot.batched_infer import run_leaf_server
     from poke_bot.checkpoint import checkpoint_digest
+    from poke_bot.public_multi_env_safety import require_public_multi_env_safe_job
     from poke_bot.remote_jobs import serve_forever
     from poke_bot.remote_sim_jobs import (
         remote_matchup_runtime_probe,
         remote_play_job,
         remote_promotion_job,
         remote_self_play_job,
+        remote_self_play_multi_job,
     )
     from poke_bot.worker_pool import WorkerPool
 
@@ -1406,6 +1439,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             num_workers=n_workers,
             cg_lib_path=args.cg_lib_path or None,
             remote_channel=remote_channel,
+            max_games_per_task=REMOTE_MAX_GAMES_PER_POOL_TASK,
         )
         pool_start_finished = threading.Event()
 
@@ -1636,6 +1670,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             "worker_capacity_unhealthy_for_s": float(
                 state.get("worker_capacity_unhealthy_for_s") or 0.0
             ),
+            "worker_recycle_games": int(pool.recycle_games),
+            "max_games_per_pool_task": int(pool.max_games_per_task),
+            "max_pool_tasks_per_child": int(pool.max_tasks_per_child),
             "shutdown_reason": state.get("shutdown_reason"),
             "jobs_completed": state["jobs_completed"],
             "jobs_failed": state["jobs_failed"],
@@ -2014,6 +2051,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                 worker_fn = remote_play_job
             elif kind == "self_play":
                 worker_fn = remote_self_play_job
+            elif kind == "self_play_multi":
+                worker_fn = remote_self_play_multi_job
             elif kind == "promotion":
                 worker_fn = remote_promotion_job
             elif kind == "runtime_probe":
@@ -2044,56 +2083,194 @@ def main(argv: Optional[list[str]] = None) -> int:
                     }
                 active_digest = str(state["digest"])
                 active_checkpoint = str(state["checkpoint"])
+                matchup_runtime = copy.deepcopy(state.get("matchup_runtime"))
+
+                def _stamp_checkpoint_job(raw_job: dict[str, Any]) -> dict[str, Any]:
+                    stamped = {
+                        **raw_job,
+                        "_controller_matchup_runtime": copy.deepcopy(
+                            matchup_runtime
+                        ),
+                    }
+                    req_digest = stamped.get("checkpoint_digest")
+                    req_path = stamped.get("checkpoint")
+                    if req_digest and req_path:
+                        req_digest_s = str(req_digest)
+                        if req_digest_s != active_digest:
+                            raise ValueError(
+                                f"{kind} requested inactive checkpoint "
+                                f"{req_digest_s}; active={active_digest}; "
+                                "reload_checkpoint is required before dispatch"
+                            )
+                        stamped = {
+                            **stamped,
+                            "checkpoint": active_checkpoint,
+                            "device": "cpu",
+                        }
+                    else:
+                        stamped = {
+                            **stamped,
+                            "checkpoint": active_checkpoint,
+                            "checkpoint_digest": active_digest,
+                            "device": "cpu",
+                        }
+                    return stamped
+
                 # This field is controller-owned and overwritten for every
                 # request.  Worker children reassert it before constructing
                 # the candidate agent, preventing a frozen opponent or a
                 # recycled child from leaking a stale routing tree across
                 # game boundaries.
-                job = {
-                    **job,
-                    "_controller_matchup_runtime": copy.deepcopy(
-                        state.get("matchup_runtime")
-                    ),
-                }
-                if kind in ("play", "self_play"):
-                    # A job may use the active leaf checkpoint plus a CPU-local
-                    # opponent checkpoint. Different leaf primaries cannot
-                    # share this worker concurrently.
-                    req_digest = job.get("checkpoint_digest")
-                    req_path = job.get("checkpoint")
-                    if req_digest and req_path:
-                        req_digest_s = str(req_digest)
-                        if req_digest_s != active_digest:
+                if kind == "self_play_multi":
+                    child_jobs = list(job.get("jobs") or [])
+                    if not child_jobs:
+                        state["jobs_failed"] += 1
+                        return {
+                            "type": "result",
+                            "ok": False,
+                            "error": "self_play_multi job.jobs must be a non-empty list",
+                        }
+                    try:
+                        stamped_children = [
+                            _stamp_checkpoint_job(child)
+                            for child in child_jobs
+                            if isinstance(child, dict)
+                        ]
+                    except ValueError as exc:
+                        state["jobs_failed"] += 1
+                        return {
+                            "type": "result",
+                            "ok": False,
+                            "error": str(exc),
+                        }
+                    if len(stamped_children) != len(child_jobs):
+                        state["jobs_failed"] += 1
+                        return {
+                            "type": "result",
+                            "ok": False,
+                            "error": "self_play_multi job.jobs entries must be objects",
+                        }
+                    if not (
+                        1
+                        <= len(stamped_children)
+                        <= REMOTE_MAX_GAMES_PER_POOL_TASK
+                    ):
+                        state["jobs_failed"] += 1
+                        return {
+                            "type": "result",
+                            "ok": False,
+                            "error": (
+                                "self_play_multi packet must contain 1.."
+                                f"{REMOTE_MAX_GAMES_PER_POOL_TASK} children"
+                            ),
+                        }
+                    public_children = [
+                        isinstance(child.get("spec"), dict)
+                        for child in stamped_children
+                    ]
+                    if any(public_children):
+                        if not all(public_children):
+                            state["jobs_failed"] += 1
                             return {
                                 "type": "result",
                                 "ok": False,
                                 "error": (
-                                    f"{kind} requested inactive checkpoint "
-                                    f"{req_digest_s}; active={active_digest}; "
-                                    "reload_checkpoint is required before dispatch"
+                                    "self_play_multi may not mix public and "
+                                    "self-play children"
                                 ),
                             }
-                        job = {
-                            **job,
-                            "checkpoint": active_checkpoint,
-                            "device": "cpu",
-                        }
-                    else:
-                        job = {
-                            **job,
-                            "checkpoint": active_checkpoint,
-                            "checkpoint_digest": active_digest,
-                            "device": "cpu",
+                        if not (
+                            2
+                            <= len(stamped_children)
+                            <= REMOTE_MAX_GAMES_PER_POOL_TASK
+                        ):
+                            state["jobs_failed"] += 1
+                            return {
+                                "type": "result",
+                                "ok": False,
+                                "error": (
+                                    "public self_play_multi packet must contain "
+                                    f"2..{REMOTE_MAX_GAMES_PER_POOL_TASK} children"
+                                ),
+                            }
+                        try:
+                            for child in stamped_children:
+                                require_public_multi_env_safe_job(child)
+                        except (RuntimeError, ValueError) as exc:
+                            state["jobs_failed"] += 1
+                            return {
+                                "type": "result",
+                                "ok": False,
+                                "error": str(exc),
+                            }
+                    job = {
+                        "jobs": stamped_children,
+                        "checkpoint": active_checkpoint,
+                        "checkpoint_digest": active_digest,
+                        "device": "cpu",
+                        "_controller_matchup_runtime": copy.deepcopy(
+                            matchup_runtime
+                        ),
+                    }
+                elif kind in ("play", "self_play"):
+                    # A job may use the active leaf checkpoint plus a CPU-local
+                    # opponent checkpoint. Different leaf primaries cannot
+                    # share this worker concurrently.
+                    try:
+                        job = _stamp_checkpoint_job(job)
+                    except ValueError as exc:
+                        state["jobs_failed"] += 1
+                        return {
+                            "type": "result",
+                            "ok": False,
+                            "error": str(exc),
                         }
                 else:
-                    job = {**job, "device": "cpu"}
+                    job = {
+                        **job,
+                        "device": "cpu",
+                        "_controller_matchup_runtime": copy.deepcopy(
+                            matchup_runtime
+                        ),
+                    }
                 state["active_jobs"] += 1
 
-            # One job per socket request. Many sockets call this concurrently;
-            # use Pool.apply (thread-safe), never concurrent imap_unordered.
+            # One job (or one packed self_play_multi batch) per socket request.
+            # Many sockets call this concurrently; use Pool.apply (thread-safe),
+            # never concurrent imap_unordered.
             succeeded = False
             try:
                 result = pool.apply(worker_fn, job)
+                if kind == "self_play_multi":
+                    if isinstance(result, list):
+                        multi_rows = result
+                    elif isinstance(result, dict) and isinstance(
+                        result.get("results"), list
+                    ):
+                        multi_rows = list(result.get("results") or [])
+                    else:
+                        raise TypeError(
+                            "self_play_multi worker must return a list of "
+                            f"results (got {type(result).__name__})"
+                        )
+                    n_decisions = 0
+                    n_records = 0
+                    for row in multi_rows:
+                        if not isinstance(row, dict):
+                            continue
+                        n_decisions += max(0, int(row.get("n_decisions") or 0))
+                        records = list(row.get("record_jsons") or [])
+                        if not records and row.get("record_json"):
+                            records = [row["record_json"]]
+                        n_records += len(records)
+                    result = {
+                        "ok": True,
+                        "self_play_multi": True,
+                        "results": multi_rows,
+                        "n_games": len(multi_rows),
+                        "n_decisions": n_decisions,
+                        "n_records": n_records,
+                    }
                 succeeded = True
                 response = {"type": "result", "ok": True, "result": result}
             except BaseException as exc:  # noqa: BLE001
@@ -2111,10 +2288,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                             state["decisions_completed"] += max(
                                 0, int(result.get("n_decisions") or 0)
                             )
-                            records = list(result.get("record_jsons") or [])
-                            if not records and result.get("record_json"):
-                                records = [result["record_json"]]
-                            state["trajectories_completed"] += len(records)
+                            if kind == "self_play_multi":
+                                state["trajectories_completed"] += max(
+                                    0, int(result.get("n_records") or 0)
+                                )
+                            else:
+                                records = list(result.get("record_jsons") or [])
+                                if not records and result.get("record_json"):
+                                    records = [result["record_json"]]
+                                state["trajectories_completed"] += len(records)
                         except (AttributeError, TypeError, ValueError):
                             # Telemetry must never change a completed job into a
                             # failed one; malformed results are handled by the
