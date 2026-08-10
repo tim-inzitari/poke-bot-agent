@@ -107,14 +107,34 @@ def test_r233_runtime_source_is_checksum_pinned_and_actor_repaired(monkeypatch, 
     queue = source / "poke_bot/r228_async_shared_tree_queue.py"
     runtime.parent.mkdir(parents=True)
     destination.mkdir()
-    (source / "main.py").write_bytes(b"main")
-    queue.write_bytes(b"queue")
-    runtime.write_bytes(b'''STOCK_LIBRARY_SHA256 = {
+    (source / "main.py").write_bytes(b'''r228 asynchronous eight-worker viability smoke
+R228_ASYNC_EIGHT_WORKER_FULL_GAMEPLAY_SUCCESS
+poke_bot.r228_async_eight_worker_kaggle_viability/v1
+R228_ASYNC_EIGHT_WORKER_HARD_FAILURE''')
+    queue.write_bytes(b'''LANES = 8
+exactly eight search-input rows are required
+decision deadline expired before eight arenas opened
+asynchronous eight-worker decision failed
+                coalesce_until = min(
+                    float(deadline_monotonic), time.monotonic() + self._coalesce_seconds
+                )
+                step_rows: list[_WorkerResult] = []
+                for row in ready:
+                if smoke_min_depth_per_lane is not None and all(
+                    len(context.action_path) >= int(smoke_min_depth_per_lane)''')
+    runtime.write_bytes(b'''SCHEMA = "poke_bot.r228_async_eight_worker_kaggle_viability/v1"
+DECISION_PREFIX = "R228_ASYNC_EIGHT_WORKER_DECISION"
+STOCK_LIBRARY_SHA256 = {
     "libcg.so": "ffd89bf923525a3e6feb5e6201e96a866c0f456895499ed5c4a566303caae67c",
     "libcg.dylib": "77bb978a8129b094452679e0daf0da69593afda7331685f4642c0d4a94d39d82",
     "libcg-arm64.so": "030b4728ce9fb9e90b75830b7cf7236f71859732a05ec4a377078eee0421bbe5",
     "cg.dll": "9ea2b0a751029689bff3ddccb5f29a98edd46961dad264490ed121ef704fb500",
 }
+search_inputs=tuple(dict(search_inputs) for _ in range(8))
+                    "arena_count": receipt.arena_count,
+                    "unique_handle_count": receipt.unique_handle_count,
+                    "per_lane_depth": list(receipt.per_lane_depth),
+                    "search_release_calls": receipt.search_release_calls,
             decoded[index] = DecodedLeaf(
                 state_key=_state_key(lane_id=frontier.lane_id, raw=frontier.raw),
                 value=float(leaf.value),''')
@@ -127,4 +147,43 @@ def test_r233_runtime_source_is_checksum_pinned_and_actor_repaired(monkeypatch, 
     repaired = (destination / "poke_bot/r228_kaggle_async_runtime.py").read_text()
     assert "d16244a3157fc55" in repaired
     assert 'actor = int(current.get("yourIndex", -1))' in repaired
-    assert hashes["main.py"] == stage.sha(source / "main.py")
+    assert "range(2)" in repaired
+    assert "per_lane_search_id_chains" in repaired
+    assert "requested_simulator_lane_count" in repaired
+    assert "LANES = 2" in (destination / "poke_bot/r228_async_shared_tree_queue.py").read_text()
+    assert "two-lane frontier batch was incomplete" in (
+        destination / "poke_bot/r228_async_shared_tree_queue.py"
+    ).read_text()
+    assert "0 < len(in_flight) < LANES" in (
+        destination / "poke_bot/r228_async_shared_tree_queue.py"
+    ).read_text()
+    assert "R239_TWO_LANE_FULL_GAMEPLAY_SUCCESS" in (destination / "main.py").read_text()
+    assert hashes["main.py"] == stage.sha(destination / "main.py")
+    assert hashes["main.py"] != stage.sha(source / "main.py")
+
+
+def test_exact_pre_r234_baseline_produces_canonical_r239_bytes(tmp_path: Path):
+    source = Path("/Users/tsinzitari/.cache/pokebot/r229-r228-package/package")
+    if not all((source / relative).is_file() for relative in stage.R233_RUNTIME_COMPONENTS):
+        pytest.skip("canonical pre-r234 cache is unavailable on this host")
+    if any(
+        stage.sha(source / relative) != expected
+        for relative, expected in stage.R233_RUNTIME_COMPONENTS.items()
+    ):
+        pytest.skip("local cache does not contain the canonical pre-r234 bytes")
+
+    destination = tmp_path / "r239"
+    destination.mkdir()
+    hashes = stage.overlay_r233_runtime(source=source, destination=destination)
+
+    assert hashes == {
+        "main.py": "sha256:64853dec77c8a0909bb6c395312b35facd2ab66d59bd15b047d2baa100e06254",
+        "poke_bot/r228_async_shared_tree_queue.py": (
+            "sha256:33edf975c57dd2f94a2d30b2f7650314579f9710344323369202ec6d8529d1f5"
+        ),
+        "poke_bot/r228_kaggle_async_runtime.py": (
+            "sha256:0cbc41c3d1cc8f3c0c267e69f83c0db1d54da4f28833f69626dd727bb23240d3"
+        ),
+    }
+    for relative in hashes:
+        compile((destination / relative).read_bytes(), relative, "exec")

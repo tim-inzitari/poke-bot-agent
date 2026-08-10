@@ -61,6 +61,33 @@ def _atomic(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, object]], dict[str, object]]:
+    manifest_path = stage / "r239_fleet_evaluation_manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise R229GameError("sealed package lacks a readable r239 manifest") from exc
+    expected_manifest_libraries = {
+        name: {"path": relative, "sha256": digest, "size_bytes": size}
+        for name, (relative, digest, size) in CANONICAL_NATIVE_LIBRARIES.items()
+    }
+    if (
+        manifest.get("schema")
+        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r239_package/v1"
+        or manifest.get("owner_goal_revision") != 239
+        or manifest.get("canonical_libcg_revision") != 236
+        or manifest.get("owner_two_lane_topology_revision") != 239
+        or manifest.get("simulator_lane_count") != 2
+        or manifest.get("internal_agent_start_arena_count") != 2
+        or manifest.get("distinct_search_begin_id_count") != 2
+        or manifest.get("logical_frontier_leaf_count_per_frozen_model_batch") != 2
+        or manifest.get("partial_frontier_batches_allowed") is not False
+        or manifest.get("serial_one_lane_continuation_allowed") is not False
+        or manifest.get("one_shared_logical_mcts_tree_required") is not True
+        or manifest.get("bo_lifecycle_revision") != 233
+        or manifest.get("r234_kaggle_broker_or_queue_lifecycle_included") is not False
+        or manifest.get("canonical_native_libraries") != expected_manifest_libraries
+    ):
+        raise R229GameError("sealed r239 package manifest identity drifted")
     cg_root = (stage / "cg").resolve(strict=True)
     expected_paths = {row[0] for row in CANONICAL_NATIVE_LIBRARIES.values()}
     observed_paths = {
@@ -89,6 +116,7 @@ def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, objec
 
 
 def _load(stage: Path) -> Any:
+    sys.dont_write_bytecode = True
     os.chdir(stage)
     sys.path[:] = [str(stage), *[item for item in sys.path if item and item != str(stage)]]
     for name in list(sys.modules):
@@ -101,6 +129,39 @@ def _load(stage: Path) -> Any:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _validate_two_lane_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
+    for row in receipts:
+        if row.get("mode") != "shared_tree_mcts":
+            continue
+        chains = row.get("per_lane_search_id_chains") or ()
+        first_search_ids = [
+            chain[0]
+            for chain in chains
+            if isinstance(chain, list)
+            and chain
+            and isinstance(chain[0], int)
+            and not isinstance(chain[0], bool)
+        ]
+        microbatches = row.get("microbatch_sizes") or ()
+        if (
+            row.get("requested_simulator_lane_count") != 2
+            or row.get("active_simulator_lane_count") != 2
+            or row.get("arena_count") != 2
+            or row.get("unique_handle_count") != 2
+            or row.get("search_begin_calls") != 2
+            or row.get("search_release_calls", 0) < 2
+            or row.get("search_end_calls") != 2
+            or row.get("max_simulator_calls_in_flight") != 2
+            or len(row.get("per_lane_depth") or ()) != 2
+            or len(chains) != 2
+            or len(set(first_search_ids)) != 2
+            or not microbatches
+            or any(size != 2 for size in microbatches)
+            or row.get("outstanding_virtual_loss") != 0
+        ):
+            raise R229GameError("searched decision lacks an exact two-lane receipt")
 
 
 def _legal(obs: Mapping[str, Any], action: Sequence[int]) -> None:
@@ -126,6 +187,10 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
         raise R229GameError("frozen r195 model or Matchup Adapter tree drifted")
     native_set, host_native_library = _verify_canonical_native_set(stage)
     module = _load(stage)
+    from poke_bot.r228_async_shared_tree_queue import LANES
+
+    if LANES != 2:
+        raise R229GameError("r239 experimental arm is not exactly two lanes")
     direct_module = module._direct()
     deck, model, _base_policy = direct_module._ensure_runtime()
     runtime = module._runtime()
@@ -224,6 +289,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
             raise R229GameError("MCTS receipt count does not match eligible branching decisions")
         if any(row.get("completed_backups", 0) < 1 and row.get("mode") == "shared_tree_mcts" for row in receipts):
             raise R229GameError("searched decision lacks a completed backup")
+        _validate_two_lane_receipts(receipts)
         changed = sum(bool(row.get("action_changed")) for row in receipts)
         meaningful = sum(bool(row.get("meaningful_choice_change")) for row in receipts)
         elapsed = max(1e-9, time.monotonic() - started)
@@ -244,6 +310,8 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
             "matchup_tree_sha256": MATCHUP_TREE,
             "stock_library": dict(runtime.stock_library_receipt),
             "canonical_libcg_revision": 236,
+            "mcts_topology_revision": 239,
+            "simulator_lane_count": 2,
             "canonical_native_libraries": native_set,
             "elapsed_seconds": elapsed,
             "started_at_utc": started_at_utc,

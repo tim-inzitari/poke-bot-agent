@@ -19,11 +19,19 @@ spec.loader.exec_module(runner)
 def _package_manifest(tmp_path: Path) -> Path:
     path = tmp_path / "package-manifest.json"
     path.write_text(json.dumps({
-        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r236_package/v1",
+        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r239_package/v1",
         "status": "sealed_evaluation_only",
-        "owner_goal_revision": 236,
+        "owner_goal_revision": 239,
         "bo_lifecycle_revision": 233,
         "canonical_libcg_revision": 236,
+        "owner_two_lane_topology_revision": 239,
+        "simulator_lane_count": 2,
+        "internal_agent_start_arena_count": 2,
+        "distinct_search_begin_id_count": 2,
+        "logical_frontier_leaf_count_per_frozen_model_batch": 2,
+        "partial_frontier_batches_allowed": False,
+        "serial_one_lane_continuation_allowed": False,
+        "one_shared_logical_mcts_tree_required": True,
         "checkpoint_sha256": runner.CHECKPOINT,
         "complete_ordered_action_ceiling": 65536,
         "canonical_libcg_wheel": {"sha256": runner.CANONICAL_LIBCG_WHEEL},
@@ -64,6 +72,7 @@ def test_run_parses_remote_stdout_and_commits_exact_receipt(monkeypatch, tmp_pat
     receipt = {
         "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_game/v1",
         "status": "complete", **job, "canonical_libcg_revision": 236,
+        "mcts_topology_revision": 239, "simulator_lane_count": 2,
         "training_eligible": False,
     }
     monkeypatch.setattr(
@@ -107,6 +116,7 @@ def test_one_worker_failure_is_receipted_requeued_and_does_not_abort(monkeypatch
         runner._atomic(output, {
             "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_game/v1",
             "status": "complete", **current, "canonical_libcg_revision": 236,
+            "mcts_topology_revision": 239, "simulator_lane_count": 2,
             "training_eligible": False,
         })
         return {"disposition": "complete", "host": host["id"], "wall_seconds": 1.0}
@@ -205,6 +215,8 @@ def test_package_identity_is_required_and_checksum_bound(tmp_path):
     assert identity["package_manifest_sha256"].startswith("sha256:")
     assert identity["package_payload_tree_sha256"] == "sha256:" + "a" * 64
     assert identity["canonical_libcg_revision"] == 236
+    assert identity["mcts_topology_revision"] == 239
+    assert identity["simulator_lane_count"] == 2
 
 
 def test_package_identity_rejects_mixed_libcg_manifest(tmp_path):

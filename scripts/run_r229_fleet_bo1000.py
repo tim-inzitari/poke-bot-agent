@@ -101,11 +101,19 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
     manifest = _read(path)
     if (
         manifest.get("schema")
-        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r236_package/v1"
+        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r239_package/v1"
         or manifest.get("status") != "sealed_evaluation_only"
-        or manifest.get("owner_goal_revision") != 236
+        or manifest.get("owner_goal_revision") != 239
         or manifest.get("bo_lifecycle_revision") != 233
         or manifest.get("canonical_libcg_revision") != 236
+        or manifest.get("owner_two_lane_topology_revision") != 239
+        or manifest.get("simulator_lane_count") != 2
+        or manifest.get("internal_agent_start_arena_count") != 2
+        or manifest.get("distinct_search_begin_id_count") != 2
+        or manifest.get("logical_frontier_leaf_count_per_frozen_model_batch") != 2
+        or manifest.get("partial_frontier_batches_allowed") is not False
+        or manifest.get("serial_one_lane_continuation_allowed") is not False
+        or manifest.get("one_shared_logical_mcts_tree_required") is not True
         or manifest.get("checkpoint_sha256") != CHECKPOINT
         or manifest.get("complete_ordered_action_ceiling") != 65536
         or manifest.get("r234_kaggle_broker_or_queue_lifecycle_included") is not False
@@ -130,6 +138,8 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
         "package_manifest_sha256": _sha(path),
         "package_payload_tree_sha256": payload_sha,
         "canonical_libcg_revision": 236,
+        "mcts_topology_revision": 239,
+        "simulator_lane_count": 2,
         "canonical_libcg_wheel_sha256": CANONICAL_LIBCG_WHEEL,
         "canonical_native_libraries": expected_libraries,
     }
@@ -146,6 +156,8 @@ def _complete(path: Path, job: Mapping[str, Any]) -> bool:
         and row.get("game_index") == job["game_index"]
         and row.get("mcts_seat") == job["mcts_seat"]
         and row.get("canonical_libcg_revision") == 236
+        and row.get("mcts_topology_revision") == 239
+        and row.get("simulator_lane_count") == 2
         and row.get("training_eligible") is False
     )
 
@@ -274,6 +286,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "package_manifest_sha256", "package_payload_tree_sha256",
             "canonical_libcg_revision", "canonical_libcg_wheel_sha256",
             "canonical_native_libraries",
+            "mcts_topology_revision", "simulator_lane_count",
         ):
             if old.get(key) != run_identity.get(key):
                 raise R229FleetError(f"resume identity drifted: {key}")

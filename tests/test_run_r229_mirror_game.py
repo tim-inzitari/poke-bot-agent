@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,25 @@ def _package(monkeypatch, tmp_path: Path) -> Path:
             len(payload),
         )
     monkeypatch.setattr(game, "CANONICAL_NATIVE_LIBRARIES", libraries)
+    (package / "r239_fleet_evaluation_manifest.json").write_text(json.dumps({
+        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r239_package/v1",
+        "owner_goal_revision": 239,
+        "canonical_libcg_revision": 236,
+        "owner_two_lane_topology_revision": 239,
+        "simulator_lane_count": 2,
+        "internal_agent_start_arena_count": 2,
+        "distinct_search_begin_id_count": 2,
+        "logical_frontier_leaf_count_per_frozen_model_batch": 2,
+        "partial_frontier_batches_allowed": False,
+        "serial_one_lane_continuation_allowed": False,
+        "one_shared_logical_mcts_tree_required": True,
+        "bo_lifecycle_revision": 233,
+        "r234_kaggle_broker_or_queue_lifecycle_included": False,
+        "canonical_native_libraries": {
+            name: {"path": relative, "sha256": digest, "size_bytes": size}
+            for name, (relative, digest, size) in libraries.items()
+        },
+    }))
     return package
 
 
@@ -52,3 +72,43 @@ def test_game_preflight_rejects_extra_native_member(monkeypatch, tmp_path):
     (package / "cg/libcg-old.so").write_bytes(b"historical")
     with pytest.raises(game.R229GameError, match="mixed or incomplete"):
         game._verify_canonical_native_set(package)
+
+
+def test_game_preflight_rejects_eight_lane_manifest(monkeypatch, tmp_path):
+    package = _package(monkeypatch, tmp_path)
+    manifest = package / "r239_fleet_evaluation_manifest.json"
+    payload = json.loads(manifest.read_text())
+    payload["simulator_lane_count"] = 8
+    manifest.write_text(json.dumps(payload))
+    with pytest.raises(game.R229GameError, match="manifest identity drifted"):
+        game._verify_canonical_native_set(package)
+
+
+def _two_lane_receipt():
+    return {
+        "mode": "shared_tree_mcts",
+        "requested_simulator_lane_count": 2,
+        "active_simulator_lane_count": 2,
+        "arena_count": 2,
+        "unique_handle_count": 2,
+        "search_begin_calls": 2,
+        "search_release_calls": 2,
+        "search_end_calls": 2,
+        "max_simulator_calls_in_flight": 2,
+        "per_lane_depth": [1, 1],
+        "per_lane_search_id_chains": [[101], [202]],
+        "microbatch_sizes": [2],
+        "outstanding_virtual_loss": 0,
+    }
+
+
+def test_decision_receipt_requires_two_distinct_lanes_and_full_batches():
+    game._validate_two_lane_receipts([_two_lane_receipt()])
+    bad = _two_lane_receipt()
+    bad["per_lane_search_id_chains"] = [[101], [101]]
+    with pytest.raises(game.R229GameError, match="exact two-lane"):
+        game._validate_two_lane_receipts([bad])
+    bad = _two_lane_receipt()
+    bad["microbatch_sizes"] = [1]
+    with pytest.raises(game.R229GameError, match="exact two-lane"):
+        game._validate_two_lane_receipts([bad])

@@ -100,7 +100,7 @@ def _replace_once(payload: bytes, old: bytes, new: bytes, *, label: str) -> byte
 
 
 def repair_r233_runtime_for_r229(path: Path) -> None:
-    """Apply only BO-required actor/cap/lib identity repairs to pre-r234 bytes."""
+    """Apply only BO actor/lib identity and r239 two-lane repairs."""
 
     payload = path.read_bytes()
     old_hashes = b'''STOCK_LIBRARY_SHA256 = {
@@ -116,6 +116,43 @@ def repair_r233_runtime_for_r229(path: Path) -> None:
     "cg.dll": "eae88634e26dc31d94150a4d8202fc9d32596b8c688ef67e14cb4088cd4d5771",
 }'''
     payload = _replace_once(payload, old_hashes, new_hashes, label="r236 hashes")
+    payload = _replace_once(
+        payload,
+        b'SCHEMA = "poke_bot.r228_async_eight_worker_kaggle_viability/v1"',
+        b'SCHEMA = "poke_bot.r239_two_lane_fleet_mirror/v1"',
+        label="r239 runtime schema",
+    )
+    payload = _replace_once(
+        payload,
+        b'DECISION_PREFIX = "R228_ASYNC_EIGHT_WORKER_DECISION"',
+        b'DECISION_PREFIX = "R239_TWO_LANE_MCTS_DECISION"',
+        label="r239 decision marker",
+    )
+    payload = _replace_once(
+        payload,
+        b"search_inputs=tuple(dict(search_inputs) for _ in range(8))",
+        b"search_inputs=tuple(dict(search_inputs) for _ in range(2))",
+        label="two search inputs",
+    )
+    old_lane_receipt = b'''                    "per_lane_depth": list(receipt.per_lane_depth),
+                    "search_release_calls": receipt.search_release_calls,'''
+    new_lane_receipt = b'''                    "per_lane_depth": list(receipt.per_lane_depth),
+                    "per_lane_search_id_chains": [
+                        list(chain) for chain in receipt.per_lane_search_id_chains
+                    ],
+                    "search_release_calls": receipt.search_release_calls,'''
+    payload = _replace_once(
+        payload, old_lane_receipt, new_lane_receipt, label="two-lane search ids"
+    )
+    old_arena_receipt = b'''                    "arena_count": receipt.arena_count,
+                    "unique_handle_count": receipt.unique_handle_count,'''
+    new_arena_receipt = b'''                    "requested_simulator_lane_count": 2,
+                    "active_simulator_lane_count": receipt.arena_count,
+                    "arena_count": receipt.arena_count,
+                    "unique_handle_count": receipt.unique_handle_count,'''
+    payload = _replace_once(
+        payload, old_arena_receipt, new_arena_receipt, label="requested active lanes"
+    )
     old_actor = b'''            decoded[index] = DecodedLeaf(
                 state_key=_state_key(lane_id=frontier.lane_id, raw=frontier.raw),
                 value=float(leaf.value),'''
@@ -132,6 +169,104 @@ def repair_r233_runtime_for_r229(path: Path) -> None:
     path.write_bytes(payload)
 
 
+def repair_r233_queue_for_r239(path: Path) -> None:
+    """Set exactly two lanes without importing the r234 cleanup lifecycle."""
+
+    payload = path.read_bytes()
+    replacements = (
+        (b"LANES = 8", b"LANES = 2", "lane count"),
+        (
+            b'exactly eight search-input rows are required',
+            b'exactly two search-input rows are required',
+            "search input contract",
+        ),
+        (
+            b'decision deadline expired before eight arenas opened',
+            b'decision deadline expired before two arenas opened',
+            "arena-open contract",
+        ),
+        (
+            b'asynchronous eight-worker decision failed',
+            b'asynchronous two-lane decision failed',
+            "failure marker",
+        ),
+    )
+    for old, new, label in replacements:
+        payload = _replace_once(payload, old, new, label=label)
+    old_coalesce = b'''                coalesce_until = min(
+                    float(deadline_monotonic), time.monotonic() + self._coalesce_seconds
+                )'''
+    new_coalesce = b'''                # r239 requires one complete two-frontier batch per round.
+                coalesce_until = float(deadline_monotonic)'''
+    payload = _replace_once(
+        payload, old_coalesce, new_coalesce, label="complete two-frontier wait"
+    )
+    old_rows = b'''                step_rows: list[_WorkerResult] = []
+                for row in ready:'''
+    new_rows = b'''                if len(ready) != LANES:
+                    # Remove already-consumed completions from the drain set,
+                    # release their reservations, and fail without partial-lane
+                    # evaluation or action authority.
+                    for row in ready:
+                        if row.lane_id in in_flight:
+                            context, edge = in_flight.pop(row.lane_id)
+                            context.in_flight = False
+                            if edge.virtual_loss > 0:
+                                edge.virtual_loss -= 1
+                    raise AsyncEightWorkerError(
+                        "two-lane frontier batch was incomplete before deadline"
+                    )
+                step_rows: list[_WorkerResult] = []
+                for row in ready:'''
+    payload = _replace_once(
+        payload, old_rows, new_rows, label="no partial two-lane batch"
+    )
+    old_smoke = b'''                if smoke_min_depth_per_lane is not None and all(
+                    len(context.action_path) >= int(smoke_min_depth_per_lane)'''
+    new_smoke = b'''                if 0 < len(in_flight) < LANES:
+                    # One lane reached a branch boundary.  Drain the other
+                    # lane without evaluating a one-lane batch; earlier full
+                    # two-lane backups remain the only MCTS authority.
+                    break
+                if smoke_min_depth_per_lane is not None and all(
+                    len(context.action_path) >= int(smoke_min_depth_per_lane)'''
+    payload = _replace_once(
+        payload, old_smoke, new_smoke, label="no serial lane continuation"
+    )
+    path.write_bytes(payload)
+
+
+def repair_r233_main_for_r239(path: Path) -> None:
+    """Remove misleading eight-lane markers from the pre-r234 entrypoint."""
+
+    payload = path.read_bytes()
+    replacements = (
+        (
+            b"r228 asynchronous eight-worker viability smoke",
+            b"r239 asynchronous two-lane fleet mirror",
+            "entrypoint description",
+        ),
+        (
+            b"R228_ASYNC_EIGHT_WORKER_FULL_GAMEPLAY_SUCCESS",
+            b"R239_TWO_LANE_FULL_GAMEPLAY_SUCCESS",
+            "full-game marker",
+        ),
+        (
+            b"poke_bot.r228_async_eight_worker_kaggle_viability/v1",
+            b"poke_bot.r239_two_lane_fleet_mirror/v1",
+            "full-game schema",
+        ),
+        (
+            b"R228_ASYNC_EIGHT_WORKER_HARD_FAILURE",
+            b"R239_TWO_LANE_HARD_FAILURE",
+            "hard-failure marker",
+        ),
+    )
+    for old, new, label in replacements:
+        payload = _replace_once(payload, old, new, label=label)
+    path.write_bytes(payload)
+
+
 def overlay_r233_runtime(*, source: Path, destination: Path) -> dict[str, str]:
     hashes: dict[str, str] = {}
     for relative, expected in R233_RUNTIME_COMPONENTS.items():
@@ -142,7 +277,13 @@ def overlay_r233_runtime(*, source: Path, destination: Path) -> dict[str, str]:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, target)
         hashes[relative] = expected
+    repair_r233_main_for_r239(destination / "main.py")
+    repair_r233_queue_for_r239(destination / "poke_bot/r228_async_shared_tree_queue.py")
     repair_r233_runtime_for_r229(destination / "poke_bot/r228_kaggle_async_runtime.py")
+    hashes["main.py"] = sha(destination / "main.py")
+    hashes["poke_bot/r228_async_shared_tree_queue.py"] = sha(
+        destination / "poke_bot/r228_async_shared_tree_queue.py"
+    )
     hashes["poke_bot/r228_kaggle_async_runtime.py"] = sha(
         destination / "poke_bot/r228_kaggle_async_runtime.py"
     )
@@ -240,11 +381,19 @@ def stage(*, source_root: Path, archive: Path, r233_runtime_source: Path, wheel:
             overlay_hashes[destination] = sha(temporary / destination)
         native_libraries = overlay_canonical_native_set(wheel=wheel, destination=temporary)
         manifest = {
-            "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r236_package/v1",
+            "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r239_package/v1",
             "status": "sealed_evaluation_only",
-            "owner_goal_revision": 236,
+            "owner_goal_revision": 239,
             "bo_lifecycle_revision": 233,
             "canonical_libcg_revision": 236,
+            "owner_two_lane_topology_revision": 239,
+            "simulator_lane_count": 2,
+            "internal_agent_start_arena_count": 2,
+            "distinct_search_begin_id_count": 2,
+            "logical_frontier_leaf_count_per_frozen_model_batch": 2,
+            "partial_frontier_batches_allowed": False,
+            "serial_one_lane_continuation_allowed": False,
+            "one_shared_logical_mcts_tree_required": True,
             "base_r228_archive_sha256": R228_ARCHIVE,
             "checkpoint_sha256": MODEL,
             "matchup_tree_sha256": TREE,
@@ -258,11 +407,12 @@ def stage(*, source_root: Path, archive: Path, r233_runtime_source: Path, wheel:
             },
             "canonical_native_libraries": native_libraries,
             "r234_kaggle_broker_or_queue_lifecycle_included": False,
+            "pre_r234_bo_lifecycle_baseline_required": True,
             "overlays": overlay_hashes,
             "package_payload_tree_sha256": tree_sha(temporary),
             "training_eligible": False,
         }
-        (temporary / "r236_fleet_evaluation_manifest.json").write_text(
+        (temporary / "r239_fleet_evaluation_manifest.json").write_text(
             json.dumps(manifest, sort_keys=True, indent=2) + "\n"
         )
         os.replace(temporary, output)
