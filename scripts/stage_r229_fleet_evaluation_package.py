@@ -37,6 +37,20 @@ def sha(path: Path) -> str:
     return "sha256:" + digest.hexdigest()
 
 
+def tree_sha(root: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(row for row in root.rglob("*") if row.is_file()):
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        size = path.stat().st_size
+        digest.update(size.to_bytes(8, "big"))
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+    return "sha256:" + digest.hexdigest()
+
+
 def safe_extract(archive: Path, destination: Path) -> None:
     with tarfile.open(archive, "r:gz") as tar:
         seen: set[str] = set()
@@ -88,6 +102,7 @@ def stage(*, source_root: Path, archive: Path, output: Path) -> dict:
             "matchup_tree_sha256": TREE,
             "complete_ordered_action_ceiling": 65536,
             "overlays": overlay_hashes,
+            "package_payload_tree_sha256": tree_sha(temporary),
             "training_eligible": False,
         }
         (temporary / "r230_fleet_evaluation_manifest.json").write_text(
