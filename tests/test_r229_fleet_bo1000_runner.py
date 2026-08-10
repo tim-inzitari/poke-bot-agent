@@ -19,10 +19,19 @@ spec.loader.exec_module(runner)
 def _package_manifest(tmp_path: Path) -> Path:
     path = tmp_path / "package-manifest.json"
     path.write_text(json.dumps({
-        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r233_package/v1",
+        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r236_package/v1",
         "status": "sealed_evaluation_only",
+        "owner_goal_revision": 236,
+        "bo_lifecycle_revision": 233,
+        "canonical_libcg_revision": 236,
         "checkpoint_sha256": runner.CHECKPOINT,
         "complete_ordered_action_ceiling": 65536,
+        "canonical_libcg_wheel": {"sha256": runner.CANONICAL_LIBCG_WHEEL},
+        "canonical_native_libraries": {
+            name: {"path": path_name, "sha256": digest, "size_bytes": size}
+            for name, (path_name, digest, size) in runner.CANONICAL_NATIVE_LIBRARIES.items()
+        },
+        "r234_kaggle_broker_or_queue_lifecycle_included": False,
         "package_payload_tree_sha256": "sha256:" + "a" * 64,
         "training_eligible": False,
     }))
@@ -54,7 +63,8 @@ def test_run_parses_remote_stdout_and_commits_exact_receipt(monkeypatch, tmp_pat
     job = runner.schedule()[0]
     receipt = {
         "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_game/v1",
-        "status": "complete", **job, "training_eligible": False,
+        "status": "complete", **job, "canonical_libcg_revision": 236,
+        "training_eligible": False,
     }
     monkeypatch.setattr(
         runner.subprocess, "run",
@@ -96,7 +106,8 @@ def test_one_worker_failure_is_receipted_requeued_and_does_not_abort(monkeypatch
             raise runner.R229FleetError("stuck worker")
         runner._atomic(output, {
             "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_game/v1",
-            "status": "complete", **current, "training_eligible": False,
+            "status": "complete", **current, "canonical_libcg_revision": 236,
+            "training_eligible": False,
         })
         return {"disposition": "complete", "host": host["id"], "wall_seconds": 1.0}
 
@@ -193,3 +204,13 @@ def test_package_identity_is_required_and_checksum_bound(tmp_path):
     identity = runner._package_identity({"package_manifest_path": str(manifest)})
     assert identity["package_manifest_sha256"].startswith("sha256:")
     assert identity["package_payload_tree_sha256"] == "sha256:" + "a" * 64
+    assert identity["canonical_libcg_revision"] == 236
+
+
+def test_package_identity_rejects_mixed_libcg_manifest(tmp_path):
+    manifest = _package_manifest(tmp_path)
+    payload = json.loads(manifest.read_text())
+    payload["canonical_native_libraries"]["linux_x86_64"]["sha256"] = "sha256:" + "0" * 64
+    manifest.write_text(json.dumps(payload))
+    with pytest.raises(runner.R229FleetError, match="mixed or incomplete"):
+        runner._package_identity({"package_manifest_path": str(manifest)})

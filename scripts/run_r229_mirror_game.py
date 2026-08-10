@@ -18,6 +18,22 @@ from typing import Any, Mapping, Sequence
 SCHEMA = "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_game/v1"
 CHECKPOINT = "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a"
 MATCHUP_TREE = "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe0194c9049"
+CANONICAL_NATIVE_LIBRARIES = {
+    "linux_x86_64": ("cg/libcg.so", "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7", 1_342_400),
+    "linux_aarch64": ("cg/libcg-arm64.so", "sha256:1670740b73fab46586fd25c0a1f96608ea75b1f39381d66a0b8d9486bea6d4a2", 1_296_464),
+    "macos_arm64": ("cg/libcg.dylib", "sha256:7a157f045d333f99d1996d49c12bdbdd148072a619af246385c7295518776e30", 1_245_544),
+    "windows_x86_64": ("cg/cg.dll", "sha256:eae88634e26dc31d94150a4d8202fc9d32596b8c688ef67e14cb4088cd4d5771", 1_525_248),
+}
+PLATFORM_LIBRARY = {
+    ("linux", "x86_64"): "linux_x86_64",
+    ("linux", "amd64"): "linux_x86_64",
+    ("linux", "aarch64"): "linux_aarch64",
+    ("linux", "arm64"): "linux_aarch64",
+    ("darwin", "arm64"): "macos_arm64",
+    ("darwin", "aarch64"): "macos_arm64",
+    ("windows", "amd64"): "windows_x86_64",
+    ("windows", "x86_64"): "windows_x86_64",
+}
 
 
 class R229GameError(RuntimeError):
@@ -42,6 +58,34 @@ def _atomic(path: Path, payload: Mapping[str, Any]) -> None:
     partial = path.with_name(f".{path.name}.{os.getpid()}.partial")
     partial.write_bytes(encoded)
     os.replace(partial, path)
+
+
+def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, object]], dict[str, object]]:
+    cg_root = (stage / "cg").resolve(strict=True)
+    expected_paths = {row[0] for row in CANONICAL_NATIVE_LIBRARIES.values()}
+    observed_paths = {
+        path.relative_to(stage).as_posix()
+        for path in cg_root.iterdir()
+        if path.is_file() and (path.name.startswith("libcg") or path.name == "cg.dll")
+    }
+    if observed_paths != expected_paths:
+        raise R229GameError("sealed package has a mixed or incomplete canonical libcg set")
+    receipt: dict[str, dict[str, object]] = {}
+    for platform_name, (relative, expected_sha, expected_size) in CANONICAL_NATIVE_LIBRARIES.items():
+        path = (stage / relative).resolve(strict=True)
+        if path.parent != cg_root or path.stat().st_size != expected_size or _sha256(path) != expected_sha:
+            raise R229GameError(f"canonical libcg member drifted: {relative}")
+        receipt[platform_name] = {
+            "path": relative,
+            "sha256": expected_sha,
+            "size_bytes": expected_size,
+        }
+    host_key = (platform.system().lower(), platform.machine().lower())
+    platform_name = PLATFORM_LIBRARY.get(host_key)
+    if platform_name is None:
+        raise R229GameError(f"unsupported canonical libcg platform: {host_key}")
+    selected = {"platform_identity": platform_name, **receipt[platform_name]}
+    return receipt, selected
 
 
 def _load(stage: Path) -> Any:
@@ -80,10 +124,17 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
         raise R229GameError("invalid game identity")
     if _sha256(stage / "model.pt") != CHECKPOINT or _sha256(stage / "matchup_tree.json") != MATCHUP_TREE:
         raise R229GameError("frozen r195 model or Matchup Adapter tree drifted")
+    native_set, host_native_library = _verify_canonical_native_set(stage)
     module = _load(stage)
     direct_module = module._direct()
     deck, model, _base_policy = direct_module._ensure_runtime()
     runtime = module._runtime()
+    runtime_stock = dict(runtime.stock_library_receipt)
+    if (
+        runtime_stock.get("member") != host_native_library["path"]
+        or runtime_stock.get("sha256") != host_native_library["sha256"]
+    ):
+        raise R229GameError("r228 runtime loaded a non-canonical platform library")
     runtime.reset_game()
     from poke_bot.agent import PolicyAgent
     from poke_bot import cg_env
@@ -192,6 +243,8 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
             "checkpoint_sha256": CHECKPOINT,
             "matchup_tree_sha256": MATCHUP_TREE,
             "stock_library": dict(runtime.stock_library_receipt),
+            "canonical_libcg_revision": 236,
+            "canonical_native_libraries": native_set,
             "elapsed_seconds": elapsed,
             "started_at_utc": started_at_utc,
             "completed_at_utc": completed_at_utc,

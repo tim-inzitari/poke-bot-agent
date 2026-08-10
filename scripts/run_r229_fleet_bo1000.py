@@ -22,6 +22,13 @@ SCHEMA = "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_run/v1"
 PAIRS = 500
 GAMES = 1000
 CHECKPOINT = "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a"
+CANONICAL_LIBCG_WHEEL = "sha256:e70a7d7765b16deb1fcfa00532eb5197f28bc9fbfa07a0eee150a17d67bd77ab"
+CANONICAL_NATIVE_LIBRARIES = {
+    "linux_x86_64": ("cg/libcg.so", "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7", 1_342_400),
+    "linux_aarch64": ("cg/libcg-arm64.so", "sha256:1670740b73fab46586fd25c0a1f96608ea75b1f39381d66a0b8d9486bea6d4a2", 1_296_464),
+    "macos_arm64": ("cg/libcg.dylib", "sha256:7a157f045d333f99d1996d49c12bdbdd148072a619af246385c7295518776e30", 1_245_544),
+    "windows_x86_64": ("cg/cg.dll", "sha256:eae88634e26dc31d94150a4d8202fc9d32596b8c688ef67e14cb4088cd4d5771", 1_525_248),
+}
 
 
 class R229FleetError(RuntimeError):
@@ -86,7 +93,7 @@ def _read(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _package_identity(config: Mapping[str, Any]) -> dict[str, str]:
+def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
     raw_path = config.get("package_manifest_path")
     if not isinstance(raw_path, str) or not raw_path:
         raise R229FleetError("fleet config must bind package_manifest_path")
@@ -94,13 +101,27 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, str]:
     manifest = _read(path)
     if (
         manifest.get("schema")
-        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r233_package/v1"
+        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r236_package/v1"
         or manifest.get("status") != "sealed_evaluation_only"
+        or manifest.get("owner_goal_revision") != 236
+        or manifest.get("bo_lifecycle_revision") != 233
+        or manifest.get("canonical_libcg_revision") != 236
         or manifest.get("checkpoint_sha256") != CHECKPOINT
         or manifest.get("complete_ordered_action_ceiling") != 65536
+        or manifest.get("r234_kaggle_broker_or_queue_lifecycle_included") is not False
         or manifest.get("training_eligible") is not False
     ):
         raise R229FleetError("sealed package manifest violates the r229 identity")
+    wheel = manifest.get("canonical_libcg_wheel")
+    if not isinstance(wheel, Mapping) or wheel.get("sha256") != CANONICAL_LIBCG_WHEEL:
+        raise R229FleetError("sealed package manifest lacks the canonical r236 wheel")
+    observed_libraries = manifest.get("canonical_native_libraries")
+    expected_libraries = {
+        platform_name: {"path": path_name, "sha256": digest, "size_bytes": size}
+        for platform_name, (path_name, digest, size) in CANONICAL_NATIVE_LIBRARIES.items()
+    }
+    if observed_libraries != expected_libraries:
+        raise R229FleetError("sealed package manifest has a mixed or incomplete libcg set")
     payload_sha = manifest.get("package_payload_tree_sha256")
     if not isinstance(payload_sha, str) or not payload_sha.startswith("sha256:"):
         raise R229FleetError("sealed package manifest lacks its payload digest")
@@ -108,6 +129,9 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, str]:
         "package_manifest_path": str(path.resolve()),
         "package_manifest_sha256": _sha(path),
         "package_payload_tree_sha256": payload_sha,
+        "canonical_libcg_revision": 236,
+        "canonical_libcg_wheel_sha256": CANONICAL_LIBCG_WHEEL,
+        "canonical_native_libraries": expected_libraries,
     }
 
 
@@ -121,6 +145,7 @@ def _complete(path: Path, job: Mapping[str, Any]) -> bool:
         and row.get("pair_index") == job["pair_index"]
         and row.get("game_index") == job["game_index"]
         and row.get("mcts_seat") == job["mcts_seat"]
+        and row.get("canonical_libcg_revision") == 236
         and row.get("training_eligible") is False
     )
 
@@ -247,6 +272,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for key in (
             "config_sha256", "runner_sha256", "total_pairs", "total_games",
             "package_manifest_sha256", "package_payload_tree_sha256",
+            "canonical_libcg_revision", "canonical_libcg_wheel_sha256",
+            "canonical_native_libraries",
         ):
             if old.get(key) != run_identity.get(key):
                 raise R229FleetError(f"resume identity drifted: {key}")
