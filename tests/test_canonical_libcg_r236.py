@@ -23,7 +23,7 @@ R225_PATH = ROOT / "state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic
 R229_PATH = ROOT / "state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json"
 OFFICIAL_WHEEL_ENV = "POKEBOT_R236_OFFICIAL_WHEEL_PATH"
 R225_R246_SHA256 = "sha256:3225b07997bc58cc5e89239491533628cae654b48c092dec76ce56a6b8205eb3"
-R229_R254_SHA256 = "sha256:7ba7860906c5a4322d78c565bc9c31de4c3d803995a28a2f6ed78f9add2cf4f1"
+R229_R256_SHA256 = "sha256:4820732473149535525ddab9d2195a3937d32bc5e7e2a5fbd606ca0274f9a98b"
 
 OFFICIAL_WHEEL = {
     "package_version": "1.32.6",
@@ -323,8 +323,8 @@ def test_r244_search_id_rule_is_retained_by_r246_and_r252() -> None:
     ]
 
 
-def test_r254_abandons_full_mcts_and_preserves_r253_diagnostic_evidence() -> None:
-    """R254 stops full MCTS and gates a conservative selective proof search."""
+def test_r256_abandons_all_search_and_preserves_r253_diagnostic_evidence() -> None:
+    """R256 retains direct r195 and removes all current search authority."""
 
     r229 = _json(R229_PATH)
     recovery = r229["r249_two_process_native_lane_recovery"]
@@ -334,14 +334,17 @@ def test_r254_abandons_full_mcts_and_preserves_r253_diagnostic_evidence() -> Non
     abandonment = r229[
         "r254_full_mcts_abandonment_and_selective_tactical_proof_search"
     ]
+    all_search_abandonment = r229["r256_all_search_abandonment"]
     parallel = r229["post_serial_process_parallel_node_evaluation_investigation"]
     fleet = r229["fleet"]
     lifecycle = r229["r229_lifecycle_boundary"]
     safety = r229["safety"]
 
-    assert _sha256(R229_PATH) == R229_R254_SHA256
-    assert r229["owner_decision_revision"] == 254
+    assert _sha256(R229_PATH) == R229_R256_SHA256
+    assert r229["owner_decision_revision"] == 256
     assert r229["owner_full_mcts_abandonment_revision"] == 254
+    assert r229["owner_selective_tactical_proof_design_revision"] == 255
+    assert r229["owner_all_search_abandonment_revision"] == 256
     assert r229["owner_process_lane_recovery_revision"] == 249
     assert r229["owner_canonical_libcg_revision"] == 236
     assert r229["owner_handle_scoped_search_id_revision"] == 244
@@ -505,6 +508,18 @@ def test_r254_abandons_full_mcts_and_preserves_r253_diagnostic_evidence() -> Non
     assert abandonment[
         "bo1000_kaggle_training_serving_selector_promotion_checkpoint_or_model_update_authority"
     ] is False
+
+    assert all_search_abandonment["full_mcts_abandoned"]
+    assert all_search_abandonment["conflict_triggered_search_abandoned_for_now"]
+    assert all_search_abandonment["alternative_tree_or_tactical_search_abandoned_for_now"]
+    assert all_search_abandonment["frozen_r195_direct_policy_is_only_action_authority"]
+    assert all_search_abandonment[
+        "new_search_implementation_test_package_preflight_pilot_bo1000_or_fleet_launch_authorized"
+    ] is False
+    assert all_search_abandonment[
+        "existing_r253_45_game_prefix_and_abandonment_receipts_remain_immutable"
+    ]
+    assert all_search_abandonment["future_search_reconsideration_requires_new_explicit_owner_revision"]
 
     assert lifecycle[
         "pre_r234_search_policy_semantics_must_be_preserved_except_for_r252_internal_value_boundaries_and_content_verified_at_package_staging"

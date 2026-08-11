@@ -1,6 +1,6 @@
 {
   "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229/v1",
-  "owner_decision_revision": 254,
+  "owner_decision_revision": 256,
   "originating_owner_decision_revision": 229,
   "owner_action_space_revision": 230,
   "owner_worker_isolation_revision": 231,
@@ -14,6 +14,8 @@
   "owner_internal_leaf_boundary_revision": 252,
   "owner_restarting_serial_rollout_revision": 253,
   "owner_full_mcts_abandonment_revision": 254,
+  "owner_selective_tactical_proof_design_revision": 255,
+  "owner_all_search_abandonment_revision": 256,
   "r228_kaggle_viability_evidence": {
     "submission_id": 55416396,
     "status": "SubmissionStatus.ERROR",
@@ -21,9 +23,9 @@
     "usable_claim_passed": false,
     "failed_submission_must_be_preserved": true
   },
-  "recorded_at_utc": "2026-08-11T05:08:00Z",
-  "status": "r253_full_mcts_owner_abandoned_at_45_games_selective_tactical_proof_search_design_and_small_shadow_pilot_only",
-  "objective": "preserve the stopped r253 diagnostic evidence and develop a separately versioned conflict-triggered conservative deterministic tactical proof search with frozen r195 direct policy as default",
+  "recorded_at_utc": "2026-08-11T05:30:00Z",
+  "status": "all_mcts_and_selective_search_abandoned_for_now_frozen_r195_direct_only",
+  "objective": "preserve all stopped search evidence and retain frozen r195 direct policy without launching any MCTS or selective-search evaluation",
   "frozen_identity": {
     "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
     "r195_bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
@@ -315,6 +317,18 @@
     ],
     "fresh_typed_trigger_budget_and_pilot_configuration_required": true,
     "bo1000_kaggle_training_serving_selector_promotion_checkpoint_or_model_update_authority": false
+  },
+  "r256_all_search_abandonment": {
+    "supersedes_selective_tactical_proof_execution_authority_from_revision": 255,
+    "full_mcts_abandoned": true,
+    "conflict_triggered_search_abandoned_for_now": true,
+    "alternative_tree_or_tactical_search_abandoned_for_now": true,
+    "r255_uncommitted_prototype_disposition": "removed_without_package_pilot_or_runtime_activation",
+    "frozen_r195_direct_policy_is_only_action_authority": true,
+    "new_search_implementation_test_package_preflight_pilot_bo1000_or_fleet_launch_authorized": false,
+    "existing_r253_45_game_prefix_and_abandonment_receipts_remain_immutable": true,
+    "kaggle_training_serving_selector_promotion_checkpoint_or_model_update_authority_changed": false,
+    "future_search_reconsideration_requires_new_explicit_owner_revision": true
   },
   "post_serial_process_parallel_node_evaluation_investigation": {
     "status": "owner_abandoned_with_full_mcts_under_revision_254",
