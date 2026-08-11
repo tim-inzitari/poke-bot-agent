@@ -276,6 +276,10 @@ def test_fleet_config_uses_sealed_admission_script_for_every_host():
     assert all("--idle-timeout-seconds" in row["command"] for row in config["hosts"])
     assert all("300" in row["command"] for row in config["hosts"])
     assert all(
-        any(item.endswith("/run_r229_process_watchdog.py") for item in row["command"])
+        any(item.endswith("/package/run_r229_process_watchdog.py") for item in row["command"])
+        for row in config["hosts"]
+    )
+    assert all(
+        any(item.endswith("/package/run_r229_mirror_game.py") for item in row["command"])
         for row in config["hosts"]
     )

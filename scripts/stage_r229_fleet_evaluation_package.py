@@ -55,6 +55,7 @@ CANONICAL_LIBRARIES = {
 }
 OVERLAYS = {
     "run_r229_process_watchdog.py": "scripts/run_r229_process_watchdog.py",
+    "run_r229_mirror_game.py": "scripts/run_r229_mirror_game.py",
 }
 
 

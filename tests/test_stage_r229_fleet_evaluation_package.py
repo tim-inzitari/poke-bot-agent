@@ -15,6 +15,13 @@ stage = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stage)
 
 
+def test_game_runner_and_watchdog_are_sealed_package_overlays():
+    assert stage.OVERLAYS == {
+        "run_r229_process_watchdog.py": "scripts/run_r229_process_watchdog.py",
+        "run_r229_mirror_game.py": "scripts/run_r229_mirror_game.py",
+    }
+
+
 def test_payload_tree_digest_binds_paths_and_bytes(tmp_path):
     root = tmp_path / "root"
     root.mkdir()

@@ -254,6 +254,15 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
             if first in (0, 1):
                 first_player = int(first)
             turn_order = direct_module._turn_order_choice(obs)
+            arm = (
+                "setup"
+                if turn_order is not None
+                else "mcts" if seat == mcts_seat else "direct"
+            )
+            print(
+                f"R229_GAME_STEP_BEGIN step={steps + 1} seat={seat} arm={arm}",
+                flush=True,
+            )
             if turn_order is not None:
                 action = list(direct_module._fail_closed(obs, turn_order))
                 setup_seen += 1
@@ -299,7 +308,9 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
                 direct_latencies.append(time.monotonic() - decision_started)
             else:
                 raise R229GameError("engine emitted an invalid acting seat")
+            print(f"R229_GAME_ACTION_READY step={steps + 1} arm={arm}", flush=True)
             _legal(obs, action)
+            print(f"R229_GAME_SELECT_BEGIN step={steps + 1}", flush=True)
             observation = cg_env.battle_select(action)
             steps += 1
             print(f"R229_GAME_PROGRESS step={steps}", flush=True)
