@@ -1,0 +1,45 @@
+[Unit]
+Description=Immutable r259 OwnDeckLedger expert-rollout side-store build
+Documentation=file:///var/lib/pokebot-own-deck-r259-src-de844af19ca6/GOAL.md
+After=local-fs.target docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+# Never execute from /home/admin: it is admin-writable on Elmo.  Installation
+# is a separate root-audited staging boundary: it must create this root-owned,
+# immutable /var/lib snapshot and its 0444 source-tree lock before the unit is
+# enabled.  This service never copies or executes a mutable admin-origin tree.
+ExecStartPre=/usr/bin/test -x /var/lib/pokebot-own-deck-r259-src-de844af19ca6/ops/elmo/run_own_deck_rollout_store_r259.sh
+ExecStartPre=/usr/bin/test -f /etc/pokebot-own-deck-r259/de844af19ca6/source-tree.lock.json
+# r259 may use Docker only when it is already managed and active.  It must
+# never pull in, start, restart, or otherwise alter the Docker service.
+ExecStartPre=/usr/bin/systemctl is-active --quiet docker.service
+ExecStartPre=/usr/bin/test -S /var/run/docker.sock
+ExecStart=/var/lib/pokebot-own-deck-r259-src-de844af19ca6/ops/elmo/run_own_deck_rollout_store_r259.sh
+TimeoutStartSec=infinity
+Restart=no
+Nice=15
+CPUQuota=100%
+MemoryMax=3G
+MemorySwapMax=3G
+TasksMax=384
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+ProtectHome=read-only
+ProtectSystem=full
+ReadWritePaths=/mnt/Main/main/poke-bot-agent/archive/expert-r258-own-deck-ledger-sidecar/2026-07-22_2026-08-10
+ReadWritePaths=/run/pokebot-own-deck-r259-de844af19ca6
+
+[Install]
+WantedBy=multi-user.target

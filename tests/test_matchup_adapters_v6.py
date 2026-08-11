@@ -29,6 +29,7 @@ from poke_bot.matchup_adapters_v6 import (
     resolve_ptcgreplay_mapping,
     retire_archetype,
     route_for_archetype,
+    validate_append_only_registry_extension,
 )
 from poke_bot.model import TemporalCabtTransformer
 from poke_bot.train import load_append_only_matchup_adapter_optimizer_state
@@ -141,6 +142,120 @@ def test_registry_add_and_retire_never_change_physical_bank_shape() -> None:
     second = allocate_archetype(retired, "later-archetype")
     assert second["slots"][20]["status"] == "retired"
     assert second["slots"][21]["archetype_id"] == "later-archetype"
+
+
+def _append_exact_source_identity(
+    registry: dict,
+    archetype_id: str,
+    *,
+    source_id: int,
+    source_name: str,
+) -> dict:
+    candidate = allocate_archetype(
+        registry,
+        archetype_id,
+        status="dormant",
+        lineage="test:authenticated-source-refresh",
+    )
+    candidate["meta_analysis_source"]["source_snapshot"] = {
+        **candidate["meta_analysis_source"]["source_snapshot"],
+        "ingest_id": candidate["meta_analysis_source"]["source_snapshot"][
+            "ingest_id"
+        ]
+        + 1,
+    }
+    candidate["meta_analysis_source"]["crosswalk"][archetype_id] = {
+        "source_id": source_id,
+        "source_name": source_name,
+        "status": "exact",
+    }
+    return candidate
+
+
+def test_append_only_registry_extension_preserves_existing_slots_and_crosswalks() -> None:
+    baseline = load_slot_registry()
+    candidate = _append_exact_source_identity(
+        baseline,
+        "future-ptcgreplay-archetype",
+        source_id=999,
+        source_name="Future PTCGReplay Archetype",
+    )
+
+    receipt = validate_append_only_registry_extension(baseline, candidate)
+    assert receipt["added_slots"] == [20]
+    assert receipt["added_archetype_ids"] == ["future-ptcgreplay-archetype"]
+    assert receipt["existing_slots_unchanged"] is True
+    assert receipt["new_slots_dormant"] is True
+    assert receipt["source_snapshot_advanced"] is True
+
+    renamed = copy.deepcopy(candidate)
+    renamed["slots"][0]["lineage"] = "rewritten"
+    with pytest.raises(ValueError, match="existing slot 0"):
+        validate_append_only_registry_extension(baseline, renamed)
+
+    rewritten_crosswalk = copy.deepcopy(candidate)
+    rewritten_crosswalk["meta_analysis_source"]["crosswalk"]["alakazam"] = {
+        "source_id": 48,
+        "source_name": "Alakazam (renamed)",
+        "status": "exact",
+    }
+    with pytest.raises(ValueError, match="existing crosswalk"):
+        validate_append_only_registry_extension(baseline, rewritten_crosswalk)
+
+
+def test_append_only_registry_extension_requires_lowest_dormant_exact_slot() -> None:
+    baseline = load_slot_registry()
+    active = _append_exact_source_identity(
+        baseline,
+        "future-active",
+        source_id=998,
+        source_name="Future Active",
+    )
+    active["slots"][20]["status"] = "active"
+    active["active_expert_ids"] = [
+        row["archetype_id"]
+        for row in active["slots"]
+        if row["status"] in {"active", "dormant"}
+    ]
+    active["expert_ids"] = list(active["active_expert_ids"])
+    with pytest.raises(ValueError, match="start slot 20 dormant"):
+        validate_append_only_registry_extension(baseline, active)
+
+    skipped = _append_exact_source_identity(
+        baseline,
+        "future-first",
+        source_id=997,
+        source_name="Future First",
+    )
+    skipped = _append_exact_source_identity(
+        skipped,
+        "future-second",
+        source_id=996,
+        source_name="Future Second",
+    )
+    skipped["slots"][20] = copy.deepcopy(baseline["slots"][20])
+    skipped["active_expert_ids"] = [
+        row["archetype_id"]
+        for row in skipped["slots"]
+        if row["status"] in {"active", "dormant"}
+    ]
+    skipped["expert_ids"] = list(skipped["active_expert_ids"])
+    skipped["required_specialist_count"] = len(skipped["active_expert_ids"])
+    skipped["meta_analysis_source"]["crosswalk"].pop("future-first")
+    with pytest.raises(ValueError, match="skipped a lower"):
+        validate_append_only_registry_extension(baseline, skipped)
+
+    not_exact = _append_exact_source_identity(
+        baseline,
+        "future-signature",
+        source_id=995,
+        source_name="Future Signature",
+    )
+    not_exact["meta_analysis_source"]["crosswalk"]["future-signature"][
+        "status"
+    ] = "card_signature"
+    with pytest.raises(ValueError, match="requires an exact source identity"):
+        validate_append_only_registry_extension(baseline, not_exact)
 
 
 def test_only_authorized_slots_receive_gradients() -> None:

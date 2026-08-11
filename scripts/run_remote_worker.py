@@ -25,6 +25,7 @@ import stat
 import sys
 import threading
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Optional
 
@@ -70,6 +71,11 @@ REMOTE_WORKER_CAPABILITIES = (
     *_BASE_REMOTE_WORKER_CAPABILITIES,
     *_validated_public_multi_env_capabilities(),
 )
+REMOTE_ALLOWED_JOB_KINDS_ENV = "POKEBOT_REMOTE_ALLOWED_JOB_KINDS"
+REMOTE_WORKER_CAPABILITY_TAGS_ENV = "POKEBOT_REMOTE_WORKER_CAPABILITY_TAGS"
+# Keep extension tags allowlisted.  An arbitrary environment string must not
+# make a legacy worker falsely advertise a trainer admission capability.
+REMOTE_OPTIONAL_CAPABILITIES = ("r241_direct_policy_collection_v1",)
 REMOTE_WORKER_SAFETY_VERSION = "20260717"
 REMOTE_WORKER_ARM_FILE = REPO_ROOT / "outputs" / "state" / "REMOTE_WORKER_ARMED"
 # r182 permits exactly this many independent games in a LibcgMultiEnv packet.
@@ -87,6 +93,59 @@ MATCHUP_RUNTIME_MARKER = "matchup-runtime-activation.json"
 MATCHUP_RUNTIME_MARKER_SCHEMA = "poke_bot.remote_matchup_runtime_activation/v1"
 
 
+def _configured_remote_job_kinds(
+    environment: Mapping[str, str] | None = None,
+) -> tuple[str, ...]:
+    """Return a strict optional job-kind subset without changing legacy default.
+
+    The unconfigured remote workers continue to advertise every historical
+    kind.  The isolated r241 :8767 wrapper sets this explicitly so it cannot
+    be reused for promotion work while a direct-policy collection run is live.
+    """
+
+    env = os.environ if environment is None else environment
+    raw = env.get(REMOTE_ALLOWED_JOB_KINDS_ENV)
+    if raw is None:
+        return REMOTE_JOB_KINDS
+    requested = tuple(part.strip() for part in str(raw).split(",") if part.strip())
+    if not requested:
+        raise ValueError(f"{REMOTE_ALLOWED_JOB_KINDS_ENV} must not be empty")
+    if len(set(requested)) != len(requested):
+        raise ValueError(f"{REMOTE_ALLOWED_JOB_KINDS_ENV} must not repeat a job kind")
+    unsupported = sorted(set(requested) - set(REMOTE_JOB_KINDS))
+    if unsupported:
+        raise ValueError(
+            f"{REMOTE_ALLOWED_JOB_KINDS_ENV} contains unsupported job kinds: "
+            + ", ".join(unsupported)
+        )
+    return tuple(kind for kind in REMOTE_JOB_KINDS if kind in requested)
+
+
+def _configured_remote_worker_capabilities(
+    environment: Mapping[str, str] | None = None,
+) -> tuple[str, ...]:
+    """Return known optional capability tags without changing legacy hello."""
+
+    env = os.environ if environment is None else environment
+    raw = env.get(REMOTE_WORKER_CAPABILITY_TAGS_ENV)
+    if raw is None:
+        return REMOTE_WORKER_CAPABILITIES
+    requested = tuple(part.strip() for part in str(raw).split(",") if part.strip())
+    if not requested:
+        raise ValueError(f"{REMOTE_WORKER_CAPABILITY_TAGS_ENV} must not be empty")
+    if len(set(requested)) != len(requested):
+        raise ValueError(
+            f"{REMOTE_WORKER_CAPABILITY_TAGS_ENV} must not repeat a capability"
+        )
+    unsupported = sorted(set(requested) - set(REMOTE_OPTIONAL_CAPABILITIES))
+    if unsupported:
+        raise ValueError(
+            f"{REMOTE_WORKER_CAPABILITY_TAGS_ENV} contains unsupported capabilities: "
+            + ", ".join(unsupported)
+        )
+    return (*REMOTE_WORKER_CAPABILITIES, *requested)
+
+
 def _raw_sha256_digest(path: Path) -> str:
     """Return the checkpoint identity without importing Torch/project modules."""
     digest = hashlib.sha256()
@@ -94,6 +153,28 @@ def _raw_sha256_digest(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return f"sha256:{digest.hexdigest()}"
+
+
+def _resolve_checkpoint_within_root(
+    path: str | Path,
+    *,
+    checkpoint_root: str | Path,
+) -> Path:
+    """Resolve one regular checkpoint and prove it stays inside its mount.
+
+    The legacy worker leaves this check opt-in because older deployments did
+    not configure a dedicated checkpoint mount.  Once
+    ``POKEBOT_REMOTE_CHECKPOINT_ROOT`` is present, both verification and reload
+    use this same boundary so a remote job cannot turn a checkpoint path into
+    an arbitrary read from a mounted source or baseline tree.
+    """
+
+    root = Path(checkpoint_root).expanduser().resolve(strict=True)
+    candidate = Path(path).expanduser().resolve(strict=True)
+    candidate.relative_to(root)
+    if not candidate.is_file():
+        raise ValueError(f"checkpoint is not a regular file: {candidate}")
+    return candidate
 
 
 def _verify_checkpoint_digest_request(
@@ -104,11 +185,9 @@ def _verify_checkpoint_digest_request(
     """Hash one regular checkpoint file inside the configured storage root."""
 
     try:
-        root = Path(checkpoint_root).expanduser().resolve(strict=True)
-        candidate = Path(path).expanduser().resolve(strict=True)
-        candidate.relative_to(root)
-        if not candidate.is_file():
-            raise ValueError(f"checkpoint is not a regular file: {candidate}")
+        candidate = _resolve_checkpoint_within_root(
+            path, checkpoint_root=checkpoint_root
+        )
         digest = _raw_sha256_digest(candidate)
         return {
             "type": "verify_checkpoint_ok",
@@ -1160,6 +1239,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
         return 78
     args = _parse_args(raw_argv)
+    try:
+        allowed_job_kinds = _configured_remote_job_kinds()
+        worker_capabilities = _configured_remote_worker_capabilities()
+    except ValueError as exc:
+        print(f"[remote-worker] ERROR: {exc}", file=sys.stderr)
+        return 64
     if int(args.planned_rotation_exit_code) not in (
         0,
         REMOTE_WORKER_PLANNED_ROTATION_EXIT_CODE,
@@ -1679,8 +1764,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             "decisions_completed": state["decisions_completed"],
             "trajectories_completed": state["trajectories_completed"],
             "uptime_s": time.time() - state["started_at"],
-            "job_kinds": list(REMOTE_JOB_KINDS),
-            "capabilities": list(REMOTE_WORKER_CAPABILITIES),
+            "job_kinds": list(allowed_job_kinds),
+            "capabilities": list(worker_capabilities),
             "matchup_runtime": copy.deepcopy(state.get("matchup_runtime")),
         }
 
@@ -1729,6 +1814,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                 requested_digest = msg.get("digest")
                 new_version = int(msg.get("version", state["version"] + 1))
                 try:
+                    checkpoint_root = os.environ.get(
+                        REMOTE_CHECKPOINT_ROOT_ENV, ""
+                    ).strip()
+                    if checkpoint_root:
+                        path = str(
+                            _resolve_checkpoint_within_root(
+                                path, checkpoint_root=checkpoint_root
+                            )
+                        )
                     actual = checkpoint_digest(path)
                 except BaseException as exc:  # noqa: BLE001
                     return {
@@ -2045,6 +2139,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             job = msg.get("job")
             if not isinstance(job, dict):
                 return {"type": "result", "ok": False, "error": "job must be object"}
+            if kind not in allowed_job_kinds:
+                return {
+                    "type": "result",
+                    "ok": False,
+                    "error": (
+                        f"job kind {kind!r} is disabled by "
+                        f"{REMOTE_ALLOWED_JOB_KINDS_ENV}"
+                    ),
+                }
             # Must use package-level callables (not rr._worker_*), or spawn
             # Pool workers fail to unpickle ``train_round_robin_remote``.
             if kind == "play":

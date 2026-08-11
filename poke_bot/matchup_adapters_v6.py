@@ -117,6 +117,8 @@ def load_slot_registry(path: Path | str = DEFAULT_REGISTRY_PATH) -> dict[str, An
         raise ValueError(
             "active_expert_ids must exactly match routable slots in slot order"
         )
+    if int(registry.get("required_specialist_count", -1)) != len(routable):
+        raise ValueError("V6 required specialist count differs from active roster")
 
     aliases = dict(registry.get("logical_aliases") or {})
     for alias, target in aliases.items():
@@ -252,6 +254,10 @@ def load_slot_registry_dict(registry: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("unsupported V6 slot extension schema")
     if int(value.get("slot_capacity", -1)) != SLOT_CAPACITY:
         raise ValueError("V6 registry slot_capacity must be exactly 64")
+    if int(value.get("legacy_v5_prefix_length", -1)) != LEGACY_V5_PREFIX_LENGTH:
+        raise ValueError("V6 registry legacy prefix must be exactly 18")
+    if value.get("checkpoint_format") != ADAPTER_CHECKPOINT_FORMAT:
+        raise ValueError("V6 registry checkpoint format mismatch")
     slots = list(value.get("slots") or [])
     if len(slots) != SLOT_CAPACITY:
         raise ValueError("V6 registry must contain exactly 64 physical slots")
@@ -278,7 +284,189 @@ def load_slot_registry_dict(registry: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("V6 active roster differs from routable slots")
     if value.get("expert_ids") != expected_active:
         raise ValueError("V6 legacy expert_ids view differs from active roster")
+    if int(value.get("required_specialist_count", -1)) != len(expected_active):
+        raise ValueError("V6 required specialist count differs from active roster")
+    aliases = dict(value.get("logical_aliases") or {})
+    for alias, target in aliases.items():
+        if alias in seen or target not in seen:
+            raise ValueError(f"invalid V6 logical alias {alias!r} -> {target!r}")
     return value
+
+
+def validate_append_only_registry_extension(
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    *,
+    require_new_slots_dormant: bool = True,
+    require_exact_source_identities: bool = True,
+) -> dict[str, Any]:
+    """Validate one append-only Router Format 6 roster extension.
+
+    This is deliberately narrower than the general operator add/retire helpers.
+    It is for a sealed source refresh that may *only* allocate previously unused
+    physical slots.  Every previously allocated slot, its crosswalk row, and
+    every existing alias stay byte-for-byte equivalent at the JSON-value level.
+    The caller remains responsible for proving checkpoint tensor equality; this
+    function only proves that the logical registry cannot ask an old tensor row
+    to represent a new identity.
+
+    New source identities default to exact, dormant routes.  A caller that is
+    validating a later, separately receipted activation can opt out of the
+    dormant requirement, but it still cannot reindex, recycle, or rename a
+    prior route.
+    """
+
+    original = load_slot_registry_dict(baseline)
+    revised = load_slot_registry_dict(candidate)
+
+    immutable_top_level = (
+        "schema",
+        "slot_schema",
+        "checkpoint_format",
+        "slot_capacity",
+        "legacy_v5_prefix_length",
+        "physical_checkpoint_rows",
+        "v6_physical_checkpoint_slots",
+        "slot_reuse_policy",
+        "allowed_slot_statuses",
+        "routable_slot_statuses",
+        "v5_migration",
+        "migration_from_v4",
+    )
+    for field in immutable_top_level:
+        if revised.get(field) != original.get(field):
+            raise ValueError(f"append-only V6 migration changed {field}")
+
+    original_slots = list(original["slots"])
+    revised_slots = list(revised["slots"])
+    original_ids = {
+        str(row["archetype_id"])
+        for row in original_slots
+        if row["status"] != "unused"
+    }
+    added_slots: list[int] = []
+    added_ids: list[str] = []
+    for slot, (before, after) in enumerate(
+        zip(original_slots, revised_slots, strict=True)
+    ):
+        if before["status"] != "unused":
+            if after != before:
+                raise ValueError(
+                    f"append-only V6 migration changed existing slot {slot}"
+                )
+            continue
+        if after == before:
+            continue
+        if (
+            after.get("slot") != slot
+            or after.get("status") not in ROUTABLE_STATUSES
+            or not isinstance(after.get("archetype_id"), str)
+            or not str(after["archetype_id"])
+        ):
+            raise ValueError(
+                f"append-only V6 migration allocated invalid new slot {slot}"
+            )
+        if require_new_slots_dormant and after["status"] != "dormant":
+            raise ValueError(
+                f"append-only V6 migration must start slot {slot} dormant"
+            )
+        archetype_id = str(after["archetype_id"])
+        if archetype_id in original_ids or archetype_id in added_ids:
+            raise ValueError(
+                f"append-only V6 migration reused identity {archetype_id!r}"
+            )
+        added_slots.append(slot)
+        added_ids.append(archetype_id)
+
+    unused_slots = [
+        slot for slot, row in enumerate(original_slots) if row["status"] == "unused"
+    ]
+    if added_slots != unused_slots[: len(added_slots)]:
+        raise ValueError("append-only V6 migration skipped a lower never-used slot")
+
+    original_aliases = dict(original.get("logical_aliases") or {})
+    if dict(revised.get("logical_aliases") or {}) != original_aliases:
+        raise ValueError("append-only V6 migration changed logical aliases")
+
+    original_names = dict(original.get("canonical_display_names") or {})
+    revised_names = dict(revised.get("canonical_display_names") or {})
+    if any(revised_names.get(key) != value for key, value in original_names.items()):
+        raise ValueError("append-only V6 migration changed canonical display names")
+    if set(revised_names) - set(original_names) - set(added_ids):
+        raise ValueError("append-only V6 migration added unrelated display names")
+
+    original_priority = list(original.get("specialist_priority") or ())
+    revised_priority = list(revised.get("specialist_priority") or ())
+    if [value for value in revised_priority if value not in added_ids] != original_priority:
+        raise ValueError("append-only V6 migration reordered existing priority")
+    if len(revised_priority) != len(set(revised_priority)):
+        raise ValueError("append-only V6 migration has duplicate priority identities")
+
+    original_meta = dict(original.get("meta_analysis_source") or {})
+    revised_meta = dict(revised.get("meta_analysis_source") or {})
+    original_crosswalk = dict(original_meta.pop("crosswalk", {}) or {})
+    revised_crosswalk = dict(revised_meta.pop("crosswalk", {}) or {})
+    # The snapshot itself is expected to advance with an authenticated ingest.
+    # Its old crosswalk rows and all source-policy fields are immutable.
+    original_snapshot = original_meta.pop("source_snapshot", None)
+    revised_snapshot = revised_meta.pop("source_snapshot", None)
+    if revised_meta != original_meta:
+        raise ValueError("append-only V6 migration changed meta source policy")
+    if not isinstance(revised_snapshot, Mapping):
+        raise ValueError("append-only V6 migration lacks a source snapshot")
+    if any(
+        revised_crosswalk.get(key) != value
+        for key, value in original_crosswalk.items()
+    ):
+        raise ValueError("append-only V6 migration changed an existing crosswalk row")
+    if set(revised_crosswalk) - set(original_crosswalk) != set(added_ids):
+        raise ValueError("append-only V6 migration crosswalk does not match new slots")
+
+    exact_pairs = {
+        (row.get("source_id"), row.get("source_name"))
+        for row in revised_crosswalk.values()
+        if isinstance(row, Mapping) and row.get("status") == "exact"
+    }
+    if len(exact_pairs) != sum(
+        1
+        for row in revised_crosswalk.values()
+        if isinstance(row, Mapping) and row.get("status") == "exact"
+    ):
+        raise ValueError("append-only V6 migration duplicates an exact source identity")
+    for archetype_id in added_ids:
+        row = revised_crosswalk.get(archetype_id)
+        if not isinstance(row, Mapping):
+            raise ValueError(
+                f"append-only V6 migration lacks crosswalk row for {archetype_id!r}"
+            )
+        if require_exact_source_identities and row.get("status") != "exact":
+            raise ValueError(
+                f"append-only V6 migration requires an exact source identity for {archetype_id!r}"
+            )
+        source_id = row.get("source_id")
+        source_name = row.get("source_name")
+        if (
+            isinstance(source_id, bool)
+            or not isinstance(source_id, int)
+            or source_id < 0
+            or not isinstance(source_name, str)
+            or not source_name
+        ):
+            raise ValueError(
+                f"append-only V6 migration has invalid source identity for {archetype_id!r}"
+            )
+
+    return {
+        "baseline_registry_digest": registry_digest(original),
+        "candidate_registry_digest": registry_digest(revised),
+        "added_slots": added_slots,
+        "added_archetype_ids": added_ids,
+        "existing_slots_unchanged": True,
+        "new_slots_dormant": all(
+            revised_slots[slot]["status"] == "dormant" for slot in added_slots
+        ),
+        "source_snapshot_advanced": revised_snapshot != original_snapshot,
+    }
 
 
 class _MatchupExpertV6(nn.Module):
@@ -723,5 +911,6 @@ __all__ = [
     "resolve_ptcgreplay_mapping",
     "retire_archetype",
     "route_for_archetype",
+    "validate_append_only_registry_extension",
     "v5_optimizer_parameter_name_map",
 ]

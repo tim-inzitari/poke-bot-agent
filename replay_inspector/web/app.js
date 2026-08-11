@@ -1,6 +1,6 @@
 const API = "./api";
 const SLICE_LIMIT = 256;
-const TRACE_REQUEST_TIMEOUT_MS = 20000;
+const MAX_BROWSER_BASE_TRACES = 8;
 const ADAPTER_COMPARISON_COLLATOR = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base",
@@ -1158,14 +1158,21 @@ function applyStepFilter(value) {
   }, 250);
 }
 
+function traceKeyForAddress(submissionId, gameId, stepIndex, stage) {
+  return [submissionId, gameId, stepIndex, stage].map(stringValue).join(":");
+}
+
 function baseTraceKey(stepIndex, stage) {
-  return [state.submissionId, state.gameId, stepIndex, stage].map(stringValue).join(":");
+  return traceKeyForAddress(state.submissionId, state.gameId, stepIndex, stage);
 }
 
 function baseTracePath(stepIndex, stage) {
   // Canonical selected-step suffix remains
-  // `/steps/${encodeURIComponent(state.stepIndex)}?stage=${encodeURIComponent(state.stage)}`
-  // while this helper also supports background warming of other addresses.
+  // `/steps/${encodeURIComponent(state.stepIndex)}?stage=${encodeURIComponent(state.stage)}`.
+  // The browser asks only for its selected address. The server owns the
+  // identity-bound physical-game materialization behind that request. A cold
+  // exact runtime may take more than 20 seconds, so elapsed browser time is
+  // not an availability decision.
   return `${API}/submissions/${encodeURIComponent(state.submissionId)}/games/${encodeURIComponent(state.gameId)}/steps/${encodeURIComponent(stepIndex)}?stage=${encodeURIComponent(stage)}`;
 }
 
@@ -1176,36 +1183,28 @@ function clearGameTraceCache() {
   state.traceFetches.clear();
 }
 
-function abortTraceFetchesExcept(selectedKey) {
-  for (const [key, controller] of state.traceAbortControllers) {
-    if (key !== selectedKey) controller.abort();
-  }
-}
-
 function fetchBaseTraceCached(stepIndex, stage) {
   const key = baseTraceKey(stepIndex, stage);
-  if (state.traceCache.has(key)) return Promise.resolve(state.traceCache.get(key));
+  if (state.traceCache.has(key)) {
+    const cached = state.traceCache.get(key);
+    state.traceCache.delete(key);
+    state.traceCache.set(key, cached);
+    return Promise.resolve(cached);
+  }
   if (state.traceFetches.has(key)) return state.traceFetches.get(key);
   const controller = new AbortController();
-  let timedOut = false;
-  const timeout = window.setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, TRACE_REQUEST_TIMEOUT_MS);
   state.traceAbortControllers.set(key, controller);
   const request = fetchJson(baseTracePath(stepIndex, stage), { signal: controller.signal })
     .then((payload) => {
+      state.traceCache.delete(key);
       state.traceCache.set(key, payload);
+      while (state.traceCache.size > MAX_BROWSER_BASE_TRACES) {
+        const oldest = state.traceCache.keys().next().value;
+        state.traceCache.delete(oldest);
+      }
       return payload;
     })
-    .catch((error) => {
-      if (timedOut) {
-        throw new Error("Selected trace reconstruction exceeded 20 seconds on Elmo's GPU. Choose the step again to retry.");
-      }
-      throw error;
-    })
     .finally(() => {
-      window.clearTimeout(timeout);
       state.traceFetches.delete(key);
       state.traceAbortControllers.delete(key);
     });
@@ -4446,12 +4445,11 @@ async function selectStage(stage) {
 async function loadTrace() {
   if (!state.submissionId || !state.gameId || state.stepIndex === "" || state.stage === "") return;
   const token = ++state.requests.trace;
-  abortTraceFetchesExcept(baseTraceKey(state.stepIndex, state.stage));
   resetDecisionInfluenceState();
   state.trace = null;
   state.traceError = null;
-  renderTrace("Reconstructing the selected model causally from replay state…");
-  setGlobalNotice("Loading causal model re-evaluation…", "working");
+  renderTrace("Loading the selected trace from this game's exact archived-model materialization…");
+  setGlobalNotice("Elmo is materializing this selected physical game once; a cold exact runtime may take longer than 20 seconds, while later step or stage changes reuse it…", "working");
   try {
     const trace = await fetchBaseTraceCached(state.stepIndex, state.stage);
     if (token !== state.requests.trace) return;

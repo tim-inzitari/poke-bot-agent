@@ -1,0 +1,102 @@
+{
+  "schema": "poke_bot.replay_model_inspector_forward_pass_reconstruction_activation/v1",
+  "owner_decision_revision": 237,
+  "activated_at_utc": "2026-08-10T23:19:01Z",
+  "validated_at_utc": "2026-08-10T23:29:10Z",
+  "status": "active_read_only",
+  "deployment": {
+    "host": "elmo",
+    "source_root": "/mnt/Main/main/poke-bot-agent/replay-model-inspector-r176",
+    "managed_service": "pokebot-replay-model-inspector.service",
+    "inspector_only_restart": true,
+    "main_pid_after_restart": 2342366,
+    "active_state": "active",
+    "sub_state": "running",
+    "systemd_unit_validation": "passed",
+    "app_js_sha256_before": "sha256:957300400a702c0c501a69fcc37d2ccc53a9420e71e0fc312f31a0e393b41392",
+    "app_js_sha256_after": "sha256:675818ee84788458b8b952a3371a3931e4afe53bdbf444747ea19d04c2bad77d",
+    "served_elmo_app_js_sha256_matches_deployment": true,
+    "served_bert_gateway_app_js_sha256_matches_deployment": true,
+    "bert_gateway_http_status": 200,
+    "training_or_selector_service_control_invoked": false
+  },
+  "validation": {
+    "javascript_syntax": "passed",
+    "typed_contract_json": "passed",
+    "focused_static_inference_and_server_tests": {
+      "passed": 23,
+      "failed": 0
+    },
+    "full_replay_inspector_suite": {
+      "passed": 103,
+      "failed": 1,
+      "nonblocking_failure": "test_checked_in_r187_recipe_is_exactly_keyed_to_alakazam_checkpoint",
+      "failure_scope": "pre_existing_training_recipe_registry_mismatch_in_unchanged_files"
+    },
+    "service_health": "ok",
+    "served_browser_timeout_constant_absent": true,
+    "served_browser_timeout_error_absent": true,
+    "stale_selection_abort_present": true,
+    "whole_game_background_prefetch_absent": true
+  },
+  "live_forward_reconstruction": {
+    "submission_id": "55410353",
+    "episode_id": "91686428",
+    "step_index": 13,
+    "factorized_stage": 0,
+    "model_forward_expected": true,
+    "cold_request": {
+      "http_status": 200,
+      "elapsed_seconds": 140.240407,
+      "response_bytes": 1095359
+    },
+    "resident_model_request": {
+      "http_status": 200,
+      "elapsed_seconds": 53.823427,
+      "response_bytes": 1095095
+    },
+    "removed_browser_deadline_seconds": 20,
+    "cold_request_exceeded_removed_deadline": true,
+    "resident_model_request_exceeded_removed_deadline": true,
+    "availability": true,
+    "provenance_status": "verified",
+    "runtime_parity_status": "verified",
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "reproduction_status": "recomputed_not_historical",
+    "model_status": "recomputed_not_historical",
+    "model_available": true
+  },
+  "nonresident_exact_runtime_forward": {
+    "submission_id": "55410425",
+    "episode_id": "91687352",
+    "step_index": 3,
+    "factorized_stage": 0,
+    "execution_path": "checksum_bound_isolated_forward_worker",
+    "resident_service_runtime_package_sha256": "sha256:8f71eee9d0000a31d316a8b6d7148dce8161f38028aded1b797071135e2aa134",
+    "selected_runtime_package_sha256": "sha256:ace69ec2f41f1e1d34c08bcca88c2dafd2d0b2dd866156d2df64574167b209b5",
+    "selected_runtime_source_tree_sha256": "sha256:823f3e2724e85e6d758109a196594d99026791d26ba0c16171bf55ec6a5ec6f0",
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "http_status": 200,
+    "elapsed_seconds": 52.160755,
+    "response_bytes": 609484,
+    "request_exceeded_removed_deadline": true,
+    "availability": true,
+    "provenance_status": "verified",
+    "reproduction_status": "recomputed_not_historical",
+    "model_available": true,
+    "resident_model_is_not_an_eligibility_gate": true
+  },
+  "retained_boundaries": {
+    "inference_host": "elmo",
+    "inference_device": "cuda:0",
+    "bert_inference_authority": false,
+    "max_concurrent_gpu_traces": 1,
+    "max_resident_models": 1,
+    "isolated_runtime_worker_watchdog_seconds": 240,
+    "checkpoint_or_bundle_mutation": false,
+    "replay_or_provenance_mutation": false,
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_authority": false,
+    "submission_authority": false
+  }
+}

@@ -363,6 +363,55 @@ class ModelConfig:
     #: this field and therefore retain their exact tensor inventory.
     h10_capacity_enabled: bool = _env_bool("H10_CAPACITY_ENABLED", False)
     h10_head_residual_width: int = _env_int("H10_HEAD_RESIDUAL_WIDTH", 512)
+    #: Dormant successor-only public own-deck ledger adapter.  The ledger is a
+    #: per-match causal side store, not an auxiliary prediction head: when
+    #: enabled it contributes one shared residual to each realized-history
+    #: token before the policy/value/auxiliary branches split.  Historical
+    #: checkpoints omit this architecture and keep the exact V5/H10 tensor
+    #: inventory because the default remains false.
+    own_deck_ledger_enabled: bool = _env_bool("OWN_DECK_LEDGER_ENABLED", False)
+    #: Serving control for the physical ledger adapter.  Training may warm the
+    #: zero-safe adapter while this is false, but evaluation/inference bypasses
+    #: it exactly until a successor receipt explicitly enables the route.
+    own_deck_ledger_runtime_enabled: bool = _env_bool(
+        "OWN_DECK_LEDGER_RUNTIME_ENABLED", False
+    )
+    #: Hidden width of the typed public-ledger encoder.  This has no effect
+    #: while ``own_deck_ledger_enabled`` is false.
+    own_deck_ledger_width: int = _env_int("OWN_DECK_LEDGER_WIDTH", 128)
+    #: Optional explicit legal-option lookup vector width.  This is separate
+    #: from the shared snapshot residual so a visible tutor/search menu can
+    #: compare its already-exposed candidates without predicting hidden deck
+    #: identities.
+    own_deck_ledger_option_feature_dim: int = _env_int(
+        "OWN_DECK_LEDGER_OPTION_FEATURE_DIM", 8
+    )
+    #: Dormant, typed, option-conditioned successor supervision heads.  They
+    #: remain physically absent from historical/r241 checkpoints unless a new
+    #: successor config explicitly opts in.  These heads have no standalone
+    #: action authority.
+    visible_tutor_completion_head_enabled: bool = _env_bool(
+        "VISIBLE_TUTOR_COMPLETION_HEAD_ENABLED", False
+    )
+    terminal_conversion_head_enabled: bool = _env_bool(
+        "TERMINAL_CONVERSION_HEAD_ENABLED", False
+    )
+    #: Separate bounded policy routes for the two successor-only heads.  A
+    #: physical head can train while its route is off; serving needs the
+    #: corresponding receipt-gated runtime switch as well.  They intentionally
+    #: do not alter the legacy decision-fusion source denominator by default.
+    visible_tutor_completion_route_enabled: bool = _env_bool(
+        "VISIBLE_TUTOR_COMPLETION_ROUTE_ENABLED", False
+    )
+    visible_tutor_completion_route_runtime_enabled: bool = _env_bool(
+        "VISIBLE_TUTOR_COMPLETION_ROUTE_RUNTIME_ENABLED", False
+    )
+    terminal_conversion_route_enabled: bool = _env_bool(
+        "TERMINAL_CONVERSION_ROUTE_ENABLED", False
+    )
+    terminal_conversion_route_runtime_enabled: bool = _env_bool(
+        "TERMINAL_CONVERSION_ROUTE_RUNTIME_ENABLED", False
+    )
     #: Revision-114 single-pass neural challenger. Architecture presence and
     #: action authority are independent so a migrated checkpoint is an exact
     #: parent-policy no-op until every activation receipt passes.

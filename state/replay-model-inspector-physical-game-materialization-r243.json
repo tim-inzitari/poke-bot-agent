@@ -1,0 +1,141 @@
+{
+  "schema": "poke_bot.replay_model_inspector_physical_game_materialization/v1",
+  "owner_decision_revision": 243,
+  "recorded_at_utc": "2026-08-10T23:55:00Z",
+  "status": "implemented_pending_live_activation",
+  "supersedes": {
+    "source": "state/replay-model-inspector-forward-pass-reconstruction-r237.json",
+    "fields": {
+      "trace_loading.whole_game_background_prefetch": {
+        "old_value": false,
+        "new_value": "explicitly_selected_physical_game_materialization"
+      },
+      "trace_loading.successful_selected_traces_cached_in_browser_memory": {
+        "new_value": "optional_browser_second_level_cache_only"
+      },
+      "trace_loading.cache_cleared_on_submission_or_game_change": {
+        "new_value": "browser_cache_only; identity_bound_elmo_temporary_materialization_persists_while_available"
+      }
+    },
+    "all_other_r237_semantics_preserved": true
+  },
+  "execution": {
+    "host": "elmo",
+    "inference_device": "cuda:0",
+    "max_concurrent_gpu_traces": 1,
+    "max_concurrent_game_materializations": 1,
+    "max_resident_models": 1,
+    "resident_model_is_performance_optimization_not_eligibility_gate": true,
+    "nonresident_exact_runtime_uses_one_isolated_worker_per_physical_game": true,
+    "nonresident_game_result_handoff": "bounded_ndjson_raw_trace_frames_independent_of_temporary_cache_commit",
+    "nonresident_worker_heartbeat_seconds": 10,
+    "nonresident_worker_idle_watchdog_seconds": 240,
+    "nonresident_worker_total_elapsed_deadline_seconds": null,
+    "nonresident_worker_failure_policy": "structured_game_wide_unavailable_never_per_address_worker_fanout",
+    "request_local_runtime_state_restored_between_materializations": true,
+    "bert_inference_authority": false,
+    "bert_role": "read_only_dashboard_gateway_and_encrypted_tunnel",
+    "bert_direct_gateway_trace_response_header_deadline_seconds": null,
+    "bert_direct_gateway_connect_timeout_seconds": 5,
+    "bert_direct_gateway_post_header_body_idle_timeout_seconds": 30,
+    "bert_direct_gateway_response_limit_bytes": 8388608,
+    "bert_direct_gateway_max_pending_trace_waiters": 4
+  },
+  "physical_game_materialization": {
+    "trigger": "explicit_indexed_submission_and_game_selection",
+    "coverage": "every_selectable_own_agent_decision_step_and_factorized_stage",
+    "baseline_head_scales": {},
+    "cold_selected_trace_publication": "after_exact_game_batch_completes",
+    "browser_fetch_scope": "selected_address_only_no_whole_game_response_prefetch",
+    "one_causal_history_state_per_physical_decision": true,
+    "factorized_stages_reuse_decision_state": true,
+    "step_or_stage_navigation": "cache_read_or_join_existing_materialization_never_independent_forward",
+    "per_selectable_address_evaluation_limit_per_identity": 1,
+    "not_a_single_neural_forward_for_the_entire_game_claim": true,
+    "unsolicited_cross_game_prefetch": false,
+    "server_side_cancellation_claimed": false,
+    "stale_browser_abort": "detach_only; never_corrupt_verified_game_materialization"
+  },
+  "cache": {
+    "location": "configured_private_elmo_temporary_root_defaulting_to_/tmp/pokebot-replay-inspector-game-cache-v1",
+    "format": "canonical_json_gzip_with_sha256_manifest",
+    "persistence": "disposable_best_effort_while_temporary_root_remains_available",
+    "bounded_capacity_required": true,
+    "eviction": "least_recently_used_complete_game_units_only",
+    "manifest_and_private_directory_bytes_count_toward_capacity": true,
+    "default_selectable_address_count_cap": null,
+    "write_safety": [
+      "server_derived_non_user_controlled_cache_keys",
+      "private_root_mode_0700",
+      "regular_files_mode_0600",
+      "no_symlink_escape",
+      "exclusive_same_directory_temp_write_fsync_and_atomic_replace",
+      "manifest_and_per_trace_sha256"
+    ],
+    "identity_fields": [
+      "submission_id",
+      "episode_id",
+      "archived_own_seat",
+      "replay_sha256",
+      "submitted_bundle_sha256",
+      "runtime_source_tree_sha256",
+      "checkpoint_sha256",
+      "matchup_tree_sha256_or_null",
+      "runtime_parity_receipt_sha256",
+      "inspector_trace_semantics_identity",
+      "baseline_trace_request_identity"
+    ],
+    "cache_hit_requires": [
+      "current_input_integrity_gates_pass_via_containment_and_stable_stat_signature_revalidation_with_digest_recompute_on_drift",
+      "all_identity_fields_match",
+      "cache_manifest_sha256_matches",
+      "per_trace_payload_sha256_matches"
+    ],
+    "cache_miss_or_corruption_policy": "ignore_only_the_derived_entry_then_reconstruct_from_current_exact_inputs",
+    "source_artifact_mutation_allowed": false,
+    "cache_failure_marks_trace_unavailable": false
+  },
+  "counterfactuals": {
+    "custom_head_scales_in_baseline_cache": false,
+    "custom_head_scales_require_separate_identity_or_direct_reconstruction": true,
+    "counterfactual_can_replace_baseline": false
+  },
+  "reconstruction": {
+    "exact_replay_digest_required": true,
+    "exact_runtime_source_tree_required": true,
+    "exact_checkpoint_digest_required": true,
+    "model_or_runtime_substitution_allowed": false,
+    "package_local_guide_policy_and_adapter_behavior_preserved": true,
+    "ordinary_model_decision_label": "recomputed_not_historical",
+    "historical_kaggle_logits_claimed": false
+  },
+  "activation": {
+    "managed_service": "pokebot-replay-model-inspector.service",
+    "requires_inspector_only_restart": true,
+    "training_or_selector_restart": false,
+    "activated_at_utc": null,
+    "activation_receipt": null,
+    "required_validation": [
+      "game_materialization_matches_individual_trace_outputs",
+      "same_game_step_and_stage_navigation_causes_no_independent_gpu_forward",
+      "same_game_concurrent_requests_join_one_materialization",
+      "one_isolated_runtime_worker_and_model_load_per_nonresident_game",
+      "temporary_cache_survives_browser_cache_clear",
+      "identity_drift_and_cache_corruption_fail_closed",
+      "temporary_root_symlink_and_atomic_write_safety",
+      "custom_head_scales_do_not_reuse_or_poison_baseline",
+      "javascript_syntax_and_static_ui_tests",
+      "bert_trace_gateway_has_no_response_header_deadline_with_bounded_connect_body_and_concurrency",
+      "live_elmo_materialization_then_multiple_step_cache_hits",
+      "no_training_or_selector_restart"
+    ]
+  },
+  "safety": {
+    "read_only": true,
+    "checkpoint_or_bundle_mutation": false,
+    "replay_or_provenance_mutation": false,
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_authority": false,
+    "submission_authority": false
+  }
+}

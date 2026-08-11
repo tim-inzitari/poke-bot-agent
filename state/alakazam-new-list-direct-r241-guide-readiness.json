@@ -1,0 +1,93 @@
+{
+  "schema": "poke_bot.alakazam_new_list_direct_policy_guide_readiness/v1",
+  "status": "validated",
+  "created_at_utc": "2026-08-10T23:55:00Z",
+  "scope": "exact_deck_direct_policy_ordinary_rl_only",
+  "specialist_id": "alakazam",
+  "candidate_id": "alakazam-new-list-direct-policy-r241",
+  "guide_version": "powerful-hand-new-list-r241-v1",
+  "guide_rows": 1,
+  "guide_rows_scope": "one deterministic exact-deck canary stage; this is a scorer-readiness count, not a future training-corpus cardinality",
+  "guide_contract": {
+    "path": "config/deck_guides/alakazam-new-list-direct-r241.yaml",
+    "sha256": "sha256:b5cb827e46ab40d14a544a5df53a1cfb8b719250f852e81430e8b7e57efc6d5a"
+  },
+  "expert_writeup": {
+    "path": "docs/deck_guides/alakazam-new-list-direct-r241-expert-brief.md",
+    "sha256": "sha256:41cd5867186d4f8e35bb402559960f4abe90719b8ccb0d0586c2bb5e69567019",
+    "word_count": 2134,
+    "maximum_words": 10000
+  },
+  "exact_deck": {
+    "deck_id": "alakazam-new-list-direct-r241",
+    "path": "decks/archetype-samples/alakazam-new-list-direct-r241.csv",
+    "file_sha256": "sha256:d834c66c5a3629dd79c8533a04fde770a22ca8590ac55c9868440121b6df5fba",
+    "ordered_cards_sha256": "sha256:e61c0a4ffcfeb730808ac561f39c1efa9de5f80aec577d3be82f3fc790b7dab2",
+    "canonical_multiset_sha256": "sha256:a42e047c45c419a599a31f2e20a6209d324558082f27e12091ade8918376d182",
+    "card_count": 60,
+    "exact_multiset_required": true
+  },
+  "teacher": {
+    "module": "poke_bot/alakazam_new_list_heuristics.py",
+    "sha256": "sha256:d91b9031be71dc38e2dbd4e57eab16b2afb7f912d4048644b31d02ac798c932e",
+    "exact_deck_gate_required": true,
+    "complete_legal_stage_scoring_required": true,
+    "incomplete_or_ambiguous_stage_behavior": "mask_entire_stage",
+    "public_state_only": true
+  },
+  "ordinary_rl": {
+    "guide_loss_weight": 0.05,
+    "guide_target_source": "exact_new_deck_direct_policy_self_play",
+    "guide_target_generation_enabled": true,
+    "guide_rows": 1,
+    "guide_rows_scope": "one deterministic exact-deck canary stage; this is a scorer-readiness count, not a future training-corpus cardinality",
+    "training_mode": "strategic_directional_v2",
+    "direct_policy_cross_entropy_allowed": false,
+    "guide_pairwise_route_heads": [
+      "action_q",
+      "action_resource",
+      "action_utility",
+      "setup_board_outcome"
+    ]
+  },
+  "expert_soft_refresh": {
+    "guide_loss_weight": 0.0,
+    "guide_target_generation_enabled": false,
+    "expert_corpus_guide_rows": 0,
+    "reason": "historical expert rows do not carry the exact new 60-card multiset",
+    "historical_expert_rows_may_train_observed_outcomes": true,
+    "historical_expert_rows_may_not_supply_r241_guide_targets": true
+  },
+  "corpus_readiness": {
+    "is_current_deck_guide_corpus_ready_receipt": false,
+    "expert_corpus_ready_for_r241_guide_targets": false,
+    "reason": "the only guide-ready path in this receipt is checksum-bound direct-policy self-play"
+  },
+  "runtime_exclusions": {
+    "runtime_action_authority": false,
+    "runtime_input": false,
+    "runtime_action_logit_route": false,
+    "mcts": false,
+    "recursive_turn_planner": false,
+    "guide2vec": false,
+    "guide_logit_bias": false,
+    "hidden_state_or_future_information": false
+  },
+  "checks": {
+    "contract_module_deck_checksums_match": true,
+    "exact_multiset_gate_rejects_non_r241_decks": true,
+    "nonflat_complete_stage_canary_is_scorable": true,
+    "ordinary_rl_weight_is_exactly_0_05": true,
+    "expert_soft_refresh_weight_is_exactly_0_0": true,
+    "expert_corpus_mismatch_is_not_relabelled_or_reused": true,
+    "historical_r175_or_r79_guide_artifacts_consumed": false,
+    "final_policy_logits_are_guide_targets": false
+  },
+  "authority": {
+    "training_preparation": true,
+    "managed_training_start": false,
+    "selector": false,
+    "production": false,
+    "kaggle_submission": false
+  }
+}

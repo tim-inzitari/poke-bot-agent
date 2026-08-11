@@ -1,0 +1,54 @@
+{
+  "schema": "poke_bot.alakazam_new_list_direct_r241_official_libcg_staging/v1",
+  "owner_decision_revision": 241,
+  "recorded_at_utc": "2026-08-10T23:55:21Z",
+  "status": "staged_and_export_attested_on_inzi_and_elmo",
+  "source": {
+    "canonical_contract": "state/canonical-libcg-r236.json",
+    "canonical_contract_sha256": "sha256:d75ff752808ead08f3ae20f7f2f8a034c9e6163109188a46d3b877bf1910ae2d",
+    "stager": "scripts/stage_r241_official_libcg_direct_policy.py",
+    "stager_sha256": "sha256:7070d3d191d72a038418975431eecb6a3206db62bdd9ba09202ed8886599edd2",
+    "wheel_sha256": "sha256:e70a7d7765b16deb1fcfa00532eb5197f28bc9fbfa07a0eee150a17d67bd77ab",
+    "wheel_size_bytes": 60677343
+  },
+  "required_runtime": {
+    "environment": "CG_LIB_PATH",
+    "member": "cg/libcg.so",
+    "member_sha256": "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7",
+    "member_size_bytes": 1342400,
+    "forbidden_environment_absent": [
+      "POKEBOT_LIBCG_PATH",
+      "POKEBOT_BATCH_LIBCG"
+    ],
+    "native_function_calls_during_export_attestation": 0,
+    "search_calls_during_export_attestation": 0
+  },
+  "hosts": {
+    "inzi": {
+      "host": "192.168.1.151",
+      "runtime_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/cg-r236",
+      "receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/cg-r236/r241_official_libcg_direct_policy_preflight.json",
+      "receipt_sha256": "sha256:165af79e33b9851d36c972503012654ed9db86222b7f79e7fac9b8bd00a38965",
+      "loaded_member_sha256": "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7",
+      "passed": true
+    },
+    "elmo": {
+      "host": "192.168.1.143",
+      "runtime_root": "/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/cg-r236",
+      "receipt": "/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/cg-r236/r241_official_libcg_direct_policy_preflight.json",
+      "receipt_sha256": "sha256:91506428871349a47cd4fa4af76e45aaafde779a8e462e1b08e3c631d908973b",
+      "loaded_member_sha256": "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7",
+      "passed": true
+    }
+  },
+  "scope": {
+    "runtime_roots_created": true,
+    "complete_four_platform_native_set_staged_per_root": true,
+    "old_wrapper_native_members_discarded": true,
+    "simulator_battles_started": 0,
+    "training_or_gradient_updates_started": false,
+    "managed_services_started_or_restarted": false,
+    "mcts_or_rtp_authority": false,
+    "selector_or_submission_authority": false
+  }
+}

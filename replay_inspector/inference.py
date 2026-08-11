@@ -19,7 +19,7 @@ import os
 import re
 import threading
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +32,11 @@ from poke_bot.model import (
 )
 from poke_bot.replay_import import extract_setup_decks
 
-from .timeline import ReplayTimelineError, assert_active_select_actor
+from .timeline import (
+    ReplayTimelineError,
+    assert_active_select_actor,
+    decision_timeline,
+)
 
 INFERENCE_SCHEMA = "poke_bot.replay_model_inspector.inference/v1"
 UNAVAILABLE_TARGET_MASK_REASON = (
@@ -3037,6 +3041,783 @@ def inspect_replay_step(
             _restore_submitted_runtime_activation(restoration, runtime_activation)
 
 
+def _materialize_precomputed_trace_payload(
+    *,
+    model: torch.nn.Module,
+    prepared: _PreparedReplayStep,
+    state: torch.Tensor,
+    spatial: torch.Tensor,
+    policy_value_state: torch.Tensor,
+    option_tokens: Any,
+    final_logits: torch.Tensor,
+    option_hidden: torch.Tensor,
+    model_value: Any,
+    runtime_activation: Mapping[str, Any],
+    acting_seat: int,
+    env_step: int,
+    factorized_stage: int,
+    checkpoint_digest: str | None,
+    checkpoint_path: str | Path | None,
+    provenance: Mapping[str, Any] | None,
+    head_scales: Mapping[str, float] | None,
+) -> dict[str, Any]:
+    """Build the normal inspector payload from a previously decoded stage.
+
+    ``inspect_replay_game`` intentionally shares the expensive causal history
+    encoding across the factorized choices of one physical decision.  The
+    reporting layer remains exactly the per-stage reporting path: all tensors
+    passed here retain a leading batch dimension of one so the existing JSON
+    helpers and counterfactuals preserve the single-step contract.
+    """
+
+    if not isinstance(final_logits, torch.Tensor) or not isinstance(
+        option_hidden, torch.Tensor
+    ):
+        raise ReplayInspectionError("model decode did not return tensors")
+    option_count = len(prepared.candidates)
+    base_logits = model.policy_head(option_hidden).squeeze(-1)
+    decision_fusion = getattr(model, "decision_fusion", None)
+    state_sources: Mapping[str, torch.Tensor] | None = None
+    option_sources: Mapping[str, torch.Tensor] | None = None
+    if decision_fusion is not None:
+        source_builder = getattr(model, "decision_fusion_sources", None)
+        if callable(source_builder):
+            built_state, built_option = source_builder(option_hidden, state)
+            if isinstance(built_state, Mapping) and isinstance(built_option, Mapping):
+                state_sources, option_sources = built_state, built_option
+    heads = _build_head_records(
+        model=model,
+        state=state,
+        option_hidden=option_hidden,
+        option_count=option_count,
+        state_sources=state_sources,
+        option_sources=option_sources,
+    )
+    fusion, actual_fusion_logits = _fusion_payload(
+        model=model,
+        option_hidden=option_hidden,
+        state=state,
+        base_logits=base_logits,
+        state_sources=state_sources,
+        option_sources=option_sources,
+        target=prepared.target_index,
+        option_count=option_count,
+    )
+    # Batched decoder kernels can differ by one floating-point ulp from the
+    # one-row Fusion recomputation used by the inspector's exact 1x parity
+    # audit.  Reuse that causal recomputation for the reported final policy
+    # whenever Fusion sources are available, so every materialized stage is
+    # internally consistent with its counterfactuals.
+    runtime_final_logits = final_logits
+    if state_sources is not None and option_sources is not None:
+        runtime_final_logits = _post_fusion_policy_logits(
+            model=model,
+            option_hidden=option_hidden,
+            state=state,
+            logits=actual_fusion_logits,
+        )
+    latent = _latent_payload(
+        model=model,
+        option_hidden=option_hidden,
+        state=state,
+        option_count=option_count,
+    )
+    neural_final = _option_tensor(runtime_final_logits, option_count)
+    neural_probabilities = torch.softmax(neural_final, dim=-1)
+    neural_choice = int(torch.argmax(neural_final).item())
+    (
+        submitted_runtime_policy,
+        valid_final,
+        probabilities,
+        model_choice,
+        final_logit_bonus,
+    ) = _submitted_runtime_policy_payload(
+        observation=prepared.observation,
+        candidates=prepared.candidates,
+        deck=prepared.deck,
+        neural_logits=neural_final,
+        neural_probabilities=neural_probabilities,
+        neural_index=neural_choice,
+    )
+    _apply_policy_bonus_to_fusion_loo(
+        fusion,
+        bonus=final_logit_bonus,
+        target=prepared.target_index,
+        option_count=option_count,
+    )
+    for name, loo in dict(fusion.get("leave_one_out") or {}).items():
+        if name in heads:
+            heads[name]["leave_one_out"] = loo
+    _attach_head_policy_influence(heads, fusion)
+    guide_shadow = _guide_shadow_payload(
+        observation=prepared.observation,
+        candidates=prepared.candidates,
+        deck=prepared.deck,
+        recorded_index=prepared.target_index,
+        model_index=neural_choice,
+    )
+    decision_influence = _decision_influence_payload(
+        model=model,
+        option_hidden=option_hidden,
+        state=state,
+        base_logits=base_logits,
+        baseline_final_logits=runtime_final_logits,
+        state_sources=state_sources,
+        option_sources=option_sources,
+        requested_scales=head_scales,
+        target=prepared.target_index,
+        option_count=option_count,
+        fusion_payload=fusion,
+        final_logit_bonus=final_logit_bonus,
+    )
+    router_snapshot = _router_snapshot(prepared.router)
+    adapter_payload = _adapter_payload(
+        model=model,
+        prepared=prepared,
+        state=state,
+        policy_value_state=policy_value_state,
+        option_tokens=option_tokens,
+        spatial=spatial,
+        final_logits=valid_final,
+        option_count=option_count,
+        router_snapshot=router_snapshot,
+        runtime_activation=runtime_activation,
+        final_logit_bonus=final_logit_bonus,
+    )
+    supplied_provenance = _provenance_mapping(provenance)
+    requested_status = str(supplied_provenance.get("reproduction_status") or "").strip()
+    parity_verified = bool(supplied_provenance.get("runtime_parity_verified", False))
+    if prepared.hypothetical_setup_prompt:
+        reproduction_status = "hypothetical_model_forward_not_submitted_runtime"
+        reproduction_reason = (
+            "the submitted entrypoint answered this setup prompt before "
+            "the neural model; these values are an explicit hypothetical "
+            "forward pass through the checksum-bound archived model"
+        )
+    elif requested_status == "exact_reproduced" and parity_verified:
+        reproduction_status = "exact_reproduced"
+        reproduction_reason = (
+            "caller supplied a verified archived-runtime parity receipt"
+        )
+    else:
+        reproduction_status = "recomputed_not_historical"
+        reproduction_reason = (
+            "raw replays do not record historical logits; this is a current-source "
+            "recomputation unless archived runtime parity is independently verified"
+        )
+    provenance_payload = {
+        **_json_safe(supplied_provenance),
+        "checkpoint_digest": checkpoint_digest,
+        "checkpoint_path": None if checkpoint_path is None else str(checkpoint_path),
+        "model_config": _model_config(model),
+        "evaluation_mode": True,
+        "inference_device": _model_device(model),
+        "reproduction_status": reproduction_status,
+        "reproduction_reason": reproduction_reason,
+    }
+    return {
+        "schema": INFERENCE_SCHEMA,
+        "availability": _availability(True),
+        "provenance": provenance_payload,
+        "replay": {
+            "acting_seat": int(acting_seat),
+            "env_step": int(env_step),
+            "factorized_stage": int(factorized_stage),
+            "observation": _json_safe(prepared.observation),
+            "recorded_action": list(prepared.recorded_action),
+            "recorded_target_index": prepared.target_index,
+            "recorded_target_candidate": prepared.candidates[prepared.target_index],
+            "legal_candidates": prepared.candidates,
+            "legal_candidate_mask": [True] * option_count,
+            "history_length": len(prepared.board_history),
+            "deck_card_count": len(prepared.deck),
+            "router": router_snapshot,
+            "hypothetical_setup_prompt": prepared.hypothetical_setup_prompt,
+        },
+        "adapter": adapter_payload,
+        "policy": {
+            "base_logits": _tensor_to_json(_option_tensor(base_logits, option_count)),
+            "fusion_logits_before_latent": _tensor_to_json(
+                _option_tensor(actual_fusion_logits, option_count)
+            ),
+            "final_logits": _tensor_to_json(valid_final),
+            "probabilities": _tensor_to_json(probabilities),
+            "model_choice_index": model_choice,
+            "model_choice_candidate": prepared.candidates[model_choice],
+            "model_matches_recorded_target": model_choice == prepared.target_index,
+            "recorded_target_margin": _margin(
+                valid_final, prepared.target_index, option_count
+            ),
+            "neural_final_logits": _tensor_to_json(neural_final),
+            "neural_probabilities": _tensor_to_json(neural_probabilities),
+            "neural_model_choice_index": neural_choice,
+            "neural_model_choice_candidate": prepared.candidates[neural_choice],
+            "submitted_runtime_policy": submitted_runtime_policy,
+        },
+        "value": {
+            "availability": _availability(
+                isinstance(model_value, torch.Tensor),
+                "model history output has no value"
+                if not isinstance(model_value, torch.Tensor)
+                else None,
+            ),
+            "policy_value": None
+            if not isinstance(model_value, torch.Tensor)
+            else _tensor_to_json(_state_tensor(model_value)),
+            "fusion_raw_state_value": heads["value"].get("fusion_input_values"),
+        },
+        "heads": heads,
+        "fusion": fusion,
+        "latent_lookahead": latent,
+        "decision_influence": decision_influence,
+        "guide_shadow": guide_shadow,
+    }
+
+
+def _normalized_game_addresses(
+    *,
+    replay: Mapping[str, Any],
+    acting_seat: int,
+    addresses: Sequence[tuple[int, int]] | None,
+) -> list[tuple[int, int]]:
+    """Return stable, unique game addresses without guessing malformed input."""
+
+    if addresses is None:
+        try:
+            return list(
+                dict.fromkeys(
+                    (int(stage.step_index), int(stage.factorized_stage))
+                    for stage in decision_timeline(dict(replay), int(acting_seat))
+                )
+            )
+        except ReplayTimelineError as exc:
+            raise ReplayInspectionError(
+                "the replay decision timeline cannot be materialized"
+            ) from exc
+    if isinstance(addresses, (str, bytes)) or not isinstance(addresses, Sequence):
+        raise TypeError("addresses must be a sequence of (env_step, factorized_stage)")
+
+    output: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    for raw_address in addresses:
+        if (
+            isinstance(raw_address, (str, bytes, Mapping))
+            or not isinstance(raw_address, Sequence)
+            or len(raw_address) != 2
+        ):
+            raise TypeError(
+                "each replay-game address must be (env_step, factorized_stage)"
+            )
+        try:
+            address = (int(raw_address[0]), int(raw_address[1]))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise TypeError(
+                "each replay-game address must contain integer values"
+            ) from exc
+        if address not in seen:
+            seen.add(address)
+            output.append(address)
+    return output
+
+
+def _batch_row(
+    tensor: torch.Tensor, *, row: int, batch_size: int, name: str
+) -> torch.Tensor:
+    """Keep a single batch row shaped for existing inspector helpers."""
+
+    if tensor.dim() < 1 or tensor.size(0) != batch_size:
+        raise ReplayInspectionError(
+            f"model {name} output does not match the requested history batch"
+        )
+    return tensor[row : row + 1]
+
+
+def inspect_replay_game(
+    *,
+    model: torch.nn.Module,
+    replay: Mapping[str, Any],
+    acting_seat: int,
+    addresses: Sequence[tuple[int, int]] | None = None,
+    own_deck: Sequence[int] | None = None,
+    router: Any | None = None,
+    router_factory: Callable[[], Any] | None = None,
+    checkpoint_digest: str | None = None,
+    checkpoint_path: str | Path | None = None,
+    provenance: Mapping[str, Any] | None = None,
+    submitted_runtime_activation: Mapping[str, Any] | None = None,
+    allow_setup_prompt_model_forward: bool = False,
+    batch_size: int = 32,
+) -> dict[tuple[int, int], dict[str, Any]]:
+    """Materialize baseline traces for stages selected from one physical game.
+
+    Histories are rebuilt once per requested environment step, not once per
+    factorized stage.  The expensive history model call and option decodes are
+    batched in bounded chunks under one request-local submitted-runtime
+    activation.  A mixed hypothetical IsFirst/ordinary request uses its two
+    semantically distinct activation modes while retaining the same cached
+    model and serialized request lock.  Returned values use the same per-address schema as
+    :func:`inspect_replay_step`; unavailable addresses retain that function's
+    ordinary structured unavailable payload.
+
+    ``addresses=None`` selects every own-seat address in
+    :func:`replay_inspector.timeline.decision_timeline`, including setup rows
+    (which retain the normal setup-forward availability policy).
+    """
+
+    if not isinstance(model, torch.nn.Module):
+        raise TypeError("inspect_replay_game requires a torch.nn.Module")
+    if isinstance(batch_size, bool):
+        raise TypeError("batch_size must be a positive integer")
+    try:
+        chunk_size = int(batch_size)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise TypeError("batch_size must be a positive integer") from exc
+    if chunk_size <= 0:
+        raise ValueError("batch_size must be a positive integer")
+
+    requested = _normalized_game_addresses(
+        replay=replay, acting_seat=acting_seat, addresses=addresses
+    )
+    if not requested:
+        return {}
+
+    by_step: dict[int, list[tuple[int, int]]] = {}
+    for address in requested:
+        by_step.setdefault(address[0], []).append(address)
+
+    unavailable: dict[tuple[int, int], dict[str, Any]] = {}
+    prepared_by_address: dict[tuple[int, int], _PreparedReplayStep] = {}
+    prepared_by_step: dict[int, _PreparedReplayStep] = {}
+    stages_by_step: dict[int, list[tuple[list[list[int]], int]]] = {}
+
+    # Reconstruct public/router/history state exactly as the existing API does,
+    # but only once for all selected factorized stages of a physical decision.
+    for env_step, step_addresses in by_step.items():
+        # A pathological factorization can have an empty early stage while a
+        # later requested stage is still legal.  Probe requested stages rather
+        # than assuming stage zero itself is preparable; ordinary games succeed
+        # on the first probe and still reconstruct exactly once per step.
+        base_prepared: _PreparedReplayStep | None = None
+        for _probe_step, probe_stage in step_addresses:
+            try:
+                base_prepared = _prepare_replay_step(
+                    model=model,
+                    replay=replay,
+                    acting_seat=acting_seat,
+                    env_step=env_step,
+                    factorized_stage=probe_stage,
+                    own_deck=own_deck,
+                    router=router,
+                    router_factory=router_factory,
+                    allow_setup_prompt_model_forward=allow_setup_prompt_model_forward,
+                )
+            except ReplayStepUnavailable:
+                continue
+            else:
+                break
+        if base_prepared is None:
+            # Nothing at this physical step can be materialized.  Re-run the
+            # normal per-address preparation only on this error path so callers
+            # receive the exact existing unavailable reason for each address.
+            for address in step_addresses:
+                try:
+                    _prepare_replay_step(
+                        model=model,
+                        replay=replay,
+                        acting_seat=acting_seat,
+                        env_step=env_step,
+                        factorized_stage=address[1],
+                        own_deck=own_deck,
+                        router=router,
+                        router_factory=router_factory,
+                        allow_setup_prompt_model_forward=allow_setup_prompt_model_forward,
+                    )
+                except ReplayStepUnavailable as exc:
+                    unavailable[address] = _unavailable_payload(
+                        exc,
+                        checkpoint_digest=checkpoint_digest,
+                        provenance=provenance,
+                    )
+                else:
+                    # A stateful custom router without ``fork`` can change a
+                    # later probe's validity.  Preserve a useful structured
+                    # result instead of silently claiming it was unavailable.
+                    unavailable[address] = _unavailable_payload(
+                        ReplayStepUnavailable(
+                            "the replay stage could not be stably prepared",
+                            code="stage_unavailable",
+                        ),
+                        checkpoint_digest=checkpoint_digest,
+                        provenance=provenance,
+                    )
+            continue
+
+        try:
+            raw_stages = features.factorized_teacher_forcing_stages(
+                base_prepared.observation, base_prepared.recorded_action
+            )
+            stages = [
+                ([list(combo) for combo in candidates], int(target))
+                for candidates, target in raw_stages
+            ]
+        except Exception as exc:  # noqa: BLE001 - mirror the step reconstruction error
+            error = ReplayStepUnavailable(
+                "recorded action cannot be factorized against the legal options",
+                code="factorized_stage_unavailable",
+                detail=str(exc),
+            )
+            payload = _unavailable_payload(
+                error, checkpoint_digest=checkpoint_digest, provenance=provenance
+            )
+            unavailable.update({address: payload for address in step_addresses})
+            continue
+
+        prepared_by_step[env_step] = base_prepared
+        stages_by_step[env_step] = stages
+        for address in step_addresses:
+            stage_index = address[1]
+            if stage_index < 0:
+                error = ReplayStepUnavailable(
+                    "factorized stage must be nonnegative", code="stage_out_of_range"
+                )
+            elif stage_index >= len(stages):
+                error = ReplayStepUnavailable(
+                    "requested factorized stage is outside the recorded action",
+                    code="stage_out_of_range",
+                    stage_count=len(stages),
+                )
+            else:
+                candidates, target = stages[stage_index]
+                if not candidates:
+                    error = ReplayStepUnavailable(
+                        "factorized stage has no legal candidates",
+                        code="stage_unavailable",
+                    )
+                else:
+                    prepared_by_address[address] = replace(
+                        base_prepared,
+                        candidates=candidates,
+                        target_index=target,
+                    )
+                    continue
+            unavailable[address] = _unavailable_payload(
+                error, checkpoint_digest=checkpoint_digest, provenance=provenance
+            )
+
+    valid_steps = [
+        env_step
+        for env_step in by_step
+        if any(address in prepared_by_address for address in by_step[env_step])
+    ]
+    if not valid_steps:
+        return {address: unavailable[address] for address in requested}
+
+    valid_addresses = [
+        address for address in requested if address in prepared_by_address
+    ]
+    setup_addresses = [
+        address
+        for address in valid_addresses
+        if prepared_by_address[address].hypothetical_setup_prompt
+    ]
+    ordinary_addresses = [
+        address
+        for address in valid_addresses
+        if not prepared_by_address[address].hypothetical_setup_prompt
+    ]
+    if (
+        submitted_runtime_activation is not None
+        and setup_addresses
+        and ordinary_addresses
+    ):
+        # The submitted entrypoint answers IsFirst before enabling its model
+        # runtime.  A mixed request therefore needs two request-local runtime
+        # phases: a forced-bypass hypothetical setup phase and the ordinary
+        # checksum-bound phase.  Keeping that distinction here avoids making a
+        # caller split its game cache and leaves both per-stage audit payloads
+        # identical to their single-step counterparts.
+        setup_output = inspect_replay_game(
+            model=model,
+            replay=replay,
+            acting_seat=acting_seat,
+            addresses=setup_addresses,
+            own_deck=own_deck,
+            router=router,
+            router_factory=router_factory,
+            checkpoint_digest=checkpoint_digest,
+            checkpoint_path=checkpoint_path,
+            provenance=provenance,
+            submitted_runtime_activation=None,
+            allow_setup_prompt_model_forward=allow_setup_prompt_model_forward,
+            batch_size=chunk_size,
+        )
+        ordinary_output = inspect_replay_game(
+            model=model,
+            replay=replay,
+            acting_seat=acting_seat,
+            addresses=ordinary_addresses,
+            own_deck=own_deck,
+            router=router,
+            router_factory=router_factory,
+            checkpoint_digest=checkpoint_digest,
+            checkpoint_path=checkpoint_path,
+            provenance=provenance,
+            submitted_runtime_activation=submitted_runtime_activation,
+            allow_setup_prompt_model_forward=allow_setup_prompt_model_forward,
+            batch_size=chunk_size,
+        )
+        return {
+            address: unavailable[address]
+            if address in unavailable
+            else (
+                setup_output[address]
+                if address in setup_output
+                else ordinary_output[address]
+            )
+            for address in requested
+        }
+
+    # A cached checkpoint can be shared between requests, so retain the same
+    # serialized activation/restoration boundary as inspect_replay_step.
+    with _MODEL_TRACE_LOCK, torch.inference_mode():
+        was_training = bool(model.training)
+        runtime_activation, restoration = _begin_submitted_runtime_activation(
+            model, submitted_runtime_activation
+        )
+        try:
+            model.eval()
+            try:
+                output: dict[tuple[int, int], dict[str, Any]] = {
+                    address: unavailable[address]
+                    for address in requested
+                    if address in unavailable
+                }
+
+                def materialize_history_chunk(
+                    chunk_steps: Sequence[int], *, routed: bool
+                ) -> None:
+                    """Decode and serialize one bounded history chunk.
+
+                    This intentionally scopes all model tensors to one physical
+                    decision chunk.  Game results remain ordinary JSON payloads
+                    in ``output``, while state/spatial/decoder tensors are
+                    released before the next chunk begins.
+                    """
+
+                    chunk_prepared = [prepared_by_step[step] for step in chunk_steps]
+                    first_tokens: list[Any] = []
+                    first_counts: list[int] = []
+                    for step, prepared in zip(chunk_steps, chunk_prepared, strict=True):
+                        first_candidates = stages_by_step[step][0][0]
+                        first_tokens.append(
+                            features.build_option_tokens(
+                                prepared.observation, first_candidates
+                            )
+                        )
+                        first_counts.append(len(first_candidates))
+                    route_arg: Sequence[int] | None
+                    if routed:
+                        route_arg = [
+                            int(prepared.route)
+                            for prepared in chunk_prepared
+                            if prepared.route is not None
+                        ]
+                    else:
+                        route_arg = None
+                    history_output = model.forward_history_batch(
+                        [prepared.board_history for prepared in chunk_prepared],
+                        first_tokens,
+                        n_options=first_counts,
+                        previous_action_histories=[
+                            prepared.action_history for prepared in chunk_prepared
+                        ],
+                        matchup_routes=route_arg,
+                    )
+                    state_batch = history_output.get("state_vec")
+                    spatial_history_batch = history_output.get("spatial_memory")
+                    model_value_batch = history_output.get("value")
+                    if not isinstance(state_batch, torch.Tensor) or not isinstance(
+                        spatial_history_batch, torch.Tensor
+                    ):
+                        raise ReplayInspectionError(
+                            "model history output lacks state tensors"
+                        )
+                    policy_value_batch = model.matchup_policy_value_state(
+                        state_batch, route_arg
+                    )
+                    if not isinstance(policy_value_batch, torch.Tensor):
+                        raise ReplayInspectionError(
+                            "model policy/value state did not return a tensor"
+                        )
+                    # forward_history_batch exposes policy/auxiliary tensors we
+                    # do not need after extracting this chunk's state/value.
+                    del history_output
+                    del first_tokens, first_counts, chunk_prepared
+
+                    history_rows: dict[int, dict[str, Any]] = {}
+                    for row, env_step in enumerate(chunk_steps):
+                        row_value: Any = model_value_batch
+                        if isinstance(model_value_batch, torch.Tensor):
+                            row_value = _batch_row(
+                                model_value_batch,
+                                row=row,
+                                batch_size=len(chunk_steps),
+                                name="value",
+                            )
+                        history_rows[env_step] = {
+                            "state": _batch_row(
+                                state_batch,
+                                row=row,
+                                batch_size=len(chunk_steps),
+                                name="state_vec",
+                            ),
+                            "spatial": _batch_row(
+                                spatial_history_batch,
+                                row=row,
+                                batch_size=len(chunk_steps),
+                                name="spatial_memory",
+                            ),
+                            "policy_value_state": _batch_row(
+                                policy_value_batch,
+                                row=row,
+                                batch_size=len(chunk_steps),
+                                name="policy_value_state",
+                            ),
+                            "model_value": row_value,
+                        }
+                    # The row views above retain only this chunk's backing
+                    # tensors.  Remove the redundant local names before option
+                    # decoding so the next operation cannot retain both paths.
+                    del state_batch, spatial_history_batch, policy_value_batch
+                    del model_value_batch
+
+                    chunk_step_set = set(chunk_steps)
+                    chunk_addresses = [
+                        address
+                        for address in valid_addresses
+                        if address[0] in chunk_step_set
+                    ]
+                    for start in range(0, len(chunk_addresses), chunk_size):
+                        option_addresses = chunk_addresses[start : start + chunk_size]
+                        option_prepared = [
+                            prepared_by_address[address] for address in option_addresses
+                        ]
+                        option_tokens = [
+                            features.build_option_tokens(
+                                prepared.observation, prepared.candidates
+                            )
+                            for prepared in option_prepared
+                        ]
+                        option_counts = [
+                            len(prepared.candidates) for prepared in option_prepared
+                        ]
+                        spatial_batch = torch.cat(
+                            [
+                                history_rows[address[0]]["spatial"]
+                                for address in option_addresses
+                            ],
+                            dim=0,
+                        )
+                        policy_value_options = torch.cat(
+                            [
+                                history_rows[address[0]]["policy_value_state"]
+                                for address in option_addresses
+                            ],
+                            dim=0,
+                        )
+                        state_options = torch.cat(
+                            [
+                                history_rows[address[0]]["state"]
+                                for address in option_addresses
+                            ],
+                            dim=0,
+                        )
+                        decoded = model.decode_options(
+                            option_tokens,
+                            spatial_batch,
+                            policy_value_options,
+                            n_options=option_counts,
+                            return_hidden=True,
+                            decision_fusion_state_vec=state_options,
+                        )
+                        if (
+                            not isinstance(decoded, tuple)
+                            or len(decoded) != 2
+                            or not isinstance(decoded[0], torch.Tensor)
+                            or not isinstance(decoded[1], torch.Tensor)
+                        ):
+                            raise ReplayInspectionError(
+                                "model decode did not return tensors"
+                            )
+                        final_batch, hidden_batch = decoded
+                        del decoded
+                        for row, address in enumerate(option_addresses):
+                            option_count = option_counts[row]
+                            final_logits = _batch_row(
+                                final_batch,
+                                row=row,
+                                batch_size=len(option_addresses),
+                                name="option logits",
+                            )[:, :option_count]
+                            option_hidden = _batch_row(
+                                hidden_batch,
+                                row=row,
+                                batch_size=len(option_addresses),
+                                name="option hidden state",
+                            )[:, :option_count]
+                            history = history_rows[address[0]]
+                            output[address] = _materialize_precomputed_trace_payload(
+                                model=model,
+                                prepared=option_prepared[row],
+                                state=history["state"],
+                                spatial=history["spatial"],
+                                policy_value_state=history["policy_value_state"],
+                                option_tokens=option_tokens[row],
+                                final_logits=final_logits,
+                                option_hidden=option_hidden,
+                                model_value=history["model_value"],
+                                runtime_activation=runtime_activation,
+                                acting_seat=acting_seat,
+                                env_step=address[0],
+                                factorized_stage=address[1],
+                                checkpoint_digest=checkpoint_digest,
+                                checkpoint_path=checkpoint_path,
+                                provenance=provenance,
+                                head_scales=None,
+                            )
+                            del final_logits, option_hidden
+                        del final_batch, hidden_batch
+                        del spatial_batch, policy_value_options, state_options
+                        del option_tokens, option_counts, option_prepared
+                    history_rows.clear()
+
+                # ``matchup_routes=None`` means an all-row bypass in the model
+                # API.  Keep bypass and routed rows separate rather than letting
+                # a None route silently alter another row's adapter semantics.
+                for routed in (False, True):
+                    step_group = [
+                        env_step
+                        for env_step in valid_steps
+                        if (prepared_by_step[env_step].route is not None) is routed
+                    ]
+                    for start in range(0, len(step_group), chunk_size):
+                        chunk_steps = step_group[start : start + chunk_size]
+                        if not chunk_steps:
+                            continue
+                        materialize_history_chunk(chunk_steps, routed=routed)
+            except ReplayInspectionError:
+                raise
+            except Exception as exc:
+                raise ReplayInspectionError(
+                    "model inference failed while recreating the replay step"
+                ) from exc
+
+            return {address: output[address] for address in requested}
+        finally:
+            model.train(was_training)
+            _restore_submitted_runtime_activation(restoration, runtime_activation)
+
+
 __all__ = [
     "INFERENCE_SCHEMA",
     "UNAVAILABLE_TARGET_MASK_REASON",
@@ -3045,5 +3826,6 @@ __all__ = [
     "ReplayInspectionError",
     "ReplayStepUnavailable",
     "VerifiedCpuModelCache",
+    "inspect_replay_game",
     "inspect_replay_step",
 ]

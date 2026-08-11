@@ -56,6 +56,20 @@ KNOWN_SOURCE_DISCREPANCIES = {
             "sha256:ab961e0d98984b611cc4091801b618606cb03cab4413ab7908d3f8c6312030e3"
         ),
     },
+    "2026-08-06": {
+        "index_episode_count": 4_633,
+        "validated_episode_count": 4_631,
+        "archive_sha256": (
+            "sha256:46f3a95ba0456027870b504a64424fd3f9afcf3aabe5d0453803d7c5145631a4"
+        ),
+    },
+    "2026-08-07": {
+        "index_episode_count": 4_645,
+        "validated_episode_count": 4_639,
+        "archive_sha256": (
+            "sha256:c9325476fde8bf6e3a9021520867e9dbfeaf3ec09124b01f742cb07fa5877e63"
+        ),
+    },
 }
 
 
@@ -93,21 +107,50 @@ def _sha256(path: Path) -> str:
     return "sha256:" + digest.hexdigest()
 
 
-def _window(index_path: Path) -> list[dict[str, Any]]:
+def _window(
+    index_path: Path,
+    *,
+    window_start: str | None = None,
+    window_end: str | None = None,
+) -> list[dict[str, Any]]:
+    if (window_start is None) != (window_end is None):
+        raise RuntimeError("--window-start and --window-end must be supplied together")
     with index_path.open(newline="", encoding="utf-8") as stream:
-        rows = list(csv.DictReader(stream))[-20:]
-    if len(rows) != 20:
-        raise RuntimeError("Kaggle index contains fewer than 20 days")
-    parsed = [date.fromisoformat(str(row["date"])) for row in rows]
-    if parsed != [parsed[0] + timedelta(days=i) for i in range(20)]:
-        raise RuntimeError("latest 20 Kaggle rows are not consecutive calendar days")
+        rows = list(csv.DictReader(stream))
+    if window_start is None:
+        if len(rows) < 20:
+            raise RuntimeError("Kaggle index contains fewer than 20 days")
+        selected = rows[-20:]
+        expected_start = date.fromisoformat(str(selected[0]["date"]))
+        window_description = "latest 20 Kaggle rows"
+    else:
+        try:
+            expected_start = date.fromisoformat(window_start)
+            expected_end = date.fromisoformat(str(window_end))
+        except ValueError as exc:
+            raise RuntimeError("pinned window dates must be ISO calendar dates") from exc
+        if expected_end - expected_start != timedelta(days=19):
+            raise RuntimeError("pinned window must span exactly 20 calendar days")
+        selected = [
+            row
+            for row in rows
+            if expected_start
+            <= date.fromisoformat(str(row["date"]))
+            <= expected_end
+        ]
+        window_description = f"pinned Kaggle window {window_start}..{window_end}"
+    if len(selected) != 20:
+        raise RuntimeError(f"{window_description} does not contain exactly 20 days")
+    parsed = [date.fromisoformat(str(row["date"])) for row in selected]
+    if parsed != [expected_start + timedelta(days=i) for i in range(20)]:
+        raise RuntimeError(f"{window_description} is not consecutive calendar days")
     return [
         {
             "date": str(row["date"]),
             "dataset_slug": str(row["daily_dataset_slug"]),
             "episode_count": int(row["episode_count"]),
         }
-        for row in rows
+        for row in selected
     ]
 
 
@@ -160,7 +203,12 @@ def _remote_json(
     return json.loads(result.stdout)
 
 
-def _download_index(root: Path) -> Path:
+def _download_index(
+    root: Path,
+    *,
+    window_start: str | None = None,
+    window_end: str | None = None,
+) -> Path:
     staging = root / "index-staging"
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True)
@@ -180,7 +228,7 @@ def _download_index(root: Path) -> Path:
         timeout=10 * 60,
     )
     index = staging / "manifest.csv"
-    _window(index)
+    _window(index, window_start=window_start, window_end=window_end)
     return index
 
 
@@ -241,8 +289,16 @@ def refresh(args: argparse.Namespace) -> dict[str, Any]:
         except BlockingIOError as exc:
             raise RuntimeError("expert latest-20 refresh is already running") from exc
 
-        index = _download_index(root)
-        rows = _window(index)
+        index = _download_index(
+            root,
+            window_start=args.window_start,
+            window_end=args.window_end,
+        )
+        rows = _window(
+            index,
+            window_start=args.window_start,
+            window_end=args.window_end,
+        )
         remote_stage = f"{args.remote_stage}/manifest.csv"
         _run(
             _ssh_prefix(args.elmo, args.ethernet_source)
@@ -283,6 +339,15 @@ def refresh(args: argparse.Namespace) -> dict[str, Any]:
             "--receipt-root",
             args.elmo_receipt_root,
         ]
+        if args.window_start is not None:
+            common.extend(
+                [
+                    "--window-start",
+                    args.window_start,
+                    "--window-end",
+                    args.window_end,
+                ]
+            )
         prepare = _remote_json(
             args.elmo,
             args.ethernet_source,
@@ -347,7 +412,7 @@ def refresh(args: argparse.Namespace) -> dict[str, Any]:
             or receipt.get("days") != 20
             or set(by_day) != {str(row["date"]) for row in rows}
         ):
-            raise RuntimeError("Elmo did not commit the exact latest-20 window")
+            raise RuntimeError("Elmo did not commit the exact requested 20-day window")
 
         # Publish the tiny authoritative receipt to Inzi for selectors and the
         # dashboard. Replay archives never traverse this link.
@@ -409,6 +474,7 @@ def refresh(args: argparse.Namespace) -> dict[str, Any]:
             "status": "ready",
             "window_start": receipt["window_start"],
             "window_end": receipt["window_end"],
+            "window_policy": receipt.get("window_policy"),
             "days": 20,
             "elmo_receipt": f"{args.elmo_receipt_root}/current.json",
             "transferred": transferred,
@@ -430,6 +496,14 @@ def main() -> None:
         "--root",
         type=Path,
         default=Path("/Users/tsinzitari/poke-expert-refresh"),
+    )
+    parser.add_argument(
+        "--window-start",
+        help="Optional inclusive ISO date for a pinned 20-calendar-day window; requires --window-end.",
+    )
+    parser.add_argument(
+        "--window-end",
+        help="Optional inclusive ISO date for a pinned 20-calendar-day window; requires --window-start.",
     )
     parser.add_argument("--wifi-interface", default="en1")
     parser.add_argument("--ethernet-source", default="192.168.1.158")

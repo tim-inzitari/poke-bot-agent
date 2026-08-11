@@ -1,0 +1,28 @@
+# Template only: do not install, enable, or start it until the r241 activation
+# gates and the separately recorded Elmo :8767 preflight evidence have passed.
+# This unit intentionally has no relationship to the existing worker units.
+
+[Unit]
+Description=Pokemon r241 isolated Elmo official-r236 direct-policy collection worker (:8767)
+After=network-online.target docker.service
+Wants=network-online.target
+ConditionPathExists=/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/elmo-8767/preflight-manifest.json
+ConditionPathExists=/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/elmo-8767/REMOTE_WORKER_ARMED
+
+[Service]
+Type=simple
+WorkingDirectory=/
+EnvironmentFile=/etc/pokebot/r241-elmo-official-r236-remote-worker.env
+# The compose file must come from the immutable execution snapshot.  The
+# mutable /mnt/Main/main/poke-bot-agent checkout remains outputs-only and is
+# never an executable source fallback for this worker.
+ExecStartPre=/bin/sh -ec 'test -n "$R241_ELMO_SOURCE_SNAPSHOT_ROOT"; test -r "$R241_ELMO_SOURCE_SNAPSHOT_ROOT/r241-source-snapshot-manifest.json"; test -r "$R241_ELMO_SOURCE_SNAPSHOT_ROOT/deploy/elmo/docker-compose.r241-elmo-official-r236-remote-worker.yml.template"; test -n "$R241_ELMO_BASELINES_ROOT"; test -r "$R241_ELMO_BASELINES_ROOT/r241-baseline-payload-manifest.json"; test -r "$R241_ELMO_BASELINES_ROOT/manifest.json"; test -r "$R241_ELMO_SOURCE_STAGING_RECEIPT"; test -r "$R241_ELMO_BASELINE_STAGING_RECEIPT"; test -r "$R241_ELMO_CANONICAL_ROSTER_RECEIPT"; test -n "$R241_ELMO_CHECKPOINT_TRANSPORT_ROOT"; test -d "$R241_ELMO_CHECKPOINT_TRANSPORT_ROOT"; test -r "$R241_ELMO_CHECKPOINT_TRANSPORT_STAGING_RECEIPT"; test -n "$R241_ELMO_CHECKPOINT_FILENAME"; test -r "$R241_ELMO_CHECKPOINT_TRANSPORT_ROOT/$R241_ELMO_CHECKPOINT_FILENAME"; test -n "$R241_ELMO_LEARNER_MATCHUP_TREE_FILENAME"; test -r "$R241_ELMO_CHECKPOINT_TRANSPORT_ROOT/$R241_ELMO_LEARNER_MATCHUP_TREE_FILENAME"; test -r "$R241_ELMO_ACTIVATION_OVERLAY"'
+ExecStartPre=/bin/sh -ec 'test -n "$R241_ELMO_OFFICIAL_R236_IMAGE"; test "$R241_ELMO_OFFICIAL_R236_IMAGE" = "$R241_ELMO_OFFICIAL_R236_IMAGE_ID"; test -r "$R241_ELMO_OFFICIAL_R236_IMAGE_RECEIPT"; test -n "$R241_ELMO_OFFICIAL_R236_IMAGE_RECEIPT_SHA256"; r241_image_receipt_sum=$(/usr/bin/sha256sum "$R241_ELMO_OFFICIAL_R236_IMAGE_RECEIPT"); test "sha256:${r241_image_receipt_sum%%%% *}" = "$R241_ELMO_OFFICIAL_R236_IMAGE_RECEIPT_SHA256"; test "$(/usr/bin/docker image inspect "$R241_ELMO_OFFICIAL_R236_IMAGE" --format "{{.Id}}")" = "$R241_ELMO_OFFICIAL_R236_IMAGE_ID"'
+ExecStart=/bin/sh -ec 'exec /usr/bin/docker compose --project-name pokebot-r241-elmo-official-r236-worker --file "$R241_ELMO_SOURCE_SNAPSHOT_ROOT/deploy/elmo/docker-compose.r241-elmo-official-r236-remote-worker.yml.template" up --no-build'
+ExecStop=/bin/sh -ec '/usr/bin/docker compose --project-name pokebot-r241-elmo-official-r236-worker --file "$R241_ELMO_SOURCE_SNAPSHOT_ROOT/deploy/elmo/docker-compose.r241-elmo-official-r236-remote-worker.yml.template" down'
+Restart=no
+TimeoutStartSec=0
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

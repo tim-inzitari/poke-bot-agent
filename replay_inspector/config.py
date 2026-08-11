@@ -13,6 +13,13 @@ DEFAULT_REPLAY_ROOT = Path("/mnt/Main/main/poke-bot-agent/archive/submission-rep
 DEFAULT_ROLLOUT_ROOT = Path(
     "/mnt/Main/main/poke-bot-agent/archive/submission-replay-rollouts"
 )
+DEFAULT_GAME_TRACE_CACHE_ROOT = Path("/tmp/pokebot-replay-inspector-game-cache-v1")
+_MEBIBYTE = 1024 * 1024
+DEFAULT_GAME_TRACE_CACHE_MAX_BYTES = 128 * _MEBIBYTE
+DEFAULT_GAME_TRACE_CACHE_MAX_GAME_BYTES = 96 * _MEBIBYTE
+DEFAULT_GAME_TRACE_CACHE_MAX_ENTRY_BYTES = 8 * _MEBIBYTE
+DEFAULT_GAME_TRACE_CACHE_MIN_FREE_BYTES = 64 * _MEBIBYTE
+_TEMPORARY_CACHE_PARENT = Path("/tmp")
 
 
 def _path(value: object, *, base: Path | None = None) -> Path:
@@ -38,6 +45,57 @@ def _list_paths(value: object, *, base: Path | None = None) -> tuple[Path, ...]:
     else:
         raise TypeError("artifact_roots must be a path or list of paths")
     return tuple(_path(item, base=base) for item in values)
+
+
+def _temporary_cache_root(value: object, *, base: Path | None = None) -> Path:
+    """Return a lexical, private cache root strictly below ``/tmp``.
+
+    Configuration must not create a cache directory or resolve it: the latter
+    could follow an attacker-controlled symlink before the cache owner applies
+    its runtime symlink policy.  ``abspath`` only normalises lexical ``..``
+    components and does not inspect the filesystem.
+    """
+
+    candidate = _path(value, base=base)
+    lexical = Path(os.path.abspath(os.fspath(candidate)))
+    try:
+        relative = lexical.relative_to(_TEMPORARY_CACHE_PARENT)
+    except ValueError as exc:
+        raise ValueError(
+            "game_trace_cache_root must be strictly beneath /tmp"
+        ) from exc
+    if not relative.parts:
+        raise ValueError("game_trace_cache_root must be strictly beneath /tmp")
+    return lexical
+
+
+def _cache_byte_limit(value: object, *, field_name: str, minimum: int) -> int:
+    """Normalize a byte setting while rejecting bools and invalid bounds."""
+
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be an integer byte count")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be an integer byte count") from exc
+    if parsed < minimum:
+        comparator = "positive" if minimum == 1 else f">= {minimum}"
+        raise ValueError(f"{field_name} must be {comparator}")
+    return parsed
+
+
+def _cache_enabled(value: object) -> bool:
+    """Accept JSON booleans and conventional environment boolean values."""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    raise ValueError("game_trace_cache_enabled must be a boolean")
 
 
 @dataclass(frozen=True)
@@ -66,6 +124,14 @@ class InspectorConfig:
     max_parameter_slice: int = 2048
     max_tensor_values: int = 512
     verify_digests: bool = True
+    # Derived, disposable inspection payloads only.  Keep these fields last so
+    # existing positional ``InspectorConfig`` construction remains compatible.
+    game_trace_cache_root: Path = DEFAULT_GAME_TRACE_CACHE_ROOT
+    game_trace_cache_enabled: bool = True
+    game_trace_cache_max_bytes: int = DEFAULT_GAME_TRACE_CACHE_MAX_BYTES
+    game_trace_cache_max_game_bytes: int = DEFAULT_GAME_TRACE_CACHE_MAX_GAME_BYTES
+    game_trace_cache_max_entry_bytes: int = DEFAULT_GAME_TRACE_CACHE_MAX_ENTRY_BYTES
+    game_trace_cache_min_free_bytes: int = DEFAULT_GAME_TRACE_CACHE_MIN_FREE_BYTES
 
     def __post_init__(self) -> None:
         if not self.bind_host.strip():
@@ -78,6 +144,53 @@ class InspectorConfig:
             raise ValueError("max_parameter_slice must be in 1..8192")
         if int(self.max_tensor_values) < 1 or int(self.max_tensor_values) > 4096:
             raise ValueError("max_tensor_values must be in 1..4096")
+
+        # Do not resolve or create this path here.  The cache implementation
+        # owns runtime directory creation and symlink-safe containment checks.
+        object.__setattr__(
+            self,
+            "game_trace_cache_root",
+            _temporary_cache_root(self.game_trace_cache_root),
+        )
+        object.__setattr__(
+            self,
+            "game_trace_cache_enabled",
+            _cache_enabled(self.game_trace_cache_enabled),
+        )
+        max_bytes = _cache_byte_limit(
+            self.game_trace_cache_max_bytes,
+            field_name="game_trace_cache_max_bytes",
+            minimum=1,
+        )
+        max_game_bytes = _cache_byte_limit(
+            self.game_trace_cache_max_game_bytes,
+            field_name="game_trace_cache_max_game_bytes",
+            minimum=1,
+        )
+        max_entry_bytes = _cache_byte_limit(
+            self.game_trace_cache_max_entry_bytes,
+            field_name="game_trace_cache_max_entry_bytes",
+            minimum=1,
+        )
+        min_free_bytes = _cache_byte_limit(
+            self.game_trace_cache_min_free_bytes,
+            field_name="game_trace_cache_min_free_bytes",
+            minimum=0,
+        )
+        if max_game_bytes > max_bytes:
+            raise ValueError(
+                "game_trace_cache_max_game_bytes must not exceed "
+                "game_trace_cache_max_bytes"
+            )
+        if max_entry_bytes > max_game_bytes:
+            raise ValueError(
+                "game_trace_cache_max_entry_bytes must not exceed "
+                "game_trace_cache_max_game_bytes"
+            )
+        object.__setattr__(self, "game_trace_cache_max_bytes", max_bytes)
+        object.__setattr__(self, "game_trace_cache_max_game_bytes", max_game_bytes)
+        object.__setattr__(self, "game_trace_cache_max_entry_bytes", max_entry_bytes)
+        object.__setattr__(self, "game_trace_cache_min_free_bytes", min_free_bytes)
 
     @property
     def source_roots(self) -> tuple[Path, ...]:
@@ -130,6 +243,14 @@ class InspectorConfig:
             "web_root_available": self.web_root.is_dir(),
             "torch_threads": self.torch_threads,
             "verify_digests": self.verify_digests,
+            "game_trace_cache": {
+                "enabled": self.game_trace_cache_enabled,
+                "root": str(self.game_trace_cache_root),
+                "max_bytes": self.game_trace_cache_max_bytes,
+                "max_game_bytes": self.game_trace_cache_max_game_bytes,
+                "max_entry_bytes": self.game_trace_cache_max_entry_bytes,
+                "min_free_bytes": self.game_trace_cache_min_free_bytes,
+            },
         }
 
     @classmethod
@@ -153,6 +274,12 @@ class InspectorConfig:
             "max_parameter_slice",
             "max_tensor_values",
             "verify_digests",
+            "game_trace_cache_root",
+            "game_trace_cache_enabled",
+            "game_trace_cache_max_bytes",
+            "game_trace_cache_max_game_bytes",
+            "game_trace_cache_max_entry_bytes",
+            "game_trace_cache_min_free_bytes",
         }
         unknown = sorted(set(raw) - allowed)
         if unknown:
@@ -178,6 +305,10 @@ class InspectorConfig:
             )
         if "web_root" in values:
             values["web_root"] = _path(values["web_root"], base=base)
+        if "game_trace_cache_root" in values:
+            values["game_trace_cache_root"] = _temporary_cache_root(
+                values["game_trace_cache_root"], base=base
+            )
         return cls(**values)
 
     @classmethod
@@ -207,6 +338,24 @@ class InspectorConfig:
             "POKEBOT_REPLAY_INSPECTOR_RUNTIME_SOURCE_ROOT": "runtime_source_root",
             "POKEBOT_REPLAY_INSPECTOR_WEB_ROOT": "web_root",
             "POKEBOT_REPLAY_INSPECTOR_TORCH_THREADS": "torch_threads",
+            "POKEBOT_REPLAY_INSPECTOR_GAME_TRACE_CACHE_ROOT": (
+                "game_trace_cache_root"
+            ),
+            "POKEBOT_REPLAY_INSPECTOR_GAME_TRACE_CACHE_ENABLED": (
+                "game_trace_cache_enabled"
+            ),
+            "POKEBOT_REPLAY_INSPECTOR_GAME_TRACE_CACHE_MAX_BYTES": (
+                "game_trace_cache_max_bytes"
+            ),
+            "POKEBOT_REPLAY_INSPECTOR_GAME_TRACE_CACHE_MAX_GAME_BYTES": (
+                "game_trace_cache_max_game_bytes"
+            ),
+            "POKEBOT_REPLAY_INSPECTOR_GAME_TRACE_CACHE_MAX_ENTRY_BYTES": (
+                "game_trace_cache_max_entry_bytes"
+            ),
+            "POKEBOT_REPLAY_INSPECTOR_GAME_TRACE_CACHE_MIN_FREE_BYTES": (
+                "game_trace_cache_min_free_bytes"
+            ),
         }
         for env_name, field_name in env_map.items():
             if env_name in os.environ:
@@ -224,6 +373,10 @@ class InspectorConfig:
             "torch_threads",
             "max_parameter_slice",
             "max_tensor_values",
+            "game_trace_cache_max_bytes",
+            "game_trace_cache_max_game_bytes",
+            "game_trace_cache_max_entry_bytes",
+            "game_trace_cache_min_free_bytes",
         ):
             if integer in raw:
                 raw[integer] = int(raw[integer])

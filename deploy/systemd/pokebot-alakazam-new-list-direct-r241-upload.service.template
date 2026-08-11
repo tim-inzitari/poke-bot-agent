@@ -1,0 +1,25 @@
+# Inert template: this is the sole r241 upload attempt.  A quota/spacing or
+# unknown-outcome failure remains failed and requires a later explicit operator
+# decision; this unit contains no timer, retry, or alternate queue path.
+
+[Unit]
+Description=One-shot Alakazam new-list direct-policy r241 Kaggle uploader
+After=pokebot-alakazam-new-list-direct-r241-submission-queue.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/
+EnvironmentFile=/etc/pokebot/alakazam-new-list-direct-r241-inzi-activation.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=
+Environment=CG_LIB_PATH=
+Environment=POKEBOT_LIBCG_PATH=
+Environment=POKEBOT_BATCH_LIBCG=
+Environment=POKEBOT_ALLOW_ORACLE_DECK=
+Environment=POKEBOT_BASELINES_DIR=
+ExecStartPre=/bin/sh -ec 'test -n "$R241_INZI_RUNTIME_REGISTRY"; exec "$R241_INZI_PYTHON" -u "$R241_INZI_SOURCE_SNAPSHOT_ROOT/scripts/preflight_alakazam_new_list_direct_r241_service_chain.py" --stage uploader --overlay "$R241_INZI_ACTIVATION_OVERLAY" --overlay-sha256 "$R241_INZI_ACTIVATION_OVERLAY_SHA256" --overlay-mirror-receipt "$R241_INZI_ACTIVATION_OVERLAY_MIRROR_RECEIPT" --overlay-mirror-receipt-sha256 "$R241_INZI_ACTIVATION_OVERLAY_MIRROR_RECEIPT_SHA256"'
+ExecStart=/bin/sh -ec 'exec "$R241_INZI_PYTHON" -u "$R241_INZI_SOURCE_SNAPSHOT_ROOT/scripts/upload_alakazam_new_list_direct_r241_submission_queue.py" --queue "$R241_INZI_QUEUE" --authorization "$R241_INZI_QUEUE_AUTHORIZATION" --finalizer-receipt "$R241_INZI_FINALIZER_RECEIPT" --receipts-dir "$R241_INZI_QUEUE_RECEIPTS_DIR" --kaggle "$R241_INZI_KAGGLE_BIN" --contract "$R241_INZI_SOURCE_SNAPSHOT_ROOT/state/alakazam-new-list-direct-policy-r241.json" --official-libcg-staging "$R241_INZI_SOURCE_SNAPSHOT_ROOT/state/alakazam-new-list-direct-r241-official-libcg-staging.json" --upload'
+Restart=no
+TimeoutStartSec=600
+TimeoutStopSec=120

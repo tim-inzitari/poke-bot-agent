@@ -100,6 +100,10 @@ from poke_bot.pure_rl.model_profile import (  # noqa: E402
 from poke_bot.pure_rl.guide_weight_review import (  # noqa: E402
     emit_review_request,
 )
+from poke_bot.promotion import CheckpointIdentity  # noqa: E402
+from poke_bot.r241_checkpoint_receipts import (  # noqa: E402
+    PEAK_R195_PRESERVATION_SCHEMA as R241_PEAK_R195_PRESERVATION_RECEIPT_SCHEMA,
+)
 from poke_bot.process_memory import close_mp_queue, release_process_heap  # noqa: E402
 from poke_bot.slop_box_combo_targets import (  # noqa: E402
     attach_slop_box_combo_state_labels,
@@ -120,12 +124,22 @@ from poke_bot.train import (  # noqa: E402
     GUIDE_TRAINING_MODE_STRATEGIC,
     GUIDE_STRATEGIC_TRAINING_MODES,
     GUIDE_TRAINING_MODES,
+    R241_PEAK_R195_ACTIVE_SOURCES,
+    R241_PEAK_R195_CLARIFICATION_REVISION,
+    R241_PEAK_R195_PHYSICAL_SOURCES,
+    R241_PEAK_R195_TRAINING_CONTRACT_SCHEMA,
+    R241_R195_HISTORICAL_OWNER_CONTRACT_SHA256,
+    R241_OWNER_CONTRACT_SHA256,
     SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT,
     TrainConfig,
     assert_strategic_curriculum_receipt_contract,
     belief_card_vocab_from_state,
+    canonical_r241_peak_r195_training_contract,
     rl_train_step,
+    streaming_r260_host_rehearsal_step,
     supervised_rehearsal_step,
+    validate_r241_isolated_adapter_continuation,
+    validate_r241_peak_r195_live_fusion_record,
 )
 
 DEFAULT_REMOTE_ENDPOINTS = "192.168.1.143:8765,bert.local:8766"
@@ -447,6 +461,40 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     p.add_argument("--iterations", type=int, default=100)
+    p.add_argument(
+        "--fixed-cycle-updates",
+        type=int,
+        default=int(os.environ.get("PURE_RL_FIXED_CYCLE_UPDATES", "0")),
+        help=(
+            "Enable the receipt-backed r241 fixed cycle. A nonzero value "
+            "keeps running through every configured update even if a gate "
+            "passes (0=ordinary gate-directed behavior)."
+        ),
+    )
+    p.add_argument(
+        "--r241-peak-r195-preservation-receipt",
+        type=Path,
+        default=None,
+        help=(
+            "Checkpoint-derived v2 host receipt authorizing the exact peak-r195 "
+            "profile for the r241 ten-update cycle. Forbidden for ordinary runs."
+        ),
+    )
+    p.add_argument(
+        "--r241-peak-r195-preservation-receipt-sha256",
+        default="",
+        help=(
+            "Canonical sha256: digest of --r241-peak-r195-preservation-receipt."
+        ),
+    )
+    p.add_argument("--r241-own-deck-migration-receipt", type=Path, default=None)
+    p.add_argument("--r241-own-deck-migration-receipt-sha256", default="")
+    p.add_argument("--r241-own-deck-canary-activation-receipt", type=Path, default=None)
+    p.add_argument("--r241-own-deck-canary-activation-receipt-sha256", default="")
+    p.add_argument("--r241-own-deck-sidecar-binding", type=Path, default=None)
+    p.add_argument("--r241-own-deck-sidecar-binding-sha256", default="")
+    p.add_argument("--r241-own-deck-inzi-dataset-binding", type=Path, default=None)
+    p.add_argument("--r241-own-deck-inzi-dataset-binding-sha256", default="")
     p.add_argument("--games-per-iter", type=int, default=256)
     p.add_argument(
         "--require-exact-training-seat-split",
@@ -1041,6 +1089,30 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=int(os.environ.get("PURE_RL_EXPERT_REHEARSAL_EPOCHS", "1")),
     )
     p.add_argument(
+        "--expert-rehearsal-guide-loss-weight",
+        type=float,
+        default=(
+            float(os.environ["PURE_RL_EXPERT_REHEARSAL_GUIDE_LOSS_WEIGHT"])
+            if os.environ.get("PURE_RL_EXPERT_REHEARSAL_GUIDE_LOSS_WEIGHT")
+            else None
+        ),
+        help=(
+            "Optional guide weight used only by expert soft refreshes. "
+            "Ordinary RL keeps --current-deck-guide-loss-weight."
+        ),
+    )
+    p.add_argument(
+        "--terminal-expert-rehearsal",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get(
+            "PURE_RL_TERMINAL_EXPERT_REHEARSAL", "0"
+        ).strip().lower() in {"1", "true", "yes", "on"},
+        help=(
+            "After the final durable RL commit, run the due expert soft "
+            "refresh without collecting another iteration."
+        ),
+    )
+    p.add_argument(
         "--expert-rehearsal-one-time-before",
         type=int,
         default=int(
@@ -1508,9 +1580,295 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "--train-warmup-max-decisions-per-batch and "
             "--train-warmup-iterations must be enabled together"
         )
+    try:
+        _validate_fixed_cycle_configuration(args)
+    except ValueError as exc:
+        p.error(str(exc))
     args.specialist_archetype = specialist or None
     args.official_exploit_opponents = exploit_opponents
     return args
+
+
+R241_FIXED_CYCLE_UPDATES = 10
+R241_FIXED_CYCLE_REHEARSAL_EVERY = 5
+R241_FIXED_CYCLE_REHEARSAL_EPOCHS = 5
+
+
+def _fixed_cycle_updates(args: argparse.Namespace) -> int:
+    """Return the optional fixed-cycle horizon without changing legacy runs."""
+
+    try:
+        updates = int(getattr(args, "fixed_cycle_updates", 0))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("--fixed-cycle-updates must be an integer") from exc
+    if updates < 0:
+        raise ValueError("--fixed-cycle-updates cannot be negative")
+    return updates
+
+
+def _validate_fixed_cycle_configuration(args: argparse.Namespace) -> int:
+    """Fail closed around r241's one exact direct-policy cycle.
+
+    The terminal refresh is intentionally a boundary operation rather than an
+    eleventh RL update.  Keeping this contract in the trainer protects it from
+    a launcher accidentally combining the r241 selector with a generic
+    cadence, force-refresh, or population-cycle option.
+    """
+
+    updates = _fixed_cycle_updates(args)
+    receipt = getattr(args, "r241_peak_r195_preservation_receipt", None)
+    receipt_sha256 = str(
+        getattr(args, "r241_peak_r195_preservation_receipt_sha256", "") or ""
+    ).strip()
+    if (receipt is None) != (not receipt_sha256):
+        raise ValueError(
+            "--r241-peak-r195-preservation-receipt and its sha256 must be "
+            "provided together"
+        )
+    if updates == 0:
+        if receipt is not None:
+            raise ValueError(
+                "the r241 peak-r195 preservation receipt is allowed only with "
+                "--fixed-cycle-updates 10"
+            )
+        return 0
+    if updates != R241_FIXED_CYCLE_UPDATES:
+        raise ValueError(
+            "--fixed-cycle-updates currently supports only the exact r241 "
+            f"{R241_FIXED_CYCLE_UPDATES}-update cycle"
+        )
+    if receipt is None:
+        raise ValueError(
+            "the r241 fixed cycle requires its checksum-pinned peak-r195 "
+            "preservation receipt"
+        )
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", receipt_sha256):
+        raise ValueError(
+            "--r241-peak-r195-preservation-receipt-sha256 must be canonical"
+        )
+    if int(args.iterations) != updates:
+        raise ValueError(
+            "--fixed-cycle-updates must exactly equal --iterations "
+            f"({updates})"
+        )
+    if not bool(getattr(args, "terminal_expert_rehearsal", False)):
+        raise ValueError(
+            "the r241 fixed cycle requires --terminal-expert-rehearsal"
+        )
+    if int(args.expert_rehearsal_every) != R241_FIXED_CYCLE_REHEARSAL_EVERY:
+        raise ValueError(
+            "the r241 fixed cycle requires --expert-rehearsal-every "
+            f"{R241_FIXED_CYCLE_REHEARSAL_EVERY}"
+        )
+    if int(args.expert_rehearsal_epochs) != R241_FIXED_CYCLE_REHEARSAL_EPOCHS:
+        raise ValueError(
+            "the r241 fixed cycle requires --expert-rehearsal-epochs "
+            f"{R241_FIXED_CYCLE_REHEARSAL_EPOCHS}"
+        )
+    if bool(getattr(args, "expert_rehearsal_before_first", False)):
+        raise ValueError(
+            "the r241 fixed cycle permits no expert rehearsal before iter 0"
+        )
+    if int(getattr(args, "expert_rehearsal_force_before", -1)) != -1:
+        raise ValueError(
+            "the r241 fixed cycle permits no forced expert rehearsal"
+        )
+    if (
+        int(getattr(args, "expert_rehearsal_one_time_before", -1)) != -1
+        or int(getattr(args, "expert_rehearsal_one_time_epochs", 0)) != 0
+    ):
+        raise ValueError(
+            "the r241 fixed cycle permits no one-time expert rehearsal override"
+        )
+    if bool(getattr(args, "population_own_models_only", False)):
+        raise ValueError(
+            "the r241 fixed cycle cannot run a population closing rehearsal"
+        )
+    return updates
+
+
+def _gate_pass_should_stop(
+    *,
+    fixed_cycle_updates: int,
+    continue_after_gate: bool,
+    terminal_target_reached: bool,
+) -> bool:
+    """Keep an r241 gate receipt auditable without turning it into a stop."""
+
+    return int(fixed_cycle_updates) == 0 and (
+        not bool(continue_after_gate) or bool(terminal_target_reached)
+    )
+
+
+def _assert_r241_precollection_refresh_binding(
+    *,
+    iteration: int,
+    collection_behavior_digest: str,
+    rehearsal_record: Optional[Mapping[str, Any]],
+    r241_peak_r195_training_contract: Optional[Mapping[str, Any]],
+) -> None:
+    """Bind iter-5 collection to the checkpoint produced by its soft refresh."""
+
+    if not r241_peak_r195_training_contract:
+        return
+    iteration = int(iteration)
+    if iteration != R241_FIXED_CYCLE_REHEARSAL_EVERY:
+        return
+    record = dict(rehearsal_record or {})
+    refreshed_digest = str(record.get("checkpoint_digest") or "")
+    checkpoint_identity = dict(record.get("checkpoint_identity") or {})
+    if (
+        int(record.get("before_iteration", -1))
+        != R241_FIXED_CYCLE_REHEARSAL_EVERY
+        or int(record.get("epochs", -1))
+        != R241_FIXED_CYCLE_REHEARSAL_EPOCHS
+        or not refreshed_digest.startswith("sha256:")
+        or str(checkpoint_identity.get("digest") or refreshed_digest)
+        != refreshed_digest
+        or str(collection_behavior_digest) != refreshed_digest
+    ):
+        raise RuntimeError(
+            "r241 iter-5 collection must use the exact checkpoint produced by "
+            "the completed 5-epoch precollection refresh"
+        )
+    validate_r241_peak_r195_live_fusion_record(
+        dict(record.get("peak_r195_live_fusion") or {}),
+        contract=r241_peak_r195_training_contract,
+        phase="expert_refresh",
+        boundary_iteration=R241_FIXED_CYCLE_REHEARSAL_EVERY,
+    )
+
+
+def _r241_precollection_refresh_due(
+    iteration: int,
+    r241_peak_r195_training_contract: Optional[Mapping[str, Any]],
+) -> bool:
+    """The only nonterminal r241 refresh is after commit 4, before collect 5."""
+
+    return bool(
+        r241_peak_r195_training_contract
+        and int(iteration) == R241_FIXED_CYCLE_REHEARSAL_EVERY
+    )
+
+
+def _assert_fixed_cycle_completion(
+    run_dir: Path,
+    state: Mapping[str, Any],
+    *,
+    updates: int,
+    r241_peak_r195_training_contract: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
+    """Prove that the fixed cycle ended at its exact non-collection boundary."""
+
+    updates = int(updates)
+    if updates <= 0:
+        raise ValueError("fixed-cycle completion requires a positive update count")
+    expected_last = updates - 1
+    if (
+        int(state.get("last_completed_iteration", -1)) != expected_last
+        or int(state.get("next_iteration", -1)) != updates
+    ):
+        raise RuntimeError(
+            "fixed cycle did not reach its exact final commit: "
+            f"last={state.get('last_completed_iteration')!r} "
+            f"next={state.get('next_iteration')!r} expected_last={expected_last}"
+        )
+
+    expected_names = [f"iter_{iteration:05d}.json" for iteration in range(updates)]
+    commits_dir = Path(run_dir) / "commits"
+    observed_names = sorted(path.name for path in commits_dir.glob("iter_*.json"))
+    if observed_names != expected_names:
+        raise RuntimeError(
+            "fixed cycle requires exactly immutable commits "
+            f"{expected_names[0]}..{expected_names[-1]}; observed={observed_names}"
+        )
+    for iteration, name in enumerate(expected_names):
+        commit_path = commits_dir / name
+        commit = json.loads(commit_path.read_text(encoding="utf-8"))
+        if (
+            int(commit.get("last_completed_iteration", -1)) != iteration
+            or int(commit.get("next_iteration", -1)) != iteration + 1
+        ):
+            raise RuntimeError(
+                f"fixed cycle commit is inconsistent: {commit_path}"
+            )
+
+    history = list(state.get("history") or ())
+    completed_history = [
+        int(row.get("iteration", -1))
+        for row in history
+        if isinstance(row, Mapping) and row.get("completed") is True
+    ]
+    if len(history) != updates or completed_history != list(range(updates)):
+        raise RuntimeError(
+            "fixed cycle history is not exactly the completed update range: "
+            f"history={completed_history} expected={list(range(updates))}"
+        )
+
+    scheduled_refresh = Path(run_dir) / "rehearsals" / "before_iter_00005.json"
+    if not scheduled_refresh.is_file():
+        raise RuntimeError(
+            "fixed cycle is missing its required 5-epoch refresh before iter 5"
+        )
+    try:
+        refresh = json.loads(scheduled_refresh.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("fixed cycle cannot read its before-iter-5 refresh") from exc
+    if (
+        int(refresh.get("before_iteration", -1))
+        != R241_FIXED_CYCLE_REHEARSAL_EVERY
+        or int(refresh.get("epochs", -1))
+        != R241_FIXED_CYCLE_REHEARSAL_EPOCHS
+    ):
+        raise RuntimeError(
+            "fixed cycle before-iter-5 refresh does not have the exact "
+            "5-epoch receipt"
+        )
+    if r241_peak_r195_training_contract:
+        validate_r241_peak_r195_live_fusion_record(
+            dict(refresh.get("peak_r195_live_fusion") or {}),
+            contract=r241_peak_r195_training_contract,
+            phase="expert_refresh",
+            boundary_iteration=R241_FIXED_CYCLE_REHEARSAL_EVERY,
+        )
+        collection_path = _collection_receipt_path(
+            Path(run_dir), R241_FIXED_CYCLE_REHEARSAL_EVERY
+        )
+        try:
+            boundary_collection = json.loads(
+                collection_path.read_text(encoding="utf-8")
+            )
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                "fixed cycle cannot verify its iter-5 collection receipt"
+            ) from exc
+        _assert_r241_precollection_refresh_binding(
+            iteration=R241_FIXED_CYCLE_REHEARSAL_EVERY,
+            collection_behavior_digest=str(
+                boundary_collection.get("checkpoint_digest") or ""
+            ),
+            rehearsal_record=refresh,
+            r241_peak_r195_training_contract=(
+                r241_peak_r195_training_contract
+            ),
+        )
+
+    next_iteration_artifacts = [
+        _collection_receipt_path(Path(run_dir), updates),
+        Path(run_dir) / "collection_plans" / f"iter_{updates:05d}.json",
+        *_iteration_artifact_paths(Path(run_dir), updates),
+    ]
+    unexpected = [str(path) for path in next_iteration_artifacts if path.exists()]
+    if unexpected:
+        raise RuntimeError(
+            "fixed cycle must not start iter_"
+            f"{updates:05d} collection/artifacts: {unexpected}"
+        )
+    return {
+        "updates_completed": updates,
+        "last_completed_iteration": expected_last,
+        "next_collection_started": False,
+    }
 
 
 def _scheduled_train_decision_cap(
@@ -2016,6 +2374,757 @@ def _path_content_identity(path: Path) -> dict[str, Any]:
     }
 
 
+def _r241_file_identity(path: Path) -> dict[str, Any]:
+    identity = _path_content_identity(path)
+    if identity.get("kind") != "file":
+        raise RuntimeError(f"r241 identity is not a file: {path}")
+    return {
+        "path": str(identity["path"]),
+        "digest": str(identity["digest"]),
+        "size_bytes": int(identity["size"]),
+    }
+
+
+def _r260_file_identity(path: Path | str) -> dict[str, Any]:
+    """Return a canonical, rehashable FileIdentity for successor evidence."""
+
+    candidate = Path(path).expanduser()
+    if candidate.is_symlink() or not candidate.is_file():
+        raise RuntimeError(f"r260 identity must be a regular non-symlink file: {candidate}")
+    resolved = candidate.resolve()
+    return {
+        "path": str(resolved),
+        "sha256": _sha256_file(resolved),
+        "size_bytes": int(resolved.stat().st_size),
+    }
+
+
+def _rehashed_r260_file_identity(value: Any, *, label: str) -> dict[str, Any]:
+    """Validate an exact FileIdentity against the sealed local bytes."""
+
+    if not isinstance(value, Mapping):
+        raise RuntimeError(f"r260 {label} identity must be an object")
+    row = dict(value)
+    if set(row) != {"path", "sha256", "size_bytes"}:
+        raise RuntimeError(f"r260 {label} identity key shape changed")
+    path = str(row.get("path") or "")
+    raw_digest = str(row.get("sha256") or "")
+    digest = raw_digest.lower()
+    size = row.get("size_bytes")
+    if (
+        not path
+        or raw_digest != digest
+        or len(digest) != 71
+        or not digest.startswith("sha256:")
+        or any(char not in "0123456789abcdef" for char in digest[7:])
+        or isinstance(size, bool)
+        or not isinstance(size, int)
+        or size <= 0
+    ):
+        raise RuntimeError(f"r260 {label} identity is invalid")
+    observed = _r260_file_identity(Path(path))
+    if observed != {"path": path, "sha256": digest, "size_bytes": size}:
+        raise RuntimeError(f"r260 {label} FileIdentity drifted")
+    return observed
+
+
+def _r241_checkpoint_state_schema_digest(payload: Mapping[str, Any]) -> str:
+    state = dict(payload.get("model_state_dict") or {})
+    rows = [
+        {
+            "name": str(name),
+            "shape": [int(value) for value in getattr(tensor, "shape", ())],
+            "dtype": str(getattr(tensor, "dtype", "")),
+        }
+        for name, tensor in sorted(state.items())
+    ]
+    if not rows:
+        raise RuntimeError("r241 peak-r195 checkpoint has no tensor schema")
+    return _canonical_digest(rows)
+
+
+def _assert_r241_initial_learner_anchor(
+    requested_checkpoint: Optional[Path],
+    *,
+    sealed_parent: Mapping[str, Any],
+) -> Optional[dict[str, Any]]:
+    """Allow no initial override, or bytes identical to the sealed r195 anchor."""
+
+    if requested_checkpoint is None:
+        return None
+    requested = _r241_file_identity(
+        Path(requested_checkpoint).expanduser().resolve()
+    )
+    if (
+        requested["digest"] != str(sealed_parent.get("digest") or "")
+        or int(requested["size_bytes"])
+        != int(sealed_parent.get("size_bytes", -1))
+    ):
+        raise RuntimeError(
+            "r241 fixed cycle initial learner is not the sealed r195 anchor"
+        )
+    return requested
+
+
+def _load_r260_own_deck_training_inputs(args: argparse.Namespace) -> dict[str, Any]:
+    """Resolve the additive r260 evidence without changing the r195 auditor.
+
+    The launcher supplies these only for the new successor.  Legacy r241
+    fixtures remain valid with all six arguments absent; a partial set is a
+    fail-closed configuration error.
+    """
+
+    rows = (
+        ("migration", args.r241_own_deck_migration_receipt, args.r241_own_deck_migration_receipt_sha256),
+        ("canary_activation", args.r241_own_deck_canary_activation_receipt, args.r241_own_deck_canary_activation_receipt_sha256),
+        ("sidecar", args.r241_own_deck_sidecar_binding, args.r241_own_deck_sidecar_binding_sha256),
+        ("inzi_dataset", args.r241_own_deck_inzi_dataset_binding, args.r241_own_deck_inzi_dataset_binding_sha256),
+    )
+    supplied = [(path is not None, bool(str(digest or "").strip())) for _, path, digest in rows]
+    if not any(any(pair) for pair in supplied):
+        return {}
+    if not all(path_present and digest_present for path_present, digest_present in supplied):
+        raise RuntimeError("r260 own-deck receipt paths and sha256 values must be supplied together")
+    if _fixed_cycle_updates(args) == 0:
+        raise RuntimeError("r260 own-deck inputs are allowed only for the r241 fixed cycle")
+    from poke_bot import checkpoint as checkpoint_mod
+    from poke_bot.r241_own_deck_successor import (
+        R241OwnDeckSuccessorError,
+        load_r260_owner_contract,
+        validate_r260_canary_activation,
+        validate_r260_inzi_dataset_binding,
+        validate_r260_migration_receipt,
+        validate_r260_sidecar_binding,
+    )
+
+    raw: dict[str, dict[str, Any]] = {}
+    for name, path, expected_sha in rows:
+        candidate = Path(path).expanduser()
+        if candidate.is_symlink() or not candidate.is_file():
+            raise RuntimeError(f"r260 {name} receipt must be a regular non-symlink file")
+        identity = _r241_file_identity(candidate.resolve())
+        if identity["digest"] != str(expected_sha):
+            raise RuntimeError(f"r260 {name} receipt digest mismatch")
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"r260 {name} receipt is invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"r260 {name} receipt must be an object")
+        raw[name] = payload
+    try:
+        owner = load_r260_owner_contract()
+        migration_receipt = validate_r260_migration_receipt(raw["migration"], owner_contract=owner, require_local_child=True)
+        canary = validate_r260_canary_activation(raw["canary_activation"], migration_receipt=migration_receipt, owner_contract=owner, require_local_checkpoint=True)
+        sidecar = validate_r260_sidecar_binding(raw["sidecar"], owner_contract=owner)
+        inzi = validate_r260_inzi_dataset_binding(raw["inzi_dataset"], sidecar_binding=sidecar, owner_contract=owner, require_local_dataset=True)
+    except R241OwnDeckSuccessorError as exc:
+        raise RuntimeError(f"r260 own-deck evidence validation failed: {exc}") from exc
+    canary_checkpoint = dict(canary["canary_checkpoint"])
+    if args.initial_learner_checkpoint is None:
+        raise RuntimeError("r260 own-deck successor requires --initial-learner-checkpoint")
+    initial = checkpoint_mod.checkpoint_digest(Path(args.initial_learner_checkpoint).expanduser().resolve())
+    if initial != canary_checkpoint["sha256"]:
+        raise RuntimeError("r260 initial learner does not match the runtime-enabled canary checkpoint")
+    return {
+        "owner_contract_sha256": owner.sha256,
+        "migration_receipt_sha256": migration_receipt["receipt_sha256"],
+        "canary_activation_receipt_sha256": canary["receipt_sha256"],
+        "canary_checkpoint_sha256": canary_checkpoint["sha256"],
+        "sidecar_binding_sha256": sidecar["binding_sha256"],
+        "inzi_dataset_sha256": inzi["inzi_joined_dataset_sha256"],
+        "inzi_dataset_identity": dict(inzi["inzi_joined_dataset"]),
+        "inzi_sidecar_root": str(inzi["inzi_sidecar_root"]),
+        "source_manifest_sha256": owner.source_manifest_sha256,
+        "daily_meta_sha256s": {
+            day: str(row["sha256"])
+            for day, row in dict(sidecar["daily_sidecar_meta_receipts"]).items()
+        },
+        "runtime_gates": dict(canary["runtime_gates"]),
+    }
+
+
+def _validate_r260_scheduled_rehearsal_receipt(
+    value: Mapping[str, Any],
+    *,
+    expected_r260_inputs: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
+    """Fail closed on a resumed bounded host-refresh receipt."""
+    receipt = dict(value)
+    declared = receipt.pop("receipt_sha256", "")
+    required = {
+        "schema", "status", "owner_contract_sha256", "migration_receipt_sha256",
+        "canary_activation_receipt_sha256", "sidecar_binding_sha256",
+        "pre_checkpoint", "post_checkpoint", "index", "inzi_dataset",
+        "index_provenance", "loss_weights", "rl_iteration_before_after",
+        "bounded_batch_games", "full_window_device_resident", "sampled_keys",
+        "gradient_reachability",
+    }
+    if (
+        set(receipt) != required
+        or receipt.get("schema") != "poke_bot.r260_scheduled_expert_rehearsal/v1"
+        or receipt.get("status") != "passed"
+        or declared != _canonical_digest(receipt)
+    ):
+        raise RuntimeError("r260 rehearsal receipt schema/digest drifted")
+    for name in (
+        "owner_contract_sha256",
+        "migration_receipt_sha256",
+        "canary_activation_receipt_sha256",
+        "sidecar_binding_sha256",
+    ):
+        raw_digest = str(receipt.get(name) or "")
+        digest = raw_digest.lower()
+        if (
+            raw_digest != digest
+            or len(digest) != 71
+            or not digest.startswith("sha256:")
+            or any(char not in "0123456789abcdef" for char in digest[7:])
+        ):
+            raise RuntimeError(f"r260 rehearsal receipt has invalid {name}")
+        receipt[name] = digest
+    pre = _rehashed_r260_file_identity(receipt["pre_checkpoint"], label="pre-checkpoint")
+    post = _rehashed_r260_file_identity(receipt["post_checkpoint"], label="post-checkpoint")
+    index = _rehashed_r260_file_identity(receipt["index"], label="streaming index")
+    dataset = _rehashed_r260_file_identity(receipt["inzi_dataset"], label="Inzi dataset")
+    if pre["sha256"] == post["sha256"]:
+        raise RuntimeError("r260 rehearsal receipt did not create a child checkpoint")
+    provenance = dict(receipt.get("index_provenance") or {})
+    if set(provenance) != {
+        "schema", "source_manifest_sha256", "daily_meta_sha256s"
+    } or provenance.get("schema") != "poke_bot.r260_inzi_sidecar_index/v1":
+        raise RuntimeError("r260 rehearsal receipt index provenance changed")
+    raw_source_manifest = str(provenance.get("source_manifest_sha256") or "")
+    source_manifest = raw_source_manifest.lower()
+    daily_meta = provenance.get("daily_meta_sha256s")
+    if (
+        raw_source_manifest != source_manifest
+        or len(source_manifest) != 71
+        or not source_manifest.startswith("sha256:")
+        or any(char not in "0123456789abcdef" for char in source_manifest[7:])
+        or not isinstance(daily_meta, Mapping)
+        or len(daily_meta) != 20
+    ):
+        raise RuntimeError("r260 rehearsal receipt index provenance is incomplete")
+    normalized_daily: dict[str, str] = {}
+    for day, digest in sorted(daily_meta.items()):
+        day_text = str(day)
+        raw_digest_text = str(digest or "")
+        digest_text = raw_digest_text.lower()
+        if (
+            len(day_text) != 10
+            or raw_digest_text != digest_text
+            or len(digest_text) != 71
+            or not digest_text.startswith("sha256:")
+            or any(char not in "0123456789abcdef" for char in digest_text[7:])
+        ):
+            raise RuntimeError("r260 rehearsal receipt daily provenance is invalid")
+        normalized_daily[day_text] = digest_text
+    if len(normalized_daily) != 20:
+        raise RuntimeError("r260 rehearsal receipt daily provenance is not unique")
+    try:
+        from poke_bot.r260_inzi_sidecar_index import R260InziSidecarIndex
+
+        R260InziSidecarIndex(
+            Path(index["path"]),
+            source_manifest_sha256=source_manifest,
+            daily_meta_sha256s=normalized_daily,
+        ).assert_verified(
+            expected_source_manifest_sha256=source_manifest,
+            daily_meta_sha256s=normalized_daily,
+        )
+    except Exception as exc:
+        raise RuntimeError("r260 rehearsal receipt streaming index drifted") from exc
+    if receipt["loss_weights"] != {"visible_tutor_completion": 0.025, "terminal_conversion": 0.025}:
+        raise RuntimeError("r260 rehearsal receipt loss profile drifted")
+    bounds = receipt["rl_iteration_before_after"]
+    if not isinstance(bounds, list) or len(bounds) != 2 or bounds[0] != bounds[1] or int(receipt["bounded_batch_games"]) <= 0 or receipt["full_window_device_resident"] is not False:
+        raise RuntimeError("r260 rehearsal receipt boundedness/iteration drifted")
+    required_prefixes = {"own_deck_ledger_adapter.", "visible_tutor_completion_head.", "terminal_conversion_head.", "visible_tutor_completion_route.", "terminal_conversion_route.", "decision_fusion."}
+    if (
+        set(receipt["gradient_reachability"] or {}) != required_prefixes
+        or not all(receipt["gradient_reachability"].values())
+        or not receipt["sampled_keys"]
+    ):
+        raise RuntimeError("r260 rehearsal receipt lacks finite gradient/key evidence")
+    for key in receipt["sampled_keys"]:
+        if (
+            not isinstance(key, list)
+            or len(key) != 4
+            or not isinstance(key[0], str)
+            or key[1] not in (0, 1)
+            or isinstance(key[2], bool)
+            or not isinstance(key[2], int)
+            or not isinstance(key[3], str)
+        ):
+            raise RuntimeError("r260 rehearsal receipt sampled key shape changed")
+    if expected_r260_inputs is not None:
+        expected = dict(expected_r260_inputs)
+        for name in (
+            "owner_contract_sha256",
+            "migration_receipt_sha256",
+            "canary_activation_receipt_sha256",
+            "sidecar_binding_sha256",
+        ):
+            if receipt[name] != str(expected.get(name) or "").lower():
+                raise RuntimeError(f"r260 rehearsal receipt changed {name}")
+        if dataset != dict(expected.get("inzi_dataset_identity") or {}):
+            raise RuntimeError("r260 rehearsal receipt Inzi dataset identity drifted")
+        expected_daily = {
+            str(day): str(digest).lower()
+            for day, digest in sorted(
+                dict(expected.get("daily_meta_sha256s") or {}).items()
+            )
+        }
+        if (
+            source_manifest != str(expected.get("source_manifest_sha256") or "").lower()
+            or normalized_daily != expected_daily
+        ):
+            raise RuntimeError("r260 rehearsal receipt sidecar provenance drifted")
+    receipt["pre_checkpoint"] = pre
+    receipt["post_checkpoint"] = post
+    receipt["index"] = index
+    receipt["inzi_dataset"] = dataset
+    receipt["index_provenance"] = {
+        "schema": "poke_bot.r260_inzi_sidecar_index/v1",
+        "source_manifest_sha256": source_manifest,
+        "daily_meta_sha256s": normalized_daily,
+    }
+    receipt["receipt_sha256"] = declared
+    return receipt
+
+
+def _load_r241_peak_r195_training_contract(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Resolve checkpoint-derived v2 evidence into a training-only sidecar."""
+
+    if _fixed_cycle_updates(args) == 0:
+        return {}
+    from poke_bot import checkpoint as checkpoint_mod
+    from poke_bot import r241_checkpoint_receipts
+    from poke_bot.strategic_losses import canonical_expanded_loss_weights
+
+    raw_receipt_path = Path(
+        args.r241_peak_r195_preservation_receipt
+    ).expanduser()
+    if raw_receipt_path.is_symlink() or not raw_receipt_path.is_file():
+        raise RuntimeError(
+            "r241 peak-r195 preservation receipt must be a regular non-symlink file"
+        )
+    receipt_path = raw_receipt_path.resolve()
+    receipt_identity = _r241_file_identity(receipt_path)
+    if receipt_identity["digest"] != str(
+        args.r241_peak_r195_preservation_receipt_sha256
+    ):
+        raise RuntimeError("r241 peak-r195 preservation receipt digest mismatch")
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("r241 peak-r195 preservation receipt is invalid JSON") from exc
+    if not isinstance(receipt, dict):
+        raise RuntimeError("r241 peak-r195 preservation receipt must be an object")
+    if (
+        receipt.get("schema") != R241_PEAK_R195_PRESERVATION_RECEIPT_SCHEMA
+        or int(receipt.get("revision", -1)) != 241
+        or int(receipt.get("owner_clarification_revision", -1))
+        != R241_PEAK_R195_CLARIFICATION_REVISION
+        or receipt.get("candidate_id")
+        != "alakazam-new-list-direct-policy-r241"
+        or receipt.get("status") != "passed"
+        or receipt.get("passed") is not True
+        or receipt.get("derived_not_self_asserted") is not True
+    ):
+        raise RuntimeError(
+            "r241 peak-r195 preservation receipt is not derived v2/r251 evidence"
+        )
+
+    parent = dict(receipt.get("parent") or {})
+    parent_path = Path(str(parent.get("checkpoint") or "")).expanduser().resolve()
+    parent_identity = _r241_file_identity(parent_path)
+    if (
+        parent_identity["digest"] != str(parent.get("sha256") or "")
+        or int(parent_identity["size_bytes"])
+        != int(parent.get("size_bytes", -1))
+    ):
+        raise RuntimeError("r241 preservation receipt parent identity changed")
+    requested_parent = (
+        Path(args.base_checkpoint).expanduser().resolve()
+        if args.base_checkpoint is not None
+        else None
+    )
+    if requested_parent is not None and requested_parent != parent_path:
+        raise RuntimeError("r241 fixed cycle base checkpoint is not the sealed parent")
+    # The r260 successor is validated separately below against its own
+    # zero-safe migration receipt.  The legacy preservation auditor continues
+    # to audit this r195 parent; it must not pretend the additive child is an
+    # r195 byte-identical initial learner.
+    if getattr(args, "r241_own_deck_migration_receipt", None) is None:
+        _assert_r241_initial_learner_anchor(
+            (
+                Path(getattr(args, "initial_learner_checkpoint"))
+                if getattr(args, "initial_learner_checkpoint", None) is not None
+                else None
+            ),
+            sealed_parent=parent_identity,
+        )
+
+    adapter = dict(receipt.get("matchup_adapter") or {})
+    learner_tree_binding = dict(adapter.get("learner_matchup_tree") or {})
+    h10_tree_binding = dict(receipt.get("h10_marnie_matchup_tree") or {})
+    learner_tree_path = Path(
+        str(learner_tree_binding.get("path") or "")
+    ).expanduser().resolve()
+    h10_tree_path = Path(
+        str(h10_tree_binding.get("path") or "")
+    ).expanduser().resolve()
+    cg_root_raw = os.environ.get("CG_LIB_PATH", "").strip()
+    if not cg_root_raw:
+        raise RuntimeError("r241 checkpoint-derived validation requires CG_LIB_PATH")
+    cg_root = Path(cg_root_raw).expanduser().resolve()
+    try:
+        validated_receipt = (
+            r241_checkpoint_receipts.validate_peak_r195_preservation_receipt(
+                receipt_path=receipt_path,
+                parent_checkpoint=parent_path,
+                learner_matchup_tree=learner_tree_path,
+                h10_matchup_tree=h10_tree_path,
+                official_cg_root=cg_root,
+                environment=dict(os.environ),
+            )
+        )
+    except r241_checkpoint_receipts.R241CheckpointReceiptError as exc:
+        raise RuntimeError(
+            f"r241 checkpoint-derived preservation validation failed: {exc}"
+        ) from exc
+    if validated_receipt != receipt:
+        raise RuntimeError("r241 validated preservation receipt changed in memory")
+
+    if (
+        str(args.mode) != "specialist"
+        or str(args.specialist_archetype or "").casefold() != "alakazam"
+        or int(args.games_per_iter) != 8_196
+        or bool(args.require_exact_training_seat_split) is not True
+        or not math.isclose(
+            float(config.PURE_RL.self_play_frac),
+            1_024 / 8_196,
+            rel_tol=0.0,
+            abs_tol=1e-15,
+        )
+        or float(args.official_collect_frac) != 0.50
+        or int(args.research_control_games_per_iter) != 1_000
+    ):
+        raise RuntimeError(
+            "r241 requires Alakazam with exactly 8196 games, 1024 self-play, "
+            "7172 established-public, and exact training-seat parity"
+        )
+    r241_collection_plan = _planned_collection_group_counts(
+        games_per_iteration=int(args.games_per_iter),
+        self_play_fraction=float(config.PURE_RL.self_play_frac),
+        strong_public_fraction_of_public=float(args.official_collect_frac),
+        research_control_games=int(args.research_control_games_per_iter),
+    )
+    if r241_collection_plan != {
+        "self_play": 1_024,
+        STRONG_PUBLIC_PRACTICE_GROUP: 4_586,
+        "diverse_public": 2_586,
+    }:
+        raise RuntimeError(f"r241 collection split changed: {r241_collection_plan}")
+
+    public_mix = dict(receipt.get("public_mix") or {})
+    public_bindings = (
+        ("active_gate_contract", args.active_gate_contract),
+        ("frozen_specialist_registry", args.frozen_specialist_registry),
+        ("research_control_registry", args.research_control_registry),
+    )
+    for name, requested_path in public_bindings:
+        binding = dict(public_mix.get(name) or {})
+        bound_path = Path(str(binding.get("path") or "")).expanduser().resolve()
+        if requested_path is None:
+            raise RuntimeError(f"r241 preservation receipt lacks requested {name}")
+        identity = _r241_file_identity(bound_path)
+        if (
+            bound_path != Path(requested_path).expanduser().resolve()
+            or identity["digest"] != str(binding.get("sha256") or "")
+            or identity["size_bytes"] != int(binding.get("size_bytes", -1))
+        ):
+            raise RuntimeError(f"r241 preservation receipt changed {name}")
+    if (
+        public_mix.get("established_diverse_public_mix_preserved") is not True
+        or public_mix.get("research_control_phase_preserved") is not True
+        or float(public_mix.get("official_collect_fraction", -1.0)) != 0.50
+        or int(public_mix.get("research_control_games_per_iter", -1)) != 1_000
+    ):
+        raise RuntimeError("r241 preservation receipt changed the public mix")
+
+    owner_binding = dict(receipt.get("contract") or {})
+    owner_path = Path(str(owner_binding.get("path") or ""))
+    owner_identity = _r241_file_identity(owner_path.expanduser().resolve())
+    if (
+        owner_identity["digest"]
+        != R241_R195_HISTORICAL_OWNER_CONTRACT_SHA256
+        or owner_identity["digest"] != str(owner_binding.get("sha256") or "")
+        or owner_identity["size_bytes"] != int(owner_binding.get("size_bytes", -1))
+    ):
+        raise RuntimeError("r241 typed owner-source identity changed")
+
+    migration = dict(receipt.get("adapter_slot_migration") or {})
+    if (
+        migration.get("status") != "no_slot_change"
+        or migration.get("existing_slots_byte_immutable") is not True
+        or int(migration.get("retained_slot_count", -1)) != 20
+        or list(migration.get("new_slots") or [])
+        or list(migration.get("new_slot_proofs") or [])
+        or migration.get("candidate_slot_registry_sha256")
+        != migration.get("parent_slot_registry_sha256")
+    ):
+        raise RuntimeError(
+            "r241 fixed cycle requires the unchanged 20-slot E60 adapter roster"
+        )
+
+    parent_payload = checkpoint_mod.load_checkpoint(parent_path, map_location="cpu")
+    model_config = dict(parent_payload.get("model_config") or {})
+    state_dict = dict(parent_payload.get("model_state_dict") or {})
+    model_config_digest = _canonical_digest(model_config)
+    state_schema_digest = _r241_checkpoint_state_schema_digest(parent_payload)
+    trainable_parameter_count = sum(
+        int(tensor.numel())
+        for name, tensor in state_dict.items()
+        if hasattr(tensor, "numel")
+        and not str(name).endswith("_feature_schema_version")
+        and not str(name).startswith("matchup_adapter_bank.")
+    )
+    if trainable_parameter_count != 10_750_146:
+        raise RuntimeError("r241 peak-r195 serialized model profile changed")
+
+    heads = dict(receipt.get("heads") or {})
+    checkpoint_audit = dict(receipt.get("checkpoint_audit") or {})
+    role_binding = dict(checkpoint_audit.get("head_role_map") or {})
+    role_path = Path(str(role_binding.get("path") or "")).expanduser().resolve()
+    requested_role_path = Path(
+        str(args.current_deck_guide_head_role_map or "")
+    ).expanduser().resolve()
+    role_identity = _r241_file_identity(role_path)
+    if (
+        role_path != requested_role_path
+        or role_identity["digest"] != str(role_binding.get("sha256") or "")
+        or int(role_identity["size_bytes"])
+        != int(role_binding.get("size_bytes", -1))
+    ):
+        raise RuntimeError("r241 peak-r195 head-role map identity changed")
+    try:
+        role_map = json.loads(role_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("r241 head-role map is invalid JSON") from exc
+    role_heads = dict(role_map.get("heads") or {})
+    if (
+        tuple(role_map.get("canonical_learned_decision_sources") or ())
+        != R241_PEAK_R195_ACTIVE_SOURCES
+        or set(role_heads) != set(R241_PEAK_R195_ACTIVE_SOURCES)
+        or any(
+            dict(role_heads[name]).get("trainable") is not True
+            or dict(role_heads[name]).get("enters_decision_fusion") is not True
+            or dict(role_heads[name]).get("route_id") != f"{name}-route"
+            for name in R241_PEAK_R195_ACTIVE_SOURCES
+        )
+    ):
+        raise RuntimeError("r241 head-role map no longer names the exact 18 routes")
+    if (
+        int(heads.get("architecture_present_head_count", -1)) != 19
+        or int(heads.get("non_combo_head_count", -1)) != 18
+        or int(heads.get("non_combo_route_count", -1)) != 18
+        or set(heads.get("physical_head_names") or ())
+        != set(R241_PEAK_R195_PHYSICAL_SOURCES)
+        or set(heads.get("active_non_combo_head_names") or ())
+        != set(R241_PEAK_R195_ACTIVE_SOURCES)
+        or set(heads.get("active_non_combo_route_names") or ())
+        != set(R241_PEAK_R195_ACTIVE_SOURCES)
+        or heads.get("every_non_combo_head_trainable") is not True
+        or heads.get("every_non_combo_fusion_route_enabled") is not True
+        or dict(heads.get("combo_state") or {}).get("head_present") is not True
+        or dict(heads.get("combo_state") or {}).get("physical_route_present")
+        is not True
+        or float(
+            dict(heads.get("combo_state") or {}).get("loss_weight", -1.0)
+        )
+        != 0.0
+        or dict(heads.get("combo_state") or {}).get("route_enabled") is not False
+    ):
+        raise RuntimeError("r241 peak-r195 head/route preservation proof changed")
+
+    trainer = dict(receipt.get("trainer") or {})
+    expected_ordinary = {
+        "value": 1.0,
+        "archetype": 0.05,
+        "opponent_hand": 0.05,
+        "opponent_remainder": 0.05,
+        "lethal_threat": 0.025,
+        "prize_race": 0.025,
+        "setup_board_outcome": 0.025,
+        "combo_state": 0.0,
+        "guide": 0.05,
+    }
+    expected_refresh = {**expected_ordinary, "guide": 0.0}
+    expected_preserved_args = (
+        "--archetype-aux-loss-weight",
+        "0.05",
+        "--opp-hand-loss-weight",
+        "0.05",
+        "--opp-remainder-loss-weight",
+        "0.05",
+        "--lethal-threat-loss-weight",
+        "0.025",
+        "--prize-race-loss-weight",
+        "0.025",
+        "--setup-board-outcome-loss-weight",
+        "0.025",
+    )
+    if tuple(trainer.get("r195_non_combo_arguments") or ()) != expected_preserved_args:
+        raise RuntimeError("r241 preservation receipt changed the r195 loss arguments")
+    actual_arg_loss = {
+        "value": 1.0,
+        "archetype": float(args.archetype_aux_loss_weight),
+        "opponent_hand": float(args.opp_hand_loss_weight),
+        "opponent_remainder": float(args.opp_remainder_loss_weight),
+        "lethal_threat": float(args.lethal_threat_loss_weight),
+        "prize_race": float(args.prize_race_loss_weight),
+        "setup_board_outcome": float(args.setup_board_outcome_loss_weight),
+        "combo_state": float(args.combo_state_loss_weight),
+        "guide": float(args.alakazam_guide_loss_weight),
+    }
+    if (
+        actual_arg_loss != expected_ordinary
+        or args.expert_rehearsal_guide_loss_weight is None
+        or float(args.expert_rehearsal_guide_loss_weight) != 0.0
+    ):
+        raise RuntimeError("r241 command changed the sealed training loss profile")
+    inherited_expanded = canonical_expanded_loss_weights(
+        dict(
+            dict(
+                (parent_payload.get("extra") or {}).get(
+                    "expanded_head_training"
+                )
+                or {}
+            ).get("loss_weights")
+            or {}
+        )
+    )
+    if any(float(value) <= 0.0 for value in inherited_expanded.values()):
+        raise RuntimeError("r241 expanded-head loss profile changed")
+
+    audit_adapter = dict(checkpoint_audit.get("matchup_adapter") or {})
+    checkpoint_dormant = dict(
+        audit_adapter.get("checkpoint_dormant_state") or {}
+    )
+    isolated_optimizer = dict(audit_adapter.get("isolated_optimizer") or {})
+    fit = dict(audit_adapter.get("fit") or {})
+    expected_isolated_fit = {
+        "serialized_runtime_enabled": False,
+        "serialized_training_enabled": False,
+        "main_optimizer_included": False,
+        "base_frozen_during_fit": True,
+        "optimizer_scope": "matchup_adapter_bank_only",
+        "continuation_state_required": True,
+    }
+    runtime_receipt_binding = dict(adapter.get("training_activation") or {})
+    runtime_receipt_path = Path(str(runtime_receipt_binding.get("path") or ""))
+    runtime_receipt_path = runtime_receipt_path.expanduser().resolve()
+    public_tree_identity = _r241_file_identity(learner_tree_path)
+    runtime_receipt_identity = _r241_file_identity(runtime_receipt_path)
+    configured_tree = os.environ.get("POKEBOT_PUBLIC_MATCHUP_TREE_PATH", "")
+    requested_activation = Path(
+        str(args.dormant_matchup_adapter_activation_receipt or "")
+    ).expanduser().resolve()
+    if (
+        adapter.get("bank_preserved") is not True
+        or adapter.get("checkpoint_runtime_enabled") is not False
+        or adapter.get("checkpoint_training_enabled") is not False
+        or adapter.get("runtime_package_activation_required") is not True
+        or adapter.get("training_enabled") is not True
+        or adapter.get("runtime_enabled") is not True
+        or checkpoint_dormant
+        != {
+            "runtime_enabled": False,
+            "training_enabled": False,
+            "ordinary_optimizer_included": False,
+        }
+        or fit.get("optimizer_scope") != "matchup_adapter_bank_only"
+        or int(fit.get("epochs", 0)) <= 0
+        or int(fit.get("steps", 0)) <= 0
+        or int(fit.get("rows", 0)) <= 0
+        or int(isolated_optimizer.get("parameter_count", -1)) != 256
+        or int(isolated_optimizer.get("state_count", 0)) <= 0
+        or int(adapter.get("epochs_per_rl_update", -1))
+        != int(args.dormant_matchup_adapter_epochs)
+        or public_tree_identity["digest"]
+        != str(learner_tree_binding.get("sha256") or "")
+        or int(public_tree_identity["size_bytes"])
+        != int(learner_tree_binding.get("size_bytes", -1))
+        or runtime_receipt_identity["digest"]
+        != str(runtime_receipt_binding.get("sha256") or "")
+        or int(runtime_receipt_identity["size_bytes"])
+        != int(runtime_receipt_binding.get("size_bytes", -1))
+        or not configured_tree
+        or Path(configured_tree).expanduser().resolve() != learner_tree_path
+        or requested_activation != runtime_receipt_path
+        or os.environ.get("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "").strip().lower()
+        not in {"1", "true", "yes", "on"}
+    ):
+        raise RuntimeError("r241 Matchup Adapter preservation/runtime proof changed")
+
+    source_snapshot = dict(receipt.get("source_snapshot") or {})
+    if source_snapshot.get("owner_contract_sha256") != owner_identity["digest"]:
+        raise RuntimeError("r241 source snapshot binds another owner contract")
+    baseline_binding = dict(receipt.get("baseline_adapter_roster") or {})
+    baseline_path = Path(str(baseline_binding.get("path") or ""))
+    baseline_identity = _r241_file_identity(baseline_path.expanduser().resolve())
+    if (
+        baseline_identity["digest"] != str(baseline_binding.get("sha256") or "")
+        or baseline_identity["size_bytes"]
+        != int(baseline_binding.get("size_bytes", -1))
+    ):
+        raise RuntimeError("r241 baseline adapter roster identity changed")
+
+    normalized = {
+        "schema": R241_PEAK_R195_TRAINING_CONTRACT_SCHEMA,
+        "candidate_id": "alakazam-new-list-direct-policy-r241",
+        "owner_decision_revision": 241,
+        "owner_clarification_revision": R241_PEAK_R195_CLARIFICATION_REVISION,
+        "fixed_cycle_updates": 10,
+        "anchor_parent_sha256": parent_identity["digest"],
+        "serialized_model_config_sha256": model_config_digest,
+        "serialized_state_schema_sha256": state_schema_digest,
+        "trainable_parameter_count": trainable_parameter_count,
+        "preservation_receipt": receipt_identity,
+        "owner_contract": owner_identity,
+        "head_role_map": role_identity,
+        "source_snapshot": source_snapshot,
+        "baseline_adapter_roster": baseline_identity,
+        "adapter_slot_migration": migration,
+        "checkpoint_audit_fingerprint_sha256": str(
+            checkpoint_audit.get("audit_fingerprint_sha256") or ""
+        ),
+        "physical_source_names": list(R241_PEAK_R195_PHYSICAL_SOURCES),
+        "active_non_combo_source_names": list(R241_PEAK_R195_ACTIVE_SOURCES),
+        "disabled_source_names": ["combo_state"],
+        "combo_state_loss_weight": 0.0,
+        "combo_state_fusion_route_enabled": False,
+        "ordinary_rl_loss_profile": expected_ordinary,
+        "expert_refresh_loss_profile": expected_refresh,
+        "expanded_head_loss_weights": inherited_expanded,
+        "matchup_adapter": {
+            "isolated_fit": expected_isolated_fit,
+            "external_runtime_activation": {
+                "collection_enabled": True,
+                "terminal_package_enabled": True,
+                "public_tree_sha256": public_tree_identity["digest"],
+                "activation_receipt_sha256": runtime_receipt_identity["digest"],
+            },
+        },
+    }
+    return canonical_r241_peak_r195_training_contract(normalized)
+
+
 def _load_initial_heldout_evidence(
     path: Path,
     *,
@@ -2157,6 +3266,7 @@ def _checkpoint_contract(
     *,
     smoke: bool,
     allow_legacy_inference_profile: bool = False,
+    r241_peak_r195_training_contract: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """Fail closed unless a checkpoint is the exact intended trusted profile."""
     from poke_bot import checkpoint, features
@@ -2173,6 +3283,151 @@ def _checkpoint_contract(
         )
     trusted = checkpoint.assert_trusted_policy_checkpoint(path)
     actual = dict(payload.get("model_config") or {})
+    r241_contract = canonical_r241_peak_r195_training_contract(
+        r241_peak_r195_training_contract
+    )
+    if r241_contract:
+        expected_true = (
+            "expanded_heads_enabled",
+            "setup_board_outcome_head_enabled",
+            "combo_state_head_enabled",
+            "h10_capacity_enabled",
+            "decision_fusion_enabled",
+            "decision_fusion_runtime_enabled",
+            "decision_fusion_dedicated_routes_enabled",
+            "decision_fusion_dedicated_routes_runtime_enabled",
+            "decision_fusion_typed_output_centered_routes_enabled",
+        )
+        if (
+            _canonical_digest(actual)
+            != r241_contract["serialized_model_config_sha256"]
+            or _r241_checkpoint_state_schema_digest(payload)
+            != r241_contract["serialized_state_schema_sha256"]
+            or str(actual.get("decision_context") or "") != "history"
+            or any(actual.get(name) is not True for name in expected_true)
+            or actual.get("combo_state_route_enabled") is not False
+            or actual.get("matchup_adapters_enabled") is not False
+            or not math.isclose(
+                float(
+                    actual.get(
+                        "decision_fusion_action_type_reliability_cap", -1.0
+                    )
+                ),
+                0.25,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+        ):
+            raise RuntimeError(
+                f"r241 checkpoint changed the sealed peak-r195 model profile: {path}"
+            )
+        state_dict = dict(payload.get("model_state_dict") or {})
+        parameter_count = sum(
+            int(value.numel())
+            for key, value in state_dict.items()
+            if hasattr(value, "numel")
+            and not str(key).endswith("_feature_schema_version")
+            and not str(key).startswith("matchup_adapter_bank.")
+        )
+        if parameter_count != int(r241_contract["trainable_parameter_count"]):
+            raise RuntimeError("r241 checkpoint trainable parameter count changed")
+        provenance = dict(payload.get("provenance") or {})
+        expanded = dict(provenance.get("expanded_heads") or {})
+        fusion = dict(provenance.get("decision_fusion") or {})
+        routes = dict(fusion.get("dedicated_routes") or {})
+        if (
+            tuple(fusion.get("required_heads") or ())
+            != R241_PEAK_R195_PHYSICAL_SOURCES
+            or tuple(fusion.get("active_required_heads") or ())
+            != R241_PEAK_R195_ACTIVE_SOURCES
+            or fusion.get("runtime_enabled") is not True
+            or tuple(routes.get("route_names") or ())
+            != R241_PEAK_R195_PHYSICAL_SOURCES
+            or tuple(routes.get("active_route_names") or ())
+            != R241_PEAK_R195_ACTIVE_SOURCES
+            or tuple(routes.get("disabled_route_names") or ())
+            != ("combo_state",)
+            or routes.get("runtime_enabled") is not True
+            or tuple(expanded.get("runtime_disabled_heads") or ())
+            != ("combo_state_head",)
+        ):
+            raise RuntimeError("r241 checkpoint head/fusion provenance changed")
+        validate_r241_isolated_adapter_continuation(
+            dict(extra.get("dormant_matchup_adapter_fit") or {}),
+            dict(extra.get("dormant_matchup_adapter_optimizer_state") or {}),
+        )
+        if (
+            extra.get("matchup_adapters_runtime_enabled") is not False
+            or extra.get("matchup_adapter_training_enabled") is not False
+            or extra.get("matchup_adapter_optimizer_included") is not False
+        ):
+            raise RuntimeError(
+                "r241 checkpoint changed serialized dormant-adapter semantics"
+            )
+        digest = checkpoint.checkpoint_digest(path)
+        sidecar = dict(extra.get("peak_r195_live_fusion") or {})
+        if digest != r241_contract["anchor_parent_sha256"]:
+            validated_sidecar = validate_r241_peak_r195_live_fusion_record(
+                sidecar,
+                contract=r241_contract,
+            )
+            sidecar_phase = str(validated_sidecar.get("phase") or "")
+            sidecar_boundary = int(
+                validated_sidecar.get("boundary_iteration", -1)
+            )
+            if sidecar_phase == "rl":
+                training_provenance = dict(
+                    extra.get("training_provenance") or {}
+                )
+                if sidecar_boundary != int(
+                    training_provenance.get("iteration", -1)
+                ):
+                    raise RuntimeError(
+                        "r241 RL sidecar does not match checkpoint iteration"
+                    )
+            else:
+                rehearsal = dict(extra.get("expert_rehearsal") or {})
+                if (
+                    sidecar_boundary
+                    != int(rehearsal.get("before_iteration", -1))
+                    or int(rehearsal.get("epochs", -1))
+                    != R241_FIXED_CYCLE_REHEARSAL_EPOCHS
+                    or dict(rehearsal.get("peak_r195_live_fusion") or {})
+                    != validated_sidecar
+                ):
+                    raise RuntimeError(
+                        "r241 expert-refresh sidecar does not match its checkpoint"
+                    )
+        elif sidecar:
+            raise RuntimeError(
+                "sealed r195 anchor unexpectedly carries an r241 successor sidecar"
+            )
+        from poke_bot import features
+        feature_schema = provenance.get("feature_schema")
+        if feature_schema != features.FEATURE_SCHEMA_VERSION:
+            raise RuntimeError(
+                f"checkpoint feature schema mismatch at {path}: "
+                f"checkpoint={feature_schema!r} "
+                f"runtime={features.FEATURE_SCHEMA_VERSION!r}"
+            )
+        from poke_bot.dormant_adapter_compat import validate_zero_dormant_checkpoint
+
+        validate_zero_dormant_checkpoint(path, allow_trained=True)
+        return {
+            "path": str(path),
+            "digest": digest,
+            "pure_rl": True,
+            "smoke": bool(smoke),
+            "trusted_policy": trusted,
+            "model_profile": actual,
+            "decision_context": "history",
+            "max_context": int(actual.get("max_context", 0)),
+            "feature_schema": feature_schema,
+            "trainable_parameters": parameter_count,
+            "rl_iteration": int(payload.get("rl_iteration", 0)),
+            "legacy_inference_profile": False,
+            "r241_peak_r195_preserved": True,
+        }
     # Legacy checkpoints predate the dormant-bank flag. Missing and explicit
     # false are the same inactive contract; true remains a real profile change.
     actual.setdefault("matchup_adapters_enabled", False)
@@ -2481,6 +3736,7 @@ def _design_contract(
     multi_env_per_worker: int,
     leaf_coalesce_ms: float,
     initial_heldout_evidence: Optional[dict[str, Any]] = None,
+    r241_peak_r195_training_contract: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Immutable inputs whose drift would fork the experiment lineage."""
     hidden_engine_raw = os.environ.get("POKEBOT_LIBCG_PATH", "").strip()
@@ -2489,9 +3745,46 @@ def _design_contract(
         if hidden_engine_raw
         else None
     )
+    cg_runtime_raw = os.environ.get("CG_LIB_PATH", "").strip()
+    official_engine = None
+    if cg_runtime_raw:
+        runtime = Path(cg_runtime_raw).expanduser().resolve()
+        if not (runtime / "cg").is_dir():
+            raise RuntimeError(
+                "CG_LIB_PATH must name the runtime parent containing cg/"
+            )
+        member = runtime / "cg" / (
+            "libcg.dylib" if sys.platform == "darwin" else "libcg.so"
+        )
+        official_engine = {
+            "runtime_root": str(runtime),
+            "member": _path_content_identity(member),
+        }
+        expected = os.environ.get(
+            "POKEBOT_EXPECTED_LIBCG_SHA256", ""
+        ).strip()
+        if expected and official_engine["member"]["digest"] != (
+            "sha256:" + expected.removeprefix("sha256:")
+        ):
+            raise RuntimeError("CG_LIB_PATH simulator digest mismatch")
+    specialist_deck_raw = os.environ.get(
+        "POKEBOT_SPECIALIST_DECK_PATH", ""
+    ).strip()
+    specialist_deck_override = (
+        _path_content_identity(Path(specialist_deck_raw).expanduser().resolve())
+        if specialist_deck_raw
+        else None
+    )
     return {
         "schema": 1,
-        "run": {"mode": str(args.mode), "iterations": int(args.iterations)},
+        "r241_peak_r195_training_contract": dict(
+            r241_peak_r195_training_contract or {}
+        ),
+        "run": {
+            "mode": str(args.mode),
+            "iterations": int(args.iterations),
+            "fixed_cycle_updates": _fixed_cycle_updates(args),
+        },
         "games": {
             "per_iteration": int(args.games_per_iter),
             "heldout": int(args.heldout_games),
@@ -2623,6 +3916,9 @@ def _design_contract(
             "every_iterations": int(args.expert_rehearsal_every),
             "before_first_iteration": bool(args.expert_rehearsal_before_first),
             "epochs": int(args.expert_rehearsal_epochs),
+            "terminal_after_final_iteration": bool(
+                args.terminal_expert_rehearsal
+            ),
             "one_time_override": {
                 "before_iteration": int(args.expert_rehearsal_one_time_before),
                 "epochs": int(args.expert_rehearsal_one_time_epochs),
@@ -2641,7 +3937,11 @@ def _design_contract(
                 ),
                 "lethal_threat": float(args.lethal_threat_loss_weight),
                 "prize_race": float(args.prize_race_loss_weight),
-                "alakazam_guide": float(args.alakazam_guide_loss_weight),
+                "alakazam_guide": float(
+                    args.alakazam_guide_loss_weight
+                    if args.expert_rehearsal_guide_loss_weight is None
+                    else args.expert_rehearsal_guide_loss_weight
+                ),
             },
             "training_seat_split": {
                 "required": bool(args.require_exact_training_seat_split),
@@ -2864,6 +4164,7 @@ def _design_contract(
                 "missing_targets_masked": True,
                 "hidden_engine": hidden_engine,
             },
+            "simulator_engine": official_engine,
         },
         "remotes": {
             "disabled": bool(args.no_remote_workers),
@@ -2872,6 +4173,7 @@ def _design_contract(
         "deck_distribution": _deck_distribution_contract(
             decks, ladder_contract=ladder_contract
         ),
+        "specialist_deck_override": specialist_deck_override,
         "measurement_deck_distribution": _deck_distribution_contract(
             measurement_decks, ladder_contract=None
         ),
@@ -4036,6 +5338,9 @@ def _validate_or_migrate_design_fingerprint(
                 current_digest,
             ),
             shard_path=expected_shard,
+            r241_peak_r195_training_contract=dict(
+                current.get("r241_peak_r195_training_contract") or {}
+            ),
         )
         if expected_research in next_artifact_set and not (
             _safe_research_control_recovery_artifact(
@@ -5552,6 +6857,12 @@ def _recover_interrupted_iteration(
                         completed.get("design_fingerprint_at_collection"),
                     ),
                     shard_path=expected_shard,
+                    r241_peak_r195_training_contract=dict(
+                        (immutable_manifest.get("design_contract") or {}).get(
+                            "r241_peak_r195_training_contract"
+                        )
+                        or {}
+                    ),
                 )
                 research_is_safe = bool(
                     expected_research not in artifact_set
@@ -5849,6 +7160,7 @@ def _verified_orphan_candidate_result(
     behavior_digest: str,
     design_fingerprint: str | Sequence[str],
     shard_path: Path,
+    r241_peak_r195_training_contract: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """Reconstruct ``rl_train_step`` output for one exact crash window."""
     from poke_bot import checkpoint as checkpoint_mod
@@ -5910,6 +7222,19 @@ def _verified_orphan_candidate_result(
         and bool(extra.get("dormant_matchup_adapter_optimizer_state"))
     ):
         raise RuntimeError("orphan candidate has an incomplete dormant-adapter fit")
+    if r241_peak_r195_training_contract:
+        validate_r241_isolated_adapter_continuation(
+            fit,
+            dict(extra.get("dormant_matchup_adapter_optimizer_state") or {}),
+        )
+        validate_r241_peak_r195_live_fusion_record(
+            dict(extra.get("peak_r195_live_fusion") or {}),
+            contract=r241_peak_r195_training_contract,
+            phase="rl",
+            boundary_iteration=int(iteration),
+        )
+    elif extra.get("peak_r195_live_fusion"):
+        raise RuntimeError("orphan candidate has an unrequested r241 sidecar")
     return {
         "latest_path": str(candidate_path),
         "candidate_path": str(candidate_path),
@@ -6297,6 +7622,7 @@ def _ensure_pure_rl_checkpoint(
     *,
     smoke: bool = False,
     allow_legacy_inference_profile: bool = False,
+    r241_peak_r195_training_contract: Optional[Mapping[str, Any]] = None,
 ) -> Path:
     """Build or validate a fresh small Pure-RL seed (not AZ / not starter prior)."""
     import torch
@@ -6319,15 +7645,29 @@ def _ensure_pure_rl_checkpoint(
             path,
             smoke=smoke,
             allow_legacy_inference_profile=allow_legacy_inference_profile,
+            r241_peak_r195_training_contract=r241_peak_r195_training_contract,
         )
         model = load_model_from_checkpoint(path, device=torch.device("cpu"))
         n = count_params(model)
         print(f"[pure_rl] loaded checkpoint params={n} path={path}", flush=True)
-        validate_param_budget(n, fail_max=int(config.PURE_RL.param_fail_max))
+        if r241_peak_r195_training_contract:
+            expected = canonical_r241_peak_r195_training_contract(
+                r241_peak_r195_training_contract
+            )
+            if n != int(expected["trainable_parameter_count"]):
+                raise RuntimeError(
+                    "r241 loaded model parameter count differs from its sealed receipt"
+                )
+        else:
+            validate_param_budget(n, fail_max=int(config.PURE_RL.param_fail_max))
         cfg = getattr(model, "cfg", None)
         # Pure-RL overnight is d_model=96 L4/4/4 (~1.77M). Hope/legacy giants
         # are d_model>=192 — refuse those, not the intentional dense seed.
-        if cfg is not None and int(getattr(cfg, "d_model", 0)) >= 192:
+        if (
+            not r241_peak_r195_training_contract
+            and cfg is not None
+            and int(getattr(cfg, "d_model", 0)) >= 192
+        ):
             raise SystemExit(
                 f"PURE_RL refuse Hope-sized checkpoint d_model={cfg.d_model} "
                 f"at {path}; pass a small pure_rl seed or omit --base-checkpoint"
@@ -6335,6 +7675,10 @@ def _ensure_pure_rl_checkpoint(
         return path
 
     torch.manual_seed(seed)
+    if r241_peak_r195_training_contract:
+        raise RuntimeError(
+            "r241 peak-r195 mode requires its immutable sealed parent checkpoint"
+        )
     cfg = pure_rl_model_config(**({"dropout": 0.0} if smoke else {}))
     if smoke:
         # Tiny vocabs for CPU canary speed; still ≤3.5M with real vocab too.
@@ -6806,6 +8150,35 @@ def _our_decks(
         requested = str(specialist_archetype or "").strip().lower()
         if not requested:
             raise ValueError("specialist mode requires an explicit archetype")
+        override_raw = os.environ.get("POKEBOT_SPECIALIST_DECK_PATH", "").strip()
+        if override_raw:
+            from poke_bot.archetypes import classify_deck
+
+            override = Path(override_raw).expanduser().resolve()
+            expected_file = os.environ.get(
+                "POKEBOT_SPECIALIST_DECK_SHA256", ""
+            ).removeprefix("sha256:")
+            expected_multiset = os.environ.get(
+                "POKEBOT_SPECIALIST_DECK_MULTISET_SHA256", ""
+            ).removeprefix("sha256:")
+            if (
+                not override.is_file()
+                or len(expected_file) != 64
+                or _sha256_file(override).removeprefix("sha256:")
+                != expected_file
+            ):
+                raise ValueError("specialist deck override file identity mismatch")
+            cards = read_deck(override)
+            canonical = hashlib.sha256(
+                json.dumps(sorted(cards), separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            if (
+                len(cards) != 60
+                or canonical != expected_multiset
+                or classify_deck(cards) != requested
+            ):
+                raise ValueError("specialist deck override multiset mismatch")
+            return [(requested, list(cards))]
         pinned, _mix, _representatives, _contract = _core_ladder_decks()
         matches = [
             (name, list(cards))
@@ -7344,6 +8717,15 @@ def run_smoke_loop(args: argparse.Namespace) -> int:
                     args.setup_board_outcome_loss_weight
                 ),
                 combo_state_loss_weight=float(args.combo_state_loss_weight),
+                visible_tutor_completion_loss_weight=(
+                    0.025 if r260_own_deck_training_inputs else 0.0
+                ),
+                terminal_conversion_loss_weight=(
+                    0.025 if r260_own_deck_training_inputs else 0.0
+                ),
+                collect_own_deck_promotion_metrics=bool(
+                    r260_own_deck_training_inputs
+                ),
                 current_deck_guide_curriculum_spec=str(
                     args.current_deck_guide_curriculum_spec or ""
                 ),
@@ -12543,6 +13925,17 @@ def run_full_loop(args: argparse.Namespace) -> int:
     from poke_bot.promotion import CheckpointIdentity
     from poke_bot.remote_jobs import RemoteWorkerFarm
 
+    fixed_cycle_updates = _validate_fixed_cycle_configuration(args)
+    r241_peak_r195_training_contract = (
+        _load_r241_peak_r195_training_contract(args)
+        if fixed_cycle_updates
+        else {}
+    )
+    r260_own_deck_training_inputs = (
+        _load_r260_own_deck_training_inputs(args)
+        if fixed_cycle_updates
+        else {}
+    )
     if int(args.expert_rehearsal_every) < 0:
         raise ValueError("--expert-rehearsal-every cannot be negative")
     if int(args.expert_rehearsal_force_before) < -1:
@@ -12554,6 +13947,21 @@ def run_full_loop(args: argparse.Namespace) -> int:
         raise ValueError("--expert-manifest is required when expert rehearsal is enabled")
     if int(args.expert_rehearsal_epochs) <= 0:
         raise ValueError("--expert-rehearsal-epochs must be positive")
+    if (
+        args.expert_rehearsal_guide_loss_weight is not None
+        and float(args.expert_rehearsal_guide_loss_weight) < 0.0
+    ):
+        raise ValueError(
+            "--expert-rehearsal-guide-loss-weight cannot be negative"
+        )
+    if bool(args.terminal_expert_rehearsal) and (
+        int(args.expert_rehearsal_every) <= 0
+        or int(args.iterations) % int(args.expert_rehearsal_every) != 0
+    ):
+        raise ValueError(
+            "terminal expert rehearsal requires a due positive cadence at "
+            "the configured iteration count"
+        )
     one_time_before = int(args.expert_rehearsal_one_time_before)
     one_time_epochs = int(args.expert_rehearsal_one_time_epochs)
     if one_time_before < -1:
@@ -12751,6 +14159,40 @@ def run_full_loop(args: argparse.Namespace) -> int:
         and float(args.official_collect_frac) > 0.0
         else {}
     )
+    if fixed_cycle_updates:
+        from poke_bot.r241_direct_policy_runtime import (
+            R241_H10_CONTENT_SHA256,
+            R241_H10_MODEL_SHA256,
+            R241_H10_OPPONENT_ID,
+        )
+
+        h10_rows = [
+            dict(row)
+            for row in list((active_gate or {}).get("roster") or ())
+            if str(dict(row).get("opponent_id") or "") == R241_H10_OPPONENT_ID
+        ]
+        h10 = h10_rows[0] if len(h10_rows) == 1 else {}
+        if (
+            collection_group_plan
+            != {
+                "self_play": 1_024,
+                STRONG_PUBLIC_PRACTICE_GROUP: 4_586,
+                "diverse_public": 2_586,
+            }
+            or len(h10_rows) != 1
+            or h10.get("content_digest") != R241_H10_CONTENT_SHA256
+            or h10.get("frozen_checkpoint_digest") != R241_H10_MODEL_SHA256
+            or h10.get("frozen_specialist") is not True
+            or h10.get("tier") != "S++"
+            or float(h10.get("weight", 0.0)) != 4.0
+            or int(h10.get("strong_public_practice_floor_games", -1)) != 1_024
+            or int(practice_minimum_games.get(R241_H10_OPPONENT_ID, -1))
+            < 1_024
+        ):
+            raise RuntimeError(
+                "r241 active public mix must pin direct H10 Marnie for at "
+                "least 1024 of the 7172 public games"
+            )
 
     hw = full_hardware_profile()
     if args.allow_single_gpu:
@@ -12774,6 +14216,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
             args.seed,
             smoke=False,
             allow_legacy_inference_profile=True,
+            r241_peak_r195_training_contract=(
+                r241_peak_r195_training_contract
+            ),
         )
         print(
             f"[pure_rl] RESUME next_iteration={start_iteration} "
@@ -12799,7 +14244,14 @@ def run_full_loop(args: argparse.Namespace) -> int:
             if args.base_checkpoint is not None
             else (run_dir / "checkpoints" / "seed.pt")
         )
-        ckpt = _ensure_pure_rl_checkpoint(seed_path, args.seed, smoke=False)
+        ckpt = _ensure_pure_rl_checkpoint(
+            seed_path,
+            args.seed,
+            smoke=False,
+            r241_peak_r195_training_contract=(
+                r241_peak_r195_training_contract
+            ),
+        )
         start_iteration = 0
 
     if args.research_control_registry is None:
@@ -13119,6 +14571,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
         ckpt,
         smoke=False,
         allow_legacy_inference_profile=resumed,
+        r241_peak_r195_training_contract=r241_peak_r195_training_contract,
     )
     initial_replay_shards = [
         Path(path).expanduser().resolve() for path in args.initial_replay_shard
@@ -13163,7 +14616,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
         )
         design_initial_learner_identity = initial_learner_identity
         learner_profile = _checkpoint_contract(
-            initial_learner_identity.path, smoke=False
+            initial_learner_identity.path,
+            smoke=False,
+            r241_peak_r195_training_contract=(
+                {} if r260_own_deck_training_inputs else r241_peak_r195_training_contract
+            ),
         )
         for field in (
             "model_profile",
@@ -13226,7 +14683,18 @@ def run_full_loop(args: argparse.Namespace) -> int:
         seed_namespace_contract=seed_namespace_contract,
         multi_env_per_worker=multi_env_n,
         leaf_coalesce_ms=coalesce_ms,
+        r241_peak_r195_training_contract=(
+            r241_peak_r195_training_contract
+        ),
     )
+    if r260_own_deck_training_inputs:
+        # The zero-safe migration remains historical provenance; update zero
+        # uses only the separately verified runtime-enabled canary checkpoint.
+        # Recording the complete Inzi transport chain cannot itself enable a
+        # route or bypass the canary/evaluation gate.
+        design_contract["r260_own_deck_successor"] = dict(
+            r260_own_deck_training_inputs
+        )
     design_fingerprint = _design_fingerprint(design_contract)
     pending_collection_contract = design_contract
 
@@ -13427,7 +14895,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
         _ensure_terminal_gate_marker(
             run_dir,
             loop_state,
-            preserve_first=bool(args.continue_after_gate),
+            preserve_first=(
+                bool(args.continue_after_gate) or bool(fixed_cycle_updates)
+            ),
             marker_name=configured_terminal_marker_name,
         )
         if configured_terminal_marker.exists() or terminal_payload_is_eligible
@@ -13459,21 +14929,36 @@ def run_full_loop(args: argparse.Namespace) -> int:
             f"gate_id={marker_gate_id or 'unknown'}",
             flush=True,
         )
-        if not bool(args.continue_after_gate) or (
-            terminal_target_reached and terminal_minimum_reached
+        if _gate_pass_should_stop(
+            fixed_cycle_updates=fixed_cycle_updates,
+            continue_after_gate=bool(args.continue_after_gate),
+            terminal_target_reached=(
+                terminal_target_reached and terminal_minimum_reached
+            ),
         ):
             return 0
-        if terminal_target_reached and not terminal_minimum_reached:
+        if (
+            fixed_cycle_updates == 0
+            and terminal_target_reached
+            and not terminal_minimum_reached
+        ):
             raise RuntimeError(
                 "terminal marker predates the configured minimum terminal "
                 f"iteration: marker={marker_iteration} "
                 f"minimum={int(args.minimum_terminal_iteration)}"
             )
-        print(
-            "[pure_rl] CONTINUE_AFTER_GATE armed; preserving first-pass marker "
-            "and resuming the next committed iteration",
-            flush=True,
-        )
+        if fixed_cycle_updates:
+            print(
+                "[pure_rl] FIXED_CYCLE_GATE_MARKER_NONTERMINAL "
+                f"updates={fixed_cycle_updates} marker_iteration={marker_iteration}",
+                flush=True,
+            )
+        else:
+            print(
+                "[pure_rl] CONTINUE_AFTER_GATE armed; preserving first-pass marker "
+                "and resuming the next committed iteration",
+                flush=True,
+            )
 
     assert loop_state is not None
     learner_identity = _verified_checkpoint_identity(
@@ -13763,6 +15248,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
         def _kick_collect(it: int, champion: Path, dig: str) -> dict[str, Any]:
             import shutil
 
+            if fixed_cycle_updates and int(it) >= fixed_cycle_updates:
+                raise RuntimeError(
+                    "fixed cycle forbids collection at or beyond iter_"
+                    f"{fixed_cycle_updates:05d}"
+                )
             free_bytes = int(shutil.disk_usage(run_dir).free)
             minimum_free = int(float(args.min_free_disk_gb) * (1024 ** 3))
             if free_bytes < minimum_free:
@@ -14234,7 +15724,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 ),
                 "lethal_threat": float(args.lethal_threat_loss_weight),
                 "prize_race": float(args.prize_race_loss_weight),
-                "alakazam_guide": float(args.alakazam_guide_loss_weight),
+                "alakazam_guide": float(
+                    args.alakazam_guide_loss_weight
+                    if args.expert_rehearsal_guide_loss_weight is None
+                    else args.expert_rehearsal_guide_loss_weight
+                ),
             }
             family_residual_loss_weights = (
                 dict(family_training_contract["residual_objectives"])
@@ -14408,6 +15902,124 @@ def run_full_loop(args: argparse.Namespace) -> int:
                             "path": str(existing_seat_index.resolve()),
                             "sha256": _sha256_file(existing_seat_index),
                         }
+            if r260_own_deck_training_inputs:
+                # The successor never enters the resident corpus path: its
+                # Inzi-only index streams and exact-key attaches one bounded
+                # host batch at a time.
+                from poke_bot.r260_inzi_sidecar_index import R260InziSidecarIndex
+
+                rehearsal_checkpoint, receipt_path = rehearsal_paths(run_dir, it)
+                index_path = run_dir / "r260_sidecar_indexes" / (
+                    f"expert-{r260_own_deck_training_inputs['sidecar_binding_sha256'][7:19]}.sqlite3"
+                )
+                if index_path.exists():
+                    index = R260InziSidecarIndex(
+                        index_path,
+                        source_manifest_sha256=r260_own_deck_training_inputs["source_manifest_sha256"],
+                        daily_meta_sha256s=r260_own_deck_training_inputs["daily_meta_sha256s"],
+                    )
+                    index.assert_verified(
+                        expected_source_manifest_sha256=r260_own_deck_training_inputs["source_manifest_sha256"],
+                        daily_meta_sha256s=r260_own_deck_training_inputs["daily_meta_sha256s"],
+                    )
+                else:
+                    index = R260InziSidecarIndex.build(
+                        sidecar_root=r260_own_deck_training_inputs["inzi_sidecar_root"],
+                        output=index_path,
+                        source_manifest_sha256=r260_own_deck_training_inputs["source_manifest_sha256"],
+                        daily_meta_sha256s=r260_own_deck_training_inputs["daily_meta_sha256s"],
+                    )
+                if receipt_path.exists():
+                    existing = _validate_r260_scheduled_rehearsal_receipt(
+                        json.loads(receipt_path.read_text(encoding="utf-8")),
+                        expected_r260_inputs=r260_own_deck_training_inputs,
+                    )
+                    prepared = _verified_checkpoint_identity(
+                        {
+                            "path": existing["post_checkpoint"]["path"],
+                            "digest": existing["post_checkpoint"]["sha256"],
+                        }
+                    )
+                    return prepared, existing
+                stream_cfg = TrainConfig.pure_rl_defaults(
+                    epochs=rehearsal_epochs, seed=args.seed + 5_100_000 + it,
+                    amp=train_dev.type == "cuda", max_decisions_per_batch=int(args.expert_rehearsal_batch_size),
+                    visible_tutor_completion_loss_weight=0.025,
+                    terminal_conversion_loss_weight=0.025,
+                    collect_own_deck_promotion_metrics=True,
+                )
+                result = streaming_r260_host_rehearsal_step(
+                    manifest_path=manifest_identity.path, manifest_digest=manifest_identity.digest,
+                    sidecar_index=index, base_ckpt=parent.path, output_path=rehearsal_checkpoint,
+                    archetype_id=str(args.specialist_archetype), epochs=rehearsal_epochs,
+                    cfg=stream_cfg, seed=corpus_split_seed, max_context=rehearsal_context,
+                    batch_games=max(1, int(args.expert_rehearsal_batch_size) // 128),
+                )
+                record = {
+                    "schema": "poke_bot.r260_scheduled_expert_rehearsal/v1",
+                    "status": "passed",
+                    "owner_contract_sha256": r260_own_deck_training_inputs[
+                        "owner_contract_sha256"
+                    ],
+                    "migration_receipt_sha256": r260_own_deck_training_inputs[
+                        "migration_receipt_sha256"
+                    ],
+                    "canary_activation_receipt_sha256": (
+                        r260_own_deck_training_inputs[
+                            "canary_activation_receipt_sha256"
+                        ]
+                    ),
+                    "sidecar_binding_sha256": r260_own_deck_training_inputs[
+                        "sidecar_binding_sha256"
+                    ],
+                    "pre_checkpoint": _r260_file_identity(parent.path),
+                    "post_checkpoint": _r260_file_identity(
+                        Path(result["candidate_path"])
+                    ),
+                    "index": _r260_file_identity(index.path),
+                    "inzi_dataset": dict(
+                        r260_own_deck_training_inputs["inzi_dataset_identity"]
+                    ),
+                    "index_provenance": {
+                        "schema": "poke_bot.r260_inzi_sidecar_index/v1",
+                        "source_manifest_sha256": (
+                            r260_own_deck_training_inputs[
+                                "source_manifest_sha256"
+                            ]
+                        ),
+                        "daily_meta_sha256s": dict(
+                            r260_own_deck_training_inputs[
+                                "daily_meta_sha256s"
+                            ]
+                        ),
+                    },
+                    "loss_weights": {
+                        "visible_tutor_completion": 0.025,
+                        "terminal_conversion": 0.025,
+                    },
+                    "rl_iteration_before_after": [
+                        int(result["rl_iteration"]),
+                        int(result["rl_iteration"]),
+                    ],
+                    "bounded_batch_games": result["max_games_per_batch"],
+                    "full_window_device_resident": False,
+                    "sampled_keys": [list(key) for key in result["sampled_keys"]],
+                    "gradient_reachability": result["gradient_reachability"],
+                }
+                record["receipt_sha256"] = _canonical_digest(record)
+                receipt_path.parent.mkdir(parents=True, exist_ok=True)
+                with receipt_path.open("x", encoding="utf-8") as stream:
+                    stream.write(json.dumps(record, sort_keys=True) + "\n")
+                validated = _validate_r260_scheduled_rehearsal_receipt(
+                    record,
+                    expected_r260_inputs=r260_own_deck_training_inputs,
+                )
+                return _verified_checkpoint_identity(
+                    {
+                        "path": validated["post_checkpoint"]["path"],
+                        "digest": validated["post_checkpoint"]["sha256"],
+                    }
+                ), validated
             # A completed rehearsal is immutable training evidence.  Reuse it
             # before rebuilding the CPU pack, including in exact-seat mode;
             # otherwise a benign later learner-cap migration would recompute a
@@ -14425,6 +16037,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 option_conditioned_loss_weights=option_conditioned_loss_weights,
                 archetype_residual_loss_weights=family_residual_loss_weights,
                 training_seat_split_receipt=training_seat_split_receipt,
+                r241_peak_r195_training_contract=(
+                    {} if r260_own_deck_training_inputs else r241_peak_r195_training_contract
+                ),
             )
             if record is None:
                 print(
@@ -14471,6 +16086,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         training_seat_split_receipt=(
                             training_seat_split_receipt
                         ),
+                        r241_peak_r195_training_contract=(
+                            r241_peak_r195_training_contract
+                        ),
                     )
             if record is None:
                 rehearsal_checkpoint, _receipt_path = rehearsal_paths(run_dir, it)
@@ -14481,67 +16099,84 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     f"parent={parent.digest[:19]}…",
                     flush=True,
                 )
-                rehearsal_result = supervised_rehearsal_step(
-                    corpus,
-                    base_ckpt=parent.path,
-                    output_path=rehearsal_checkpoint,
-                    parent_digest=parent.digest,
-                    rehearsal_iteration=it,
-                    manifest_identity=manifest_identity.as_dict(),
-                    epochs=rehearsal_epochs,
-                    lr=float(args.expert_rehearsal_lr),
-                    requested_batch_size=int(args.expert_rehearsal_batch_size),
-                    seed=args.seed + 5_100_000 + it,
-                    corpus_split_seed=corpus_split_seed,
-                    device=train_dev,
-                    aux_loss_weight=float(args.archetype_aux_loss_weight),
-                    opp_hand_loss_weight=float(args.opp_hand_loss_weight),
-                    opp_remainder_loss_weight=float(
-                        args.opp_remainder_loss_weight
-                    ),
-                    lethal_threat_loss_weight=float(
-                        args.lethal_threat_loss_weight
-                    ),
-                    prize_race_loss_weight=float(args.prize_race_loss_weight),
-                    alakazam_guide_loss_weight=float(
-                        args.alakazam_guide_loss_weight
-                    ),
-                    current_deck_guide_training_mode=str(
-                        args.current_deck_guide_training_mode
-                    ),
-                    setup_board_outcome_loss_weight=float(
-                        args.setup_board_outcome_loss_weight
-                    ),
-                    combo_state_loss_weight=float(args.combo_state_loss_weight),
-                    current_deck_guide_curriculum_spec=str(
-                        args.current_deck_guide_curriculum_spec or ""
-                    ),
-                    current_deck_guide_head_role_map=str(
-                        args.current_deck_guide_head_role_map or ""
-                    ),
-                    current_deck_guide_curriculum_validation_receipt=str(
-                        args.current_deck_guide_curriculum_validation_receipt
-                        or ""
-                    ),
-                    expanded_head_loss_weights=dict(
-                        expanded_head_contract.get("loss_weights") or {}
-                    ),
-                    archetype_residual_loss_weights=(
-                        family_residual_loss_weights
-                    ),
-                    expanded_head_schedule=expanded_head_contract,
-                    output_archetype_id=(
-                        "core"
-                        if args.mode == "core"
-                        else str(args.specialist_archetype)
-                    ),
-                    output_model_id=(
-                        f"{args.run_name}.expert-before-iter{it:05d}"
-                    ),
-                    training_seat_split_receipt=(
-                        training_seat_split_receipt
-                    ),
-                )
+                def _run_supervised_rehearsal(
+                    args: argparse.Namespace,
+                ) -> dict[str, Any]:
+                    return supervised_rehearsal_step(
+                        corpus,
+                        base_ckpt=parent.path,
+                        output_path=rehearsal_checkpoint,
+                        parent_digest=parent.digest,
+                        rehearsal_iteration=it,
+                        manifest_identity=manifest_identity.as_dict(),
+                        epochs=rehearsal_epochs,
+                        lr=float(args.expert_rehearsal_lr),
+                        requested_batch_size=int(
+                            args.expert_rehearsal_batch_size
+                        ),
+                        seed=args.seed + 5_100_000 + it,
+                        corpus_split_seed=corpus_split_seed,
+                        device=train_dev,
+                        aux_loss_weight=float(args.archetype_aux_loss_weight),
+                        opp_hand_loss_weight=float(args.opp_hand_loss_weight),
+                        opp_remainder_loss_weight=float(
+                            args.opp_remainder_loss_weight
+                        ),
+                        lethal_threat_loss_weight=float(
+                            args.lethal_threat_loss_weight
+                        ),
+                        prize_race_loss_weight=float(
+                            args.prize_race_loss_weight
+                        ),
+                        alakazam_guide_loss_weight=float(
+                            args.alakazam_guide_loss_weight
+                        ),
+                        current_deck_guide_training_mode=str(
+                            args.current_deck_guide_training_mode
+                        ),
+                        setup_board_outcome_loss_weight=float(
+                            args.setup_board_outcome_loss_weight
+                        ),
+                        combo_state_loss_weight=float(args.combo_state_loss_weight),
+                        current_deck_guide_curriculum_spec=str(
+                            args.current_deck_guide_curriculum_spec or ""
+                        ),
+                        current_deck_guide_head_role_map=str(
+                            args.current_deck_guide_head_role_map or ""
+                        ),
+                        current_deck_guide_curriculum_validation_receipt=str(
+                            args.current_deck_guide_curriculum_validation_receipt
+                            or ""
+                        ),
+                        expanded_head_loss_weights=dict(
+                            expanded_head_contract.get("loss_weights") or {}
+                        ),
+                        archetype_residual_loss_weights=(
+                            family_residual_loss_weights
+                        ),
+                        expanded_head_schedule=expanded_head_contract,
+                        output_archetype_id=(
+                            "core"
+                            if args.mode == "core"
+                            else str(args.specialist_archetype)
+                        ),
+                        output_model_id=(
+                            f"{args.run_name}.expert-before-iter{it:05d}"
+                        ),
+                        training_seat_split_receipt=(
+                            training_seat_split_receipt
+                        ),
+                        r241_peak_r195_training_contract=(
+                            r241_peak_r195_training_contract
+                        ),
+                    )
+
+                rehearsal_args = argparse.Namespace(**vars(args))
+                if args.expert_rehearsal_guide_loss_weight is not None:
+                    rehearsal_args.alakazam_guide_loss_weight = float(
+                        loss_weights["alakazam_guide"]
+                    )
+                rehearsal_result = _run_supervised_rehearsal(rehearsal_args)
                 record = commit_rehearsal_receipt(
                     run_dir,
                     before_iteration=it,
@@ -14562,6 +16197,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     training_seat_split_receipt=(
                         training_seat_split_receipt
                     ),
+                    r241_peak_r195_training_contract=(
+                        r241_peak_r195_training_contract
+                    ),
                 )
             prepared = _verified_checkpoint_identity(record["checkpoint_identity"])
             print(
@@ -14577,9 +16215,312 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 }
             return prepared, record
 
+        def _prepare_r241_precollection_refresh(
+            it: int, parent: Any
+        ) -> tuple[Any, dict[str, Any]]:
+            """Commit/recover boundary 5 before any iter-5 game is dispatched."""
+
+            if not _r241_precollection_refresh_due(
+                it, r241_peak_r195_training_contract
+            ):
+                raise RuntimeError(
+                    "r241 precollection refresh requested outside boundary 5"
+                )
+            state_key = "r241_precollection_expert_refresh"
+            boundary = dict(loop_state.get(state_key) or {})
+            receipt_path = rehearsal_paths(run_dir, it)[1]
+            leaves_stopped = False
+            if boundary:
+                receipt_identity = _r241_file_identity(receipt_path)
+                stored_receipt = dict(boundary.get("receipt") or {})
+                refreshed = _verified_checkpoint_identity(
+                    boundary.get("refreshed") or {}
+                )
+                sealed_parent = _verified_checkpoint_identity(
+                    boundary.get("parent") or {}
+                )
+                if (
+                    boundary.get("schema")
+                    != "poke_bot.r241_precollection_expert_refresh/v1"
+                    or int(boundary.get("before_iteration", -1)) != int(it)
+                    or int(boundary.get("epochs", -1))
+                    != R241_FIXED_CYCLE_REHEARSAL_EPOCHS
+                    or stored_receipt != receipt_identity
+                    or str((loop_state.get("learner") or {}).get("digest") or "")
+                    != refreshed.digest
+                    or parent.digest != refreshed.digest
+                ):
+                    raise RuntimeError(
+                        "r241 precollection expert-refresh ledger is inconsistent"
+                    )
+                try:
+                    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise RuntimeError(
+                        "r241 precollection expert-refresh receipt is unreadable"
+                    ) from exc
+                if (
+                    str(receipt.get("parent_digest") or "")
+                    != sealed_parent.digest
+                    or str(receipt.get("checkpoint_digest") or "")
+                    != refreshed.digest
+                ):
+                    raise RuntimeError(
+                        "r241 precollection expert-refresh receipt changed"
+                    )
+                record = {
+                    **receipt,
+                    "checkpoint_identity": refreshed.as_dict(),
+                    "reused": True,
+                }
+            else:
+                if leaf.remote_channel is not None:
+                    print(
+                        "[pure_rl] suspend leaf farm before r241 precollection "
+                        f"refresh boundary={it} servers={len(leaf.procs)}",
+                        flush=True,
+                    )
+                    leaf.stop()
+                    leaves_stopped = True
+                    release_process_heap()
+                refreshed, record = _prepare_expert_rehearsal(it, parent)
+                if str(record.get("parent_digest") or "") != parent.digest:
+                    raise RuntimeError(
+                        "r241 boundary-5 refresh is not a direct child of commit 4"
+                    )
+                receipt_identity = _r241_file_identity(receipt_path)
+                from poke_bot import checkpoint as checkpoint_mod
+
+                refreshed_payload = checkpoint_mod.load_checkpoint(
+                    refreshed.path, map_location="cpu"
+                )
+                refreshed_fit = dict(
+                    (refreshed_payload.get("extra") or {}).get(
+                        "dormant_matchup_adapter_fit"
+                    )
+                    or {}
+                )
+                next_boundary = {
+                    "schema": "poke_bot.r241_precollection_expert_refresh/v1",
+                    "before_iteration": int(it),
+                    "rl_updates_completed": int(it),
+                    "epochs": R241_FIXED_CYCLE_REHEARSAL_EPOCHS,
+                    "parent": parent.as_dict(),
+                    "refreshed": refreshed.as_dict(),
+                    "receipt": receipt_identity,
+                    "next_collection_started": False,
+                    "runtime_publish": None,
+                    "created_at_utc": datetime.now(timezone.utc).isoformat(),
+                }
+                refreshed_state = json.loads(json.dumps(loop_state))
+                refreshed_state["learner"] = refreshed.as_dict()
+                refreshed_state[state_key] = next_boundary
+                if refreshed_fit:
+                    refreshed_state["dormant_matchup_adapter_fit"] = {
+                        **refreshed_fit,
+                        "checkpoint_digest": refreshed.digest,
+                        "checkpoint_path": str(refreshed.path),
+                    }
+                _atomic_json(run_dir / "loop_state.json", refreshed_state)
+                loop_state.clear()
+                loop_state.update(refreshed_state)
+                boundary = next_boundary
+
+            _assert_r241_precollection_refresh_binding(
+                iteration=it,
+                collection_behavior_digest=refreshed.digest,
+                rehearsal_record=record,
+                r241_peak_r195_training_contract=(
+                    r241_peak_r195_training_contract
+                ),
+            )
+            if leaves_stopped:
+                _rebuild_leaves_if_needed(refreshed.path, refreshed.digest)
+            publish = _hard_gate_publish_weights(
+                leaf=leaf,
+                remote_farm=remote_farm,
+                ckpt=refreshed.path,
+                digest=refreshed.digest,
+                version=int(it) * 10 + 5,
+                required_endpoints=endpoints,
+                reload_local=False,
+            )
+            published_state = json.loads(json.dumps(loop_state))
+            published_boundary = dict(published_state.get(state_key) or boundary)
+            published_boundary["runtime_publish"] = publish
+            published_boundary["next_collection_started"] = False
+            published_state[state_key] = published_boundary
+            _atomic_json(run_dir / "loop_state.json", published_state)
+            loop_state.clear()
+            loop_state.update(published_state)
+            print(
+                "[pure_rl] R241_PRECOLLECTION_EXPERT_SOFT_REFRESH "
+                f"before_iter={it} epochs={R241_FIXED_CYCLE_REHEARSAL_EPOCHS} "
+                f"checkpoint={refreshed.digest[:19]}… next_collection_started=false",
+                flush=True,
+            )
+            return refreshed, record
+
+        def _bind_r241_precollection_collection(
+            it: int,
+            collect_bundle: Mapping[str, Any],
+            rehearsal_record: Mapping[str, Any],
+        ) -> None:
+            """Seal the completed iter-5 collection against its refreshed digest."""
+
+            if not _r241_precollection_refresh_due(
+                it, r241_peak_r195_training_contract
+            ):
+                return
+            behavior = _collection_behavior_identity(dict(collect_bundle))
+            _assert_r241_precollection_refresh_binding(
+                iteration=it,
+                collection_behavior_digest=behavior.digest,
+                rehearsal_record=rehearsal_record,
+                r241_peak_r195_training_contract=(
+                    r241_peak_r195_training_contract
+                ),
+            )
+            receipt_path = Path(str(collect_bundle.get("receipt") or ""))
+            receipt_identity = _r241_file_identity(receipt_path)
+            state_key = "r241_precollection_expert_refresh"
+            boundary_state = json.loads(json.dumps(loop_state))
+            boundary = dict(boundary_state.get(state_key) or {})
+            if (
+                boundary.get("schema")
+                != "poke_bot.r241_precollection_expert_refresh/v1"
+                or int(boundary.get("before_iteration", -1)) != int(it)
+                or str((boundary.get("refreshed") or {}).get("digest") or "")
+                != behavior.digest
+            ):
+                raise RuntimeError(
+                    "r241 iter-5 collection lost its precollection refresh ledger"
+                )
+            boundary.update(
+                {
+                    "next_collection_started": True,
+                    "collection_completed": True,
+                    "collection_checkpoint_digest": behavior.digest,
+                    "collection_receipt": receipt_identity,
+                }
+            )
+            boundary_state[state_key] = boundary
+            _atomic_json(run_dir / "loop_state.json", boundary_state)
+            loop_state.clear()
+            loop_state.update(boundary_state)
+
+        def _complete_terminal_expert_rehearsal() -> Optional[dict[str, Any]]:
+            """Run/recover the due final soft refresh without another collect."""
+
+            if not bool(args.terminal_expert_rehearsal):
+                return None
+            boundary_iteration = int(loop_state.get("next_iteration") or 0)
+            if boundary_iteration != int(args.iterations):
+                raise RuntimeError(
+                    "terminal expert rehearsal requires the exact completed "
+                    "iteration count"
+                )
+            if not rehearsal_due(
+                boundary_iteration, int(args.expert_rehearsal_every)
+            ):
+                raise RuntimeError("terminal expert rehearsal is not due")
+            parent = _verified_checkpoint_identity(loop_state["learner"])
+            if (
+                r241_peak_r195_training_contract
+                and leaf.remote_channel is not None
+            ):
+                print(
+                    "[pure_rl] suspend leaf farm before r241 terminal expert "
+                    f"refresh servers={len(leaf.procs)}",
+                    flush=True,
+                )
+                leaf.stop()
+                release_process_heap()
+            rehearsed, rehearsal_record = _prepare_expert_rehearsal(
+                boundary_iteration, parent
+            )
+            if r241_peak_r195_training_contract:
+                validate_r241_peak_r195_live_fusion_record(
+                    dict(rehearsal_record.get("peak_r195_live_fusion") or {}),
+                    contract=r241_peak_r195_training_contract,
+                    phase="expert_refresh",
+                    boundary_iteration=boundary_iteration,
+                )
+            boundary_path = run_dir / "terminal_expert_refresh.json"
+            if boundary_path.is_file():
+                boundary = json.loads(boundary_path.read_text(encoding="utf-8"))
+                if (
+                    boundary.get("schema")
+                    != "poke_bot.terminal_expert_soft_refresh/v1"
+                    or int(boundary.get("before_iteration", -1))
+                    != boundary_iteration
+                    or int(boundary.get("epochs_completed", -1))
+                    != int(args.expert_rehearsal_epochs)
+                    or dict(boundary.get("parent") or {}).get("digest")
+                    != parent.digest
+                    or dict(boundary.get("refreshed") or {}).get("digest")
+                    != rehearsed.digest
+                    or (
+                        bool(r241_peak_r195_training_contract)
+                        and dict(boundary.get("expert_rehearsal") or {})
+                        != dict(rehearsal_record)
+                    )
+                    or boundary.get("next_collection_started") is not False
+                ):
+                    raise RuntimeError(
+                        "terminal expert refresh receipt is inconsistent"
+                    )
+            else:
+                boundary = {
+                    "schema": "poke_bot.terminal_expert_soft_refresh/v1",
+                    "specialist_id": str(args.specialist_archetype or ""),
+                    "before_iteration": boundary_iteration,
+                    "rl_updates_completed": boundary_iteration,
+                    "epochs_completed": int(args.expert_rehearsal_epochs),
+                    "parent": parent.as_dict(),
+                    "refreshed": rehearsed.as_dict(),
+                    "expert_rehearsal": rehearsal_record,
+                    "next_collection_started": False,
+                    "created_at_utc": datetime.now(timezone.utc).isoformat(),
+                }
+                _write_json_exclusive(boundary_path, boundary)
+            terminal_state = json.loads(json.dumps(loop_state))
+            terminal_state["terminal_expert_refresh"] = {
+                "path": str(boundary_path),
+                "parent": parent.as_dict(),
+                "refreshed": rehearsed.as_dict(),
+                "epochs": int(args.expert_rehearsal_epochs),
+            }
+            _atomic_json(run_dir / "loop_state.json", terminal_state)
+            loop_state.clear()
+            loop_state.update(terminal_state)
+            print(
+                "[pure_rl] TERMINAL_EXPERT_SOFT_REFRESH "
+                f"before_iter={boundary_iteration} "
+                f"epochs={int(args.expert_rehearsal_epochs)} "
+                f"checkpoint={rehearsed.digest[:19]}…",
+                flush=True,
+            )
+            return boundary
+
+        def _complete_fixed_cycle_boundary() -> Optional[dict[str, Any]]:
+            """Close r241 only after the exact tenth immutable RL commit."""
+
+            if fixed_cycle_updates:
+                _assert_fixed_cycle_completion(
+                    run_dir,
+                    loop_state,
+                    updates=fixed_cycle_updates,
+                    r241_peak_r195_training_contract=(
+                        r241_peak_r195_training_contract
+                    ),
+                )
+            return _complete_terminal_expert_rehearsal()
+
         # Start exactly at the ledger boundary. Collection is synchronous and
         # never overlaps a train/promotion/reload boundary.
         if start_iteration >= int(args.iterations):
+            _complete_fixed_cycle_boundary()
             print(
                 f"[pure_rl] ledger already complete next={start_iteration} "
                 f"iterations={args.iterations}",
@@ -14592,6 +16533,15 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 0, learner_identity
             )
             precollect_rehearsals[0] = first_record
+        if _r241_precollection_refresh_due(
+            start_iteration, r241_peak_r195_training_contract
+        ):
+            learner_identity, boundary_record = (
+                _prepare_r241_precollection_refresh(
+                    start_iteration, learner_identity
+                )
+            )
+            precollect_rehearsals[int(start_iteration)] = boundary_record
         _maybe_apply_live_pool(
             learner_identity.path,
             learner_identity.digest,
@@ -14608,6 +16558,14 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 learner_identity.path,
                 learner_identity.digest,
             )
+        if _r241_precollection_refresh_due(
+            start_iteration, r241_peak_r195_training_contract
+        ):
+            _bind_r241_precollection_collection(
+                start_iteration,
+                pending_collect,
+                precollect_rehearsals[start_iteration],
+            )
 
         for it in range(start_iteration, int(args.iterations)):
             t0 = time.time()
@@ -14621,6 +16579,14 @@ def run_full_loop(args: argparse.Namespace) -> int:
             learner_before = learner_identity
             rehearsal_record: Optional[dict[str, Any]] = precollect_rehearsals.pop(
                 int(it), None
+            )
+            _assert_r241_precollection_refresh_binding(
+                iteration=it,
+                collection_behavior_digest=behavior_before.digest,
+                rehearsal_record=rehearsal_record,
+                r241_peak_r195_training_contract=(
+                    r241_peak_r195_training_contract
+                ),
             )
 
             # SERIALIZE (no AZ-style overlap): collect → train → hard-gate →
@@ -14684,6 +16650,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         design_fingerprint,
                     ),
                     shard_path=shard_path,
+                    r241_peak_r195_training_contract=(
+                        r241_peak_r195_training_contract
+                    ),
                 )
                 print(
                     f"[pure_rl] RECOVER_TRAINED_CANDIDATE iter={it} "
@@ -14845,6 +16814,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 ),
                 dormant_matchup_adapter_activation_receipt=str(
                     args.dormant_matchup_adapter_activation_receipt or ""
+                ),
+                r241_peak_r195_training_contract=(
+                    r241_peak_r195_training_contract
                 ),
             )
             if family_training_contract is not None:
@@ -15563,8 +17535,15 @@ def run_full_loop(args: argparse.Namespace) -> int:
             # so each immutable collection shard uses one exact digest.
             collection_publish_proof: Optional[dict[str, Any]] = None
             if (
-                (not gate.passed or bool(args.continue_after_gate))
+                (
+                    not gate.passed
+                    or bool(args.continue_after_gate)
+                    or bool(fixed_cycle_updates)
+                )
                 and it + 1 < int(args.iterations)
+                and not _r241_precollection_refresh_due(
+                    it + 1, r241_peak_r195_training_contract
+                )
             ):
                 collection_publish_proof = _hard_gate_publish_weights(
                     leaf=leaf,
@@ -15917,7 +17896,10 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     _ensure_terminal_gate_marker(
                         run_dir,
                         loop_state,
-                        preserve_first=bool(args.continue_after_gate),
+                        preserve_first=(
+                            bool(args.continue_after_gate)
+                            or bool(fixed_cycle_updates)
+                        ),
                         marker_name=str(args.terminal_gate_marker_name or ""),
                     )
                     if terminal_minimum_reached
@@ -15949,7 +17931,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         passed_gate_id=passed_gate_id,
                         base_contract=active_gate_contract,
                     )
-                if not bool(args.continue_after_gate) or terminal_target_reached:
+                if _gate_pass_should_stop(
+                    fixed_cycle_updates=fixed_cycle_updates,
+                    continue_after_gate=bool(args.continue_after_gate),
+                    terminal_target_reached=bool(terminal_target_reached),
+                ):
                     if terminal_target_reached:
                         print(
                             "[pure_rl] TERMINAL_ACTIVE_GATE_REACHED "
@@ -15957,11 +17943,19 @@ def run_full_loop(args: argparse.Namespace) -> int:
                             flush=True,
                         )
                     break
-                print(
-                    "[pure_rl] CONTINUE_AFTER_GATE first-pass archive boundary "
-                    "preserved; continuing curriculum",
-                    flush=True,
-                )
+                if fixed_cycle_updates:
+                    print(
+                        "[pure_rl] FIXED_CYCLE_GATE_NONTERMINAL "
+                        f"updates={fixed_cycle_updates} completed={it}; "
+                        "continuing through the exact cycle",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        "[pure_rl] CONTINUE_AFTER_GATE first-pass archive boundary "
+                        "preserved; continuing curriculum",
+                        flush=True,
+                    )
             pause_seconds = _gate_boundary_pause_seconds(
                 args,
                 completed_iteration=int(it),
@@ -16033,18 +18027,38 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     # pre-activation evidence pause at status 75.
                     raise SystemExit(78)
             if next_it < int(args.iterations):
+                collection_learner = learner_after
+                if _r241_precollection_refresh_due(
+                    next_it, r241_peak_r195_training_contract
+                ):
+                    collection_learner, boundary_record = (
+                        _prepare_r241_precollection_refresh(
+                            next_it, learner_after
+                        )
+                    )
+                    learner_identity = collection_learner
+                    precollect_rehearsals[next_it] = boundary_record
                 print(
                     f"[pure_rl] kick collect iter={next_it} on continuous learner "
-                    f"digest={learner_after.digest[:19]}…",
+                    f"digest={collection_learner.digest[:19]}…",
                     flush=True,
                 )
                 pending_collect = _kick_collect(
                     next_it,
-                    learner_after.path,
-                    learner_after.digest,
+                    collection_learner.path,
+                    collection_learner.digest,
                 )
+                if _r241_precollection_refresh_due(
+                    next_it, r241_peak_r195_training_contract
+                ):
+                    _bind_r241_precollection_collection(
+                        next_it,
+                        pending_collect,
+                        precollect_rehearsals[next_it],
+                    )
             else:
                 pending_collect = None
+        _complete_fixed_cycle_boundary()
         if population_cycle_rehearsal_due(
             population_enabled=bool(args.population_own_models_only),
             next_iteration=int(loop_state.get("next_iteration") or 0),

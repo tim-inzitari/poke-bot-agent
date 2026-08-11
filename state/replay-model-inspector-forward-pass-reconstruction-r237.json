@@ -1,0 +1,77 @@
+{
+  "schema": "poke_bot.replay_model_inspector_forward_pass_reconstruction/v1",
+  "owner_decision_revision": 237,
+  "recorded_at_utc": "2026-08-10T23:13:00Z",
+  "status": "active_read_only",
+  "supersedes": {
+    "source": "state/replay-model-inspector-on-demand-gpu-trace-r222.json",
+    "field": "trace_loading.selected_trace_timeout_seconds",
+    "old_value": 20,
+    "new_value": null,
+    "all_other_r222_semantics_preserved": true
+  },
+  "execution": {
+    "host": "elmo",
+    "inference_device": "cuda:0",
+    "mode": "selected_trace_exact_archived_runtime_forward_reconstruction",
+    "eligible_submissions": "all_trace_ready_checksum_attested_submissions",
+    "torch_inference_mode": true,
+    "max_concurrent_gpu_traces": 1,
+    "max_resident_models": 1,
+    "resident_model_is_performance_optimization_not_eligibility_gate": true,
+    "nonresident_exact_runtime_uses_isolated_forward_worker": true,
+    "bert_inference_authority": false,
+    "bert_role": "read_only_dashboard_gateway_and_encrypted_tunnel"
+  },
+  "trace_loading": {
+    "selected_step_and_stage_priority": true,
+    "whole_game_background_prefetch": false,
+    "browser_visible_timeout_seconds": null,
+    "elapsed_browser_wait_marks_trace_unavailable": false,
+    "stale_browser_requests_aborted": true,
+    "successful_selected_traces_cached_in_browser_memory": true,
+    "cache_cleared_on_submission_or_game_change": true,
+    "server_side_cancellation_claimed": false
+  },
+  "reconstruction": {
+    "exact_replay_digest_required": true,
+    "exact_runtime_source_tree_required": true,
+    "exact_checkpoint_digest_required": true,
+    "model_or_runtime_substitution_allowed": false,
+    "head_fusion_adapter_and_submitted_policy_values_derived_from_selected_trace_execution": true,
+    "ordinary_model_decision_label": "recomputed_not_historical",
+    "historical_kaggle_logits_claimed": false
+  },
+  "fault_containment": {
+    "isolated_runtime_worker_watchdog_seconds": 240,
+    "watchdog_scope": "owned_worker_crash_or_hang_cleanup_not_browser_visible_forward_deadline",
+    "alternate_model_fallback_allowed": false,
+    "stale_client_abort_does_not_claim_server_cancellation": true
+  },
+  "activation": {
+    "managed_service": "pokebot-replay-model-inspector.service",
+    "requires_inspector_only_restart": true,
+    "training_or_selector_restart": false,
+    "activated_at_utc": "2026-08-10T23:19:01Z",
+    "activation_receipt": "state/replay-model-inspector-forward-pass-reconstruction-activation-r237.json",
+    "required_validation": [
+      "focused_static_ui_tests",
+      "javascript_syntax",
+      "focused_inference_and_server_tests",
+      "systemd_unit_validation",
+      "live_service_health",
+      "selected_trace_cold_forward_completes_without_browser_deadline",
+      "selected_trace_warm_forward_completes",
+      "stale_selection_request_abort",
+      "no_whole_game_prefetch_requests"
+    ]
+  },
+  "safety": {
+    "read_only": true,
+    "checkpoint_or_bundle_mutation": false,
+    "replay_or_provenance_mutation": false,
+    "evaluation_replays_training_eligible": false,
+    "training_or_selector_authority": false,
+    "submission_authority": false
+  }
+}

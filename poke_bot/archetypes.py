@@ -64,6 +64,20 @@ ALAKAZAM_FINAL_REFRESH_REPRESENTATIVE: tuple[int, ...] = (
 _ALAKAZAM_FINAL_REFRESH_MULTISET = tuple(
     sorted(ALAKAZAM_FINAL_REFRESH_REPRESENTATIVE)
 )
+# Owner r241 direct-policy successor. Keep the historical r175 representative
+# immutable because completed receipts and the MCTS evaluation lineage pin it.
+ALAKAZAM_NEW_LIST_DIRECT_R241_REPRESENTATIVE: tuple[int, ...] = (
+    5, 5, 13, 19, 19, 19, 19, 66, 66, 140, 305, 305, 305,
+    741, 741, 741, 741, 742, 742, 742, 742, 743, 743, 743,
+    1079, 1079, 1079, 1081, 1081, 1081, 1081,
+    1086, 1086, 1086, 1086, 1097, 1097, 1129,
+    1152, 1152, 1152, 1152, 1182, 1182, 1182, 1184,
+    1197, 1197, 1225, 1225, 1225, 1225,
+    1231, 1231, 1231, 1231, 1264, 1264, 1264, 1264,
+)
+_ALAKAZAM_NEW_LIST_DIRECT_R241_MULTISET = tuple(
+    sorted(ALAKAZAM_NEW_LIST_DIRECT_R241_REPRESENTATIVE)
+)
 SLOWKING_EXACT_REPRESENTATIVE: tuple[int, ...] = (
     5, 5, 5, 5, 9, 9, 19, 19, 19, 19, 115, 115, 140, 144, 144,
     162, 162, 162, 162, 163, 163, 163, 163, 183, 183, 184, 184,
@@ -405,6 +419,14 @@ def is_alakazam_final_refresh_representative(
     return tuple(sorted(card_ids)) == _ALAKAZAM_FINAL_REFRESH_MULTISET
 
 
+def is_alakazam_new_list_direct_r241_representative(
+    card_ids: Iterable[int],
+) -> bool:
+    """Match only the owner's checksum-bound r241 direct-policy list."""
+
+    return tuple(sorted(card_ids)) == _ALAKAZAM_NEW_LIST_DIRECT_R241_MULTISET
+
+
 def is_crustle_naic_2026_representative(card_ids: Iterable[int]) -> bool:
     """Match only the checksum-bound current Crustle representative."""
 
@@ -425,7 +447,10 @@ def classify_deck(card_ids: Iterable[int]) -> str:
     Dragapult, else ``"unknown"``.
     """
     card_ids = list(card_ids)
-    if is_alakazam_final_refresh_representative(card_ids):
+    if (
+        is_alakazam_final_refresh_representative(card_ids)
+        or is_alakazam_new_list_direct_r241_representative(card_ids)
+    ):
         return "alakazam"
     if is_archaludon_ex_modal_representative(card_ids):
         return "archaludon-ex"

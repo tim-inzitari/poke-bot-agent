@@ -16,5 +16,11 @@
   "torch_threads": 2,
   "max_parameter_slice": 2048,
   "max_tensor_values": 512,
-  "verify_digests": true
+  "verify_digests": true,
+  "game_trace_cache_root": "/tmp/pokebot-replay-inspector-game-cache-v1",
+  "game_trace_cache_enabled": true,
+  "game_trace_cache_max_bytes": 134217728,
+  "game_trace_cache_max_game_bytes": 100663296,
+  "game_trace_cache_max_entry_bytes": 8388608,
+  "game_trace_cache_min_free_bytes": 67108864
 }

@@ -35,11 +35,17 @@ UI_VERSION_TOKEN = b"__DASHBOARD_UI_VERSION__"
 INSPECTOR_PROXY_PREFIX = "/replay-inspector/"
 INSPECTOR_UPSTREAM_ADDRESS: tuple[str, int] = ("127.0.0.1", 8792)
 INSPECTOR_UPSTREAM_HOST_HEADER = "127.0.0.1:8791"
-# A cold exact-runtime trace may wait behind the one-model serialization lock
-# while the preceding selected-step warmup finishes.  Match the inspector's
-# bounded 240-second worker ceiling with modest transport headroom so the LAN
-# gateway does not turn a valid reconstruction into a misleading HTTP 502.
+# Ordinary inspector resources retain their existing bounded upstream wait.
+# Exact trace reconstruction is deliberately different: a selected physical
+# game can take longer than this while Elmo reconstructs every causal decision,
+# so its response-header wait must not become a second GPU deadline.
 INSPECTOR_PROXY_TIMEOUT_SECONDS = 300.0
+INSPECTOR_PROXY_CONNECT_TIMEOUT_SECONDS = 5.0
+# Trace responses are JSON and bounded below. Once an exact reconstruction has
+# produced headers, retain a finite inactivity timeout for its body instead of
+# allowing a stalled tunnel to hold a dashboard request forever.
+INSPECTOR_PROXY_TRACE_RESPONSE_READ_TIMEOUT_SECONDS = 30.0
+INSPECTOR_PROXY_MAX_PENDING_TRACE_REQUESTS = 4
 INSPECTOR_PROXY_MAX_TARGET_BYTES = 8 * 1024
 INSPECTOR_PROXY_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 INSPECTOR_PROXY_CHUNK_BYTES = 64 * 1024
@@ -67,6 +73,12 @@ ELMO_REPLAY_SYNC_SSH = (
 # This does not make the listener publicly routable and every request still
 # passes the local Host/Origin, fixed-upstream, path, and GET-only gates below.
 INSPECTOR_TAILSCALE_IPV4_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+_INSPECTOR_TRACE_PATH = re.compile(
+    r"/api/submissions/[1-9][0-9]*/games/[0-9]+/steps/[0-9]+"
+)
+_INSPECTOR_TRACE_WAITERS = threading.BoundedSemaphore(
+    INSPECTOR_PROXY_MAX_PENDING_TRACE_REQUESTS
+)
 
 
 class InspectorProxyTargetError(ValueError):
@@ -281,6 +293,18 @@ def _inspector_upstream_target(path: str, query: str) -> str | None:
     suffix = path[len(INSPECTOR_PROXY_PREFIX) :]
     target = f"/{suffix}"
     return f"{target}?{query}" if query else target
+
+
+def _is_inspector_trace_target(target: str) -> bool:
+    """Return whether a validated upstream target executes one trace.
+
+    The selected-trace endpoint is the only inspector route allowed to wait
+    without a response-header deadline. Assets, index queries, health, and
+    all other API endpoints keep the normal bounded proxy timeout.
+    """
+
+    path, _separator, _query = target.partition("?")
+    return _INSPECTOR_TRACE_PATH.fullmatch(path) is not None
 
 
 def dashboard_ui_version() -> str:
@@ -3573,11 +3597,39 @@ class Handler(BaseHTTPRequestHandler):
 
         connection: http.client.HTTPConnection | None = None
         response_started = False
+        trace_request = _is_inspector_trace_target(target)
+        trace_waiter_acquired = False
         try:
+            if trace_request:
+                # A long exact forward does not emit HTTP progress headers.
+                # Bound the number of such waits rather than imposing a
+                # wall-clock cutoff that would falsely turn a valid GPU result
+                # into a gateway error.
+                trace_waiter_acquired = _INSPECTOR_TRACE_WAITERS.acquire(blocking=False)
+                if not trace_waiter_acquired:
+                    self._send_gateway_error(
+                        HTTPStatus.SERVICE_UNAVAILABLE,
+                        "inspector trace queue full",
+                    )
+                    return
             host, port = INSPECTOR_UPSTREAM_ADDRESS
             connection = http.client.HTTPConnection(
-                host, port, timeout=INSPECTOR_PROXY_TIMEOUT_SECONDS
+                host,
+                port,
+                timeout=(
+                    INSPECTOR_PROXY_CONNECT_TIMEOUT_SECONDS
+                    if trace_request
+                    else INSPECTOR_PROXY_TIMEOUT_SECONDS
+                ),
             )
+            # Connect separately so a trace can retain the short fixed-tunnel
+            # connection deadline while waiting indefinitely for the exact
+            # reconstruction to produce its first response headers.
+            connection.connect()
+            if trace_request:
+                if connection.sock is None:
+                    raise OSError("inspector tunnel did not open a socket")
+                connection.sock.settimeout(None)
             # Construct the outbound request from fixed fields only.  In
             # particular, no browser Host, cookie, credential, Origin,
             # Referer, Fetch-Metadata, or forwarding header crosses the trust
@@ -3589,6 +3641,19 @@ class Handler(BaseHTTPRequestHandler):
             connection.putheader("Connection", "close")
             connection.endheaders()
             response = connection.getresponse()
+            if trace_request:
+                # A complete trace response is still bounded to 8 MiB; after
+                # its headers arrive, each body read has a finite inactivity
+                # deadline to contain a broken local tunnel or upstream.
+                # HTTPConnection clears its socket for Connection: close
+                # responses, but HTTPResponse still owns the buffered socket.
+                response_socket = connection.sock or getattr(
+                    getattr(response.fp, "raw", None), "_sock", None
+                )
+                set_timeout = getattr(response_socket, "settimeout", None)
+                if not callable(set_timeout):
+                    raise OSError("inspector response did not retain a readable socket")
+                set_timeout(INSPECTOR_PROXY_TRACE_RESPONSE_READ_TIMEOUT_SECONDS)
             if 300 <= response.status < 400:
                 self._send_gateway_error(
                     HTTPStatus.BAD_GATEWAY, "upstream redirect rejected"
@@ -3636,6 +3701,8 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             if connection is not None:
                 connection.close()
+            if trace_waiter_acquired:
+                _INSPECTOR_TRACE_WAITERS.release()
 
     def _handle_non_get(self) -> None:
         try:

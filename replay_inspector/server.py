@@ -22,10 +22,14 @@ import logging
 import math
 import os
 import re
+import select
 import socket
+import stat
 import subprocess
 import sys
 import threading
+import time
+from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import lru_cache
@@ -68,6 +72,16 @@ from .training_recipe import (
 
 API_SCHEMA = "poke_bot.replay_model_inspector.api/v1"
 SERVICE_NAME = "replay-model-inspector"
+GAME_TRACE_MATERIALIZATION_SCHEMA = (
+    "poke_bot.replay_model_inspector.physical_game_materialization/v1"
+)
+GAME_MATERIALIZATION_WORKER_PROTOCOL = (
+    "poke_bot.replay_model_inspector.game_materialization_worker/v1"
+)
+_ISOLATED_GAME_WORKER_ENV = "POKEBOT_REPLAY_INSPECTOR_GAME_WORKER"
+_ISOLATED_GAME_WORKER_POLL_SECONDS = 1.0
+_ISOLATED_GAME_WORKER_STALL_SECONDS = 240.0
+_ISOLATED_GAME_WORKER_MAX_FRAME_BYTES = 32 * 1024 * 1024
 _LOG = logging.getLogger(__name__)
 _DECIMAL_RE = re.compile(r"^(?:0|[1-9][0-9]*)$")
 _HEAD_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
@@ -107,6 +121,251 @@ class ReplayContext:
     seat: int
     stage: DecisionStage
     observation: dict[str, Any]
+
+
+@dataclass(slots=True)
+class _GameMaterializationJob:
+    """One identity-bound baseline game reconstruction in progress or memory.
+
+    The job deliberately retains only final, server-produced trace payloads.
+    It never represents a replay/model artifact and is only an in-process L1
+    cache; the bounded private temporary L2 cache is owned separately by the
+    game-trace-cache layer.  A waiter can promote an as-yet-uncomputed address
+    to the front of ``pending`` but can never cancel an active exact forward.
+    """
+
+    identity_key: str
+    identity: dict[str, Any]
+    addresses: tuple[tuple[int, int], ...]
+    pending: list[tuple[int, int]]
+    payloads: dict[tuple[int, int], dict[str, Any]]
+    active_address: tuple[int, int] | None = None
+    complete: bool = False
+    error: BaseException | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ImmutablePathSignature:
+    """A stat-based identity for one resolved, immutable artifact path.
+
+    The cache is only a performance hint.  Device/inode prevent a replacement
+    at the same spelling from looking unchanged, while size, timestamps, mode,
+    and link count make ordinary in-place mutation and metadata changes a
+    cache miss as well.
+    """
+
+    device: int
+    inode: int
+    mode: int
+    size: int
+    mtime_ns: int
+    ctime_ns: int
+    nlink: int
+
+
+@dataclass(frozen=True, slots=True)
+class _ImmutableTreeSignature:
+    """One resolved runtime tree's checked structure and member signatures."""
+
+    root: _ImmutablePathSignature
+    entries: tuple[tuple[str, _ImmutablePathSignature], ...]
+
+
+class _IntegrityDigestMemo:
+    """Bounded digest memo which never skips a current integrity gate.
+
+    A cache lookup resolves the supplied path under the current configured
+    roots and restats it before returning a digest.  Runtime trees additionally
+    restat every non-ignored member before their digest can be reused.  A
+    signature drift during a fresh hash is rejected rather than cached, so a
+    caller must fail closed and retry against a stable exact input.
+
+    This class holds only derived digest strings and immutable stat signatures;
+    it never retains artifact bytes, opens a writable path, or decides whether
+    an expected provenance digest is acceptable.
+    """
+
+    _DEFAULT_MAX_ENTRIES = 128
+
+    def __init__(self, *, max_entries: int = _DEFAULT_MAX_ENTRIES) -> None:
+        self._max_entries = max(1, int(max_entries))
+        self._lock = threading.RLock()
+        self._file_digests: OrderedDict[
+            Path, tuple[_ImmutablePathSignature, str]
+        ] = OrderedDict()
+        self._tree_digests: OrderedDict[
+            Path, tuple[_ImmutableTreeSignature, str]
+        ] = OrderedDict()
+
+    @staticmethod
+    def _signature(path: Path) -> _ImmutablePathSignature | None:
+        try:
+            details = path.lstat()
+        except OSError:
+            return None
+        if stat.S_ISLNK(details.st_mode):
+            return None
+        return _ImmutablePathSignature(
+            device=int(details.st_dev),
+            inode=int(details.st_ino),
+            mode=int(details.st_mode),
+            size=int(details.st_size),
+            mtime_ns=int(details.st_mtime_ns),
+            ctime_ns=int(details.st_ctime_ns),
+            nlink=int(details.st_nlink),
+        )
+
+    @classmethod
+    def _resolved_regular_file(
+        cls,
+        value: Path,
+        *,
+        roots: Sequence[Path],
+    ) -> tuple[Path, _ImmutablePathSignature] | None:
+        try:
+            resolved = resolve_contained_path(
+                value,
+                roots=roots,
+                require_exists=True,
+            )
+        except (FileNotFoundError, OSError, ProvenanceError, RuntimeError):
+            return None
+        signature = cls._signature(resolved)
+        if signature is None or not stat.S_ISREG(signature.mode):
+            return None
+        return resolved, signature
+
+    @classmethod
+    def _resolved_tree(
+        cls,
+        value: Path,
+        *,
+        roots: Sequence[Path],
+    ) -> tuple[Path, _ImmutableTreeSignature] | None:
+        try:
+            root = resolve_contained_path(
+                value,
+                roots=roots,
+                require_exists=True,
+            )
+        except (FileNotFoundError, OSError, ProvenanceError, RuntimeError):
+            return None
+        root_signature = cls._signature(root)
+        if root_signature is None or not stat.S_ISDIR(root_signature.mode):
+            return None
+
+        entries: list[tuple[str, _ImmutablePathSignature]] = []
+        pending = [root]
+        try:
+            while pending:
+                directory = pending.pop()
+                children = sorted(directory.iterdir(), key=lambda item: item.name)
+                for candidate in children:
+                    relative = candidate.relative_to(root)
+                    # Match ``sha256_source_tree`` exactly: Python bytecode is
+                    # derived and intentionally excluded from the attested
+                    # source tree, so it cannot make this memo stale.
+                    if (
+                        "__pycache__" in relative.parts
+                        or candidate.suffix in {".pyc", ".pyo"}
+                    ):
+                        continue
+                    signature = cls._signature(candidate)
+                    if signature is None:
+                        return None
+                    relative_text = relative.as_posix()
+                    if stat.S_ISDIR(signature.mode):
+                        entries.append(("dir:" + relative_text, signature))
+                        pending.append(candidate)
+                    elif stat.S_ISREG(signature.mode):
+                        entries.append(("file:" + relative_text, signature))
+                    else:
+                        return None
+        except (OSError, RuntimeError, ValueError):
+            return None
+        return root, _ImmutableTreeSignature(
+            root=root_signature,
+            entries=tuple(sorted(entries, key=lambda item: item[0])),
+        )
+
+    @staticmethod
+    def _remember(
+        store: OrderedDict[Any, Any],
+        key: Path,
+        value: Any,
+        *,
+        maximum: int,
+    ) -> None:
+        store[key] = value
+        store.move_to_end(key)
+        while len(store) > maximum:
+            store.popitem(last=False)
+
+    def file_digest(
+        self,
+        value: Path,
+        *,
+        roots: Sequence[Path],
+    ) -> tuple[Path, str] | None:
+        """Return a stable regular-file digest after current containment checks."""
+
+        current = self._resolved_regular_file(value, roots=roots)
+        if current is None:
+            return None
+        resolved, signature = current
+        with self._lock:
+            cached = self._file_digests.get(resolved)
+            if cached is not None and cached[0] == signature:
+                self._file_digests.move_to_end(resolved)
+                return resolved, cached[1]
+            try:
+                digest = sha256_file(resolved)
+            except OSError:
+                return None
+            verified = self._resolved_regular_file(resolved, roots=roots)
+            if verified is None or verified != current:
+                self._file_digests.pop(resolved, None)
+                return None
+            self._remember(
+                self._file_digests,
+                resolved,
+                (signature, digest),
+                maximum=self._max_entries,
+            )
+            return resolved, digest
+
+    def source_tree_digest(
+        self,
+        value: Path,
+        *,
+        roots: Sequence[Path],
+    ) -> tuple[Path, str] | None:
+        """Return a stable source-tree digest after current containment checks."""
+
+        current = self._resolved_tree(value, roots=roots)
+        if current is None:
+            return None
+        resolved, signature = current
+        with self._lock:
+            cached = self._tree_digests.get(resolved)
+            if cached is not None and cached[0] == signature:
+                self._tree_digests.move_to_end(resolved)
+                return resolved, cached[1]
+            try:
+                digest = sha256_source_tree(resolved)
+            except (OSError, ProvenanceError, RuntimeError):
+                return None
+            verified = self._resolved_tree(resolved, roots=roots)
+            if verified is None or verified != current:
+                self._tree_digests.pop(resolved, None)
+                return None
+            self._remember(
+                self._tree_digests,
+                resolved,
+                (signature, digest),
+                maximum=self._max_entries,
+            )
+            return resolved, digest
 
 
 def _is_loopback_host(value: str) -> bool:
@@ -1759,6 +2018,37 @@ class InspectorApplication:
         self.config = config
         self._state_lock = threading.RLock()
         self._inference_lock = threading.RLock()
+        # This is a digest-only performance memo.  Every use still resolves
+        # containment and restats the immutable artifact/tree before it can
+        # satisfy a current checksum gate.
+        self._integrity_digest_memo = _IntegrityDigestMemo()
+        # A physical game is the cache boundary for baseline reconstruction.
+        # This L1 state makes rapid browser step/stage changes join one job
+        # immediately.  The L2 /tmp cache is intentionally kept behind the
+        # small adapter methods below so its filesystem policy stays isolated
+        # from the HTTP/inference layer.
+        self._game_materialization_lock = threading.Lock()
+        self._game_materialization_state_lock = threading.RLock()
+        self._game_materialization_ready = threading.Condition(
+            self._game_materialization_state_lock
+        )
+        self._game_materialization_jobs: OrderedDict[
+            str, _GameMaterializationJob
+        ] = OrderedDict()
+        # Keep at most one complete raw game in L1.  A full game can contain
+        # many large inspector payloads; persistent reuse belongs to the
+        # configured compressed /tmp cache rather than process RSS.
+        self._game_materialization_memory_limit = 1
+        self._game_trace_cache_backend: Any | None = None
+        self._game_trace_cache_error: str | None = None
+        self._game_materialization_metrics_lock = threading.Lock()
+        self._game_materialization_metrics: dict[str, int] = {
+            "jobs_started": 0,
+            "jobs_completed": 0,
+            "backend_game_runs": 0,
+            "l2_hits": 0,
+            "l1_joins": 0,
+        }
         self._provenance: ProvenanceManifest | None = None
         self._provenance_error: str | None = None
         self._training_recipe_registry: TrainingRecipeRegistry | None = None
@@ -1935,7 +2225,64 @@ class InspectorApplication:
                 "loaded": self._model_cache is not None,
                 "availability_reason": self._model_cache_error,
             },
+            "game_materialization": self._game_materialization_health_payload(),
         }
+
+    def _game_materialization_health_payload(self) -> dict[str, Any]:
+        """Return bounded, non-sensitive cache/job health information.
+
+        Do not create the optional disk cache merely to answer a health
+        request: its construction owns filesystem validation and should remain
+        demand-driven by an actual baseline trace request.  The counters are
+        intentionally aggregate-only, so health cannot disclose replay ids or
+        the currently selected game.
+        """
+
+        with self._game_materialization_ready:
+            jobs = tuple(self._game_materialization_jobs.values())
+            active_job_count = sum(1 for job in jobs if not job.complete)
+            queued_address_count = sum(len(job.pending) for job in jobs)
+            active_address_count = sum(
+                1 for job in jobs if job.active_address is not None
+            )
+        with self._state_lock:
+            cache = self._game_trace_cache_backend
+            cache_error = self._game_trace_cache_error
+        raw_metrics = getattr(cache, "metrics", None) if cache is not None else None
+        metric_names = (
+            "entry_writes",
+            "entry_write_failures",
+            "manifest_writes",
+            "manifest_write_failures",
+            "low_space_rejections",
+            "evictions",
+        )
+        metrics = {
+            name: value
+            for name in metric_names
+            if isinstance((value := getattr(raw_metrics, name, None)), int)
+        }
+        with self._game_materialization_metrics_lock:
+            job_metrics = dict(self._game_materialization_metrics)
+        return {
+            "enabled": self.config.game_trace_cache_enabled,
+            "cache_initialized": cache is not None,
+            "cache_error": cache_error,
+            "in_memory_job_count": len(jobs),
+            "active_job_count": active_job_count,
+            "queued_address_count": queued_address_count,
+            "active_address_count": active_address_count,
+            "counters": job_metrics,
+            "cache_metrics": metrics if raw_metrics is not None else None,
+        }
+
+    def _record_game_materialization_metric(self, name: str) -> None:
+        """Increment one aggregate-only materialization counter."""
+
+        with self._game_materialization_metrics_lock:
+            self._game_materialization_metrics[name] = (
+                self._game_materialization_metrics.get(name, 0) + 1
+            )
 
     def check_payload(self) -> dict[str, Any]:
         """Return the non-mutating startup validation report used by ``--check``."""
@@ -2184,6 +2531,580 @@ class InspectorApplication:
         head_scales: Mapping[str, float] | None = None,
         include_setup_model_forward: bool = True,
     ) -> dict[str, Any]:
+        """Return one trace, joining a baseline physical-game materialization.
+
+        A playground request is a distinct counterfactual and must never read
+        the submitted-runtime baseline cache.  Baseline requests, on the
+        other hand, are keyed by all immutable inputs that can change their
+        result.  This method deliberately performs the exact input gates
+        before either an in-memory or temporary-cache hit: caching avoids a
+        GPU forward, never provenance verification.
+        """
+
+        if head_scales:
+            return self._trace_payload_uncached(
+                submission_id,
+                episode_id,
+                step_index,
+                factorized_stage,
+                head_scales=head_scales,
+                include_setup_model_forward=include_setup_model_forward,
+            )
+
+        prepared = self._prepare_baseline_game_materialization(
+            submission_id,
+            episode_id,
+            step_index,
+            factorized_stage,
+            include_setup_model_forward=include_setup_model_forward,
+        )
+        if prepared is None:
+            # Preserve the existing detailed error/unavailable envelope for
+            # an invalid address or a replay that is not trace-ready.  Only a
+            # fully verified physical game gets a materialization identity.
+            return self._trace_payload_uncached(
+                submission_id,
+                episode_id,
+                step_index,
+                factorized_stage,
+                head_scales=None,
+                include_setup_model_forward=include_setup_model_forward,
+            )
+        identity_key, identity, addresses = prepared
+        address = (step_index, factorized_stage)
+
+        # The persistent cache adapter intentionally has no authority to
+        # select inputs.  It may return a payload only after the preparation
+        # above revalidated the replay, submitted runtime, checkpoint, tree,
+        # bundle, and parity receipt.
+        cached = self._load_materialized_game_trace(
+            identity_key, identity, addresses, address
+        )
+        if cached is not None:
+            self._record_game_materialization_metric("l2_hits")
+            return cached
+
+        payload = self._join_baseline_game_materialization(
+            identity_key,
+            identity,
+            addresses,
+            requested_address=address,
+            submission_id=submission_id,
+            episode_id=episode_id,
+            include_setup_model_forward=include_setup_model_forward,
+        )
+        if payload is not None:
+            return payload
+
+        # A job-level failure is deliberately not cached.  Re-run only the
+        # requested trace so callers retain the established fail-closed
+        # response instead of receiving a partial game cache as a success.
+        return self._trace_payload_uncached(
+            submission_id,
+            episode_id,
+            step_index,
+            factorized_stage,
+            head_scales=None,
+            include_setup_model_forward=include_setup_model_forward,
+        )
+
+    def _prepare_baseline_game_materialization(
+        self,
+        submission_id: int,
+        episode_id: int,
+        step_index: int,
+        factorized_stage: int,
+        *,
+        include_setup_model_forward: bool,
+    ) -> tuple[str, dict[str, Any], tuple[tuple[int, int], ...]] | None:
+        """Return a revalidated identity and ordered own-agent addresses.
+
+        ``None`` intentionally means that the normal per-address route must
+        produce its precise existing error/status.  It is not a cache hit and
+        does not relax any provenance gate.
+        """
+
+        submission, entry, replay, replay_sha256, seat = self._replay_with_seat(
+            submission_id, episode_id
+        )
+        try:
+            stages = self._owner_decision_stages(replay, own_seat=seat)
+        except ReplayTimelineError:
+            return None
+        addresses = tuple(
+            (stage.step_index, stage.factorized_stage) for stage in stages
+        )
+        if (step_index, factorized_stage) not in addresses:
+            return None
+        if self._trace_analysis_reason(submission, entry, replay_sha256) is not None:
+            return None
+        provenance = submission.provenance
+        if provenance is None:
+            return None
+        receipt = provenance.runtime_parity_receipt
+        runtime_package = provenance.runtime_package
+        artifacts: tuple[Any, ...] = (
+            provenance.checkpoint,
+            provenance.bundle,
+            runtime_package,
+            receipt.artifact if receipt is not None else None,
+            provenance.matchup_tree,
+        )
+        # A catalog-time digest is not enough for a cache hit.  Recheck every
+        # identity-bearing artifact now; a changed or unreadable artifact
+        # simply declines the derived cache and follows the normal exact
+        # reconstruction path.  The memo retains only a digest for an exact
+        # resolved path plus its stable stat signature, so this still performs
+        # current containment and signature validation on every request while
+        # avoiding a second 500MiB bundle hash when the bundle and submitted
+        # runtime package are the same immutable file.
+        for artifact in artifacts:
+            if artifact is None:
+                continue
+            expected = getattr(artifact, "expected_sha256", None)
+            path = getattr(artifact, "resolved_path", None)
+            if not isinstance(expected, str) or not isinstance(path, Path):
+                return None
+            verified = self._integrity_digest_memo.file_digest(
+                path,
+                roots=self.config.source_roots,
+            )
+            if verified is None or verified[1] != expected:
+                return None
+        if (
+            receipt is None
+            or receipt.runtime_source_tree_sha256 is None
+            or runtime_package is None
+            or runtime_package.expected_sha256 is None
+            or provenance.checkpoint.expected_sha256 is None
+            or provenance.bundle.expected_sha256 is None
+            or receipt.artifact.expected_sha256 is None
+        ):
+            return None
+        tree = provenance.matchup_tree
+        identity: dict[str, Any] = {
+            "schema": GAME_TRACE_MATERIALIZATION_SCHEMA,
+            "trace_semantics_identity": "replay_inspector.server.trace_payload/v1",
+            "submission_id": int(submission_id),
+            "episode_id": int(episode_id),
+            "own_seat": int(seat),
+            "replay_sha256": replay_sha256,
+            "submitted_bundle_sha256": provenance.bundle.expected_sha256,
+            "runtime_package_sha256": runtime_package.expected_sha256,
+            "runtime_source_tree_sha256": receipt.runtime_source_tree_sha256,
+            "checkpoint_sha256": provenance.checkpoint.expected_sha256,
+            "matchup_tree_sha256": (
+                tree.expected_sha256 if tree is not None else None
+            ),
+            "runtime_parity_receipt_sha256": receipt.artifact.expected_sha256,
+            "baseline_trace_request": {
+                "head_scales": {},
+                "include_setup_model_forward": bool(include_setup_model_forward),
+            },
+        }
+        encoded = json.dumps(
+            identity,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        identity_key = "sha256:" + hashlib.sha256(encoded).hexdigest()
+        return identity_key, identity, addresses
+
+    def _load_materialized_game_trace(
+        self,
+        identity_key: str,
+        identity: Mapping[str, Any],
+        addresses: Sequence[tuple[int, int]],
+        address: tuple[int, int],
+    ) -> dict[str, Any] | None:
+        """Read a verified L2 entry when the cache implementation is present.
+
+        The concrete temporary-cache module is intentionally the only layer
+        allowed to own paths, compression, eviction, atomic writes, and cache
+        checksums.  Server integration is kept here as a narrow adapter while
+        that module is introduced; returning ``None`` is always a safe cache
+        miss and preserves exact reconstruction.
+        """
+
+        _ = identity_key
+        cache_identity = self._game_trace_cache_identity(identity)
+        cache = self._game_trace_cache()
+        if cache_identity is None or cache is None:
+            return None
+        try:
+            from .game_trace_cache import TraceAddress
+
+            expected_addresses = tuple(
+                TraceAddress(step_index, factorized_stage)
+                for step_index, factorized_stage in addresses
+            )
+            manifest = cache.read_manifest(cache_identity)
+            if manifest is None or set(manifest.addresses) != set(expected_addresses):
+                return None
+            requested_address = TraceAddress(address[0], address[1])
+            if requested_address not in set(expected_addresses):
+                return None
+            cached = cache.read(cache_identity, requested_address)
+            value = cached.value if getattr(cached, "hit", False) else None
+            if not isinstance(value, Mapping):
+                return None
+        except Exception:  # noqa: BLE001 - derived cache failure is a miss
+            return None
+        return dict(value)
+
+    def _game_trace_cache(self) -> Any | None:
+        """Return the configured private derived-payload cache, if usable."""
+
+        if not self.config.game_trace_cache_enabled:
+            return None
+        with self._state_lock:
+            if self._game_trace_cache_backend is not None:
+                return self._game_trace_cache_backend
+            if self._game_trace_cache_error is not None:
+                return None
+            try:
+                from .game_trace_cache import PhysicalGameTraceCache
+
+                self._game_trace_cache_backend = (
+                    PhysicalGameTraceCache.from_inspector_config(self.config)
+                )
+            except Exception:  # noqa: BLE001 - /tmp cache is optional only
+                self._game_trace_cache_error = "game_trace_cache_unavailable"
+                _LOG.warning("Replay Inspector temporary game cache is unavailable")
+                return None
+            return self._game_trace_cache_backend
+
+    @staticmethod
+    def _game_trace_cache_identity(identity: Mapping[str, Any]) -> Any | None:
+        """Map the server's full identity to the cache module's strict key."""
+
+        try:
+            from .game_trace_cache import GameTraceIdentity
+
+            request = identity.get("baseline_trace_request")
+            if not isinstance(request, Mapping):
+                return None
+            provenance = {
+                "cache_schema": str(identity["schema"]),
+                "trace_semantics_identity": str(
+                    identity["trace_semantics_identity"]
+                ),
+                "own_seat": str(identity["own_seat"]),
+                "submitted_bundle_sha256": str(identity["submitted_bundle_sha256"]),
+                "runtime_package_sha256": str(identity["runtime_package_sha256"]),
+                "runtime_source_tree_sha256": str(
+                    identity["runtime_source_tree_sha256"]
+                ),
+                "checkpoint_sha256": str(identity["checkpoint_sha256"]),
+                "matchup_tree_sha256": str(
+                    identity.get("matchup_tree_sha256") or "none"
+                ),
+                "runtime_parity_receipt_sha256": str(
+                    identity["runtime_parity_receipt_sha256"]
+                ),
+                "baseline_head_scales": "empty",
+                "include_setup_model_forward": (
+                    "true"
+                    if bool(request.get("include_setup_model_forward"))
+                    else "false"
+                ),
+            }
+            return GameTraceIdentity(
+                submission_id=int(identity["submission_id"]),
+                episode_id=int(identity["episode_id"]),
+                replay_sha256=str(identity["replay_sha256"]),
+                provenance=provenance,
+            )
+        except (ImportError, KeyError, TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _cacheable_materialized_trace(payload: Mapping[str, Any]) -> bool:
+        """Persist only complete exact baseline results, never failures."""
+
+        top_level = payload.get("availability")
+        model = payload.get("model")
+        model_availability = (
+            model.get("availability") if isinstance(model, Mapping) else None
+        )
+        status = payload.get("reproduction_status")
+        return bool(
+            isinstance(top_level, Mapping)
+            and top_level.get("available") is True
+            and isinstance(model_availability, Mapping)
+            and model_availability.get("available") is True
+            and status
+            in {
+                "recomputed_not_historical",
+                "exact_runtime_short_circuit",
+                "hypothetical_model_forward_not_submitted_runtime",
+            }
+        )
+
+    def _commit_materialized_game_cache(self, job: _GameMaterializationJob) -> None:
+        """Publish one all-address manifest after a complete valid game job."""
+
+        if not self.config.game_trace_cache_enabled:
+            return
+        if set(job.payloads) != set(job.addresses):
+            return
+        if not all(
+            self._cacheable_materialized_trace(payload)
+            for payload in job.payloads.values()
+        ):
+            return
+        cache_identity = self._game_trace_cache_identity(job.identity)
+        cache = self._game_trace_cache()
+        if cache_identity is None or cache is None:
+            return
+        try:
+            from .game_trace_cache import TraceAddress
+
+            cache_addresses = tuple(
+                TraceAddress(step_index, factorized_stage)
+                for step_index, factorized_stage in job.addresses
+            )
+            requested = cache_addresses[0]
+            by_address = {
+                TraceAddress(step_index, factorized_stage): dict(payload)
+                for (step_index, factorized_stage), payload in job.payloads.items()
+            }
+            cache.get_or_materialize(
+                cache_identity,
+                cache_addresses,
+                requested,
+                lambda cache_address: by_address[cache_address],
+            )
+        except Exception:  # noqa: BLE001 - derived cache write cannot affect trace
+            return
+
+    def _join_baseline_game_materialization(
+        self,
+        identity_key: str,
+        identity: dict[str, Any],
+        addresses: tuple[tuple[int, int], ...],
+        *,
+        requested_address: tuple[int, int],
+        submission_id: int,
+        episode_id: int,
+        include_setup_model_forward: bool,
+    ) -> dict[str, Any] | None:
+        """Start or join one selected physical-game baseline job.
+
+        Only the worker thread drives exact forwards.  Every HTTP request for
+        the same game either promotes its pending address or waits for the
+        in-flight result, which prevents a rapid step/stage selection from
+        launching another independent forward.
+        """
+
+        with self._game_materialization_ready:
+            job = self._game_materialization_jobs.get(identity_key)
+            if job is None:
+                pending = list(addresses)
+                if requested_address in pending:
+                    pending.remove(requested_address)
+                    pending.insert(0, requested_address)
+                job = _GameMaterializationJob(
+                    identity_key=identity_key,
+                    identity=dict(identity),
+                    addresses=addresses,
+                    pending=pending,
+                    payloads={},
+                )
+                self._game_materialization_jobs[identity_key] = job
+                self._record_game_materialization_metric("jobs_started")
+                thread = threading.Thread(
+                    target=self._run_baseline_game_materialization,
+                    kwargs={
+                        "job": job,
+                        "submission_id": submission_id,
+                        "episode_id": episode_id,
+                        "include_setup_model_forward": include_setup_model_forward,
+                    },
+                    name="replay-inspector-game-materialization",
+                    daemon=True,
+                )
+                thread.start()
+            else:
+                self._record_game_materialization_metric("l1_joins")
+                self._game_materialization_jobs.move_to_end(identity_key)
+                if (
+                    requested_address not in job.payloads
+                    and requested_address in job.pending
+                ):
+                    # The current selected step has priority, but never
+                    # interrupt an exact forward already under way.
+                    job.pending.remove(requested_address)
+                    job.pending.insert(0, requested_address)
+            while (
+                requested_address not in job.payloads
+                and not job.complete
+                and job.error is None
+            ):
+                self._game_materialization_ready.wait()
+            result = job.payloads.get(requested_address)
+            return dict(result) if isinstance(result, Mapping) else None
+
+    def _run_baseline_game_materialization(
+        self,
+        *,
+        job: _GameMaterializationJob,
+        submission_id: int,
+        episode_id: int,
+        include_setup_model_forward: bool,
+    ) -> None:
+        """Materialize every baseline address once, globally serialized.
+
+        The materializer does not claim that changing causal game states are a
+        single neural forward.  It serializes one selected-game job and leaves
+        the exact per-game batching implementation behind the raw builder,
+        which can coalesce shared causal history without changing this cache
+        or HTTP contract.
+        """
+
+        try:
+            with self._game_materialization_lock:
+                self._record_game_materialization_metric("backend_game_runs")
+                batched = self._materialize_baseline_game_backend_traces(
+                    submission_id,
+                    episode_id,
+                    job.addresses,
+                    include_setup_model_forward=include_setup_model_forward,
+                )
+                while True:
+                    with self._game_materialization_ready:
+                        if not job.pending:
+                            break
+                        address = job.pending.pop(0)
+                        job.active_address = address
+                    precomputed = (
+                        batched.pop(address, None)
+                        if isinstance(batched, dict)
+                        else batched.get(address)
+                        if isinstance(batched, Mapping)
+                        else None
+                    )
+                    disk_payload = (
+                        self._load_materialized_game_trace(
+                            job.identity_key,
+                            job.identity,
+                            job.addresses,
+                            address,
+                        )
+                        if precomputed is None
+                        else None
+                    )
+                    if disk_payload is not None:
+                        payload = disk_payload
+                    else:
+                        payload = self._trace_payload_uncached(
+                            submission_id,
+                            episode_id,
+                            address[0],
+                            address[1],
+                            head_scales=None,
+                            include_setup_model_forward=include_setup_model_forward,
+                            precomputed_trace=(
+                                precomputed
+                                if isinstance(precomputed, Mapping)
+                                else None
+                            ),
+                            prevalidated_game=isinstance(precomputed, Mapping),
+                        )
+                    with self._game_materialization_ready:
+                        job.payloads[address] = dict(payload)
+                        job.active_address = None
+                        self._game_materialization_ready.notify_all()
+                # The manifest is the only durable game-cache commit point;
+                # do not publish individual rows while materialization is
+                # still partial.
+                self._commit_materialized_game_cache(job)
+        except BaseException as exc:  # noqa: BLE001 - preserve fail-closed trace path
+            with self._game_materialization_ready:
+                job.error = exc
+                job.active_address = None
+                job.complete = True
+                self._record_game_materialization_metric("jobs_completed")
+                self._game_materialization_ready.notify_all()
+            return
+        with self._game_materialization_ready:
+            job.complete = True
+            job.active_address = None
+            self._record_game_materialization_metric("jobs_completed")
+            self._game_materialization_jobs.move_to_end(job.identity_key)
+            self._trim_completed_game_materializations_locked()
+            self._game_materialization_ready.notify_all()
+
+    def _materialize_baseline_game_backend_traces(
+        self,
+        submission_id: int,
+        episode_id: int,
+        addresses: Sequence[tuple[int, int]],
+        *,
+        include_setup_model_forward: bool,
+    ) -> dict[tuple[int, int], dict[str, Any]] | None:
+        """Return exact backend traces for one game when its batch API exists.
+
+        This is intentionally an optional accelerator.  A legacy exact
+        runtime package without the new game entry point continues through the
+        proven single-trace reconstruction path, while a current package gets
+        one shared model activation and coalesced causal-history forwards.
+        """
+
+        try:
+            submission, entry, replay, replay_sha256, seat = self._replay_with_seat(
+                submission_id, episode_id
+            )
+            stages = self._owner_decision_stages(replay, own_seat=seat)
+            stage_by_address = {
+                (stage.step_index, stage.factorized_stage): stage for stage in stages
+            }
+            contexts: list[ReplayContext] = []
+            for address in addresses:
+                stage = stage_by_address.get(address)
+                if stage is None:
+                    return None
+                contexts.append(
+                    ReplayContext(
+                        submission=submission,
+                        replay_entry=entry,
+                        replay=replay,
+                        replay_sha256=replay_sha256,
+                        seat=seat,
+                        stage=stage,
+                        observation=causal_observation(
+                            replay, seat=seat, step_index=stage.step_index
+                        ),
+                    )
+                )
+        except (InspectorHTTPError, ReplayTimelineError, KeyError, TypeError, ValueError):
+            return None
+        return self._inspect_exact_game(
+            contexts,
+            allow_setup_prompt_model_forward=include_setup_model_forward,
+        )
+
+    def _trim_completed_game_materializations_locked(self) -> None:
+        """Keep L1 bounded; durable reuse belongs to the temporary L2 cache."""
+
+        while len(self._game_materialization_jobs) > self._game_materialization_memory_limit:
+            oldest_key, oldest = next(iter(self._game_materialization_jobs.items()))
+            if not oldest.complete:
+                return
+            self._game_materialization_jobs.pop(oldest_key)
+
+    def _trace_payload_uncached(
+        self,
+        submission_id: int,
+        episode_id: int,
+        step_index: int,
+        factorized_stage: int,
+        head_scales: Mapping[str, float] | None = None,
+        include_setup_model_forward: bool = True,
+        precomputed_trace: Mapping[str, Any] | None = None,
+        prevalidated_game: bool = False,
+    ) -> dict[str, Any]:
         submission, entry, replay, replay_sha256, seat = self._replay_with_seat(
             submission_id, episode_id
         )
@@ -2336,12 +3257,26 @@ class InspectorApplication:
                 ],
                 "neural_model_forward": False,
             }
-            model_reason = self._trace_analysis_reason(submission, entry, replay_sha256)
+            # A game materializer revalidated this exact identity before its
+            # one backend batch and supplied the resulting raw row.  Repeating
+            # the full runtime-tree gate for every final presentation row would
+            # turn a 124-stage game into 124 identical metadata walks.  This
+            # internal flag never applies to an external cache hit: those still
+            # enter through ``_prepare_baseline_game_materialization`` first.
+            model_reason = (
+                None
+                if prevalidated_game and precomputed_trace is not None
+                else self._trace_analysis_reason(submission, entry, replay_sha256)
+            )
             if include_setup_model_forward and model_reason is None:
-                hypothetical = self._inspect_exact_trace(
-                    context,
-                    head_scales=head_scales,
-                    allow_setup_prompt_model_forward=True,
+                hypothetical = (
+                    dict(precomputed_trace)
+                    if precomputed_trace is not None
+                    else self._inspect_exact_trace(
+                        context,
+                        head_scales=head_scales,
+                        allow_setup_prompt_model_forward=True,
+                    )
                 )
                 hypothetical_model = hypothetical.get("model")
                 if (
@@ -2397,7 +3332,11 @@ class InspectorApplication:
                         f"{hypothetical_reason}."
                     )
         else:
-            model_reason = self._trace_analysis_reason(submission, entry, replay_sha256)
+            model_reason = (
+                None
+                if prevalidated_game and precomputed_trace is not None
+                else self._trace_analysis_reason(submission, entry, replay_sha256)
+            )
             if model_reason is not None:
                 model = {
                     "availability": _availability(False, model_reason),
@@ -2414,7 +3353,11 @@ class InspectorApplication:
                     "Exact submitted-model provenance is unavailable; replay data is shown without a substituted model result."
                 )
             else:
-                trace = self._inspect_exact_trace(context, head_scales=head_scales)
+                trace = (
+                    dict(precomputed_trace)
+                    if precomputed_trace is not None
+                    else self._inspect_exact_trace(context, head_scales=head_scales)
+                )
                 model = trace["model"]
                 heads = trace["heads"]
                 fusion = trace["fusion"]
@@ -3028,7 +3971,8 @@ class InspectorApplication:
         a similarly shaped model from the service checkout would produce a
         misleading dynamic trace.  The parity receipt binds this submission to
         an exact runtime-package digest and the configured extracted source
-        tree is rehashed before each trace request.
+        tree is containment-checked and restatted before each trace request;
+        its source digest is recomputed on any stable-signature drift.
         """
 
         reason = self._model_analysis_reason(submission, entry, replay_sha256)
@@ -3090,22 +4034,18 @@ class InspectorApplication:
             candidates.append(tree.resolved_path.parent)
         seen: set[Path] = set()
         for candidate in candidates:
-            try:
-                root = resolve_contained_path(
-                    candidate,
-                    roots=self.config.source_roots,
-                    require_exists=True,
-                )
-            except (FileNotFoundError, OSError, ProvenanceError, RuntimeError):
+            verified = self._integrity_digest_memo.source_tree_digest(
+                candidate,
+                roots=self.config.source_roots,
+            )
+            if verified is None:
                 continue
-            if root in seen or not root.is_dir():
+            root, digest = verified
+            if root in seen:
                 continue
             seen.add(root)
-            try:
-                if sha256_source_tree(root) == expected:
-                    return root
-            except (OSError, ProvenanceError, RuntimeError):
-                continue
+            if digest == expected:
+                return root
         return None
 
     @staticmethod
@@ -3125,6 +4065,19 @@ class InspectorApplication:
             return resolved.is_file()
         except (ImportError, OSError, ProvenanceError, RuntimeError):
             return False
+
+    @staticmethod
+    def _runtime_pythonpath_root(runtime_root: Path) -> Path:
+        """Return the import parent for either supported extracted layout.
+
+        A receipt can bind the package directory itself (``.../poke_bot``) or
+        a source-tree root containing that directory.  Python's import search
+        path must always contain the *parent* of the ``poke_bot`` package;
+        otherwise a game worker imports the inspector checkout and can recurse
+        into another isolated worker instead of using its exact runtime.
+        """
+
+        return runtime_root.parent if runtime_root.name == "poke_bot" else runtime_root
 
     def _clear_resident_model(self) -> None:
         """Release the parent cache before an isolated submitted-runtime trace."""
@@ -3181,7 +4134,14 @@ class InspectorApplication:
                 "max_parameter_slice": self.config.max_parameter_slice,
                 "max_tensor_values": self.config.max_tensor_values,
                 "verify_digests": self.config.verify_digests,
+                "game_trace_cache_root": str(self.config.game_trace_cache_root),
+                "game_trace_cache_enabled": self.config.game_trace_cache_enabled,
+                "game_trace_cache_max_bytes": self.config.game_trace_cache_max_bytes,
+                "game_trace_cache_max_game_bytes": self.config.game_trace_cache_max_game_bytes,
+                "game_trace_cache_max_entry_bytes": self.config.game_trace_cache_max_entry_bytes,
+                "game_trace_cache_min_free_bytes": self.config.game_trace_cache_min_free_bytes,
             },
+            "mode": "trace",
             "submission_id": context.submission.submission_id,
             "episode_id": context.replay_entry.episode_id,
             "step_index": context.stage.step_index,
@@ -3191,7 +4151,9 @@ class InspectorApplication:
         }
         env = os.environ.copy()
         inspector_root = Path(__file__).resolve().parents[1]
-        env["PYTHONPATH"] = os.pathsep.join((str(runtime_root), str(inspector_root)))
+        env["PYTHONPATH"] = os.pathsep.join(
+            (str(self._runtime_pythonpath_root(runtime_root)), str(inspector_root))
+        )
         try:
             completed = subprocess.run(
                 [sys.executable, str(worker)],
@@ -3332,6 +4294,566 @@ class InspectorApplication:
         if not callable(getattr(model, "named_parameters", None)):
             return None, "exact_checkpoint_load_failed"
         return model, None
+
+    def _inspect_exact_game(
+        self,
+        contexts: Sequence[ReplayContext],
+        *,
+        allow_setup_prompt_model_forward: bool,
+    ) -> dict[tuple[int, int], dict[str, Any]] | None:
+        """Run one exact baseline materialization under one model residency.
+
+        A submitted source tree that is not imported by this process remains
+        isolated.  The isolated game-worker implementation is supplied below;
+        returning ``None`` before that contract is available deliberately
+        falls back to the existing one-address isolated execution rather than
+        importing a foreign runtime into the server process.
+        """
+
+        if not contexts:
+            return {}
+        first = contexts[0]
+        if any(
+            context.submission.submission_id != first.submission.submission_id
+            or context.replay_entry.episode_id != first.replay_entry.episode_id
+            or context.replay_sha256 != first.replay_sha256
+            or context.seat != first.seat
+            for context in contexts[1:]
+        ):
+            return None
+        with self._inference_lock:
+            runtime_root = self._runtime_source_root_for_submission(first.submission)
+            if runtime_root is None:
+                return {
+                    (context.stage.step_index, context.stage.factorized_stage): self._unavailable_trace(
+                        "runtime_source_tree_sha256_mismatch"
+                    )
+                    for context in contexts
+                }
+            if not self._imported_runtime_is(runtime_root):
+                # A game worker must never recursively launch another worker
+                # if its exact runtime import is misconfigured.  Its parent
+                # will treat these structured unavailable rows as a failed
+                # exact reconstruction rather than importing an arbitrary
+                # checkout or multiplying isolated model loads.
+                if os.environ.get(_ISOLATED_GAME_WORKER_ENV) == "1":
+                    return {
+                        (
+                            context.stage.step_index,
+                            context.stage.factorized_stage,
+                        ): self._unavailable_trace(
+                            "isolated_game_worker_runtime_import_mismatch"
+                        )
+                        for context in contexts
+                    }
+                return self._inspect_exact_game_isolated(
+                    contexts,
+                    runtime_root=runtime_root,
+                    allow_setup_prompt_model_forward=allow_setup_prompt_model_forward,
+                )
+            return self._inspect_exact_game_locked(
+                contexts,
+                allow_setup_prompt_model_forward=allow_setup_prompt_model_forward,
+            )
+
+    @staticmethod
+    def _stop_owned_isolated_game_worker(child: subprocess.Popen[bytes]) -> None:
+        """Contain only the noninteractive direct child created below.
+
+        ``start_new_session=True`` and PIPE stdin mean this is never a user
+        terminal, SSH, editor, or service session.  The method operates on the
+        one ``Popen`` object it owns, never enumerates processes, and is used
+        only after a malformed/stalled worker protocol or parent-side failure.
+        """
+
+        try:
+            if child.poll() is not None:
+                return
+            child.terminate()
+            try:
+                child.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                # This remains the same direct noninteractive child; no
+                # process tree or session discovery is involved.
+                child.kill()
+                child.wait(timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            return
+
+    def _read_isolated_game_worker_stream(
+        self,
+        child: subprocess.Popen[bytes],
+        *,
+        addresses: Sequence[tuple[int, int]],
+    ) -> dict[tuple[int, int], dict[str, Any]] | None:
+        """Consume bounded NDJSON from one exact-runtime game worker.
+
+        Heartbeats bound an *idle* owned worker rather than total elapsed
+        work: a legitimate long game can run indefinitely while it continues
+        reporting liveness.  Frames are parsed as they arrive, so the parent
+        never captures an unbounded whole-game stdout string.
+        """
+
+        stdout = child.stdout
+        if stdout is None:
+            self._stop_owned_isolated_game_worker(child)
+            return None
+        expected = set(addresses)
+        received: dict[tuple[int, int], dict[str, Any]] = {}
+        completed = False
+        frame = bytearray()
+        last_liveness = time.monotonic()
+        stream_closed = False
+        try:
+            descriptor = stdout.fileno()
+        except (OSError, ValueError):
+            self._stop_owned_isolated_game_worker(child)
+            return None
+
+        while True:
+            if stream_closed:
+                try:
+                    returncode = child.wait(timeout=_ISOLATED_GAME_WORKER_POLL_SECONDS)
+                except subprocess.TimeoutExpired:
+                    if (
+                        time.monotonic() - last_liveness
+                        > _ISOLATED_GAME_WORKER_STALL_SECONDS
+                    ):
+                        self._stop_owned_isolated_game_worker(child)
+                        return None
+                    continue
+                break
+
+            try:
+                ready, _, _ = select.select(
+                    [descriptor], [], [], _ISOLATED_GAME_WORKER_POLL_SECONDS
+                )
+            except (OSError, ValueError):
+                self._stop_owned_isolated_game_worker(child)
+                return None
+            now = time.monotonic()
+            if not ready:
+                if now - last_liveness > _ISOLATED_GAME_WORKER_STALL_SECONDS:
+                    self._stop_owned_isolated_game_worker(child)
+                    return None
+                continue
+            try:
+                block = os.read(descriptor, 64 * 1024)
+            except OSError:
+                self._stop_owned_isolated_game_worker(child)
+                return None
+            if not block:
+                stream_closed = True
+                continue
+            frame.extend(block)
+            if len(frame) > _ISOLATED_GAME_WORKER_MAX_FRAME_BYTES:
+                self._stop_owned_isolated_game_worker(child)
+                return None
+            while True:
+                newline = frame.find(b"\n")
+                if newline < 0:
+                    break
+                raw_line = bytes(frame[:newline])
+                del frame[: newline + 1]
+                if not raw_line:
+                    continue
+                if len(raw_line) > _ISOLATED_GAME_WORKER_MAX_FRAME_BYTES:
+                    self._stop_owned_isolated_game_worker(child)
+                    return None
+                try:
+                    record = json.loads(raw_line.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    self._stop_owned_isolated_game_worker(child)
+                    return None
+                if not isinstance(record, Mapping):
+                    self._stop_owned_isolated_game_worker(child)
+                    return None
+                if record.get("protocol") != GAME_MATERIALIZATION_WORKER_PROTOCOL:
+                    self._stop_owned_isolated_game_worker(child)
+                    return None
+                kind = record.get("kind")
+                if kind == "start":
+                    if record.get("address_count") != len(expected):
+                        self._stop_owned_isolated_game_worker(child)
+                        return None
+                    last_liveness = now
+                    continue
+                if kind == "heartbeat":
+                    last_liveness = now
+                    continue
+                if kind == "error":
+                    self._stop_owned_isolated_game_worker(child)
+                    return None
+                if kind == "trace":
+                    step_index = record.get("step_index")
+                    factorized_stage = record.get("factorized_stage")
+                    payload = record.get("payload")
+                    if (
+                        type(step_index) is not int
+                        or type(factorized_stage) is not int
+                        or not isinstance(payload, Mapping)
+                    ):
+                        self._stop_owned_isolated_game_worker(child)
+                        return None
+                    address = (step_index, factorized_stage)
+                    if address not in expected or address in received:
+                        self._stop_owned_isolated_game_worker(child)
+                        return None
+                    received[address] = dict(payload)
+                    last_liveness = now
+                    continue
+                if kind == "complete":
+                    if (
+                        completed
+                        or record.get("address_count") != len(expected)
+                        or set(received) != expected
+                    ):
+                        self._stop_owned_isolated_game_worker(child)
+                        return None
+                    completed = True
+                    last_liveness = now
+                    continue
+                self._stop_owned_isolated_game_worker(child)
+                return None
+
+        if returncode != 0 or not completed or set(received) != expected:
+            return None
+        return received
+
+    def _inspect_exact_game_isolated(
+        self,
+        contexts: Sequence[ReplayContext],
+        *,
+        runtime_root: Path,
+        allow_setup_prompt_model_forward: bool,
+    ) -> dict[tuple[int, int], dict[str, Any]] | None:
+        """Run a nonresident materialization in one owned exact-runtime worker.
+
+        The worker streams bounded raw per-address traces.  The parent owns
+        final HTTP-envelope assembly and optional cache commit, so a full,
+        disabled, oversized, or unavailable temporary cache cannot turn one
+        game worker into a fallback fan-out of isolated single-trace workers.
+
+        There is deliberately no elapsed-total subprocess timeout here.  A
+        long game legitimately needs more time than an isolated single trace,
+        and the child heartbeat continuously resets an owned-worker idle
+        watchdog.  Service lifecycle remains the managed cancellation
+        boundary; the legacy one-trace worker retains its bounded watchdog.
+        """
+
+        if not contexts:
+            return {}
+
+        def unavailable(reason: str) -> dict[tuple[int, int], dict[str, Any]]:
+            return {
+                (item.stage.step_index, item.stage.factorized_stage): self._unavailable_trace(
+                    reason
+                )
+                for item in contexts
+            }
+
+        context = contexts[0]
+        worker = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "replay_inspector_trace_worker.py"
+        )
+        if not worker.is_file():
+            return unavailable("isolated_runtime_worker_unavailable")
+        addresses = [
+            [item.stage.step_index, item.stage.factorized_stage] for item in contexts
+        ]
+        request = {
+            "config": {
+                "bind_host": self.config.bind_host,
+                "port": self.config.port,
+                "replay_root": str(self.config.replay_root),
+                "rollout_root": str(self.config.rollout_root),
+                "provenance_manifest": (
+                    str(self.config.provenance_manifest)
+                    if self.config.provenance_manifest is not None
+                    else None
+                ),
+                "training_recipe_registry": (
+                    str(self.config.training_recipe_registry)
+                    if self.config.training_recipe_registry is not None
+                    else None
+                ),
+                "artifact_roots": [str(path) for path in self.config.artifact_roots],
+                "runtime_source_root": str(runtime_root),
+                "web_root": str(self.config.web_root),
+                "torch_threads": self.config.torch_threads,
+                "max_parameter_slice": self.config.max_parameter_slice,
+                "max_tensor_values": self.config.max_tensor_values,
+                "verify_digests": self.config.verify_digests,
+                "game_trace_cache_root": str(self.config.game_trace_cache_root),
+                "game_trace_cache_enabled": self.config.game_trace_cache_enabled,
+                "game_trace_cache_max_bytes": self.config.game_trace_cache_max_bytes,
+                "game_trace_cache_max_game_bytes": self.config.game_trace_cache_max_game_bytes,
+                "game_trace_cache_max_entry_bytes": self.config.game_trace_cache_max_entry_bytes,
+                "game_trace_cache_min_free_bytes": self.config.game_trace_cache_min_free_bytes,
+            },
+            "mode": "game",
+            "submission_id": context.submission.submission_id,
+            "episode_id": context.replay_entry.episode_id,
+            "step_index": context.stage.step_index,
+            "factorized_stage": context.stage.factorized_stage,
+            "addresses": addresses,
+            "allow_setup_prompt_model_forward": allow_setup_prompt_model_forward,
+        }
+        env = os.environ.copy()
+        inspector_root = Path(__file__).resolve().parents[1]
+        env["PYTHONPATH"] = os.pathsep.join(
+            (str(self._runtime_pythonpath_root(runtime_root)), str(inspector_root))
+        )
+        env[_ISOLATED_GAME_WORKER_ENV] = "1"
+        # ``_inspect_exact_game`` calls us only while holding
+        # ``_inference_lock``.  Clear a parent-resident model immediately
+        # before this one owned child is launched so no two model copies are
+        # retained concurrently.
+        self._clear_resident_model()
+        child: subprocess.Popen[bytes] | None = None
+        try:
+            child = subprocess.Popen(
+                [sys.executable, str(worker)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                cwd=runtime_root,
+                env=env,
+                start_new_session=True,
+            )
+            if child.stdin is None:
+                self._stop_owned_isolated_game_worker(child)
+                return unavailable("isolated_game_worker_protocol_failed")
+            child.stdin.write(json.dumps(request, separators=(",", ":")).encode("utf-8"))
+            child.stdin.close()
+            streamed = self._read_isolated_game_worker_stream(
+                child,
+                addresses=tuple((item[0], item[1]) for item in addresses),
+            )
+            return (
+                streamed
+                if streamed is not None
+                else unavailable("isolated_game_worker_protocol_failed")
+            )
+        except (OSError, subprocess.SubprocessError):
+            if child is not None:
+                self._stop_owned_isolated_game_worker(child)
+            return unavailable("isolated_game_worker_launch_failed")
+        finally:
+            if child is not None:
+                for stream in (child.stdin, child.stdout):
+                    if stream is None or stream.closed:
+                        continue
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
+
+    def _inspect_exact_game_locked(
+        self,
+        contexts: Sequence[ReplayContext],
+        *,
+        allow_setup_prompt_model_forward: bool,
+    ) -> dict[tuple[int, int], dict[str, Any]] | None:
+        """Use ``inspect_replay_game`` and retain the exact single-trace ABI."""
+
+        if not contexts:
+            return {}
+        context = contexts[0]
+        submission_provenance = context.submission.provenance
+        if submission_provenance is None:
+            return {
+                (item.stage.step_index, item.stage.factorized_stage): self._unavailable_trace(
+                    "exact_submission_provenance_unavailable"
+                )
+                for item in contexts
+            }
+
+        router_factory: Callable[[], Any] | None = None
+        # This activation belongs only to ordinary decision forwards.  A
+        # hypothetical setup (IsFirst) forward deliberately uses no submitted
+        # startup activation; see the explicit grouping below.
+        ordinary_runtime_activation: dict[str, Any] | None = None
+        tree = submission_provenance.matchup_tree
+        if tree is not None:
+            if (
+                not tree.available
+                or tree.resolved_path is None
+                or tree.expected_sha256 is None
+            ):
+                return {
+                    (item.stage.step_index, item.stage.factorized_stage): self._unavailable_trace(
+                        "matchup_tree_provenance_unavailable"
+                    )
+                    for item in contexts
+                }
+            try:
+                if sha256_file(tree.resolved_path) != tree.expected_sha256:
+                    return {
+                        (item.stage.step_index, item.stage.factorized_stage): self._unavailable_trace(
+                            "matchup_tree_sha256_mismatch"
+                        )
+                        for item in contexts
+                    }
+                from poke_bot.public_matchup_router import (
+                    PublicMatchupDecisionTree,
+                    RuntimePublicMatchupRouter,
+                )
+
+                validated_tree = PublicMatchupDecisionTree.from_path(
+                    tree.resolved_path, require_runtime_enabled=True
+                )
+                if validated_tree.digest != tree.expected_sha256:
+                    return {
+                        (item.stage.step_index, item.stage.factorized_stage): self._unavailable_trace(
+                            "matchup_tree_sha256_mismatch"
+                        )
+                        for item in contexts
+                    }
+            except (OSError, RuntimeError, TypeError, ValueError):
+                return {
+                    (item.stage.step_index, item.stage.factorized_stage): self._unavailable_trace(
+                        "matchup_tree_runtime_contract_invalid"
+                    )
+                    for item in contexts
+                }
+            router_factory = lambda: RuntimePublicMatchupRouter(validated_tree)
+
+        model, reason = self._load_exact_model(
+            context.submission,
+            context.replay_entry,
+            context.replay_sha256,
+        )
+        if model is None:
+            return {
+                (item.stage.step_index, item.stage.factorized_stage): self._unavailable_trace(
+                    str(reason or "exact_checkpoint_load_failed")
+                )
+                for item in contexts
+            }
+        backend = self._inference_backend()
+        inspect_game = getattr(backend, "inspect_replay_game", None) if backend else None
+        if not callable(inspect_game):
+            return None
+        try:
+            receipt = submission_provenance.runtime_parity_receipt
+            if receipt is None or receipt.runtime_source_tree_sha256 is None:
+                raise RuntimeError("verified runtime parity receipt disappeared")
+            supplied_provenance = submission_provenance.to_dict()
+            supplied_provenance["reproduction_status"] = "recomputed_not_historical"
+            supplied_provenance["runtime_parity_verified"] = True
+            supplied_provenance["runtime_source_tree_sha256"] = (
+                receipt.runtime_source_tree_sha256
+            )
+            supplied_provenance["runtime_identity_verified"] = True
+            if tree is not None and router_factory is not None:
+                ordinary_runtime_activation = {
+                    "basis": "checksum_bound_submitted_startup",
+                    "runtime_parity_verified": True,
+                    "runtime_identity_verified": True,
+                    "runtime_source_tree_sha256": receipt.runtime_source_tree_sha256,
+                    "matchup_tree_verified": True,
+                    "matchup_tree_sha256": tree.expected_sha256,
+                    "submitted_startup_behavior_verified": True,
+                    "submitted_startup_behavior": (
+                        "packaged_matchup_tree_enables_policy_agent_runtime"
+                    ),
+                }
+            def inspect_context_group(
+                group: Sequence[ReplayContext],
+                *,
+                activation: Mapping[str, Any] | None,
+                setup_forward: bool,
+            ) -> Any:
+                return inspect_game(
+                    model=model,
+                    replay=context.replay,
+                    acting_seat=context.seat,
+                    addresses=[
+                        (item.stage.step_index, item.stage.factorized_stage)
+                        for item in group
+                    ],
+                    own_deck=None,
+                    router=None,
+                    router_factory=router_factory,
+                    checkpoint_digest=submission_provenance.checkpoint.expected_sha256,
+                    checkpoint_path=submission_provenance.checkpoint.resolved_path,
+                    provenance=supplied_provenance,
+                    submitted_runtime_activation=activation,
+                    allow_setup_prompt_model_forward=setup_forward,
+                )
+
+            # ``_trace_payload_uncached`` invokes ordinary decisions through
+            # the submitted runtime activation even when its outer response
+            # also asks for a hypothetical IsFirst model view.  The IsFirst
+            # call itself is forced-bypass.  Preserve that per-address ABI
+            # explicitly instead of letting a game-wide boolean alter either
+            # activation audit.  This also covers a setup-only short game,
+            # where inference's mixed-row convenience split has no ordinary
+            # row from which to infer the forced-bypass phase.
+            setup_contexts = [
+                item for item in contexts if not item.stage.model_forward_expected
+            ]
+            ordinary_contexts = [
+                item for item in contexts if item.stage.model_forward_expected
+            ]
+            if allow_setup_prompt_model_forward and setup_contexts:
+                raw_results = inspect_context_group(
+                    setup_contexts,
+                    activation=None,
+                    setup_forward=True,
+                )
+                if ordinary_contexts:
+                    ordinary_results = inspect_context_group(
+                        ordinary_contexts,
+                        activation=ordinary_runtime_activation,
+                        setup_forward=False,
+                    )
+                    if isinstance(raw_results, Mapping) and isinstance(
+                        ordinary_results, Mapping
+                    ):
+                        raw_results = {**raw_results, **ordinary_results}
+                    else:
+                        # A partial/malformed phase must never be treated as
+                        # a complete game response.  Returning a non-mapping
+                        # here reaches the existing fail-closed envelope
+                        # below rather than silently discarding setup rows.
+                        raw_results = None
+            else:
+                raw_results = inspect_context_group(
+                    contexts,
+                    activation=ordinary_runtime_activation,
+                    setup_forward=False,
+                )
+        except Exception:  # noqa: BLE001 - exact game reconstruction fails closed
+            return {
+                (item.stage.step_index, item.stage.factorized_stage): self._unavailable_trace(
+                    "exact_game_trace_reconstruction_failed"
+                )
+                for item in contexts
+            }
+        if not isinstance(raw_results, Mapping):
+            return {
+                (item.stage.step_index, item.stage.factorized_stage): self._unavailable_trace(
+                    "exact_game_trace_invalid_response"
+                )
+                for item in contexts
+            }
+        output: dict[tuple[int, int], dict[str, Any]] = {}
+        for item in contexts:
+            address = (item.stage.step_index, item.stage.factorized_stage)
+            raw = raw_results.get(address)
+            if raw is None:
+                output[address] = self._unavailable_trace(
+                    "exact_game_trace_missing_address"
+                )
+            else:
+                output[address] = self._normalise_exact_backend_trace(
+                    item, raw, supplied_provenance
+                )
+        return output
 
     def _inspect_exact_trace(
         self,
@@ -3532,21 +5054,27 @@ class InspectorApplication:
                     "Exact model trace reconstruction failed; no stale or alternate trace is shown."
                 ],
             }
+        return self._normalise_exact_backend_trace(
+            context, result, supplied_provenance
+        )
+
+    def _normalise_exact_backend_trace(
+        self,
+        context: ReplayContext,
+        result: Any,
+        supplied_provenance: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Translate one raw backend trace into the established HTTP envelope.
+
+        The game batching backend deliberately returns the same raw schema as
+        ``inspect_replay_step``.  Keeping the final normalization here means
+        cached game rows retain all current legal-option, fusion, adapter, and
+        provenance semantics rather than a reduced fast-path representation.
+        """
+
         payload = _json_safe(result)
         if not isinstance(payload, Mapping):
-            return {
-                "model": {
-                    "availability": _availability(
-                        False, "exact_trace_invalid_response"
-                    ),
-                    "status": "unavailable",
-                },
-                "heads": [],
-                "fusion": None,
-                "provenance": None,
-                "reproduction_status": "unavailable",
-                "warnings": ["Exact model trace returned an invalid response."],
-            }
+            return self._unavailable_trace("exact_trace_invalid_response")
         availability = payload.get("availability")
         if not isinstance(availability, Mapping):
             availability = _availability(False, "exact_trace_invalid_response")
@@ -3604,14 +5132,10 @@ class InspectorApplication:
         selected_index = selected_index if isinstance(selected_index, int) else None
         selected_action = policy.get("model_choice_candidate")
         if selected_action is None and selected_index is not None:
-            selected_action = _indexed(
-                raw_replay.get("legal_candidates"), selected_index
-            )
+            selected_action = _indexed(raw_replay.get("legal_candidates"), selected_index)
         legal_candidates = raw_replay.get("legal_candidates")
         if not isinstance(legal_candidates, list):
-            legal_candidates = [
-                list(candidate) for candidate in context.stage.candidates
-            ]
+            legal_candidates = [list(candidate) for candidate in context.stage.candidates]
         legal_options: list[dict[str, Any]] = []
         for index, candidate in enumerate(legal_candidates):
             legal_options.append(

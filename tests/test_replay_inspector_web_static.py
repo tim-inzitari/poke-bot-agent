@@ -467,24 +467,75 @@ class ReplayInspectorWebStaticTests(unittest.TestCase):
             "traceCache: new Map()",
             "traceFetches: new Map()",
             "traceAbortControllers: new Map()",
-            "TRACE_REQUEST_TIMEOUT_MS = 20000",
             "function fetchBaseTraceCached",
-            "function abortTraceFetchesExcept",
+            "const MAX_BROWSER_BASE_TRACES = 8;",
+            "while (state.traceCache.size > MAX_BROWSER_BASE_TRACES)",
             "new AbortController()",
             "controller.abort()",
-            "Selected trace reconstruction exceeded 20 seconds on Elmo's GPU",
+            "a cold exact runtime may take longer than 20 seconds",
             "await fetchBaseTraceCached(state.stepIndex, state.stage)",
         ):
             self.assertIn(fragment, app)
-        self.assertNotIn("function prefetchRemainingGameTraces", app)
-        self.assertNotIn("void prefetchRemainingGameTraces()", app)
-        self.assertNotIn("step stages cached on this device", app)
+        self.assertNotIn("TRACE_REQUEST_TIMEOUT_MS", app)
+        self.assertNotIn("Selected trace reconstruction exceeded 20 seconds", app)
+        self.assertNotIn("abortTraceFetchesExcept", app)
+        for fragment in (
+            "gameMaterialization",
+            "gameTraceAddresses",
+            "ensureGameMaterialization",
+            "runGameMaterialization",
+            "fetchMaterializedBaseTrace",
+        ):
+            self.assertNotIn(fragment, app)
 
         contract_path = ROOT / "state/replay-model-inspector-on-demand-gpu-trace-r222.json"
         contract = json.loads(contract_path.read_text(encoding="utf-8"))
         self.assertFalse(contract["trace_loading"]["whole_game_background_prefetch"])
         self.assertEqual(contract["trace_loading"]["selected_trace_timeout_seconds"], 20)
         self.assertEqual(contract["runtime"]["resident_submission_id"], "55410353")
+
+        forward_contract_path = (
+            ROOT / "state/replay-model-inspector-forward-pass-reconstruction-r237.json"
+        )
+        forward_contract = json.loads(
+            forward_contract_path.read_text(encoding="utf-8")
+        )
+        self.assertEqual(forward_contract["owner_decision_revision"], 237)
+        self.assertIsNone(
+            forward_contract["trace_loading"]["browser_visible_timeout_seconds"]
+        )
+        self.assertFalse(
+            forward_contract["trace_loading"][
+                "elapsed_browser_wait_marks_trace_unavailable"
+            ]
+        )
+        self.assertTrue(
+            forward_contract["trace_loading"]["stale_browser_requests_aborted"]
+        )
+        self.assertEqual(forward_contract["execution"]["host"], "elmo")
+        self.assertFalse(forward_contract["execution"]["bert_inference_authority"])
+
+        game_contract_path = (
+            ROOT
+            / "state/replay-model-inspector-physical-game-materialization-r243.json"
+        )
+        game_contract = json.loads(game_contract_path.read_text(encoding="utf-8"))
+        self.assertEqual(game_contract["owner_decision_revision"], 243)
+        self.assertEqual(
+            game_contract["physical_game_materialization"]["step_or_stage_navigation"],
+            "cache_read_or_join_existing_materialization_never_independent_forward",
+        )
+        self.assertTrue(
+            game_contract["physical_game_materialization"][
+                "factorized_stages_reuse_decision_state"
+            ]
+        )
+        self.assertEqual(
+            game_contract["physical_game_materialization"]["stale_browser_abort"],
+            "detach_only; never_corrupt_verified_game_materialization",
+        )
+        self.assertEqual(game_contract["execution"]["host"], "elmo")
+        self.assertFalse(game_contract["execution"]["bert_inference_authority"])
 
     def test_submission_and_episode_indexes_are_newest_first_but_steps_stay_chronological(
         self,

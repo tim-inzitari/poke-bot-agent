@@ -20,10 +20,62 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_LOG = ROOT / "outputs/logs/pure_rl.log"
+# Immutable source snapshots are code-only.  A managed candidate can bind its
+# generated artifacts to a separately attested external root with
+# ``POKEBOT_OUTPUTS_DIR``; the legacy source-root layout remains the default
+# for every ordinary invocation.
+_outputs_override = os.environ.get("POKEBOT_OUTPUTS_DIR", "").strip()
+OUTPUTS_ROOT = (
+    Path(_outputs_override).expanduser().resolve()
+    if _outputs_override
+    else ROOT / "outputs"
+)
+# Preserve checkout-relative artifact paths for ordinary runs, but never let a
+# sealed-source invocation write a relative log/arm file inside the snapshot.
+RELATIVE_ARTIFACT_ROOT = OUTPUTS_ROOT if _outputs_override else ROOT
+DEFAULT_LOG = OUTPUTS_ROOT / "logs/pure_rl.log"
 TRAINING_SAFETY_VERSION = "20260717"
-LAUNCH_LOCK = ROOT / "outputs/state/pure_rl_launcher.lock"
-DEFAULT_TRAINING_ARM_FILE = ROOT / "outputs/state/TRAINING_ARMED"
+LAUNCH_LOCK = OUTPUTS_ROOT / "state/pure_rl_launcher.lock"
+DEFAULT_TRAINING_ARM_FILE = OUTPUTS_ROOT / "state/TRAINING_ARMED"
+
+
+def _r241_snapshot_execution_active(environment: dict[str, str] | None = None) -> bool:
+    """Whether this generic launcher is running inside r241's sealed source tree."""
+
+    env = os.environ if environment is None else environment
+    return bool(str(env.get("POKEBOT_R241_SOURCE_EXECUTION_ROOT") or "").strip())
+
+
+def _validate_r241_snapshot_subprocess_closure(
+    environment: dict[str, str] | None = None,
+) -> None:
+    """Reject an incomplete source snapshot before it can skip safety helpers.
+
+    The generic launcher historically treated optional helper scripts as best
+    effort.  That is fine for ordinary checkout development, but r241's
+    receipt-bound execution closure must not silently omit its canary, live
+    resource watcher, or unattended monitor.
+    """
+
+    env = os.environ if environment is None else environment
+    if not _r241_snapshot_execution_active(env):
+        return
+    declared_root = Path(str(env["POKEBOT_R241_SOURCE_EXECUTION_ROOT"])).expanduser()
+    if declared_root.resolve() != ROOT.resolve():
+        raise RuntimeError(
+            "r241 source execution root disagrees with launch_pure_rl.py location"
+        )
+    for relative in (
+        "scripts/canary_game_accuracy.py",
+        "scripts/resource_watcher.py",
+        "scripts/unattended_monitor.py",
+    ):
+        script = ROOT / relative
+        if script.is_symlink() or not script.is_file():
+            raise RuntimeError(
+                "r241 immutable source snapshot omits required subprocess helper: "
+                + relative
+            )
 
 
 def _env_float(name: str, default: float) -> float:
@@ -133,7 +185,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def open_stable_log(path: Path):
     """Open the stable watch path append-only across launcher restarts."""
-    path = path if path.is_absolute() else ROOT / path
+    path = path if path.is_absolute() else RELATIVE_ARTIFACT_ROOT / path
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink():
         path.unlink()
@@ -143,7 +195,9 @@ def open_stable_log(path: Path):
 
 def progress_log_path(log_path: Path) -> Path:
     """Sibling file for tqdm bars (stderr), e.g. pure_rl_core.progress.log."""
-    log_path = log_path if log_path.is_absolute() else ROOT / log_path
+    log_path = (
+        log_path if log_path.is_absolute() else RELATIVE_ARTIFACT_ROOT / log_path
+    )
     return log_path.with_name(f"{log_path.stem}.progress.log")
 
 
@@ -159,7 +213,9 @@ def publish_stable_log_aliases(log_path: Path) -> None:
     Per-run files remain authoritative archives.  These three aliases are the
     stable operator contract across run names and launcher versions.
     """
-    log_path = log_path if log_path.is_absolute() else ROOT / log_path
+    log_path = (
+        log_path if log_path.is_absolute() else RELATIVE_ARTIFACT_ROOT / log_path
+    )
     progress_path = progress_log_path(log_path)
     status_path = progress_status_path(log_path)
     aliases = {
@@ -223,7 +279,7 @@ def _production_training_arm(
     )
     arm_file = Path(configured)
     if not arm_file.is_absolute():
-        arm_file = ROOT / arm_file
+        arm_file = RELATIVE_ARTIFACT_ROOT / arm_file
     try:
         token_matches = arm_file.read_bytes() == TRAINING_SAFETY_VERSION.encode()
     except OSError:
@@ -265,6 +321,11 @@ def _acquire_launch_lock(path: Path, *, run_name: str):
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    try:
+        _validate_r241_snapshot_subprocess_closure()
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 78
     production_armed, arm_file = _production_training_arm()
     if not args.smoke and not production_armed:
         print(
@@ -405,15 +466,30 @@ def main(argv: list[str] | None = None) -> int:
         "on",
     )
     if accuracy_script.is_file() and not args.smoke and not skip_acc:
+        accuracy_command = [
+            args.python,
+            str(accuracy_script),
+            "--num-envs",
+            env.get("POKEBOT_MULTI_ENV_PER_WORKER", "1"),
+            "--json-out",
+            str(OUTPUTS_ROOT / "state/game_accuracy_canary.json"),
+        ]
+        if _r241_snapshot_execution_active(env):
+            # The immutable source snapshot intentionally does not contain a
+            # Kaggle input tree.  Bind the canary to r241's sealed libcg and
+            # exact deck rather than letting its checkout-relative defaults
+            # read (or write) beneath the snapshot.
+            cg_root = str(env.get("CG_LIB_PATH") or "").strip()
+            deck = str(env.get("POKEBOT_SPECIALIST_DECK_PATH") or "").strip()
+            if not cg_root or not deck:
+                print(
+                    "error: r241 canary is missing sealed CG_LIB_PATH or specialist deck",
+                    file=sys.stderr,
+                )
+                return 78
+            accuracy_command.extend(["--cg-parent", cg_root, "--deck-csv", deck])
         acc = subprocess.run(
-            [
-                args.python,
-                str(accuracy_script),
-                "--num-envs",
-                env.get("POKEBOT_MULTI_ENV_PER_WORKER", "1"),
-                "--json-out",
-                str(ROOT / "outputs/state/game_accuracy_canary.json"),
-            ],
+            accuracy_command,
             cwd=ROOT,
             env=env,
             check=False,
@@ -500,7 +576,9 @@ def main(argv: list[str] | None = None) -> int:
         if str(endpoints).strip():
             train_cmd.extend(["--remote-worker-endpoints", str(endpoints)])
 
-    log_path = (args.log if args.log.is_absolute() else ROOT / args.log).resolve()
+    log_path = (
+        args.log if args.log.is_absolute() else RELATIVE_ARTIFACT_ROOT / args.log
+    ).resolve()
     prog_path = progress_log_path(log_path).resolve()
     status_path = progress_status_path(log_path).resolve()
     env["PURE_RL_PROGRESS_LOG"] = str(prog_path)
@@ -562,9 +640,9 @@ def main(argv: list[str] | None = None) -> int:
         and str(env.get("POKEBOT_LIVE_POOL", "1")).strip().lower()
         not in ("0", "false", "no", "off")
     ):
-        watcher_log = ROOT / "outputs/logs/resource_watcher.log"
+        watcher_log = OUTPUTS_ROOT / "logs/resource_watcher.log"
         watcher_log.parent.mkdir(parents=True, exist_ok=True)
-        (ROOT / "outputs/state").mkdir(parents=True, exist_ok=True)
+        (OUTPUTS_ROOT / "state").mkdir(parents=True, exist_ok=True)
         watcher = subprocess.Popen(
             [
                 args.python,
@@ -575,6 +653,10 @@ def main(argv: list[str] | None = None) -> int:
                 "--emit-live-pool",
                 "--log",
                 str(watcher_log),
+                "--plan",
+                str(OUTPUTS_ROOT / "state" / "resource_plan.json"),
+                "--live-pool-plan",
+                str(OUTPUTS_ROOT / "state" / "live_pool_plan.json"),
             ],
             cwd=ROOT,
             env=env,
@@ -582,7 +664,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"PURE_RL_WATCHER pid={watcher.pid} emit_live_pool=1", flush=True)
 
-    run_dir = ROOT / "outputs/pure_rl" / args.run_name
+    run_dir = OUTPUTS_ROOT / "pure_rl" / args.run_name
     monitor_alert_path = run_dir / "MONITOR_STOP_REQUESTED.json"
     monitor = None
     monitor_script = ROOT / "scripts/unattended_monitor.py"
@@ -623,8 +705,8 @@ def main(argv: list[str] | None = None) -> int:
     want_auto = args.auto_progress
     auto_script = ROOT / "scripts/pure_rl_auto_progress.py"
     if want_auto and auto_script.is_file():
-        run_dir = ROOT / "outputs/pure_rl" / args.run_name
-        auto_log = ROOT / "outputs/logs/pure_rl_auto_progress.log"
+        run_dir = OUTPUTS_ROOT / "pure_rl" / args.run_name
+        auto_log = OUTPUTS_ROOT / "logs/pure_rl_auto_progress.log"
         auto_cmd = [
             args.python,
             "-u",

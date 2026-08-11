@@ -17,6 +17,7 @@ from .belief import EmpiricalDeckPosterior, PublicBeliefHistory
 from .belief_mcts import BeliefMCTS, factorize_visit_policy
 from .matchup_adapter_activation import ShadowMatchupAdapterRouter
 from .matchup_adapters import UNKNOWN_ROUTE
+from .own_deck_ledger import OwnDeckLedger
 from .public_matchup_router import RuntimePublicMatchupRouter
 from .mcts import GameClock, MCTS, MCTSResult
 from .model import TemporalCabtTransformer, TemporalKVCache
@@ -127,6 +128,60 @@ def _fail_closed_legal(obs_dict: dict, preferred: list[int], rng: random.Random)
 forced_go_first_action = features.forced_go_first_action
 
 
+def _legacy_ledger_keyword_error(exc: TypeError) -> bool:
+    """Whether a pre-ledger model stub rejected an optional ledger keyword.
+
+    The successor ledger must remain behavior-inert for old checkpoints and
+    lightweight test doubles.  Only retry on Python's explicit unsupported
+    keyword error; any model/runtime error still propagates normally.
+    """
+
+    message = str(exc)
+    return "unexpected keyword argument" in message and any(
+        name in message
+        for name in (
+            "ledger_snapshots",
+            "ledger_histories",
+            "ledger_option_features",
+        )
+    )
+
+
+def _call_with_optional_ledger(
+    method,
+    *args,
+    ledger_kwargs: dict[str, Any],
+    allow_legacy_fallback: bool = True,
+    **kwargs,
+):
+    """Call a model method with ledger inputs, tolerating legacy model stubs.
+
+    An explicitly enabled successor is never allowed to discard its shared
+    ledger input merely because a stale model implementation lacks the keyword.
+    The retry is exclusively a dormant legacy compatibility path.
+    """
+
+    active = {key: value for key, value in ledger_kwargs.items() if value is not None}
+    if not active:
+        return method(*args, **kwargs)
+    try:
+        return method(*args, **kwargs, **active)
+    except TypeError as exc:
+        if not allow_legacy_fallback or not _legacy_ledger_keyword_error(exc):
+            raise
+        return method(*args, **kwargs)
+
+
+def _make_own_deck_ledger(deck: list[int]) -> OwnDeckLedger:
+    """Construct the successor side-store from the exact 60-card multiset."""
+
+    if len(deck) != 60:
+        raise ValueError(
+            "own-deck ledger successor requires an exact 60-card starting deck"
+        )
+    return OwnDeckLedger(deck)
+
+
 @dataclass
 class PolicyAgent:
     """NN agent: greedy argmax, Recursive Turn Planner, or timed MCTS."""
@@ -197,6 +252,13 @@ class PolicyAgent:
     #: MCTS leaf forwards run on the server and ``model`` may be None on this
     #: CPU worker (it only featurizes + searches on CPU).
     leaf_backend: Optional[Callable] = None
+    #: Successor-only opt-in.  ``None`` resolves only from the checkpoint's
+    #: typed capability; remote workers must pass this explicit constructor
+    #: argument. Legacy r241/default agents remain completely dormant.
+    own_deck_ledger_enabled: Optional[bool] = field(
+        default=None,
+        kw_only=True,
+    )
     #: Formal training/eval must propagate model/runtime errors so the caller
     #: invalidates the game instead of counting random fallback play.
     strict_runtime: bool = False
@@ -208,6 +270,11 @@ class PolicyAgent:
     previous_action_history: list[Optional[features.SparseVector]] = field(
         default_factory=list
     )
+    #: Immutable public own-deck residual snapshots aligned one-for-one with
+    #: ``board_history``.  This is a side store rather than an observation
+    #: mutation, so it can never expose hidden deck/prize realizations.
+    ledger_history: list[Any] = field(default_factory=list, init=False)
+    own_deck_ledger: Optional[OwnDeckLedger] = field(init=False, repr=False)
     _kv_cache: Optional[TemporalKVCache] = None
     _previous_action_token: Optional[features.SparseVector] = None
     _fail_closed_logged: bool = False
@@ -251,6 +318,44 @@ class PolicyAgent:
     )
 
     def __post_init__(self) -> None:
+        # Keep the ledger local to a game/policy instance.  ``OwnDeckLedger``
+        # copies the starting multiset and exposes only immutable public
+        # snapshots, so later deck-list mutations cannot retroactively alter a
+        # decision input.
+        model_ledger_enabled = bool(
+            getattr(self.model, "own_deck_ledger_enabled", False)
+        )
+        model_ledger_runtime_enabled = bool(
+            getattr(self.model, "own_deck_ledger_runtime_enabled", False)
+        )
+        if self.own_deck_ledger_enabled is None:
+            self.own_deck_ledger_enabled = model_ledger_enabled
+        else:
+            self.own_deck_ledger_enabled = bool(self.own_deck_ledger_enabled)
+        # A local receipt-enabled successor may never be paired with a neutral
+        # PolicyAgent side-store.  That would make the direct local path
+        # silently bypass a model input which batched inference already treats
+        # as mandatory.  ``model=None`` remains a supported remote-backend
+        # worker shape and is checked by its packet receiver instead.
+        if model_ledger_runtime_enabled and not self.own_deck_ledger_enabled:
+            raise ValueError(
+                "own_deck_ledger_runtime_enabled model requires an enabled "
+                "PolicyAgent own-deck ledger"
+            )
+        # Conversely, an explicitly selected local successor cannot be
+        # attached to a historical model that lacks the physical adapter.  The
+        # model capability marker is intentional here: lightweight remote
+        # workers retain ``model=None`` and validate their remote endpoint.
+        if (
+            self.own_deck_ledger_enabled
+            and self.model is not None
+            and not model_ledger_enabled
+        ):
+            raise ValueError(
+                "enabled PolicyAgent own-deck ledger requires a model with "
+                "physical own-deck ledger capability"
+            )
+        self.own_deck_ledger = None
         if int(self.expected_search_decisions) < 1:
             raise ValueError("expected_search_decisions must be positive")
         if self.min_trusted_sims is not None:
@@ -283,6 +388,16 @@ class PolicyAgent:
             )
         elif env_rtp in {"0", "false", "no", "off"}:
             self.use_recursive_turn_planner = False
+        if self.own_deck_ledger_enabled:
+            if self.use_mcts:
+                raise ValueError(
+                    "own-deck ledger successor is direct-policy-only; MCTS is forbidden"
+                )
+            if self.use_recursive_turn_planner:
+                raise ValueError(
+                    "own-deck ledger successor forbids recursive turn planning"
+                )
+            self.own_deck_ledger = _make_own_deck_ledger(self.deck)
         env_rtp_profile = os.environ.get("POKEBOT_RTP_SIZING_PROFILE", "").strip()
         if env_rtp_profile and self.rtp_sizing_profile is None:
             self.rtp_sizing_profile = env_rtp_profile
@@ -519,6 +634,14 @@ class PolicyAgent:
         self.targets.clear()
         self.board_history.clear()
         self.previous_action_history.clear()
+        if not hasattr(self, "ledger_history"):
+            self.ledger_history = []
+        self.ledger_history.clear()
+        if (
+            getattr(self, "own_deck_ledger_enabled", False)
+            and getattr(self, "own_deck_ledger", None) is not None
+        ):
+            self.own_deck_ledger.reset()
         self._kv_cache = None
         self._previous_action_token = None
         self.last_result = None
@@ -586,6 +709,16 @@ class PolicyAgent:
         snapshot = {
             "board_history": list(self.board_history),
             "previous_action_history": list(self.previous_action_history),
+            "ledger_history": list(getattr(self, "ledger_history", [])),
+            # Search may mutate the ledger before it knows whether it will be
+            # trusted.  Fork its side-store so the greedy fallback replays the
+            # exact same public information state once, rather than retaining
+            # speculative updates.
+            "own_deck_ledger": (
+                self.own_deck_ledger.fork()
+                if getattr(self, "own_deck_ledger", None) is not None
+                else None
+            ),
             "kv_cache": self._kv_cache,
             "previous_action_token": copy.deepcopy(self._previous_action_token),
             "last_result": self.last_result,
@@ -608,6 +741,8 @@ class PolicyAgent:
             self.previous_action_history = snapshot[
                 "previous_action_history"
             ]
+            self.ledger_history = snapshot["ledger_history"]
+            self.own_deck_ledger = snapshot["own_deck_ledger"]
             self._kv_cache = snapshot["kv_cache"]
             self._previous_action_token = snapshot["previous_action_token"]
             self.last_result = snapshot["last_result"]
@@ -661,15 +796,78 @@ class PolicyAgent:
             raise ValueError(f"history context limit must be positive, got {limit}")
         return limit
 
+    def _require_own_deck_direct_policy(self, route: str) -> None:
+        """Reject planners even if a caller mutates a constructed policy."""
+
+        if getattr(self, "own_deck_ledger_enabled", False):
+            raise RuntimeError(
+                "own-deck ledger successor is direct-policy-only; "
+                f"{route} is forbidden"
+            )
+
+    def _observe_own_deck_ledger(self, obs_dict: dict) -> Any:
+        """Advance the public ledger for one real root observation.
+
+        Every decision path calls this immediately before appending temporal
+        history.  Factorized stages intentionally reuse the returned immutable
+        snapshot; speculative search packets never call it.
+        """
+
+        # Older pickled agents predate the field.  Lazily restoring the neutral
+        # side-store keeps those callers compatible without changing their
+        # board/option feature path.
+        if not getattr(self, "own_deck_ledger_enabled", False):
+            return None
+        ledger = getattr(self, "own_deck_ledger", None)
+        if ledger is None:
+            # An explicitly enabled successor fails closed if its starting
+            # multiset cannot form a valid ledger.  Never silently downgrade a
+            # selected successor path to stale static-deck features.
+            ledger = _make_own_deck_ledger(self.deck)
+            self.own_deck_ledger = ledger
+        return ledger.observe(obs_dict)
+
+    def _append_history_snapshot(
+        self,
+        board: features.SparseVector,
+        ledger_snapshot: Any,
+    ) -> None:
+        """Append the three temporally aligned per-decision inputs together."""
+
+        self.board_history.append(board)
+        self.previous_action_history.append(self._previous_action_token)
+        if getattr(self, "own_deck_ledger_enabled", False):
+            self.ledger_history.append(ledger_snapshot)
+        max_context = self._history_context_limit()
+        if len(self.board_history) > max_context:
+            self.board_history = self.board_history[-max_context:]
+            self.previous_action_history = self.previous_action_history[
+                -max_context:
+            ]
+            if getattr(self, "own_deck_ledger_enabled", False):
+                self.ledger_history = self.ledger_history[-max_context:]
+
+    @staticmethod
+    def _ledger_option_features(
+        ledger_snapshot: Any,
+        obs_dict: dict,
+        candidates: list[list[int]],
+    ) -> Any:
+        """Derive legal-option rows from a frozen public ledger snapshot."""
+
+        if ledger_snapshot is None:
+            return None
+        option_features = getattr(ledger_snapshot, "option_features", None)
+        if not callable(option_features):
+            return None
+        return option_features(obs_dict, candidates)
+
     def _record_go_first(self, obs_dict: dict, go_first: list[int]) -> list[int]:
         try:
             features.assert_info_set(obs_dict)
+            ledger_snapshot = self._observe_own_deck_ledger(obs_dict)
             board = features.build_board_tokens(obs_dict, self.deck)
-            self.board_history.append(board)
-            self.previous_action_history.append(self._previous_action_token)
-            max_context = self._history_context_limit()
-            self.board_history = self.board_history[-max_context:]
-            self.previous_action_history = self.previous_action_history[-max_context:]
+            self._append_history_snapshot(board, ledger_snapshot)
             self._previous_action_token = features.build_option_tokens(
                 obs_dict, [go_first]
             )
@@ -690,6 +888,8 @@ class PolicyAgent:
                     }
                 )
         except Exception:
+            if getattr(self, "own_deck_ledger_enabled", False):
+                raise
             pass
         return go_first
 
@@ -697,15 +897,9 @@ class PolicyAgent:
         self, obs_dict: dict
     ) -> features.SparseVector:
         features.assert_info_set(obs_dict)
+        ledger_snapshot = self._observe_own_deck_ledger(obs_dict)
         board = features.build_board_tokens(obs_dict, self.deck)
-        self.board_history.append(board)
-        self.previous_action_history.append(self._previous_action_token)
-        max_context = self._history_context_limit()
-        if len(self.board_history) > max_context:
-            self.board_history = self.board_history[-max_context:]
-            self.previous_action_history = self.previous_action_history[
-                -max_context:
-            ]
+        self._append_history_snapshot(board, ledger_snapshot)
         return board
 
     @torch.no_grad()
@@ -725,10 +919,26 @@ class PolicyAgent:
         cached_state = None
         cached_spatial = None
         cached_fusion_state = None
+        # The root observation is recorded once by ``_append_decision_history``
+        # before this method runs.  Keep its immutable ledger snapshot and its
+        # aligned temporal history fixed for every factorized stage; only the
+        # legal-option rows are recomputed as the prefix changes.
+        ledger_snapshot = (
+            self.ledger_history[-1] if getattr(self, "ledger_history", []) else None
+        )
+        ledger_history = list(getattr(self, "ledger_history", []))
+        allow_legacy_ledger_fallback = not bool(
+            getattr(self, "own_deck_ledger_enabled", False)
+        )
 
         def score(candidates: list[list[int]]) -> list[float]:
             nonlocal cached_state, cached_spatial, cached_fusion_state
             options = features.build_option_tokens(obs_dict, candidates)
+            ledger_option_features = self._ledger_option_features(
+                ledger_snapshot,
+                obs_dict,
+                candidates,
+            )
             matchup_route = self._matchup_model_route()
             if self.leaf_backend is not None:
                 packet = LeafPacket(
@@ -739,6 +949,9 @@ class PolicyAgent:
                     history_previous_actions=list(self.previous_action_history),
                     action_combos_override=[list(c) for c in candidates],
                     matchup_route=matchup_route,
+                    ledger_snapshot=ledger_snapshot,
+                    history_ledger_snapshots=list(ledger_history),
+                    ledger_option_features=ledger_option_features,
                 )
                 out = self.leaf_backend([packet])[0]
                 if out.combos != candidates or len(out.priors) != len(candidates):
@@ -753,7 +966,8 @@ class PolicyAgent:
                     self.model.decision_context == "history"
                     and self.model.kv_cache_enabled
                 ):
-                    model_out = self.model.forward(
+                    model_out = _call_with_optional_ledger(
+                        self.model.forward,
                         board,
                         options,
                         kv_cache=self._kv_cache,
@@ -761,23 +975,40 @@ class PolicyAgent:
                         n_options=[len(candidates)],
                         previous_action=self._previous_action_token,
                         matchup_routes=[matchup_route],
+                        ledger_kwargs={
+                            "ledger_snapshots": [ledger_snapshot],
+                            "ledger_option_features": [ledger_option_features],
+                        },
+                        allow_legacy_fallback=allow_legacy_ledger_fallback,
                     )
                     self._kv_cache = model_out["kv_cache"]
                 elif self.model.decision_context == "history":
-                    model_out = self.model.forward_history_batch(
+                    model_out = _call_with_optional_ledger(
+                        self.model.forward_history_batch,
                         [self.board_history],
                         [options],
                         n_options=[len(candidates)],
                         previous_action_histories=[self.previous_action_history],
                         matchup_routes=[matchup_route],
+                        ledger_kwargs={
+                            "ledger_histories": [ledger_history],
+                            "ledger_option_features": [ledger_option_features],
+                        },
+                        allow_legacy_fallback=allow_legacy_ledger_fallback,
                     )
                 else:
-                    model_out = self.model.forward(
+                    model_out = _call_with_optional_ledger(
+                        self.model.forward,
                         board,
                         options,
                         append_cache=False,
                         n_options=[len(candidates)],
                         matchup_routes=[matchup_route],
+                        ledger_kwargs={
+                            "ledger_snapshots": [ledger_snapshot],
+                            "ledger_option_features": [ledger_option_features],
+                        },
+                        allow_legacy_fallback=allow_legacy_ledger_fallback,
                     )
                 cached_state = self.model.matchup_policy_value_state(
                     model_out["state_vec"], [matchup_route]
@@ -786,12 +1017,17 @@ class PolicyAgent:
                 cached_spatial = model_out["spatial_memory"]
                 logits = model_out["policy_logits"][0, : len(candidates)]
             else:
-                logits = self.model.decode_options(
+                logits = _call_with_optional_ledger(
+                    self.model.decode_options,
                     options,
                     cached_spatial,
                     cached_state,
                     n_options=[len(candidates)],
                     decision_fusion_state_vec=cached_fusion_state,
+                    ledger_kwargs={
+                        "ledger_option_features": [ledger_option_features],
+                    },
+                    allow_legacy_fallback=allow_legacy_ledger_fallback,
                 )[0, : len(candidates)]
             probs = torch.softmax(logits.float(), dim=-1)
             return [float(v) for v in probs.cpu().tolist()]
@@ -871,6 +1107,7 @@ class PolicyAgent:
     @torch.no_grad()
     def rtp_select(self, obs_dict: dict) -> list[int]:
         """Recursive Turn Planner select with greedy fallback."""
+        self._require_own_deck_direct_policy("recursive turn planning")
         go_first = forced_go_first_action(obs_dict)
         if go_first is not None:
             return self._record_go_first(obs_dict, go_first)
@@ -1163,6 +1400,7 @@ class PolicyAgent:
         return selected
 
     def mcts_select(self, obs_dict: dict) -> list[int]:
+        self._require_own_deck_direct_policy("MCTS")
         if self.belief_mcts:
             return self.belief_mcts_select(obs_dict)
         if not self.oracle_mode:
@@ -1210,13 +1448,12 @@ class PolicyAgent:
 
     def belief_mcts_select(self, obs_dict: dict) -> list[int]:
         """Trusted public-history root-sampled information-set search."""
+        self._require_own_deck_direct_policy("belief MCTS")
         features.assert_info_set(obs_dict)
+        ledger_snapshot = self._observe_own_deck_ledger(obs_dict)
         board = features.build_board_tokens(obs_dict, self.deck)
-        self.board_history.append(board)
-        self.previous_action_history.append(self._previous_action_token)
+        self._append_history_snapshot(board, ledger_snapshot)
         max_context = self._history_context_limit()
-        self.board_history = self.board_history[-max_context:]
-        self.previous_action_history = self.previous_action_history[-max_context:]
         max_sims = int(self.max_sims or max(128, config.SEARCH.sims_per_move))
         min_trusted_sims = int(
             self.min_trusted_sims
@@ -1434,6 +1671,7 @@ class PolicyAgent:
                 fallback = (
                     "raising for transactional frozen-greedy fallback"
                     if self.strict_runtime
+                    or getattr(self, "own_deck_ledger_enabled", False)
                     else "using random legal select"
                 )
                 print(
@@ -1444,7 +1682,7 @@ class PolicyAgent:
                     file=sys.stderr,
                     flush=True,
                 )
-            if self.strict_runtime:
+            if self.strict_runtime or getattr(self, "own_deck_ledger_enabled", False):
                 raise RuntimeError(
                     f"policy runtime failed closed: {type(exc).__name__}: {exc}"
                 ) from exc

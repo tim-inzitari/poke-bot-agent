@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -37,6 +38,39 @@ def _spec(idx: int):
         source="test",
         path=f"/tmp/agent-{idx}",
     )
+
+
+def _install_minimal_cg_runtime(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provide the vocabulary-only cg surface needed by isolated model tests."""
+    from poke_bot import cg_env
+
+    runtime = tmp_path / "minimal-cg-runtime"
+    package = runtime / "cg"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "api.py").write_text(
+        """
+from types import SimpleNamespace
+
+class SelectContext:
+    RECOVER_SPECIAL_CONDITION = 1
+
+def all_card_data():
+    return [SimpleNamespace(cardId=1)]
+
+def all_attack():
+    return [SimpleNamespace(attackId=1)]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CG_LIB_PATH", str(runtime))
+    monkeypatch.setattr(cg_env, "_CG_READY", False)
+    monkeypatch.delitem(sys.modules, "cg", raising=False)
+    monkeypatch.delitem(sys.modules, "cg.api", raising=False)
+    monkeypatch.setattr(features, "_CARD_COUNT", None)
+    monkeypatch.setattr(features, "_ATTACK_COUNT", None)
+    monkeypatch.setattr(features, "_CARD_TABLE", None)
 
 
 def test_core_contract_migration_quarantines_partial_at_phase_boundary(
@@ -350,7 +384,10 @@ def test_small_core_to_hammer_transfer_is_shape_complete(tmp_path) -> None:
     assert report["skipped_tensors"] == {}
 
 
-def test_historical_core_kernel_ignores_ambient_future_head_flags(tmp_path) -> None:
+def test_historical_core_kernel_ignores_ambient_future_head_flags(
+    tmp_path, monkeypatch
+) -> None:
+    _install_minimal_cg_runtime(tmp_path, monkeypatch)
     cfg = core_kernel_config_small_3080ti()
     kernel = CoreKernel(cfg=cfg, device=torch.device("cpu"))
     checkpoint_path = tmp_path / "historical-core-kernel.pt"
@@ -400,3 +437,155 @@ print(json.dumps({
         "routes": False,
         "runtime": False,
     }
+
+
+def test_historical_core_kernel_ignores_ambient_own_deck_successor_flags(
+    tmp_path, monkeypatch
+) -> None:
+    """Missing r258/r259 fields must be legacy false under a successor env.
+
+    Use the plain ``model_state_dict`` path deliberately: if one of the new
+    flags leaks in from the environment, strict loading sees successor tensors
+    that the historical checkpoint does not contain and must fail.
+    """
+    _install_minimal_cg_runtime(tmp_path, monkeypatch)
+    cfg = core_kernel_config_small_3080ti()
+    cfg = replace(
+        cfg,
+        own_deck_ledger_enabled=False,
+        own_deck_ledger_runtime_enabled=False,
+        visible_tutor_completion_head_enabled=False,
+        terminal_conversion_head_enabled=False,
+        visible_tutor_completion_route_enabled=False,
+        visible_tutor_completion_route_runtime_enabled=False,
+        terminal_conversion_route_enabled=False,
+        terminal_conversion_route_runtime_enabled=False,
+    )
+    kernel = CoreKernel(cfg=cfg, device=torch.device("cpu"))
+    checkpoint_path = tmp_path / "historical-r241-core-kernel.pt"
+    kernel.save_core_kernel(checkpoint_path)
+    payload = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    payload.pop("core_kernel_state_dict", None)
+    for field in (
+        "own_deck_ledger_enabled",
+        "own_deck_ledger_runtime_enabled",
+        "own_deck_ledger_width",
+        "own_deck_ledger_option_feature_dim",
+        "visible_tutor_completion_head_enabled",
+        "terminal_conversion_head_enabled",
+        "visible_tutor_completion_route_enabled",
+        "visible_tutor_completion_route_runtime_enabled",
+        "terminal_conversion_route_enabled",
+        "terminal_conversion_route_runtime_enabled",
+    ):
+        payload["model_config"].pop(field, None)
+    torch.save(payload, checkpoint_path)
+
+    source = """
+import json
+from poke_bot.core_kernel import CoreKernel
+k = CoreKernel.load_core_kernel(PATH)
+print(json.dumps({
+    "ledger": k.cfg.own_deck_ledger_enabled,
+    "ledger_runtime": k.cfg.own_deck_ledger_runtime_enabled,
+    "tutor_head": k.cfg.visible_tutor_completion_head_enabled,
+    "terminal_head": k.cfg.terminal_conversion_head_enabled,
+    "tutor_route": k.cfg.visible_tutor_completion_route_enabled,
+    "tutor_runtime": k.cfg.visible_tutor_completion_route_runtime_enabled,
+    "terminal_route": k.cfg.terminal_conversion_route_enabled,
+    "terminal_runtime": k.cfg.terminal_conversion_route_runtime_enabled,
+    "ledger_module_absent": k.net.own_deck_ledger_adapter is None,
+    "tutor_module_absent": k.net.visible_tutor_completion_head is None,
+    "terminal_module_absent": k.net.terminal_conversion_head is None,
+}))
+""".replace("PATH", repr(str(checkpoint_path)))
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "POKEBOT_OWN_DECK_LEDGER_ENABLED": "1",
+            "POKEBOT_OWN_DECK_LEDGER_RUNTIME_ENABLED": "1",
+            "POKEBOT_OWN_DECK_LEDGER_WIDTH": "31",
+            "POKEBOT_OWN_DECK_LEDGER_OPTION_FEATURE_DIM": "8",
+            "POKEBOT_VISIBLE_TUTOR_COMPLETION_HEAD_ENABLED": "1",
+            "POKEBOT_TERMINAL_CONVERSION_HEAD_ENABLED": "1",
+            "POKEBOT_VISIBLE_TUTOR_COMPLETION_ROUTE_ENABLED": "1",
+            "POKEBOT_VISIBLE_TUTOR_COMPLETION_ROUTE_RUNTIME_ENABLED": "1",
+            "POKEBOT_TERMINAL_CONVERSION_ROUTE_ENABLED": "1",
+            "POKEBOT_TERMINAL_CONVERSION_ROUTE_RUNTIME_ENABLED": "1",
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", source],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=environment,
+    )
+    loaded = json.loads(result.stdout.strip().splitlines()[-1])
+    assert loaded == {
+        "ledger": False,
+        "ledger_runtime": False,
+        "tutor_head": False,
+        "terminal_head": False,
+        "tutor_route": False,
+        "tutor_runtime": False,
+        "terminal_route": False,
+        "terminal_runtime": False,
+        "ledger_module_absent": True,
+        "tutor_module_absent": True,
+        "terminal_module_absent": True,
+    }
+
+
+def test_core_kernel_without_model_config_defaults_own_deck_successor_flags(
+    tmp_path, monkeypatch
+) -> None:
+    """Even a pre-snapshot core checkpoint cannot inherit successor tensors."""
+    _install_minimal_cg_runtime(tmp_path, monkeypatch)
+    cfg = core_kernel_config_small_3080ti()
+    cfg = replace(
+        cfg,
+        own_deck_ledger_enabled=False,
+        own_deck_ledger_runtime_enabled=False,
+        visible_tutor_completion_head_enabled=False,
+        terminal_conversion_head_enabled=False,
+        visible_tutor_completion_route_enabled=False,
+        visible_tutor_completion_route_runtime_enabled=False,
+        terminal_conversion_route_enabled=False,
+        terminal_conversion_route_runtime_enabled=False,
+    )
+    kernel = CoreKernel(cfg=cfg, device=torch.device("cpu"))
+    checkpoint_path = tmp_path / "pre-config-core-kernel.pt"
+    kernel.save_core_kernel(checkpoint_path)
+    payload = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    payload.pop("model_config", None)
+    payload.pop("core_kernel_state_dict", None)
+    torch.save(payload, checkpoint_path)
+
+    ambient_successor_cfg = replace(
+        cfg,
+        own_deck_ledger_enabled=True,
+        own_deck_ledger_runtime_enabled=True,
+        own_deck_ledger_width=31,
+        visible_tutor_completion_head_enabled=True,
+        terminal_conversion_head_enabled=True,
+        visible_tutor_completion_route_enabled=True,
+        visible_tutor_completion_route_runtime_enabled=True,
+        terminal_conversion_route_enabled=True,
+        terminal_conversion_route_runtime_enabled=True,
+    )
+    monkeypatch.setattr(config, "MODEL", ambient_successor_cfg)
+
+    loaded = CoreKernel.load_core_kernel(checkpoint_path, device=torch.device("cpu"))
+    assert loaded.cfg.own_deck_ledger_enabled is False
+    assert loaded.cfg.own_deck_ledger_runtime_enabled is False
+    assert loaded.cfg.visible_tutor_completion_head_enabled is False
+    assert loaded.cfg.terminal_conversion_head_enabled is False
+    assert loaded.cfg.visible_tutor_completion_route_enabled is False
+    assert loaded.cfg.visible_tutor_completion_route_runtime_enabled is False
+    assert loaded.cfg.terminal_conversion_route_enabled is False
+    assert loaded.cfg.terminal_conversion_route_runtime_enabled is False
+    assert loaded.net.own_deck_ledger_adapter is None
+    assert loaded.net.visible_tutor_completion_head is None
+    assert loaded.net.terminal_conversion_head is None

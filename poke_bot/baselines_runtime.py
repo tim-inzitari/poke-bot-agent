@@ -34,21 +34,78 @@ _BASELINE_ENV_KEYS = (
 )
 _BASELINE_ENV_LOCK = threading.RLock()
 _ENV_MISSING = object()
+_R241_TRANSIENT_ENV_EXACT = frozenset(
+    {
+        "POKEBOT_R241_DIRECT_POLICY_ONLY",
+        "POKEBOT_R241_DIRECT_POLICY_ADAPTER_RECEIPT",
+        "POKEBOT_USE_RECURSIVE_TURN_PLANNER",
+        "POKEBOT_SUBMISSION_SEARCH_DISABLE",
+        "POKEBOT_ALLOW_ORACLE_DECK",
+        "POKEBOT_LIBCG_PATH",
+        "POKEBOT_BATCH_LIBCG",
+        "POKEBOT_COMBO_STATE_ROUTE_ENABLED",
+        "POKEBOT_COMBO_STATE_ROUTE_SPECIALIST",
+        "POKEBOT_COMBO_STATE_ROUTE_CHECKPOINT_DIGEST",
+    }
+)
+_R241_TRANSIENT_ENV_PREFIXES = (
+    "POKEBOT_MCTS_",
+    "POKEBOT_RTP_",
+    "POKEBOT_BELIEF_",
+    "POKEBOT_POKE_RLM_",
+    "POKEBOT_SLOWKING_DISTILL_",
+    "POKEBOT_GUIDE2VEC_",
+    "POKEBOT_SEARCH_",
+)
+
+
+def _r241_direct_policy_isolation_active() -> bool:
+    """Whether a baseline import must preserve r241's sealed selector.
+
+    Historical packages routinely set planning variables at import time.  The
+    normal baseline loader intentionally leaves unrelated package behavior
+    alone, but an r241 process cannot let one ordinary public package leak a
+    planner selector into the subsequent checksum-bound H10 data-only load.
+    """
+
+    return os.environ.get("POKEBOT_R241_DIRECT_POLICY_ONLY", "").strip() == "1"
+
+
+def _r241_transient_environment_keys() -> set[str]:
+    """Return planner-related keys, including keys a package just created."""
+
+    return {
+        key
+        for key in os.environ
+        if key in _R241_TRANSIENT_ENV_EXACT
+        or key.startswith(_R241_TRANSIENT_ENV_PREFIXES)
+    }
 
 
 @contextmanager
 def _isolated_baseline_environment():
     """Restore candidate-owned runtime variables after importing/calling a baseline."""
     with _BASELINE_ENV_LOCK:
-        previous = {key: os.environ.get(key, _ENV_MISSING) for key in _BASELINE_ENV_KEYS}
+        r241_isolation = _r241_direct_policy_isolation_active()
+        keys = set(_BASELINE_ENV_KEYS)
+        if r241_isolation:
+            keys.update(_R241_TRANSIENT_ENV_EXACT)
+            keys.update(_r241_transient_environment_keys())
+        previous = {key: os.environ.get(key, _ENV_MISSING) for key in keys}
         try:
             yield
         finally:
+            if r241_isolation:
+                # Include newly-created search/planner variables so a package
+                # cannot leave a hidden MCTS/RTP selector behind after import.
+                keys.update(_r241_transient_environment_keys())
             for key, value in previous.items():
                 if value is _ENV_MISSING:
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
+            for key in keys - set(previous):
+                os.environ.pop(key, None)
 
 
 def _isolate_baseline_agent(agent_fn: AgentFn) -> AgentFn:
@@ -276,6 +333,18 @@ def _load_module(path: Path, module_name: str) -> types.ModuleType:
 
 def load_baseline_agent(spec: BaselineSpec) -> tuple[AgentFn, list[int]]:
     """Return ``(agent_fn, deck)`` for a baseline spec."""
+    # r241's pinned H10 Marnie model is a data-only exception: its historical
+    # package has an embedded old libcg and a dormant search-capable entry
+    # point, so direct-policy mode reconstructs the verified model through the
+    # sealed current runtime instead of importing ``main.py``.  The adapter is
+    # opt-in through its receipt environment; ordinary baseline behavior stays
+    # exactly as it was when no r241 receipt is present.
+    from .r241_marnie_direct_policy_adapter import maybe_load_r241_direct_policy_agent
+
+    direct = maybe_load_r241_direct_policy_agent(spec)
+    if direct is not None:
+        agent_fn, deck = direct
+        return _isolate_baseline_agent(agent_fn), deck
     path = Path(spec.path)
     deck = deck_pool.read_deck(path / "deck.csv")
     with _isolated_baseline_environment():

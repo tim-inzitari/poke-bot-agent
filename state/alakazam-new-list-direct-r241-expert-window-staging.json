@@ -1,0 +1,50 @@
+{
+  "schema": "poke_bot.alakazam_new_list_direct_r241_expert_window_staging/v1",
+  "owner_decision_revision": 241,
+  "latest_owner_clarification_revision": 245,
+  "recorded_at_utc": "2026-08-11T00:17:14Z",
+  "status": "ready",
+  "window": {
+    "policy": "exact_20_consecutive_calendar_days",
+    "start": "2026-07-22",
+    "end": "2026-08-10",
+    "days": 20,
+    "validated_episodes": 91253,
+    "archive_bytes": 14842033482
+  },
+  "canonical_receipt": {
+    "elmo_path": "/mnt/Main/main/poke-bot-agent/archive/expert-r241-20260722-20260810/current.json",
+    "inzi_path": "/home/inzi/poke-bot-agent/outputs/state/expert-r241-20260722-20260810-current.json",
+    "sha256": "sha256:09848f04a6c863a02c517fdcd5b7a61a139eceafd3348aa2a08705fd6e971a16",
+    "schema": "poke_bot.expert_latest20_receipt/v1",
+    "status": "ready"
+  },
+  "immutable_window_receipt": {
+    "elmo_path": "/mnt/Main/main/poke-bot-agent/archive/expert-r241-20260722-20260810/windows/2026-07-22_2026-08-10.json",
+    "sha256": "sha256:d377cd5b4558150588d1461539d50bcfb2ca46898120b4e3ad97e9d95e479551"
+  },
+  "latest_day": {
+    "date": "2026-08-10",
+    "dataset_slug": "pokemon-tcg-ai-battle-episodes-2026-08-10",
+    "archive_path": "/mnt/Main/main/poke-bot-agent/archive/episode-days/pokemon-tcg-ai-battle-episodes-2026-08-10.zip",
+    "archive_sha256": "sha256:2167f90b2e2c769dec3c94f251ff704aaef55a08956fc8c37e596b3926aa5f59",
+    "archive_bytes": 738999728,
+    "index_episode_count": 4603,
+    "validated_episode_count": 4603,
+    "source_discrepancy": null
+  },
+  "ingress": {
+    "script": "scripts/refresh_expert_latest20_bert.py",
+    "script_sha256": "sha256:a2a2364bd0b72afb2c8e09f717833a66b566345766249cd9b11df5b40ec814c4",
+    "finalizer": "scripts/finalize_expert_latest20_elmo.py",
+    "finalizer_sha256": "sha256:a6e62ca477bbe1d789fae607fa381440ecb0b7cb4cd81d3ec70356253a0c5868",
+    "persistent_archives_on_bert": 0
+  },
+  "scope": {
+    "expert_source_gate_ready": true,
+    "training_or_gradient_updates_started": false,
+    "managed_training_service_started": false,
+    "submission_authority": false,
+    "other_runtime_activation_gates_still_required": true
+  }
+}

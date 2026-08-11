@@ -1,7 +1,7 @@
 # Pokémon RL Goal Gateway
 
 Schema: `poke_bot.goal_gateway/v1`  
-Revision: `234`
+Revision: `262`
 
 Status: `authoritative`
 
@@ -920,6 +920,812 @@ No new Kaggle upload, retry, queue, or copy is authorized without a separate
 owner order. Revision 233's r229 outer watchdog, all BO1000 behavior, and all
 BO files remain unchanged. Typed source:
 `state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`.
+
+Under revision 235-Kaggle, authorize exactly one new direct replacement Kaggle
+diagnostic only after every revision-234 repair gate passes. The required
+gates are a checksum-bound repaired package; focused fault suite; explicit
+non-reap and legality hard-fail tests; the exact saved episode `91766923`
+seat-0 history replay through its final step-58 two-choice callback; an
+exact-package full local game; resource, memory, startup, and throughput
+preflight; and an immutable binding receipt. That saved replay is the local
+regression for the failed game: the repaired exact package must return a legal
+action before the hard deadline, either through valid MCTS or the contained
+precomputed direct fallback, and must prove broker-child reap when a fault is
+injected. The replacement's Kaggle validation episode will differ and cannot
+substitute for this replay.
+
+Only when all gates and the binding pass, one operator-directed direct Kaggle
+API/upload is permitted with the unique label `DONT USE FOR REVIEW — R235
+BOUNDED MCTS FALLBACK TEST`. Before readiness, API/upload authority remains
+false. Queueing, automatic retry, copying, a second upload, or any submission
+after a validation failure is forbidden. Preserve and download failure logs,
+but do not retry without a new owner order. The replacement remains a
+diagnostic only: it is nontraining, nonpromotion, nonselector, and earns no
+production or serving authority. Preserve the consumed failed submission
+`55416396` / episode `91766923` as immutable evidence. Revision 233's r229
+outer watchdog, all BO1000 behavior, and all BO files remain unchanged. Typed
+source:
+`state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`.
+
+Under revision 236, the owner declares the official Kaggle Environments
+`1.32.6` CABT native-library set the new canonical `libcg` for every newly
+built simulator package and preflight.  Its Linux x86-64 `cg/libcg.so` is
+`sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7`;
+the exact Linux aarch64, macOS arm64, and Windows x86-64 siblings are bound in
+the typed source.  The source is the checksum-verified official wheel
+`kaggle_environments-1.32.6-py3-none-any.whl` and the upstream July-23 CABT
+crash-fix commit.  Every new r235 Kaggle package and r229 BO1000 package must
+overlay and checksum-bind the appropriate exact official bytes; the complete
+cross-platform set may not mix old and new members, and both r229 arms must use
+the same identity on every host.  The frozen r195 model, checkpoint, deck,
+matchup tree, and policy remain unchanged.  Historical packages, failed
+submission `55416396`, episode `91766923`, and their old `ffd89bf9…` simulator
+identity remain immutable evidence and are never relabelled.  Revision 236
+supersedes revisions 233–235 only for native simulator-binary identity:
+r229 retains its outer one-game process watchdog and must not import the
+r234 Kaggle broker/direct-fallback or queue-cleanup lifecycle.  No managed
+service restart is authorized merely by recording the new canonical library;
+new execution fails closed until platform-loader/export, package, saved-replay,
+full-game, and host-identity receipts are reissued against the new bytes.
+Typed source: `state/canonical-libcg-r236.json`.
+
+Under revision 237, remove the Replay Model Inspector's revision-222
+20-second browser deadline for a selected trace. Keep inference on Elmo's
+`cuda:0`; Bert remains only the separately managed read-only dashboard
+gateway/tunnel. Every trace-ready selected submission/game/step/stage continues
+through its checksum-attested archived runtime and checkpoint forward
+reconstruction even when a cold load takes longer than 20 seconds. Elapsed
+browser wait alone must never mark that reconstruction unavailable or discard
+its eventual response. Preserve selected-trace-only loading, no whole-game
+prefetch, exact replay/runtime/checkpoint digest gates, serialized one-model GPU
+residency, request-local runtime-state restoration, and
+`recomputed_not_historical` truth labels. A browser may still abort a request
+made stale by a newer selection, and an owned isolated worker retains bounded
+crash/hang cleanup; neither path may substitute another model or make
+evaluation replays training-eligible. Typed source:
+`state/replay-model-inspector-forward-pass-reconstruction-r237.json`. The
+inspector-only activation completed on Elmo at `2026-08-10T23:19:01Z`; both a
+140.240407-second cold reconstruction and a 53.823427-second resident-model
+reconstruction returned HTTP 200 with verified provenance and
+`recomputed_not_historical`. A different runtime package then completed its
+checksum-bound isolated forward in 52.160755 seconds with the same verified
+truth labels, proving one-model residency is not an eligibility gate.
+Activation receipt:
+`state/replay-model-inspector-forward-pass-reconstruction-activation-r237.json`.
+
+Under revision 238-Kaggle, supersede the old eight-lane r228/r225 viability
+requirement only for the new revision-235 replacement package. The Phase-1
+Kaggle submission environment is receipt-bound as **11.8 GiB HDD space**,
+**12.2 GiB RAM**, **2 vCPUs**, and a **197.7 MiB submission archive limit**.
+The replacement must use exactly two isolated internal simulator/search lanes
+on one child-owned shared logical MCTS tree: two distinct internal
+`AgentStart()` arenas/handles, two distinct `SearchBegin` IDs, and a
+two-frontier-leaf frozen-evaluator batch per round. It must hard-fail MCTS
+action authority if the exact two-lane topology is not present; it may not
+silently fall back to one lane, retain an eight-lane requirement, sample,
+prune, or reinterpret legal actions.
+
+Revision 238 retains the revision-234 bounded exact-child broker and
+precomputed direct-policy fallback, the complete ordered 65,536 action cap,
+the revision-236 canonical libcg set, every r235 local gate, and the exact
+single-upload label `DONT USE FOR REVIEW — R235 BOUNDED MCTS FALLBACK TEST`.
+It changes neither the consumed r228 submission `55416396` / episode
+`91766923` nor its old simulator identity; those remain immutable historical
+evidence. It also does not change r222 or r229: r229 retains the r233 outer
+one-game watchdog and continues to exclude the r234 Kaggle broker/direct
+fallback and queue-cleanup lifecycle. This is a staged package/preflight
+change only—no upload, managed-service restart, training, or BO1000 action is
+authorized merely by recording it. Typed source:
+`state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`.
+
+Under revision 239-BO1000, supersede the r229 fleet's former eight-lane
+topology only for its next package and evaluation. It must use exactly two
+isolated internal simulator/search lanes per r228-MCTS game, with two distinct
+arenas/handles and `SearchBegin` IDs selecting, reserving, evaluating, and
+backing up into its one shared logical tree. The sealed eight-lane r236 package
+is preflight-only historical evidence, is not eligible to execute a game, and
+started no r229 game. The new two-lane package requires fresh content-addressed
+source/package/preflight and receipt binding before any fleet execution.
+
+Revision 239 preserves r230's complete ordered 65,536-action cap, r233's
+outer one-game watchdog/requeue/quarantine boundary, and r236's exact official
+per-platform libcg set. It deliberately retains r229's pre-r234 Kaggle
+lifecycle baseline: it must not import the r234 Kaggle parent broker,
+precomputed-direct fallback, or queue-cleanup lifecycle. The topology change
+does not authorize managed-service restart, training, serving, selector,
+Kaggle, or premature fleet execution; no script/config/test mutation is
+implied by this record. Typed source:
+`state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`.
+
+Under revision 240-Kaggle, supersede only the r235 replacement package's
+decision scheduling. The parent still precomputes and validates the complete,
+legal frozen-r195 direct action and legal fingerprint first. When its selected
+frozen-r195 factorized probability is finite and at least `0.90` at **every**
+selected factorized stage, the parent returns that exact legal action
+immediately in mode `high_confidence_frozen_direct`; it must not start or call
+the MCTS child, journals the stage probabilities and threshold decision, and
+is not degraded. Missing, malformed, non-finite, or below-threshold confidence
+at any selected stage is ambiguous and goes to MCTS rather than silently
+qualifying for this direct path.
+
+Ambiguous MCTS remains exactly two lanes and is bounded by a 2.0-second hard
+child search budget and a 4.0-second parent action deadline. It may early-stop
+only after at least 8 completed backups, the same deterministic root leader is
+observed three times, and both lanes have progressed; it must stop at 32
+backups. A zero-backup result returns only the already precomputed legal direct
+action under the existing clean-deadline/containment rules. Revision 240
+retains r234 exact-child containment, r236 libcg, the 65,536 complete-action
+cap, r238 Phase-1 resource envelope, and the exact one-shot R235 label/upload
+boundary. The old r228 fixed eight-second branching windows remain historical
+evidence, not a current budget; r229/BO1000 is unchanged. Typed source:
+`state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`.
+
+An ambiguous-MCTS receipt may additionally carry a deterministic continuation
+plan of at most eight actions. The parent always computes the exact direct
+answer first, but uses the next planned action without a new search only when
+the current canonical observation fingerprint exactly matches, we remain the
+actor, the action is in the current complete legal order, the plan extraction
+proved both lanes saw that same fingerprint and agreed on a backed leader, and
+no chance/boundary/opponent transition occurred. A plan mismatch, hidden lane
+disagreement, randomness, boundary/opponent transition, or illegal action
+clears the entire plan and returns to the normal high-confidence-direct or
+adaptive-MCTS route. The parent rewrites history to the actual planned action,
+journals exactly once, and logs planned-versus-direct; a valid continuation
+plan therefore has precedence over the normal high-confidence routing only at
+its proven deterministic continuation step.
+
+Under revision 241-TRAINING, start a separately versioned, direct-policy-only
+Alakazam successor from the immutable revision-195 terminal expert checkpoint
+using the owner's exact new 60-card list and supplied pilot guide. Run exactly
+ten RL updates (`iter_00000` through `iter_00009`), with exactly 1,024
+self-play games and at least 1,024 games against the checksum-pinned H10 Marnie
+direct policy in every update. Preserve the established 8,196-game loop and
+exact 50/50 training-seat split. MCTS, RTP, Guide2Vec, search targets, hidden
+snapshot labels, and search/belief package assets have no training, opponent,
+or submission authority in this lineage.
+
+Use the official Kaggle Environments 1.32.6 revision-236 `libcg` through a
+sealed `CG_LIB_PATH`; the private hidden or batch library environment routes
+must be absent. Use the strict rolling 20-calendar-day expert replay window
+ending today, exactly `2026-07-22..2026-08-10`. Run a five-epoch expert soft
+refresh after completed updates five and ten. The update-ten refresh produces
+`expert_before_iter_00010.pt` after `iter_00009` and must not trigger an
+eleventh collection. Submit exactly once, `first_if_allowed`, only from that
+terminal refreshed checkpoint; no update-five, retry, copy, or duplicate
+submission is allowed. The exact July 22--August 10 archive is bound by its
+immutable receipt; no fallback date or unreceipted start is allowed. Typed source:
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 245-TRAINING, clarify revision 241 without broadening its
+changes: preserve the peak revision-195 Alakazam model and loop behavior while
+changing only the owner's exact deck, supplied guide, official revision-236
+simulator binding, ten-update horizon, and requested expert-refresh schedule.
+Every architecture-present non-combo learner head and its bounded fusion route
+remain live and trainable; `combo_state` remains present but its loss and
+fusion route stay off exactly as in revision 195. Matchup Adapters remain on
+for training and the terminal direct-policy submission, with the exact trained
+bank and checksum-bound public matchup tree preserved. The established 7,172-
+game public mix remains diverse and unchanged except for enforcing the existing
+minimum of 1,024 direct H10 Marnie games; H10 Marnie is not the sole public
+opponent. The current-deck guide remains training-only and may not suppress,
+replace, or disable any learned head, fusion route, Matchup Adapter, public-mix
+row, or research-control phase. Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 247-TRAINING, refresh the staged revision-241 Matchup Adapter
+archetype roster from the newest completed authenticated PTCGReplay ingest at
+`https://ptcgreplay.netlify.app/`.  The authenticated source may define exact
+numeric archetype identities, exact names, prevalence, and priority only; it
+does not supply actions, gradients, hidden state, outcomes, or gate evidence.
+Preserve every existing Router Format 6 slot identity and every peak-r195
+adapter tensor byte-for-byte.  Allocate each newly verified archetype only to
+the lowest never-used slot, never recycle or reindex a slot, and initialize a
+new route exact-zero/dormant.  A new route may train and become runtime-active
+only after its own checksum-bound replay support, causal-router fit, precision,
+support, zero-state bypass, and activation receipts pass.  Do not mutate or
+restart the already-running exact-20-day roster-18 corpus jobs merely to add
+the identities; fold eligible checksum-backed data through the ordinary r241
+adapter/rehearsal path without changing the exact ten-update, 1,024 + 7,172,
+five-epoch refresh, exact deck/guide, direct-policy-only, or one-terminal-submit
+contracts.  The site credential is runtime-only and must never be committed,
+logged, or written into a receipt.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`; the global slot registry is
+updated only after the authenticated snapshot is sealed.
+
+Under revision 248-TRAINING, defer revision 247's PTCGReplay archetype refresh
+for now and remove it from every revision-241 launch, training, terminal, and
+submission gate.  Do not authenticate, ingest, allocate, fit, or activate a
+new matchup archetype in this cycle.  Keep the global Router Format 6 registry
+and all existing slot identities unchanged, preserve the peak-r195 E60 public
+matchup tree and adapter tensors, and require the r241 checkpoint-derived
+adapter migration audit to report `no_slot_change`.  The generic append-only
+validator and Chrome installation may remain inert preparation for a later
+explicit owner request, but they have no source, training, runtime, selector,
+package, or submission authority now.  This deferral changes none of r241's
+exact deck, supplied guide, direct-policy-only simulator, 1,024 + 7,172
+collection, ten-update, five-epoch refresh, full-head, adapter-runtime-on, or
+one-terminal-submit requirements.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 251-TRAINING, correct r241's activation topology without
+changing its deck, guide, simulator, ten-update cycle, peak-r195 head/adapter
+semantics, exact public mix, PTCGReplay deferral, or one-terminal-submit
+boundary. The typed r241 owner source is immutable intent only: it declares no
+derived readiness or operation-authorization state. The only activation path
+is the ordered DAG: immutable owner intent, checksum-bound source and baseline
+payload snapshots, offline host receipts, one logical create-only activation
+overlay, then the managed services. The logical overlay must bind both hosts'
+source, baseline, official-libcg, peak-r195, and remote-worker evidence; its
+Inzi and Elmo publications are byte-identical and have one shared SHA-256.
+The static source-snapshot registry remains pending intent and cannot itself
+authorize a service. The overlay's checksum-bound owner-start authorization is
+the sole execution authorization proof.
+
+Clarify the direct/no-MCTS boundary precisely: it applies to the r241 learner,
+pinned H10 Marnie direct opponent, target generation, terminal package, and
+submission. It does not change the established frozen non-H10 diverse public
+opponent packages or selectors preserved by revision 245. Do not add a public
+search firewall, relabel those packages, or alter concurrent MCTS work. The
+new topology remains staged; no activation, service start, training, or
+submission follows merely from recording it. Typed source:
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 242-Kaggle, supersede only revision 240's high-confidence
+frozen-direct threshold for the pending revision-235 replacement package. A
+complete, legal, precomputed frozen-r195 direct action qualifies when **every**
+selected factorized-stage probability is finite and greater than or equal to
+`0.80` (inclusive), rather than `0.90`. A missing, malformed, non-finite, or
+below-`0.80` selected stage remains ambiguous and routes to the unchanged
+two-lane bounded MCTS route. The revision-240 `0.90` threshold draft and every
+preflight that validates that superseded threshold are historical and ineligible
+for the current R235 gate or immutable binding; the high-confidence/adaptive
+MCTS regression must be reissued against `0.80`.
+
+All other revision-240 behavior remains unchanged: high-confidence direct is
+still non-degraded, starts no child, and calls no MCTS/select/search/model/
+simulator; an already-running child receives only the one history-only
+`note_direct_action` synchronization IPC. Deterministic continuation remains
+bounded to eight validated steps, ambiguous MCTS remains exactly two lanes with
+the 2.0-second child / 4.0-second parent limits, adaptive ≥8/leader×3/both-lane
+early stop and 32-backup hard stop, and zero-backup direct fallback. Revision
+242 preserves r234 containment, r236 libcg, the 65,536 cap, r238 resources,
+the exact one-shot R235 label/upload boundary, historical r228 evidence, and
+the separate r229/BO1000 lifecycle. Typed source:
+`state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`.
+
+For ambiguous MCTS under the same revision, simulated rollout expansion stops
+at a terminal, chance boundary, or actor change away from our root seat (our
+end-turn/opponent transition). An actor-change leaf is value-evaluated but has
+no expanded legal actions or children; MCTS never selects or plans an opponent
+action. Receipts report `actor_change_boundary_leaf_count`,
+`chance_boundary_leaf_count`, and `boundary_leaf_count`. Deterministic
+continuation already stops at that same actor boundary.
+
+Under revision 243-INSPECTOR, reconstruct Replay Model Inspector traces at the
+selected physical-game boundary. Selecting one checksum-attested submission
+and replay game starts or joins one Elmo materialization covering every
+selectable own-agent decision step and factorized stage in that game. Each
+changing causal decision is encoded at most once for that materialization;
+factorized stages reuse its exact model state. Changing only the displayed
+step or stage reads the materialized result or joins the same in-flight game
+job and must never start an independent GPU reconstruction. A newly selected
+physical game or submitted model receives its own materialization.
+
+The browser fetches only the selected address; Elmo, not Bert or the browser,
+owns the full-game job. Nonresident packages use one checksum-bound worker
+that streams bounded raw trace frames back to Elmo independent of whether the
+disposable cache can commit. Its heartbeat resets a 240-second idle watchdog,
+but there is no total elapsed worker deadline and a worker failure may not fan
+out into per-address workers.
+
+Physical-game identity is not an episode number alone. Reuse requires the same
+submission, archived own seat, replay digest, submitted bundle, runtime source
+tree, checkpoint, matchup tree, parity receipt, baseline request semantics,
+and inspector trace schema. Elmo may store only the resulting derived JSON in
+a bounded private `/tmp` cache. Entries must be checksum-verified,
+identity-bound, symlink-safe, and atomically published; a mismatch, corruption,
+partial write, failed trace, or changed source digest is a miss and can never
+authorize runtime/model substitution. Playground head-scale counterfactuals
+remain separate computations and may not poison the baseline game cache.
+
+Preserve Elmo `cuda:0`, one serialized GPU materialization, one resident model
+maximum, exact package-local guide and adapter behavior, request-local runtime
+state restoration, r237's lack of a browser deadline,
+`recomputed_not_historical`, loopback/read-only service boundaries, and zero
+training, selector, or submission authority. Bert remains transport-only. Its
+direct-LAN trace gateway has a bounded five-second tunnel connect, 30-second
+post-header body-idle wait, 8 MiB response cap, and at most four long trace
+waiters, but no response-header wall-clock deadline while Elmo reconstructs.
+This supersedes r222/r237's no-whole-game-prefetch behavior only for a game the
+owner explicitly selects; unsolicited cross-game prefetch remains forbidden.
+Typed source:
+`state/replay-model-inspector-physical-game-materialization-r243.json`.
+
+Under revision 244-LIBCG, correct only the official `libcg` SearchId identity
+interpretation for the new r235 Kaggle replacement and the next r239 BO1000
+package. A numeric `SearchId` namespace is scoped to its distinct
+`AgentStart()` handle: two isolated handles may therefore both report first raw
+SearchId `0`. Global raw-SearchId integer uniqueness is not an isolation proof
+and is not required. Each two-lane receipt instead requires exactly two arenas
+and `SearchBegin` calls, two distinct per-lane handle identities, both
+per-lane SearchId chains, and two distinct composite
+`(handle_identity, first_search_id)` states. A missing handle/chain or a
+duplicate composite state fails closed; a repeated raw SearchId on distinct
+handles does not. The public ordered composite-state receipt entries are
+exactly `{"lane_id": <0 or 1>, "handle_identity": <opaque AgentStart identity>,
+"first_search_id": <handle-scoped native SearchId>}`; lane is reporting
+context, while state uniqueness is the `(handle_identity, first_search_id)`
+pair.
+
+This correction preserves the r242 Kaggle high-confidence/direct-fallback,
+continuation, bounded-search, containment, resource, 65,536-cap, canonical
+r236-libcg, R235 single-upload, and historical-evidence rules. It also
+preserves r239's exactly-two-lane topology, r233 outer game watchdog, and
+pre-r234 BO lifecycle boundary. It authorizes no code execution, job, upload,
+commit, managed-service action, training, selector, or BO1000 game. Typed
+sources: `state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`
+and `state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`.
+
+Under revision 246-Kaggle, supersede only the ambiguous-decision root-action
+selection rule for the pending r235 replacement package.  The revision-242
+inclusive `>=0.80` high-confidence frozen-direct route remains first and
+unchanged: it starts no child, so it cannot use this new exception.  Once an
+otherwise ambiguous decision has entered its exact two-lane MCTS child, a
+single returned proof of a **deterministic terminal win this turn** has
+absolute root-action selection and early-stop authority over priors, visit
+counts, and nonterminal alternatives.  It is a proof returned by the stock
+simulator search, not a model-value prediction, policy confidence, heuristic,
+or an exhaustive legal-action scan.  The proof must be backed into the shared
+root tree and identify the exact current root observation fingerprint, complete
+ordered legal fingerprint, root actor, legal root action, selected action, and
+terminal winner.  The terminal result must be `win` for that root actor.
+
+Every simulated action on the proof path must remain that root actor's action;
+it may not cross an actor/opponent boundary, a chance boundary, unresolved
+randomness, or any outcome that can throw, draw, or lose.  A chance/coin line,
+an opponent-response line, a model-predicted win, a stale or malformed proof,
+or a loss/draw/nonterminal terminal result has zero override authority.  The
+parent validates the proof against its current exact root before acting; a
+claimed proof with a stale/malformed binding follows the existing child
+protocol-fault containment rather than selecting its action.  Two lanes still
+must be initialized and cleaned under r238/r244, but a second independent
+winning proof, both-lane progress, the normal `>=8` backup / leader-times-three
+gate, or an exhaustive scan is not required once one exact deterministic
+terminal proof is returned.  All exact child resources and reservations still
+must be cleaned before the parent returns the selected legal root action.
+
+This adds the receipt-backed stop reason
+`proven_deterministic_terminal_win_this_turn` and a focused regression/binding
+gate.  It preserves r234 containment, r236 libcg, r238 resources, r242
+scheduler/direct fast path, r244 handle-local identities, the 65,536 action
+cap, the exact one-upload R235 boundary, historical failed-run evidence, and
+every r229/BO1000 lifecycle boundary.  Typed source:
+`state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`.
+
+Under revision 249-BO1000, replace only r229's unsafe in-process native-search
+lane boundary.  The frozen r195 model and the one logical shared MCTS tree stay
+in the authoritative game process.  Exactly two persistent simulator worker
+**processes** each own one official revision-236 `libcg` `AgentStart` handle;
+no native `SearchBegin`, `SearchStep`, `SearchRelease`, or `SearchEnd` call runs
+in a Python thread that the game process cannot reap.  Each request and cleanup
+has a finite parent deadline.  A hung, crashed, malformed, or cleanup-failed
+lane causes only its exact owned child to be reaped; interactive sessions and
+managed services are never signal targets.
+
+Because a replacement native handle may represent a different hidden or random
+world, no partial tree from a failed attempt is reused.  Reopen fresh two-lane
+workers and retry the complete decision once from the same exact root
+observation, complete ordered legal space, frozen model state, and historical
+eight-second r228 search budget.  A successful retry is ordinary fully backed
+two-lane MCTS authority.  Only after that bounded retry also fails may the game
+continue with the already computed, legal, same-state frozen-r195 direct
+counterfactual.  Such an exhausted-recovery fallback is explicitly degraded,
+has no MCTS-change or meaningful-change credit, and records both attempt faults,
+process identities, reaping outcomes, latency, and exact fallback action.  It
+must never be relabelled as searched MCTS.  The clean full-game launch preflight
+requires zero exhausted-recovery fallbacks; the final review separately reports
+all lane restarts, recovered searches, exhausted fallbacks, and their effect on
+throughput and evidential coverage.
+
+Revision 249 preserves r230's complete 65,536-action enumeration, r236's four
+official platform libraries, r239's exact two-lane topology, r244's
+handle-scoped SearchId composites, and r233's outer per-game
+watchdog/requeue/quarantine.  It does not import any Kaggle broker, queue
+cleanup, high-confidence bypass, adaptive stop, continuation plan, terminal-win
+override, or r240/r242/r246 search-policy change.  Evaluation games remain
+training-ineligible and have no selector, serving, promotion, checkpoint,
+managed-service, RTP, or Kaggle authority.  Typed source:
+`state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`.
+
+Under revision 250-BO1000, supersede r239/r249's active exactly-two-lane
+topology for the next r229 package and evaluation.  Use serial MCTS for now:
+the authoritative game process retains the one frozen r195 model and one
+logical MCTS tree, while exactly one persistent owned child process holds one
+official-r236 native simulator handle.  No two `libcg` search calls may be in
+flight concurrently, and the serial decision receipt requires one arena, one
+`SearchBegin`, one handle-scoped SearchId chain, and one
+`(handle_identity, first_search_id)` state.  Preserve the historical
+eight-second r228 search budget, r230's complete 65,536-action enumeration,
+r233's outer per-game watchdog/requeue/quarantine, r236's official native
+library set, and r244's handle-scoped SearchId interpretation as applied to
+that one handle.
+
+Every native request and cleanup remains parent-bounded.  If the child hangs,
+crashes, returns malformed output, or fails cleanup, reap only that exact
+owned child, discard the complete partial attempt tree, open one fresh serial
+child, and retry the same complete root once.  A successful retry is ordinary
+serial-MCTS authority.  Only retry exhaustion may use the precomputed legal
+same-state frozen-r195 direct counterfactual; it remains explicitly degraded,
+gets zero MCTS-change or meaningful-change credit, and must carry complete
+fault/reap telemetry.  A clean full-game launch preflight still requires zero
+exhausted-recovery fallbacks.  The r239 two-lane and r249 two-process packages,
+preflights, and partial results are historical and execution-ineligible for
+this serial run.
+
+The bounded serial contract also applies after the worker response reaches the
+coordinator.  A consumed worker-error row must clear that lane's in-flight
+reservation before the post-deadline drain, and a cleanup-error row is the
+terminal cleanup response for that lane.  The coordinator may preserve either
+error and retry the complete root, but it may never wait for a second response
+to the already-completed command.  Likewise, once a successful native step row
+has arrived, its in-flight reservation must be cleared before parent-side
+packet construction or model evaluation, because an exception there cannot
+produce another native response.  This is narrow BO-only completion accounting
+required to make r249/r250 recovery reachable; it does not import the r234
+Kaggle broker, direct fallback, or queue lifecycle.
+
+Only after a checksum-bound serial package completes the clean full-game gate
+may r229 begin a separately versioned investigation of process-parallel node
+evaluation during tree construction.  That follow-on must keep authoritative
+tree coordination in the parent, give each native worker process its own
+handle, and forbid concurrent native calls within any one worker.  It has no
+current package, preflight, game, fleet, or action authority and may not change
+the Kaggle-specific r228 broker, queue, runtime, or submission lifecycle.
+Revision 250 otherwise preserves r249's bounded process ownership/recovery and
+excludes all Kaggle high-confidence bypass, adaptive-stop, continuation,
+terminal-win, broker, and cleanup policies.  Typed source:
+`state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`.
+
+Under revision 252-MCTS, add the same simulated-leaf boundary rule to the
+pending r235 Kaggle replacement and to the separately owned r229 BO1000
+experiment.  This rule does not raise the MCTS root ceiling: an exact real-root
+ordered-action count at or below 65,536 remains completely enumerated with no
+threshold pruning.  For the Kaggle r235 replacement, a real root above 65,536
+still hard-fails.  For r229 BO1000 only, an exactly counted over-cap real root
+must not enter MCTS; it uses the frozen-r195 factorized direct policy's legal
+same-state action and records `oversized_direct_fallback`.  That BO action gets
+zero search, MCTS-change, or meaningful-change credit, is not a retry or
+retry-exhaustion fallback, and may not silently contribute to the reported
+MCTS rate.  This is the explicit fail-closed accounting required by r230 while
+allowing a normal physical game to continue through pathological combinatoric
+prompts.
+
+Within private simulation, every recognized chance context is a hard
+pre-random value boundary.  In addition, any stochastic resolution with more
+than ten possible outcomes, or whose equiprobable outcome probability is at
+most `0.10`, is a hard pre-random value boundary even if it was not previously
+classified by a named chance context.  The search must not sample, choose,
+plan through, or assign action authority at such a boundary.  A deterministic
+internal simulated choice with more than 64 complete ordered outcomes is also
+a value-only boundary.  Any inert singleton used solely to batch one frozen
+value evaluation is not a legal-action candidate, child, rollout step, or
+continuation-plan action.  Receipts must distinguish recognized-chance,
+stochastic-cardinality/probability, and deterministic-internal-cardinality
+cutoffs and prove zero boundary expansion.
+
+For Kaggle this preserves r242's inclusive `>=0.80` direct-before-child path,
+r246's deterministic same-root-actor terminal-win exception, the exact
+two-lane topology, adaptive limits, contained fallback, r236 native identity,
+and R235 one-upload boundary.  An r246 terminal proof cannot cross any new or
+existing stochastic boundary.  The already sealed revision-246 archive is
+historical preflight evidence and is upload-ineligible; a fresh checksum-bound
+r252 stage, failed-replay regression, fault gates, physical full-game/resource
+preflight, and immutable binding are required.  For BO1000 the same leaf
+cutoffs are owned by the r229 typed source and preserve its current serial
+process-owned native lane, retry/reap policy, r233 outer watchdog, and explicit
+Kaggle-lifecycle exclusion.  Typed sources:
+`state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json` and
+`state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`.
+
+Under revision 253-BO1000, supersede r250's invalid continuous-trajectory
+serial-search mechanics while retaining one authoritative parent tree, one
+owned child process, and one official-r236 `AgentStart` handle with no
+concurrent native calls.  A serial MCTS decision consists of repeated
+independent root rollouts.  For every rollout, call `SearchBegin` from the same
+exact current physical root, use the parent tree to select and traverse legal
+actions, stop after one leaf is expanded and frozen-value evaluated or an r252
+value-only boundary is reached, back that value through the selected path,
+then boundedly release/end that rollout.  Reopen the exact root for the next
+rollout and continue until the decision deadline or explicit rollout ceiling.
+One continuous native `SearchStep` trajectory is never a substitute for
+multiple root rollouts.
+
+The parent retains the sole logical tree across successful rollouts within one
+attempt; native SearchIds and simulator state never carry tree or action
+authority between rollouts.  A failed, timed-out, malformed, or cleanup-failed
+rollout fails the complete attempt: reap only the exact owned child, discard
+the entire partial tree, reopen one fresh process/handle, and retry the exact
+complete root once under r249/r250.  No successful rollout prefix is reused
+after such a fault.  Retry exhaustion alone may use the existing degraded
+same-state direct fallback.  r252's chance/large-internal value boundaries and
+BO-only over-cap-root direct boundary remain unchanged.
+
+The stopped first r252 BO launch's 13 completed games and 741 searches are
+immutable invalid-diagnostic evidence only.  Because the one-lane continuous
+trajectory could visit only one root edge, its observed zero action changes
+were structurally forced and carry no BO result, MCTS-rate, search-effect, or
+model-comparison authority.  Before a new BO1000 launch, focused regression
+and a clean full-game receipt must prove multiple independent root
+`SearchBegin` rollouts, parent-tree visit accumulation across rollouts,
+selection of more than one root edge in a constructed multi-action case,
+bounded per-rollout release/end, zero leaked reservations, and a constructed
+case where backed values can change the selected action.  Preserve r233's
+outer watchdog, r236 library identity, host-local package/model/data plane,
+training-ineligibility, and every Kaggle lifecycle boundary.  No Kaggle r228
+source, package, preflight, or submission authority changes.  Typed source:
+`state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`.
+
+Under revision 254-BO1000, the owner fully abandons the running r253
+full-MCTS BO1000 after its clean managed stop at 45 completed games.  Preserve
+all completed games, attempts, logs, checkpoints, package identities, and the
+owner-abandonment receipt as immutable, training-ineligible diagnostic
+evidence.  The incomplete 45-game prefix may support the explicit owner stop
+and search-quality diagnosis, but it is not a 1,000-game efficacy result and
+must never be relabelled as one.  Do not resume, refill, or replace the 955
+unplayed games, and do not start the gated process-parallel full-MCTS follow-on.
+
+The next search direction is separately versioned conservative selective
+tactical proof search, not a smaller copy of r253 MCTS.  Frozen r195 direct
+policy remains the default action.  Search may be invoked only at a genuinely
+conflicted branching decision under a checksum-bound trigger using the direct
+complete-action distribution (including top probability and top-one/top-two
+margin).  Initially it may override direct policy only with an exact
+stock-simulator proof of a deterministic terminal win this turn for the root
+actor.  Learned leaf value, visits, priors, partial trees, and unproven
+nonterminal lines have no override authority.  Chance, unresolved randomness,
+opponent/actor transition, and deterministic internal fanout above 64 remain
+hard boundaries.  Every simulated action must be represented in the frozen
+model's temporal previous-action history; the r253 omission of simulated
+action tokens is preserved as diagnosed historical behavior, not copied.
+
+Only implementation, focused tests, exact-package preflight, and a small
+training-ineligible shadow/pilot are authorized by this record.  Trigger
+thresholds, time budget, pilot size, and any broader action authority require a
+fresh typed configuration and receipt before execution.  No BO1000, Kaggle,
+training, serving, selector, promotion, checkpoint, or model-update authority
+is granted.  Typed source:
+`state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`.
+
+Under revision 256-BO, the owner abandons all search work for now, including
+the proposed revision-255 conflict-triggered tactical proof search.  Do not
+implement, package, preflight, pilot, launch, resume, or refill MCTS, tactical
+proof search, or another search variant.  The uncommitted r255 prototype is
+removed without execution and has no result, action, package, or promotion
+authority.  Frozen r195 direct policy is the only action authority in this
+evaluation line.  Preserve the stopped r253 45-game prefix and abandonment
+receipts as immutable diagnostic evidence.  This changes no Kaggle, training,
+serving, selector, promotion, checkpoint, or model state.  Any future search
+work requires a new explicit owner revision.  Typed source:
+`state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`.
+
+Under revision 257-BO, the owner separately reopens implementation and local
+testing of a **shadow-only goal-directed tactical sequence planner**.  This is
+not a revival of MCTS and does not authorize a package, preflight, pilot,
+BO1000, fleet game, Kaggle action, serving path, selector change, promotion,
+checkpoint/model update, or training data.  Frozen r195 remains the only real
+action authority.  The side planner may compare a proposed first action with
+the exact same-state r195 direct action and emit an auditable certificate, but
+it may never dispatch or override either an evaluation or live-game action
+under this revision.
+
+The planner has two distinct research goals.  An exact terminal-win goal
+searches only deterministic same-root-actor transitions within the current
+turn and may label success only when the simulator reports a terminal win for
+that actor.  SME tutor/resource goals are public-fact shadow goals only.  A
+tutor/search-card transition is an information/re-observation boundary: the
+planner may not inspect or predict the hidden deck/prize realization beyond
+it, and may continue only after a real recorded observation explicitly exposes
+the selectable deck cards.  The Alakazam SME guide and frozen policy may
+define goals and order candidates; the learned tactical-outcome head may be
+logged as a hint, but no learned head, value, prior, visit count, partial path,
+or SME score is proof.
+
+Use policy-ordered limited-discrepancy search with small typed depth, node,
+discrepancy, wall-time, and complete-action caps.  Stop before every chance or
+stochastic transition, hidden-information boundary, actor/opponent or turn
+transition, and deterministic complete ordered action space above 64.  Every
+simulated step must bind the source observation/legal-order fingerprints and
+must install the actual simulated action token into the next model-history
+state.  Native simulation is allowed only through an owned bounded child
+process; an in-process native backend is rejected.  Deterministic in-process
+fixtures are allowed only through an explicit test-only marker.  Any fault,
+deadline, malformed candidate, illegal action, fingerprint/history mismatch,
+or boundary yields no proposal authority and leaves r195 unchanged.
+
+All work stays in new sidecar/test paths plus this typed contract.  Do not
+touch, stop, restart, reconfigure, resource-reduce, or otherwise interrupt the
+healthy Alakazam refresh or any of its managed services.  Typed source:
+`state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`.
+
+Under revision 258-TRAINING, the owner authorizes a separately versioned,
+direct-policy Alakazam successor that makes an exact-starting-list
+`OwnDeckLedger` a match-scoped causal side store.  Build and validate the
+isolated successor now, but do not alter the active r241 learner, checkpoint,
+feature/corpus identity, selector, package, submission, or managed services.
+The successor may enter implementation/training activation only after the
+Alakazam refresh has a receipt-proven terminal completion; never stop, restart,
+or migrate the healthy refresh merely to prepare this successor.
+
+Update the ledger once per real acting-seat observation and freeze that
+snapshot across every factorized stage of the observation.  It starts from the
+known exact 60-card multiset and reconciles current own hand, board,
+attachments/evolution stack, discard, known revealed prizes, recovery, and
+other causally visible own-zone movements.  Face-down prizes and unrevealed
+deck order remain unknown.  Encode per-card conservative draw-pile lower and
+upper bounds, expected availability only when its assumptions are explicit,
+exactness/integrity masks, deck and unknown-prize counts, and a prompt-local
+candidate multiset when an actual `select.deck` or looking observation exposes
+it.  Gameplay deck-search/tutor actions are ordinary learnable observations;
+the no-search rule forbids tree search/rollouts and hidden realization, not
+learning from real deck-search decisions.
+
+Inject one canonical ledger representation into the shared model state before
+policy, value, auxiliary/strategic heads, option decoding, and Fusion branch.
+Thus every existing head can consume it without duplicating subtraction logic;
+option candidates additionally receive typed ledger lookup features at visible
+tutor stages.  Preserve an exact disabled/absent-input parent bypass and keep
+all new weights, tutor supervision, terminal-conversion supervision, and
+Fusion routes dormant until their own causal-coverage, gradient, calibration,
+local/remote/replay parity, and bounded-influence receipts pass.  Immediate
+terminal conversion must be a selected-complete-action observed target, not a
+renaming or upweighting of the current eight-frame prize `lethal_threat` label.
+
+After receipt-proven Alakazam refresh completion, the r258 owner decision
+authorizes the staged isolated migration, training canary, source-disjoint
+evaluation, and receipt-backed activation sequence without another owner
+decision.  Each stage still fails closed independently; production selector,
+package, promotion, or submission authority exists only after the complete
+post-refresh evaluation and promotion receipts commit.  Evaluation/Kaggle
+games remain training-ineligible, and r241 remains immutable.  Typed source:
+`state/alakazam-own-deck-ledger-successor-r258.json`.
+
+Revision 259-TRAINING clarifies that Elmo must begin materializing the r258
+successor inputs now as a separate expert-corpus side store for the next
+training lineage.  Read only the checksum-pinned exact-20-day r241 source
+manifest at
+`/mnt/Main/main/poke-bot-agent/archive/expert-r241-20260722-20260810/current.json`
+(`sha256:09848f04a6c863a02c517fdcd5b7a61a139eceafd3348aa2a08705fd6e971a16`;
+2026-07-22 through 2026-08-10; 91,253 validated episodes), select only acting
+seats whose exact starting list is classified as Alakazam, and write causal
+per-observation ledger, visible-tutor, and terminal-conversion records under
+`/mnt/Main/main/poke-bot-agent/archive/expert-r258-own-deck-ledger-sidecar/2026-07-22_2026-08-10`.
+Keys bind episode, seat, environment step, and observation fingerprint; daily
+outputs are atomic, idempotent, compressed, checksum-receipted sidecars.  The
+source corpus is read-only and may never be rewritten or relabelled.
+
+The new bounded
+`pokebot-own-deck-rollout-store-r259.service` may be installed and started on
+Elmo now from the isolated source snapshot
+`/home/admin/pokebot-own-deck-r259-src-de844af19ca6`; this grants no authority to stop,
+restart, reconfigure, or reduce any existing managed service.  The generated
+store is ineligible for the active r241 refresh and for evaluation/Kaggle
+training.  It becomes eligible only for the post-refresh successor after
+source-join, causal-local/remote parity, schema, count, and checksum receipts
+all pass.  All other r258 activation and promotion gates remain unchanged.
+Typed source: `state/alakazam-own-deck-ledger-successor-r258.json`.
+
+Revision-259 operational reconciliation: the first immutable Elmo source
+snapshot and lock passed their source audit, then the contained archive-native
+smoke failed closed before output or service installation when the generic
+replay converter surfaced an explicitly `INACTIVE` stale action echo.  Preserve
+that source tree (`sha256:e879340e0e94c956e7783c88fc5576e7906821a66670ba17dd44bf530279dbf9`),
+lock, and failure as immutable audit evidence; never replace them in place.
+The replay-corrected source uses the `cc72a4e27f94` code identity and filters
+only same-seat/same-step raw rows proven `INACTIVE` or `DONE`.  Every retained
+decision must still be the exact indexed raw `ACTIVE` row with matching actor,
+public-observation fingerprint, and action; malformed, missing, or mismatched
+rows fail closed.  Its second immutable seal then failed the contained nonroot
+smoke before output because 0600 origin files became root-only 0400 files.
+Preserve that `cc72a4e27f94` seal and lock too.  The third immutable attempt
+used the literal `cc72a4e27f94-a3` namespace and correctly published traversable
+0555 directories, readable 0444 regular files, and only the launcher as 0555.
+Its contained smoke passed and the new service began, but the first day failed
+closed before a daily commit when exact member `87394115.json` reported
+`TIMEOUT,DONE` with rewards `[None,1]` and the legacy converter tried to derive
+a numeric winner.  Preserve its source/lock, zero-restart service evidence, and
+uncommitted hidden partial shard.  The active retry uses the literal
+`3c8a28a0afd9` namespace above.  An outcome is verified only from top-level
+`DONE,DONE` plus finite zero-sum rewards; every other episode uses a separate
+winner-free r259 projection that retains exact raw `ACTIVE` ledger/tutor rows
+and masks every terminal, prize-closeout, knockout, and tutor-terminal target.
+The fourth immutable source (`3c8a28a0afd9`) added that exact-member smoke, but
+it built the member's full roughly 1,850-decision record before applying its
+post-conversion sample bound and was correctly killed by the required 1 GiB
+smoke cap.  Preserve that seal and failure too; it never restarted the service
+or touched a committed output.  The active retry uses the literal
+`b96413d63f68` namespace above.  Its exact-member path enforced the small
+decision cap *inside* fallback conversion, but the seal still combined the
+normal and exact-member checks in one 1 GiB smoke process.  It was superseded
+before any contained smoke evidence, output publication, unit replacement, or
+service restart; preserve its source tree and lock as immutable attempt-5
+evidence.  The active retry uses literal namespace `de844af19ca6`.  It runs a
+normal-record-only 1 GiB contained smoke and a separate production-sized 2 GiB
+contained smoke that directly exercises `87394115.json`, uses only the
+winner-free fallback, and proves every outcome mask.  Both preflights must pass
+before the failed r259 unit may be replaced and started again.
+
+Under revision 260-TRAINING, the owner gives highest priority to getting the
+still-unstarted revision-241 Alakazam run working and explicitly directs that
+last night's revision-258 `OwnDeckLedger` head structure be folded into its
+next receipt-backed successor before the first training update.  This
+supersedes revision 258's wait-for-r241-completion and no-r241-mutation rules
+only for this pre-start successor boundary: no r241 worker was armed, no
+training collection or update began, and the failed launcher check created no
+runtime authority.  Preserve the complete `1c34`/H10-v8/peak-v6/r13/quartet/
+overlay line and its installed-but-inactive managed files as immutable
+historical evidence; never patch or relabel those artifacts in place.
+
+The combined successor keeps the immutable revision-195 checkpoint as parent
+and preserves all 19 existing architecture heads, all 18 active non-combo
+Fusion-v3 routes and their fixed denominator, the physically present but
+loss-off/route-off `combo_state`, the Matchup Adapter bank and `no_slot_change`,
+the exact r241 deck and guide, official revision-236 simulator, exact
+1,024+7,172 collection, ten-update horizon, two five-epoch refreshes, and one
+terminal direct-policy submission.  Add the revision-258 shared public-causal
+`OwnDeckLedger` adapter v2 at width 128 before policy, value, every existing
+learned head, option decoding, and Fusion; add the eight-feature visible-option
+adapter; and add the typed seven-output `visible_tutor_completion` and
+six-output `terminal_conversion` heads with their own zero-safe bounded option
+routes outside the inherited 18-route Fusion denominator.  Their masked
+factual losses split one total auxiliary budget of `0.05` equally.  MCTS, RTP,
+tree search, hidden prize/deck realization, guide runtime authority, fabricated
+counterfactual labels, and evaluation/Kaggle replay training remain forbidden.
+
+Use the checksum-bound Elmo revision-259 expert side store as the successor's
+training source as soon as its exact 20 daily shards plus terminal source-join,
+schema/count/digest, causal local/remote parity, and completion receipts pass.
+The protected exact-20-day source remains read-only, and a partial or
+unreceipted side store is never eligible.  Zero-safe migration must preserve
+every inherited tensor and exact parent behavior before the new paths train.
+A bounded pre-start training canary may train the shared adapter and two new
+heads/routes from the sealed expert corpus; runtime influence requires its own
+finite-gradient, coverage, calibration, bounded-influence, local/remote/replay
+parity, and source-disjoint evaluation receipt.  Once those receipts, the
+corrected typed parent-`FileIdentity` launcher check, a new immutable source,
+host-bound H10/peak/image/preflight line, and a fresh byte-identical activation
+overlay pass, activate the combined successor immediately without another
+owner decision.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`; it is the single owner of
+this combined r260 activation contract, while the r258 manifest remains
+preserved implementation and corpus provenance.
+
+Under revision 261-TRAINING, clarify that Inzi is the sole managed training
+host for the combined successor.  Elmo may read the protected expert corpus,
+materialize the public-causal daily side store, build the deterministic joined
+dataset, and run bounded no-network parity or disposable-executor checks, but
+it may not train the learner.  After all 20 daily shards and terminal receipts
+pass, copy the exact daily layout and joined dataset create-only to
+`/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/r260-own-deck-training-dataset`,
+publish a typed transport receipt, and rehash every FileIdentity on Inzi.  The
+managed Inzi trainer must consume only that local Inzi root through the
+disk-backed exact-four-key streaming index; any `/mnt/Main/` or other Elmo
+side-store path in its environment, command, plan, or receipt fails closed.
+This clarification changes placement only and preserves every revision-260
+architecture, evidence, schedule, direct-policy, and activation requirement.
+
+Under revision 262-TRAINING, overlap the remaining Elmo materialization with a
+safe prefix transfer to Inzi.  Copy only already committed immutable daily
+directories—never a dot-prefixed temporary day—to the non-eligible staging
+root
+`/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/r260-own-deck-training-dataset-staging-09848f04`.
+Each daily transfer is create-only, rehashes `meta.json` and
+`own_deck_rollouts.jsonl.gz` against Elmo, and seals that day read-only on
+Inzi; append later days only after their Elmo atomic commit.  A partial staging
+root grants no dataset, canary, training, runtime, or activation authority.
+After all 20 days pass, the deterministic join and terminal receipts may be
+created and the fully verified tree atomically promoted to revision 261's
+canonical Inzi training root.  Never stop, restart, or reconfigure the healthy
+r259 managed producer to perform this overlap.
 
 Under revision 231-MCTS, one stuck, timed-out, crashed, or malformed fleet
 worker may never crash or cancel the whole r229 BO1000. Preserve an immutable
@@ -2079,6 +2885,31 @@ or workflow has changed:
 | 226-GUIDE2VEC | 2026-08-10 | Abandon the unlaunched r212 Alakazam Guide2Vec training/BO1000 while preserving its artifacts, and stage a dormant guide-agnostic numeric Guide2Vec pipeline. Separate reusable frozen base latents from guide-versioned label overlays keyed by exact causal stage and legal-option fingerprints so a future guide update relabels and retrains only the tiny head. | Pipeline implementation and read-only checks only. No guide is currently ready; r212 launch authority, training, gradients, candidate publication, runtime attachment, BO1000, selector, serving, promotion, Kaggle, RTP, and MCTS changes remain unauthorized. A later explicit owner launch plus sealed guide/alignment/split/base/host/source/output receipts is required. Typed source: `state/guide2vec-general-training-pipeline-r226.json`. |
 | 227 | 2026-08-10 | Correct only r222/r225 topology: one Kaggle submission process and one loaded stock libcg DSO host eight internal `AgentStart` simulator/search arenas, one per persistent CPU worker, not eight competition agents. Each arena has one distinct `SearchBegin` ID; a master owns one tree, gathers eight frontier leaves into one frozen GPU batch, backs up all eight, then repeats. | Staged documentation/canonical correction only; no runtime, service, or Kaggle action. No one-lane baseline/ratio, per-lane GPU batch, private-tree/root merge, reduced lane, or partial-lane authority is allowed. All other r222/r225 semantics remain unchanged. Typed sources: `state/alakazam-local-multi-search-turn-belief-mcts-bo1000-r222.json`, `state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`. |
 | 228-MCTS | 2026-08-10 | Make the rough one-shot Kaggle full-gameplay viability test the active r225 deliverable ahead of BO1000. At every branching gameplay decision, one submission process and one loaded stock r195 DSO host eight persistent internal `AgentStart` simulator arenas / CPU lanes searching one master-owned shared MCTS tree: `SearchBegin` exactly once per lane/decision, exact `(lane, handle, SearchId)` retained across depth waves, simulator advances to discover next legal actions, up-to-eight returned frontier states go through frozen r195 GPU evaluation, and all results back up into the sole tree. | Documentation/typed-contract staging only; r222 stays byte-for-byte unchanged. Require a local exact-package full-game smoke before exactly one direct `DONT USE FOR REVIEW — 8-LANE SHARED-TREE VIABILITY` submission, with no queue/retry/copy. A clean deadline after full cleanup returns the best legal fully backed root action, or, when it alone caused zero backups, the frozen direct fallback. Any non-deadline zero backup or structural/integrity failure exits nonzero; only forced single-action prompts bypass search. Emit one explicit success marker only after the full gameplay loop passes. |
+| 236-LIBCG | 2026-08-10 | Make the official Kaggle Environments 1.32.6 CABT native-library set the canonical libcg for every new r235 Kaggle and r229 BO1000 package. Bind all four platform binaries and forbid old/new mixing; preserve every old package/result under its actual simulator identity. | Staged immediately for offline source/package/preflight updates. r229 retains the r233 outer game watchdog and excludes the r234 Kaggle broker/cleanup lifecycle; revision 236 changes only native simulator identity there. No managed-service restart, training, or extra Kaggle authority. Typed source: `state/canonical-libcg-r236.json`. |
+| 238-KAGGLE | 2026-08-10 | For the one pending r235 replacement package only, bind the observed Phase-1 Kaggle submission envelope (11.8 GiB HDD, 12.2 GiB RAM, 2 vCPUs, 197.7 MiB archive limit) and replace the old eight-lane viability topology with exactly two isolated simulator/search lanes on one child-owned shared tree. | Staged for fresh exact-package, saved-replay, full-game, resource, and immutable-binding receipts. Retain r234 bounded broker/direct fallback, complete 65,536 enumeration, r236 libcg, exact R235 label, and the single-upload limit. Historical r228 evidence and r229's r233 outer watchdog/lifecycle separation remain unchanged. No upload, restart, training, or BO1000 action. Typed source: `state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`. |
+| 239-BO1000 | 2026-08-10 | For the next r229 BO1000 package only, replace the former eight-lane shared-tree topology with exactly two isolated simulator/search lanes; the sealed eight-lane r236 package is preflight-only/ineligible and started no game. | Preserve r230 65,536 enumeration, r233 outer watchdog/requeue/quarantine, r236 official libcg, and the pre-r234 r229 lifecycle baseline. No r234 Kaggle broker/direct fallback/queue cleanup, managed-service restart, training, Kaggle action, or fleet execution is authorized until new two-lane package/preflight receipts pass. Typed source: `state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`. |
+| 240-KAGGLE | 2026-08-10 | For the pending r235 Kaggle replacement only, return the exact precomputed legal frozen-r195 direct action immediately when every selected factorized-stage probability is finite and ≥0.90; otherwise use exactly two-lane MCTS with 2.0s child / 4.0s parent limits, qualified early stop (≥8 backups, same leader ×3, both lanes progressed), and 32-backup hard stop. An ambiguous-MCTS receipt may carry a deterministic continuation plan of ≤8 actions, consumed only after exact fingerprint/actor/legal-order/two-lane-backed-leader/no-transition validation. | High-confidence direct decisions are journaled mode `high_confidence_frozen_direct`, never start/call a child, and are not degraded. A valid deterministic plan has proven-step precedence, journals exactly once with planned-vs-direct, and rewrites history to its actual action; any mismatch clears it and returns to normal high-confidence/adaptive MCTS. Zero backups retains the existing precomputed-direct fallback/containment rule. Preserve r234, r236, 65,536, r238 resources, exact R235 single upload/label, and historical old 8s evidence; no r229/BO changes, jobs, upload, restart, training, or selector authority. Typed source: `state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`. |
+| 241-TRAINING | 2026-08-10 | Train a separately versioned direct-policy Alakazam successor from the immutable r195 checkpoint on the owner's exact new 60-card list and supplied guide: exactly ten updates, 1,024 self-play plus ≥1,024 pinned direct H10 Marnie games per update, and five-epoch expert soft refreshes after updates five and ten using the exact rolling 2026-07-22..08-10 corpus. | Staged and fail-closed until the unpublished August 10 expert day and every exact-deck, official-r236-libcg, direct-Marnie, fixed-cycle, terminal-refresh, and policy-only-package receipt pass. Submit exactly once, first-preferring, only after `iter_00009` plus `expert_before_iter_00010.pt`; no MCTS/RTP/Guide2Vec/search targets, eleventh collection, intermediate submit, retry, or copy. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 242-KAGGLE | 2026-08-10 | Supersede only the r240 high-confidence frozen-direct threshold for the pending r235 replacement: every selected factorized-stage probability must be finite and ≥0.80 inclusive, otherwise route to unchanged ambiguous two-lane MCTS. A qualified direct starts no child or MCTS/select/search/model/simulator call; an existing child receives only one history-only `note_direct_action` IPC. MCTS rollout expansion stops at terminal/chance/away-from-root-actor boundaries, where the leaf is value-evaluated without opponent action selection/planning. | The prior r240 ≥0.90 threshold draft and any preflight bound to it are historical/ineligible; reissue the existing high-confidence/adaptive-MCTS regression at ≥0.80. Preserve r234/r236/65,536/r238/R235 label-and-single-upload/continuation/adaptive-stop constants and no r229/BO change, job, upload, restart, training, or selector authority. Typed source: `state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`. |
+| 237-INSPECTOR | 2026-08-10 | Remove the Replay Model Inspector's 20-second selected-trace browser cutoff and let Elmo finish the exact checksum-bound archived-model forward reconstruction. Keep Bert transport-only, preserve selected-trace-only loading/no whole-game prefetch, and abort only requests made stale by a newer browser selection. | Activated on Elmo at `2026-08-10T23:19:01Z` through an inspector-only managed restart. Focused static/inference/server tests passed 23/23; exact live cold and resident-model reconstructions exceeded the removed cutoff and returned HTTP 200, while a different runtime package also completed its checksum-bound isolated forward with verified provenance. Retain one serialized resident GPU model, isolated-worker fault containment, read-only replay/checkpoint bytes, `recomputed_not_historical`, and zero training/selector/submission authority. Typed source: `state/replay-model-inspector-forward-pass-reconstruction-r237.json`; receipt: `state/replay-model-inspector-forward-pass-reconstruction-activation-r237.json`. |
+| 243-INSPECTOR | 2026-08-10 | Materialize every baseline trace for the explicitly selected physical replay game once on Elmo, reuse one causal model state across its factorized stages, and make step/stage navigation read or join that game-scoped cache instead of starting another reconstruction. | Implemented and locally validated; live inspector/gateway activation and capacity receipt are pending. The disposable cache is private, whole-game-LRU bounded, checksum-bound, and atomic under Elmo `/tmp`; cache identity binds exact replay/model/runtime/parity inputs, while Playground scales remain separate. One nonresident worker streams cache-independent rows with heartbeat idle containment and no total deadline. Bert remains transport-only and gives exact trace headers no wall-clock deadline while retaining bounded connect/body/concurrency/size controls. Focused r243 suite passed 61/61 and the final gateway/Caddy focus passed 13/13; full Inspector/dashboard suite passed 156 with only the unchanged unrelated r187 recipe-registry test failing. Preserve read-only artifacts and no training/selector/submission authority. Typed source: `state/replay-model-inspector-physical-game-materialization-r243.json`. |
+| 244-LIBCG | 2026-08-11 | Correct official-libcg SearchId identity only for the pending r235 Kaggle replacement and next r239 BO1000 package: numeric SearchId is scoped per distinct `AgentStart` handle, so both first raw IDs may be `0`. Require exactly two arenas/SearchBegin calls, two per-lane handles and chains, and two distinct `(handle_identity, first_search_id)` states; global raw-ID uniqueness is not required. | Staged for fresh handle-scoped identity receipts and immutable bindings. Preserve r242 Kaggle scheduling/containment, r239 two-lane topology, r233 watchdog/pre-r234 BO lifecycle, r236 library identity, all action/resource/upload boundaries, and historical evidence. No code/job/upload/commit, service, training, selector, or game authority is added. Typed sources: `state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`, `state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`. |
+| 245-TRAINING | 2026-08-10 | Clarify r241: preserve peak-r195 behavior while changing only the exact deck, supplied guide, r236 simulator binding, ten-update horizon, and requested expert refreshes. Keep every architecture-present non-combo head/route live and trainable, combo loss/route off, Matchup Adapters on, and the established diverse 7,172-game public mix with at least 1,024 direct H10 Marnie games. | Canonical immediately for the staged r241 lineage. H10 Marnie is a minimum row, not the sole public opponent; guide curriculum remains training-only and cannot suppress heads, adapters, public opponents, or research controls. Existing source blocker and one-terminal-submit boundary remain unchanged. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 246-KAGGLE | 2026-08-11 | For an ambiguous r235 two-lane MCTS decision only, give a single exact stock-simulator proof of a deterministic terminal win reachable this turn absolute root-action and early-stop authority over priors, visits, and nonterminal alternatives. Keep r242's `>=0.80` direct-before-child route unchanged. The proof is valid only when it binds the current root observation/legal fingerprints, actor, legal root action, selected action, and terminal `win` for that actor; every simulated action remains that actor's and crosses no chance, unresolved randomness, actor/opponent boundary, draw, or loss. | Staged for focused terminal-win proof regression and immutable binding. Two lanes still initialize/clean, but dual proof, both-lane progress, normal `>=8`/leader×3 thresholds, and exhaustive scan are not required after one valid deterministic proof. Stale/malformed/loss/draw/nonterminal/chance/opponent claims have zero override authority and follow existing fail-closed classification. Preserve r234/r236/r238/r242/r244/65,536/R235 one-upload rules and all r229/BO boundaries. Typed source: `state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`. |
+| 247-TRAINING | 2026-08-11 | Refresh r241's Matchup Adapter archetype identities from the newest completed authenticated PTCGReplay ingest. Append exact numeric-ID/name identities only to never-used Router Format 6 slots; preserve every existing slot and peak-r195 tensor byte-for-byte, and never treat site meta as action, gradient, outcome, or gate evidence. | Staged pending browser-authenticated snapshot and immutable receipt. New slots start exact-zero/dormant and require checksum-backed replay support plus causal-router fit/precision/support/bypass/runtime receipts before training or activation. Preserve the already-running exact-20 roster-18 corpus jobs and every r241 schedule/deck/guide/direct-policy/one-submit boundary. The credential is runtime-only and never committed or receipted. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 248-TRAINING | 2026-08-11 | Defer the r247 PTCGReplay archetype refresh for now. Run r241 with the existing peak-r195 Matchup Adapter identities/tree unchanged and require checkpoint-derived `no_slot_change`; no new site snapshot, slot allocation, fit, or activation is part of this cycle. | Canonical immediately for staged r241. PTCGReplay and append-only migration receipts are not launch gates; the global roster remains byte-unchanged. Preserve Matchup Adapter runtime ON, the exact deck/guide, direct-only r236 simulator, 1,024 + 7,172 loop, ten updates, two five-epoch refreshes, all non-combo heads/routes, and exactly one terminal submit. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 249-BO1000 | 2026-08-11 | Keep one frozen model and one logical shared MCTS tree in the r229 game process, but move exactly two official-r236 native simulator lanes into two persistent owned child processes. Bound every native request and cleanup; after a lane hang/crash, reap the exact child, discard the failed partial tree, reopen fresh two-lane workers, and retry the same complete-root eight-second search once. | A successful retry remains fully backed two-lane MCTS. Only retry exhaustion may use the precomputed legal same-state r195 direct action, explicitly degraded with zero change credit and complete fault/reap telemetry. Clean full-game preflight requires zero exhausted fallbacks. Preserve r230/r233/r236/r239/r244 and exclude all Kaggle broker, adaptive/direct-bypass/continuation/terminal-win policy changes. Typed source: `state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`. |
+| 250-BO1000 | 2026-08-11 | Supersede r239/r249's active two-lane topology with serial MCTS for now: one parent-owned frozen model/tree and exactly one process-owned official-r236 native simulator handle, with no concurrent libcg calls. Keep bounded reap, discard the failed partial tree, reopen one fresh serial child, and retry the complete root once. | Authorized for serial implementation, tests, sealing, and a clean full-game preflight requiring zero exhausted fallbacks. The two-lane packages/results are historical and ineligible. Only after serial passes may a separately versioned process-parallel node-evaluation/tree-building design be investigated; it has no current execution authority and cannot alter Kaggle lifecycle. Preserve r230/r233/r236/r244, the eight-second budget, and all BO/Kaggle separation boundaries. Typed source: `state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`. |
+| 251-TRAINING | 2026-08-11 | Correct r241's activation topology: immutable owner intent → checksum-bound source and baseline payload snapshots → offline host receipts → one logical create-only activation overlay → managed services. Owner intent contains no derived readiness/operation authorization. The one overlay binds both hosts and is byte-identically mirrored with one shared SHA. Clarify direct/no-MCTS scope as learner, pinned H10 Marnie, target generation, terminal package, and submission only; preserve frozen non-H10 diverse public packages/selectors unchanged. | Staged. The pending source-snapshot registry cannot authorize execution; only the external overlay's checksum-bound owner-start authorization can. No service/training/submission activation occurred. Preserve exact deck/guide/r236/10-update/1024+7172/refresh/full-head/adapter/PTCG-defer/one-submit requirements, do not add a public-search firewall, and do not alter concurrent MCTS work. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 252-MCTS | 2026-08-11 | For both the pending r235 Kaggle replacement and the separately owned r229 BO1000 experiment, stop private simulation at every recognized chance context, every stochastic resolution with more than ten outcomes or equiprobable outcome probability at most 0.10, and every deterministic internal choice with more than 64 complete ordered outcomes. Each is value-only with zero sampling, action, child, planning, or continuation authority. | Staged for typed-source, runtime, telemetry, regression, and fresh-package validation. Exact real roots through 65,536 remain completely enumerated. Kaggle hard-fails above the cap; r229 BO records `oversized_direct_fallback`, uses only its legal factorized direct action, and assigns zero search/change credit without counting the decision as MCTS. Preserve Kaggle r242/r246/two-lane/containment/R235 single-upload rules and BO r250 serial-lane/r233/r236 lifecycle rules. The sealed r246 Kaggle archive is historical and upload-ineligible; no Kaggle upload is authorized by this record. Typed sources: `state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic-r225.json`, `state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`. |
+| 253-BO1000 | 2026-08-11 | Supersede r250's one-continuous-trajectory serial mechanics with repeated independent root rollouts over one parent-owned logical tree and one process-owned official-r236 handle. Each rollout starts with `SearchBegin` at the exact physical root, follows parent-tree-selected actions to one evaluated/r252-boundary leaf, backs up, boundedly releases/ends, and reopens the root until the decision deadline or rollout cap. | Staged for BO-only typed-source/code/tests/package/full-game replacement. Any rollout fault discards the entire attempt/tree and permits exactly one fresh full-root retry; no successful prefix survives. The stopped 13-game/741-search launch is immutable invalid-diagnostic evidence with zero BO/MCTS-effect authority because only one root edge was structurally visitable. Require constructed multi-root-edge and changed-selection regressions before relaunch. Preserve r233/r236/r252, host-local data plane, and all Kaggle boundaries; Kaggle remains paused and unchanged. Typed source: `state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`. |
+| 254-BO1000 | 2026-08-11 | Fully abandon the r253 full-MCTS BO1000 at its clean 45-game stop. Preserve the incomplete prefix as diagnostic-only evidence, never a 1,000-game efficacy result. Replace the next research direction with conflict-triggered conservative tactical proof search: direct r195 is default, and initially only an exact deterministic terminal win this turn may override it. | r253 service is stopped and must not resume; the 955 unplayed games and process-parallel full-MCTS follow-on are abandoned. Selective-search implementation/tests/package preflight and a small training-ineligible shadow pilot are authorized only after a fresh typed trigger/budget/pilot configuration. Preserve chance/opponent/>64 boundaries, correct simulated previous-action history, and zero Kaggle/training/serving/selector/model authority. Typed source: `state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`. |
+| 257-BO | 2026-08-11 | Reopen only sidecar implementation and local testing of a shadow-only, goal-directed tactical sequence planner for exact same-turn terminal-win discovery and SME tutor/resource planning. It is policy-ordered limited-discrepancy search, not MCTS; r195 remains the only dispatched action authority. | New sidecar and focused deterministic/offline tests only. Stop at chance, hidden-information/tutor re-observation, actor/turn change, or >64 complete actions; preserve simulated action history. Native adapters require an owned bounded child. Tactical-outcome/SME/model signals are hints, never proof. No package, pilot, fleet game, Kaggle, training, serving, selector, promotion, model, service, or active-refresh change is authorized. Typed source: `state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`. |
+| 258-TRAINING | 2026-08-11 | Build a separately versioned direct-policy Alakazam successor with a match-updated causal `OwnDeckLedger` shared by policy, value, every learned head, option decoding, and Fusion; learn real visible deck-search/tutor decisions and add narrowly masked immediate terminal-conversion supervision. | Build and offline-test the isolated dormant successor now. Do not mutate or interrupt r241. Staged migration/training begins only after receipt-proven terminal completion of the Alakazam refresh; production activation then requires causal coverage, zero-safe migration, all-head gradient reachability, local/remote/replay parity, calibration, bounded influence, source-disjoint evaluation, and promotion receipts. Typed source: `state/alakazam-own-deck-ledger-successor-r258.json`. |
+| 259-TRAINING | 2026-08-11 | Start Elmo materialization of the r258 causal ledger/tutor/terminal replay inputs now as a separate checksum-bound side store over the exact r241 2026-07-22 through 2026-08-10 expert manifest. Keep source archives read-only and key rows by episode, acting seat, environment step, and observation fingerprint. | Authorized now through the new bounded `pokebot-own-deck-rollout-store-r259.service` only. It may not stop or alter any existing service, may not feed active r241, and becomes next-train eligible only after refresh completion plus join, parity, schema, count, and digest receipts. Typed source: `state/alakazam-own-deck-ledger-successor-r258.json`. |
+| 260-TRAINING | 2026-08-11 | Highest priority: because r241 never armed or started and its final launcher check failed closed, fold last night's r258 `OwnDeckLedger` architecture into the next r241 receipt line before update 0. Preserve the 19 inherited heads/18 active Fusion-v3 routes and combo-off semantics; add the width-128 shared ledger, eight-feature option adapter, and typed 7-output tutor-completion plus 6-output terminal-conversion heads/routes with zero-safe migration and a total masked auxiliary budget of 0.05. | Explicitly supersedes r258's post-r241-completion/no-r241-mutation delay only at this safe pre-start boundary. Bind the completed Elmo exact-20-day side store only after all 20 shards and join/parity/schema/count/digest receipts pass; then require the corrected typed parent `FileIdentity`, zero-safe migration, training canary, bounded influence/evaluation, new immutable source/H10/peak/image/quartet/overlay, and managed-service preflight. Activate immediately after those receipts without another owner decision. Old 1c34/v8/v6/r13 artifacts remain immutable inactive history. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 261-TRAINING | 2026-08-11 | Make Inzi the sole managed training host for the r260 combined successor. Elmo may preprocess and receipt the protected expert corpus and run bounded disposable parity checks, but it may not train the learner. | After 20/20 Elmo sidecar completion, create-only copy the exact daily layout and deterministic joined dataset to the canonical Inzi r260 training root, rehash typed FileIdentities there, and require the Inzi trainer to use only its local disk-backed streaming index. Any Elmo `/mnt/Main/` training path fails closed. All r260 architecture, evidence, schedule, direct-policy, and activation gates remain unchanged. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 262-TRAINING | 2026-08-11 | Begin transferring already committed immutable r259 daily sidecars to a non-eligible Inzi staging root while Elmo finishes the remaining days. | Transfer only committed non-dot daily directories, create-only and byte-identical; seal and rehash each day on Inzi, append later commits, and retain zero training authority until 20/20 plus join/parity/transport receipts pass and the tree is atomically promoted. Do not restart or reconfigure the healthy r259 producer. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
 
 ## Non-regression invariants
 

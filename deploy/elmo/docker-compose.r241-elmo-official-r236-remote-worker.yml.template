@@ -1,0 +1,133 @@
+# Inert template for the isolated r241 direct-policy collection endpoint.
+#
+# It is intentionally a different Compose project/container from the legacy
+# Elmo worker.  Do not merge this file with an existing Compose stack.  Before
+# an operator runs it, the r241 owner gates, the four preflight receipts, and
+# the separately named arm token must all be present and checksum-pinned.
+#
+# Important: the authenticated immutable r241 source snapshot and every
+# runtime/baseline path are mounted at the same absolute host path inside the
+# container.  The sole narrow exception is the receipt-bound generic remote
+# checkpoint ABI: its host staging root mounts read-only at
+# /workspace/checkpoint so digest-addressed reload paths remain valid.
+
+name: pokebot-r241-elmo-official-r236-worker
+
+services:
+  r241-elmo-official-r236-worker:
+    image: ${R241_ELMO_OFFICIAL_R236_IMAGE:?set an image containing the current r241 dependencies}
+    container_name: pokebot-r241-elmo-official-r236-worker-8767
+    hostname: elmo-r241-r236-worker
+    init: true
+    restart: "no"
+    stdin_open: false
+    tty: false
+    working_dir: ${R241_ELMO_SOURCE_SNAPSHOT_ROOT:?set immutable source snapshot root}
+    entrypoint:
+      - python3
+      - ${R241_ELMO_SOURCE_SNAPSHOT_ROOT:?set immutable source snapshot root}/scripts/launch_r241_elmo_official_r236_worker.py
+    command:
+      - serve
+      - --endpoint
+      - 192.168.1.143:8767
+      - --source-snapshot-root
+      - ${R241_ELMO_SOURCE_SNAPSHOT_ROOT:?set immutable source snapshot root}
+      - --source-snapshot-manifest
+      - ${R241_ELMO_SOURCE_SNAPSHOT_ROOT:?set immutable source snapshot root}/r241-source-snapshot-manifest.json
+      - --checkpoint
+      - /workspace/checkpoint/${R241_ELMO_CHECKPOINT_FILENAME:?set the digest-addressed checkpoint filename}
+      - --cg-lib-path
+      - /mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/cg-r236
+      - --adapter-receipt
+      - /mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/marnie-h10-direct-policy-adapter-r251-v8.json
+      - --learner-matchup-tree
+      - /workspace/checkpoint/${R241_ELMO_LEARNER_MATCHUP_TREE_FILENAME:?set the r195 E60 tree filename beside the checkpoint}
+      - --baselines-root
+      - ${R241_ELMO_BASELINES_ROOT:?set the receipt-bound Elmo baseline payload root}
+      - --checkpoint-transport-host-root
+      - ${R241_ELMO_CHECKPOINT_TRANSPORT_ROOT:?set the Elmo checkpoint transport staging root}
+      - --checkpoint-transport-staging-receipt
+      - ${R241_ELMO_CHECKPOINT_TRANSPORT_STAGING_RECEIPT:?set the Elmo checkpoint transport staging receipt}
+      - --checkpoint-transport-staging-receipt-sha256
+      - ${R241_ELMO_CHECKPOINT_TRANSPORT_STAGING_RECEIPT_SHA256:?set checkpoint transport staging receipt SHA-256}
+      - --source-staging-receipt
+      - ${R241_ELMO_SOURCE_STAGING_RECEIPT:?set the Elmo source staging receipt}
+      - --source-staging-receipt-sha256
+      - ${R241_ELMO_SOURCE_STAGING_RECEIPT_SHA256:?set source staging receipt SHA-256}
+      - --baseline-staging-receipt
+      - ${R241_ELMO_BASELINE_STAGING_RECEIPT:?set the Elmo baseline staging receipt}
+      - --baseline-staging-receipt-sha256
+      - ${R241_ELMO_BASELINE_STAGING_RECEIPT_SHA256:?set baseline staging receipt SHA-256}
+      - --canonical-roster-receipt
+      - ${R241_ELMO_CANONICAL_ROSTER_RECEIPT:?set the canonical baseline roster receipt}
+      - --canonical-roster-receipt-sha256
+      - ${R241_ELMO_CANONICAL_ROSTER_RECEIPT_SHA256:?set canonical roster receipt SHA-256}
+      - --receipt-dir
+      - /mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/elmo-8767
+      - --activation-overlay
+      - ${R241_ELMO_ACTIVATION_OVERLAY:?set the local byte-identical Elmo activation overlay}
+      - --activation-overlay-sha256
+      - ${R241_ELMO_ACTIVATION_OVERLAY_SHA256:?set the shared activation overlay SHA-256}
+      - --
+      - --workers
+      - ${R241_ELMO_SIM_WORKERS:-2}
+      - --default-workers
+      - ${R241_ELMO_SIM_DEFAULT_WORKERS:-2}
+      - --leaf-servers
+      - ${R241_ELMO_LEAF_SERVERS:-1}
+      - --leaf-gpu
+      - ${R241_ELMO_LEAF_GPU:-cuda:0}
+      - --planned-rotation-exit-code
+      - "75"
+    ports:
+      - "8767:8767"
+    environment:
+      PYTHONPATH: ${R241_ELMO_SOURCE_SNAPSHOT_ROOT:?set immutable source snapshot root}
+      # Systemd has compared this literal ID to `docker image inspect`; the
+      # worker must also compare it to the immutable overlay image receipt.
+      R241_ELMO_OFFICIAL_R236_IMAGE_ID: ${R241_ELMO_OFFICIAL_R236_IMAGE_ID:?set sealed local Docker image ID}
+      CUDA_DEVICE_ORDER: PCI_BUS_ID
+      POKEBOT_WORKER_CPU_ONLY: "1"
+      CG_LIB_PATH: /mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/cg-r236
+      POKEBOT_R241_DIRECT_POLICY_ONLY: "1"
+      POKEBOT_R241_DIRECT_POLICY_ADAPTER_RECEIPT: /mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/marnie-h10-direct-policy-adapter-r251-v8.json
+      POKEBOT_USE_RECURSIVE_TURN_PLANNER: "0"
+      POKEBOT_SEARCH_MODE: policy
+      POKEBOT_SUBMISSION_SEARCH_DISABLE: "1"
+      POKEBOT_MATCHUP_ADAPTER_RUNTIME: "1"
+      POKEBOT_PUBLIC_MATCHUP_TREE_PATH: /workspace/checkpoint/${R241_ELMO_LEARNER_MATCHUP_TREE_FILENAME:?set the r195 E60 tree filename beside the checkpoint}
+      POKEBOT_REMOTE_CHECKPOINT_ROOT: /workspace/checkpoint
+      PURE_RL_PUBLIC_MIX_LOCAL_ONLY: "0"
+      POKEBOT_REMOTE_ALLOWED_JOB_KINDS: play,self_play,self_play_multi,runtime_probe
+      POKEBOT_REMOTE_WORKER_CAPABILITY_TAGS: r241_direct_policy_collection_v1
+      POKEBOT_REMOTE_WORKER_SAFETY_VERSION: "20260717"
+      POKEBOT_REMOTE_WORKER_ARM_FILE: /mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/elmo-8767/REMOTE_WORKER_ARMED
+      POKEBOT_REMOTE_PLANNED_ROTATION_EXIT_CODE: "75"
+      POKEBOT_REMOTE_MAX_SERVICE_JOBS: "0"
+      # The immutable source snapshot intentionally contains no public package
+      # code.  This must be the separately receipted generic payload root.
+      POKEBOT_BASELINES_DIR: ${R241_ELMO_BASELINES_ROOT:?set the receipt-bound Elmo baseline payload root}
+      NVIDIA_VISIBLE_DEVICES: ${R241_ELMO_NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      # Code must come from the authenticated immutable snapshot.  Outputs are
+      # external/runtime state and never make the mutable checkout executable.
+      - ${R241_ELMO_SOURCE_SNAPSHOT_ROOT:?set immutable source snapshot root}:${R241_ELMO_SOURCE_SNAPSHOT_ROOT:?set immutable source snapshot root}:ro
+      - /mnt/Main/main/poke-bot-agent/outputs:/mnt/Main/main/poke-bot-agent/outputs:rw
+      # Keep the full immutable public-baseline payload at its identical host
+      # path.  H10 is validated as a member of this generic library; non-H10
+      # frozen public packages retain their established normal-loader behavior.
+      - ${R241_ELMO_BASELINES_ROOT:?set the receipt-bound Elmo baseline payload root}:${R241_ELMO_BASELINES_ROOT:?set the receipt-bound Elmo baseline payload root}:ro
+      # This is intentionally the only container-path remap.  `remote_jobs`
+      # names reloads `/workspace/checkpoint/<digest-addressed-name>`; the
+      # staging receipt binds the Elmo host source and exact initial bytes.
+      - ${R241_ELMO_CHECKPOINT_TRANSPORT_ROOT:?set the Elmo checkpoint transport staging root}:/workspace/checkpoint:ro
+    shm_size: ${R241_ELMO_SHM_SIZE:-2gb}
+    cpus: ${R241_ELMO_CPUS:-2.0}
+    mem_limit: ${R241_ELMO_MEM_LIMIT:-12g}
+    memswap_limit: ${R241_ELMO_MEM_LIMIT:-12g}
+    pids_limit: ${R241_ELMO_PIDS_LIMIT:-256}
+    labels:
+      com.pokebot.endpoint-id: elmo-r241-official-r236-direct-policy-8767
+      com.pokebot.r241.explicit-endpoint-only: "true"
+      com.pokebot.r241.legacy-fallback: "false"

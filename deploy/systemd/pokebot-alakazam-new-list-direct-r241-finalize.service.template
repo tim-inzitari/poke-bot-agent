@@ -1,0 +1,25 @@
+# Inert template: reached only through the r241 trainer's successful terminal
+# exit.  It builds a package and one authorization locally; it does not upload.
+
+[Unit]
+Description=Finalize terminal five-epoch refresh for Alakazam new-list direct-policy r241
+After=pokebot-alakazam-new-list-direct-r241.service
+OnSuccess=pokebot-alakazam-new-list-direct-r241-submission-queue.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/
+EnvironmentFile=/etc/pokebot/alakazam-new-list-direct-r241-inzi-activation.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=
+Environment=CG_LIB_PATH=
+Environment=POKEBOT_LIBCG_PATH=
+Environment=POKEBOT_BATCH_LIBCG=
+Environment=POKEBOT_ALLOW_ORACLE_DECK=
+Environment=POKEBOT_BASELINES_DIR=
+ExecStartPre=/bin/sh -ec 'test -n "$R241_INZI_RUNTIME_REGISTRY"; exec "$R241_INZI_PYTHON" -u "$R241_INZI_SOURCE_SNAPSHOT_ROOT/scripts/preflight_alakazam_new_list_direct_r241_service_chain.py" --stage finalizer --overlay "$R241_INZI_ACTIVATION_OVERLAY" --overlay-sha256 "$R241_INZI_ACTIVATION_OVERLAY_SHA256" --overlay-mirror-receipt "$R241_INZI_ACTIVATION_OVERLAY_MIRROR_RECEIPT" --overlay-mirror-receipt-sha256 "$R241_INZI_ACTIVATION_OVERLAY_MIRROR_RECEIPT_SHA256"'
+ExecStart=/bin/sh -ec 'exec "$R241_INZI_PYTHON" -u "$R241_INZI_SOURCE_SNAPSHOT_ROOT/scripts/finalize_alakazam_new_list_direct_r241.py" --run-dir "$R241_INZI_RUN_ROOT" --runtime-dir "$R241_INZI_RUNTIME_DIR" --official-cg-dir "$R241_INZI_OFFICIAL_CG_DIR" --official-libcg-staging "$R241_INZI_SOURCE_SNAPSHOT_ROOT/state/alakazam-new-list-direct-r241-official-libcg-staging.json" --output-dir "$R241_INZI_FINALIZER_OUTPUT_DIR" --matchup-tree "$R241_INZI_MATCHUP_TREE" --matchup-runtime-activation "$R241_INZI_MATCHUP_RUNTIME_ACTIVATION" --model-runtime-activation "$R241_INZI_MODEL_RUNTIME_ACTIVATION" --receipt "$R241_INZI_FINALIZER_RECEIPT" --queue-authorization "$R241_INZI_QUEUE_AUTHORIZATION" --contract "$R241_INZI_SOURCE_SNAPSHOT_ROOT/state/alakazam-new-list-direct-policy-r241.json"'
+Restart=no
+TimeoutStartSec=1800
+TimeoutStopSec=300

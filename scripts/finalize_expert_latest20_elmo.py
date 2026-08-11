@@ -80,6 +80,25 @@ KNOWN_SOURCE_DISCREPANCIES = {
         ),
         "reason": "kaggle_index_overcounts_published_dataset_files",
     },
+    # The 2026-08-06 and 2026-08-07 index rows similarly overcount the JSON
+    # files in Kaggle's immutable published ZIPs.  Permit only these exact
+    # artifacts; a short or corrupted transfer must still fail validation.
+    "2026-08-06": {
+        "index_episode_count": 4_633,
+        "validated_episode_count": 4_631,
+        "archive_sha256": (
+            "sha256:46f3a95ba0456027870b504a64424fd3f9afcf3aabe5d0453803d7c5145631a4"
+        ),
+        "reason": "published_kaggle_zip_episode_count_differs_from_index",
+    },
+    "2026-08-07": {
+        "index_episode_count": 4_645,
+        "validated_episode_count": 4_639,
+        "archive_sha256": (
+            "sha256:c9325476fde8bf6e3a9021520867e9dbfeaf3ec09124b01f742cb07fa5877e63"
+        ),
+        "reason": "published_kaggle_zip_episode_count_differs_from_index",
+    },
 }
 
 
@@ -108,18 +127,46 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _window(index_path: Path) -> list[dict[str, Any]]:
+def _window(
+    index_path: Path,
+    *,
+    window_start: str | None = None,
+    window_end: str | None = None,
+) -> list[dict[str, Any]]:
+    if (window_start is None) != (window_end is None):
+        raise RuntimeError("--window-start and --window-end must be supplied together")
     with index_path.open(newline="", encoding="utf-8") as stream:
         rows = list(csv.DictReader(stream))
-    if len(rows) < 20:
-        raise RuntimeError("Kaggle index contains fewer than 20 days")
-    selected = rows[-20:]
+    if window_start is None:
+        if len(rows) < 20:
+            raise RuntimeError("Kaggle index contains fewer than 20 days")
+        selected = rows[-20:]
+        expected_start = date.fromisoformat(str(selected[0]["date"]))
+        window_description = "latest 20 Kaggle rows"
+    else:
+        try:
+            expected_start = date.fromisoformat(window_start)
+            expected_end = date.fromisoformat(str(window_end))
+        except ValueError as exc:
+            raise RuntimeError("pinned window dates must be ISO calendar dates") from exc
+        if expected_end - expected_start != timedelta(days=19):
+            raise RuntimeError("pinned window must span exactly 20 calendar days")
+        selected = [
+            row
+            for row in rows
+            if expected_start
+            <= date.fromisoformat(str(row["date"]))
+            <= expected_end
+        ]
+        window_description = f"pinned Kaggle window {window_start}..{window_end}"
+    if len(selected) != 20:
+        raise RuntimeError(f"{window_description} does not contain exactly 20 days")
     parsed = [date.fromisoformat(str(row["date"])) for row in selected]
     expected = [
-        parsed[0] + timedelta(days=offset) for offset in range(20)
+        expected_start + timedelta(days=offset) for offset in range(20)
     ]
     if parsed != expected:
-        raise RuntimeError("latest 20 Kaggle rows are not consecutive calendar days")
+        raise RuntimeError(f"{window_description} is not consecutive calendar days")
     result: list[dict[str, Any]] = []
     for row in selected:
         episodes = int(row["episode_count"])
@@ -212,8 +259,14 @@ def prepare(
     *,
     archive_root: Path,
     reuse_roots: list[Path],
+    window_start: str | None = None,
+    window_end: str | None = None,
 ) -> dict[str, Any]:
-    rows = _window(index_path)
+    rows = _window(
+        index_path,
+        window_start=window_start,
+        window_end=window_end,
+    )
     missing: list[dict[str, Any]] = []
     for row in rows:
         destination = _archive_path(archive_root, row["date"])
@@ -239,10 +292,19 @@ def install(
     archive_root: Path,
     incoming: Path,
     day: str,
+    window_start: str | None = None,
+    window_end: str | None = None,
 ) -> dict[str, Any]:
-    rows = {row["date"]: row for row in _window(index_path)}
+    rows = {
+        row["date"]: row
+        for row in _window(
+            index_path,
+            window_start=window_start,
+            window_end=window_end,
+        )
+    }
     if day not in rows:
-        raise RuntimeError(f"{day} is not in the current latest-20 window")
+        raise RuntimeError(f"{day} is not in the selected 20-day window")
     row = rows[day]
     validation = _validate(
         incoming,
@@ -284,8 +346,14 @@ def commit(
     *,
     archive_root: Path,
     receipt_root: Path,
+    window_start: str | None = None,
+    window_end: str | None = None,
 ) -> dict[str, Any]:
-    rows = _window(index_path)
+    rows = _window(
+        index_path,
+        window_start=window_start,
+        window_end=window_end,
+    )
     current = receipt_root / "current.json"
     prior = _prior_days(current)
     archives: list[dict[str, Any]] = []
@@ -322,7 +390,11 @@ def commit(
     receipt = {
         "schema": SCHEMA,
         "status": "ready",
-        "window_policy": "latest_20_consecutive_calendar_days",
+        "window_policy": (
+            "latest_20_consecutive_calendar_days"
+            if window_start is None
+            else "exact_20_consecutive_calendar_days"
+        ),
         "window_start": rows[0]["date"],
         "window_end": rows[-1]["date"],
         "days": 20,
@@ -374,12 +446,22 @@ def main() -> None:
     parser.add_argument("--reuse-root", type=Path, action="append", default=[])
     parser.add_argument("--incoming", type=Path)
     parser.add_argument("--day")
+    parser.add_argument(
+        "--window-start",
+        help="Optional inclusive ISO date for a pinned 20-calendar-day window; requires --window-end.",
+    )
+    parser.add_argument(
+        "--window-end",
+        help="Optional inclusive ISO date for a pinned 20-calendar-day window; requires --window-start.",
+    )
     args = parser.parse_args()
     if args.action == "prepare":
         result = prepare(
             args.index,
             archive_root=args.archive_root,
             reuse_roots=args.reuse_root,
+            window_start=args.window_start,
+            window_end=args.window_end,
         )
     elif args.action == "install":
         if args.incoming is None or not args.day:
@@ -389,12 +471,16 @@ def main() -> None:
             archive_root=args.archive_root,
             incoming=args.incoming,
             day=args.day,
+            window_start=args.window_start,
+            window_end=args.window_end,
         )
     else:
         result = commit(
             args.index,
             archive_root=args.archive_root,
             receipt_root=args.receipt_root,
+            window_start=args.window_start,
+            window_end=args.window_end,
         )
     print(json.dumps(result, sort_keys=True))
 

@@ -49,6 +49,7 @@ except ImportError:  # pragma: no cover - exercised on minimal worker images
 
 PROTO_VERSION = 1
 DEFAULT_PORT = 8765
+ELMO_CHECKPOINT_VERIFY_PORT_ENV = "POKEBOT_ELMO_CHECKPOINT_VERIFY_PORT"
 _HDR = struct.Struct("!I")
 _MAX_FRAME = 256 * 1024 * 1024  # 256 MiB — self-play records can be large
 _COMPRESSED_FRAME_FLAG = 0x80000000
@@ -1015,6 +1016,30 @@ def _smb_checkpoint_probe_timeout_s() -> float:
     return max(0.05, min(10.0, timeout_s))
 
 
+def _elmo_checkpoint_verify_port() -> int:
+    """Return the explicit control port for storage-local Elmo verification.
+
+    Existing fleets retain :8765 when this opt-in is absent.  An isolated
+    endpoint can select its own already-admitted control port without probing a
+    legacy worker merely because it shares Elmo's host address.
+    """
+
+    raw = str(os.environ.get(ELMO_CHECKPOINT_VERIFY_PORT_ENV, "")).strip()
+    if not raw:
+        return DEFAULT_PORT
+    try:
+        port = int(raw, 10)
+    except ValueError as exc:
+        raise RemoteJobsError(
+            f"{ELMO_CHECKPOINT_VERIFY_PORT_ENV} must be an integer TCP port"
+        ) from exc
+    if not 1 <= port <= 65535:
+        raise RemoteJobsError(
+            f"{ELMO_CHECKPOINT_VERIFY_PORT_ENV} is outside the TCP port range"
+        )
+    return port
+
+
 def _smb_checkpoint_dir() -> Path | None:
     timeout_s = _smb_checkpoint_probe_timeout_s()
     explicit = os.environ.get("POKEBOT_TRUENAS_CHECKPOINT_SMB")
@@ -1284,7 +1309,7 @@ def _elmo_remote_checkpoint_digest(host: str, remote_path: str) -> Optional[str]
 
     client = RemoteJobClient(
         host,
-        DEFAULT_PORT,
+        _elmo_checkpoint_verify_port(),
         timeout_s=30.0,
         connect_timeout_s=min(
             5.0, _env_float("POKEBOT_REMOTE_CONNECT_TIMEOUT_S", 60.0)

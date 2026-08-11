@@ -17,7 +17,7 @@ import statistics
 import time
 from contextlib import nullcontext as _nullcontext
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -76,6 +76,40 @@ def _policy_probs(logits: torch.Tensor) -> list[float]:
     return [float(p) for p in probs.tolist()]
 
 
+def _legacy_ledger_keyword_error(exc: TypeError) -> bool:
+    """True only for a pre-ledger model that rejects an optional keyword."""
+
+    message = str(exc)
+    return "unexpected keyword argument" in message and any(
+        name in message
+        for name in (
+            "ledger_snapshots",
+            "ledger_histories",
+            "ledger_option_features",
+        )
+    )
+
+
+def _call_with_optional_ledger(
+    method,
+    *args,
+    ledger_kwargs: dict[str, Any],
+    allow_legacy_fallback: bool = True,
+    **kwargs,
+):
+    """Call a model method while preserving dormant legacy behavior only."""
+
+    active = {key: value for key, value in ledger_kwargs.items() if value is not None}
+    if not active:
+        return method(*args, **kwargs)
+    try:
+        return method(*args, **kwargs, **active)
+    except TypeError as exc:
+        if not allow_legacy_fallback or not _legacy_ledger_keyword_error(exc):
+            raise
+        return method(*args, **kwargs)
+
+
 @dataclass
 class LeafPacket:
     """One leaf observation ready for (or returned from) a batched forward."""
@@ -96,6 +130,14 @@ class LeafPacket:
     # Public-prefix route candidate. The checkpoint-side adapter flag is the
     # final gate; dormant checkpoints consume this as an exact no-op.
     matchup_route: int = UNKNOWN_ROUTE
+    #: Immutable public own-deck residual at this real/root observation.
+    #: Defaults preserve all legacy speculative leaf callers.
+    ledger_snapshot: Optional[Any] = None
+    #: One immutable ledger snapshot per temporal board history entry.
+    history_ledger_snapshots: Optional[list[Any]] = None
+    #: Candidate-dependent public tutor/deck-query rows for this factorized
+    #: stage.  The snapshot itself remains frozen across stages.
+    ledger_option_features: Optional[Any] = None
 
 
 @dataclass
@@ -115,6 +157,11 @@ class FeaturizedLeaves:
         list[list[Optional["features.SparseVector"]]]
     ] = None
     matchup_routes: Optional[list[int]] = None
+    #: Current and temporal immutable own-deck ledger inputs.  Appended after
+    #: existing fields so old positional callers retain exact construction.
+    ledger_snapshots: Optional[list[Any]] = None
+    ledger_histories: Optional[list[list[Any]]] = None
+    ledger_option_features: Optional[list[Any]] = None
 
 
 def featurize_packets(packets: Sequence[LeafPacket]) -> FeaturizedLeaves:
@@ -133,15 +180,56 @@ def featurize_packets(packets: Sequence[LeafPacket]) -> FeaturizedLeaves:
     matchup_routes: list[int] = []
     histories: list[list["features.SparseVector"]] = []
     previous_action_histories: list[list[Optional["features.SparseVector"]]] = []
+    ledger_snapshots: list[Any] = []
+    ledger_histories: list[list[Any]] = []
+    ledger_option_features: list[Any] = []
+    any_ledger_snapshot = False
+    any_ledger_history = False
+    any_ledger_option_features = False
     for p in packets:
         features.assert_info_set(p.obs)
         board = features.build_board_tokens(p.obs, p.your_deck)
         boards.append(board)
-        histories.append(list(p.history_boards) if p.history_boards else [board])
+        history = list(p.history_boards) if p.history_boards else [board]
+        histories.append(history)
         previous_action_histories.append(
             list(p.history_previous_actions)
             if p.history_previous_actions is not None
-            else [None] * len(histories[-1])
+            else [None] * len(history)
+        )
+        if p.history_ledger_snapshots is not None:
+            try:
+                candidate_history = list(p.history_ledger_snapshots)
+            except TypeError:
+                candidate_history = []
+            if len(candidate_history) == len(history):
+                ledger_history = candidate_history
+            else:
+                # A malformed or stale temporal side-store is neutral for its
+                # missing past rows.  Preserve only an independently supplied
+                # current snapshot; never stretch it backwards into history.
+                ledger_history = [None] * max(0, len(history) - 1) + [
+                    p.ledger_snapshot
+                ]
+        elif p.ledger_snapshot is not None:
+            # Older search callers may supply a current ledger without a full
+            # temporal ledger history.  Retain the known current snapshot and
+            # make missing past states explicitly neutral rather than silently
+            # duplicating the future/current state backward in time.
+            ledger_history = [None] * max(0, len(history) - 1) + [
+                p.ledger_snapshot
+            ]
+        else:
+            ledger_history = [None] * len(history)
+        ledger_histories.append(ledger_history)
+        ledger_snapshots.append(p.ledger_snapshot)
+        ledger_option_features.append(p.ledger_option_features)
+        any_ledger_snapshot = any_ledger_snapshot or p.ledger_snapshot is not None
+        any_ledger_history = any_ledger_history or any(
+            snapshot is not None for snapshot in ledger_history
+        )
+        any_ledger_option_features = (
+            any_ledger_option_features or p.ledger_option_features is not None
         )
         combos = (
             [list(combo) for combo in p.action_combos_override]
@@ -170,6 +258,9 @@ def featurize_packets(packets: Sequence[LeafPacket]) -> FeaturizedLeaves:
         histories,
         previous_action_histories,
         matchup_routes,
+        ledger_snapshots if any_ledger_snapshot else None,
+        ledger_histories if any_ledger_history else None,
+        ledger_option_features if any_ledger_option_features else None,
     )
 
 
@@ -187,8 +278,15 @@ def _forward_chunk(
         list[list[Optional["features.SparseVector"]]]
     ] = None,
     matchup_routes: Optional[list[int]] = None,
+    ledger_snapshots: Optional[list[Any]] = None,
+    ledger_histories: Optional[list[list[Any]]] = None,
+    ledger_option_features: Optional[list[Any]] = None,
 ) -> list[tuple[float, list[float]]]:
     dev = next(model.parameters()).device
+    allow_legacy_ledger_fallback = not bool(
+        getattr(model, "own_deck_ledger_enabled", False)
+        or getattr(model, "own_deck_ledger_runtime_enabled", False)
+    )
     use_ac = autocast_dtype is not None and dev.type in {"cuda", "mps"}
     ctx = (
         torch.autocast(dev.type, dtype=autocast_dtype)
@@ -197,7 +295,8 @@ def _forward_chunk(
     )
     with ctx:
         if model.decision_context == "history":
-            out = model.forward_history_batch(
+            out = _call_with_optional_ledger(
+                model.forward_history_batch,
                 histories or [[board] for board in boards],
                 opts,
                 n_options=n_opts,
@@ -207,9 +306,15 @@ def _forward_chunk(
                     if matchup_routes is not None
                     else [UNKNOWN_ROUTE] * len(boards)
                 ),
+                ledger_kwargs={
+                    "ledger_histories": ledger_histories,
+                    "ledger_option_features": ledger_option_features,
+                },
+                allow_legacy_fallback=allow_legacy_ledger_fallback,
             )
         else:
-            out = model.forward(
+            out = _call_with_optional_ledger(
+                model.forward,
                 boards,
                 opts,
                 kv_cache=None,
@@ -220,6 +325,11 @@ def _forward_chunk(
                     if matchup_routes is not None
                     else [UNKNOWN_ROUTE] * len(boards)
                 ),
+                ledger_kwargs={
+                    "ledger_snapshots": ledger_snapshots,
+                    "ledger_option_features": ledger_option_features,
+                },
+                allow_legacy_fallback=allow_legacy_ledger_fallback,
             )
     logits_all = out["policy_logits"]
     value_all = out["value"]
@@ -255,6 +365,9 @@ def forward_featurized(
         Sequence[Sequence[Optional["features.SparseVector"]]]
     ] = None,
     matchup_routes: Optional[Sequence[int]] = None,
+    ledger_snapshots: Optional[Sequence[Any]] = None,
+    ledger_histories: Optional[Sequence[Sequence[Any]]] = None,
+    ledger_option_features: Optional[Sequence[Any]] = None,
 ) -> list[tuple[float, list[float]]]:
     """GPU forward over pre-featurized leaves → ``[(value, priors), ...]``.
 
@@ -272,8 +385,74 @@ def forward_featurized(
     mr = list(matchup_routes) if matchup_routes is not None else None
     if mr is not None and len(mr) != len(b):
         raise ValueError("leaf matchup route count does not match batch size")
+    hist = [list(history) for history in histories] if histories is not None else None
+    history_rows = hist if hist is not None else [[board] for board in b]
+    if ledger_snapshots is None:
+        ledger_current = None
+    else:
+        try:
+            candidate_current = list(ledger_snapshots)
+        except TypeError:
+            candidate_current = [ledger_snapshots] if len(b) == 1 else []
+        ledger_current = (
+            candidate_current if len(candidate_current) == len(b) else [None] * len(b)
+        )
+    if ledger_histories is None:
+        ledger_hist = None
+    else:
+        try:
+            candidate_histories = list(ledger_histories)
+        except TypeError:
+            candidate_histories = []
+        ledger_hist = []
+        for index, history in enumerate(history_rows):
+            candidate = (
+                candidate_histories[index]
+                if index < len(candidate_histories)
+                else None
+            )
+            try:
+                rows = list(candidate)
+            except TypeError:
+                rows = []
+            ledger_hist.append(rows if len(rows) == len(history) else [None] * len(history))
+    if ledger_option_features is None:
+        ledger_options = None
+    else:
+        try:
+            candidate_options = list(ledger_option_features)
+        except TypeError:
+            candidate_options = [ledger_option_features] if len(b) == 1 else []
+        ledger_options = (
+            candidate_options if len(candidate_options) == len(b) else [None] * len(b)
+        )
+    if bool(getattr(model, "own_deck_ledger_runtime_enabled", False)):
+        if model.decision_context == "history":
+            history_missing = (
+                ledger_hist is None
+                or any(
+                    len(rows) != len(history)
+                    or any(snapshot is None for snapshot in rows)
+                    for rows, history in zip(ledger_hist or [], history_rows)
+                )
+            )
+            if history_missing:
+                raise ValueError(
+                    "runtime-enabled own-deck ledger requires every history snapshot"
+                )
+        elif ledger_current is None or any(
+            snapshot is None for snapshot in ledger_current
+        ):
+            raise ValueError(
+                "runtime-enabled own-deck ledger requires every current snapshot"
+            )
+        if ledger_options is None or any(
+            rows is None for rows in ledger_options
+        ):
+            raise ValueError(
+                "runtime-enabled own-deck ledger requires every option feature row"
+            )
     try:
-        hist = [list(h) for h in histories] if histories is not None else None
         return _forward_chunk(
             model,
             b,
@@ -289,6 +468,9 @@ def forward_featurized(
                 else None
             ),
             matchup_routes=mr,
+            ledger_snapshots=ledger_current,
+            ledger_histories=ledger_hist,
+            ledger_option_features=ledger_options,
         )
     except Exception as exc:  # noqa: BLE001
         if not config.is_cuda_oom(exc) or len(b) <= 1:
@@ -309,6 +491,13 @@ def forward_featurized(
                 else None
             ),
             matchup_routes=(mr[:mid] if mr is not None else None),
+            ledger_snapshots=(
+                ledger_current[:mid] if ledger_current is not None else None
+            ),
+            ledger_histories=(ledger_hist[:mid] if ledger_hist is not None else None),
+            ledger_option_features=(
+                ledger_options[:mid] if ledger_options is not None else None
+            ),
         )
         right = forward_featurized(
             model, b[mid:], o[mid:], no[mid:], se[mid:], rs[mid:],
@@ -320,6 +509,13 @@ def forward_featurized(
                 else None
             ),
             matchup_routes=(mr[mid:] if mr is not None else None),
+            ledger_snapshots=(
+                ledger_current[mid:] if ledger_current is not None else None
+            ),
+            ledger_histories=(ledger_hist[mid:] if ledger_hist is not None else None),
+            ledger_option_features=(
+                ledger_options[mid:] if ledger_options is not None else None
+            ),
         )
         return left + right
 
@@ -348,6 +544,9 @@ def forward_leaf_batch(
         histories=fl.histories,
         previous_action_histories=fl.previous_action_histories,
         matchup_routes=fl.matchup_routes,
+        ledger_snapshots=fl.ledger_snapshots,
+        ledger_histories=fl.ledger_histories,
+        ledger_option_features=fl.ledger_option_features,
     )
     results: list[LeafPacket] = []
     for i, p in enumerate(packets):
@@ -363,6 +562,9 @@ def forward_leaf_batch(
                 priors=vp[i][1],
                 combos=fl.combos[i],
                 matchup_route=p.matchup_route,
+                ledger_snapshot=p.ledger_snapshot,
+                history_ledger_snapshots=p.history_ledger_snapshots,
+                ledger_option_features=p.ledger_option_features,
             )
         )
     return results
@@ -812,6 +1014,9 @@ class RemoteLeafClient:
                 priors=vp[i][1],
                 combos=fl.combos[i],
                 matchup_route=p.matchup_route,
+                ledger_snapshot=p.ledger_snapshot,
+                history_ledger_snapshots=p.history_ledger_snapshots,
+                ledger_option_features=p.ledger_option_features,
             )
             for i, p in enumerate(packets)
         ]
@@ -1078,6 +1283,12 @@ def run_leaf_server(
             previous_action_histories: list[
                 list[Optional["features.SparseVector"]]
             ] = []
+            ledger_snapshots: list[Any] = []
+            ledger_histories: list[list[Any]] = []
+            ledger_option_features: list[Any] = []
+            any_ledger_snapshot = False
+            any_ledger_history = False
+            any_ledger_option_features = False
             valid_reqs: list[tuple[dict, FeaturizedLeaves]] = []
             for req in reqs:
                 fl = req.get("leaves")
@@ -1105,6 +1316,46 @@ def run_leaf_server(
                         )
                     ]
                 )
+                if fl.ledger_snapshots is None:
+                    ledger_snapshots.extend([None] * len(fl.boards))
+                else:
+                    if len(fl.ledger_snapshots) != len(fl.boards):
+                        raise ValueError(
+                            "remote leaf ledger snapshot count does not match boards"
+                        )
+                    ledger_snapshots.extend(fl.ledger_snapshots)
+                    any_ledger_snapshot = any_ledger_snapshot or any(
+                        snapshot is not None for snapshot in fl.ledger_snapshots
+                    )
+                if fl.ledger_histories is None:
+                    ledger_histories.extend(
+                        [None] * len(history)
+                        for history in (
+                            fl.histories or [[board] for board in fl.boards]
+                        )
+                    )
+                else:
+                    if len(fl.ledger_histories) != len(fl.boards):
+                        raise ValueError(
+                            "remote leaf ledger history count does not match boards"
+                        )
+                    ledger_histories.extend(fl.ledger_histories)
+                    any_ledger_history = any_ledger_history or any(
+                        any(snapshot is not None for snapshot in history)
+                        for history in fl.ledger_histories
+                    )
+                if fl.ledger_option_features is None:
+                    ledger_option_features.extend([None] * len(fl.boards))
+                else:
+                    if len(fl.ledger_option_features) != len(fl.boards):
+                        raise ValueError(
+                            "remote leaf ledger option-feature count does not match boards"
+                        )
+                    ledger_option_features.extend(fl.ledger_option_features)
+                    any_ledger_option_features = (
+                        any_ledger_option_features
+                        or any(value is not None for value in fl.ledger_option_features)
+                    )
 
             batch_started_ns = time.monotonic_ns()
             try:
@@ -1124,6 +1375,17 @@ def run_leaf_server(
                     histories=histories,
                     previous_action_histories=previous_action_histories,
                     matchup_routes=matchup_routes,
+                    ledger_snapshots=(
+                        ledger_snapshots if any_ledger_snapshot else None
+                    ),
+                    ledger_histories=(
+                        ledger_histories if any_ledger_history else None
+                    ),
+                    ledger_option_features=(
+                        ledger_option_features
+                        if any_ledger_option_features
+                        else None
+                    ),
                 )
                 error = None
             except BaseException as exc:  # noqa: BLE001 - route failure to every caller

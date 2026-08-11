@@ -17,7 +17,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Mapping, Optional, Sequence, Union
 
 import torch
 import torch.nn.functional as F
@@ -62,14 +62,44 @@ from .matchup_adapter_activation import (
 from .model import (
     COMBO_STATE_HEAD_NAME,
     DECISION_FUSION_KEY_PREFIX,
+    DECISION_FUSION_REQUIRED_HEADS,
     DECISION_FUSION_SCHEMA,
     DECISION_FUSION_V2_SCHEMA,
+    DECISION_FUSION_V3_MAX_RELIABILITY,
+    DECISION_FUSION_V3_MIN_RELIABILITY,
+    DECISION_FUSION_V3_ROUTE_SCHEMA,
+    DECISION_FUSION_V3_SCHEMA,
     EXPANDED_HEAD_KEY_PREFIXES,
     EXPANDED_HEAD_NAMES,
     EXPANDED_HEAD_SCHEMA,
     SETUP_BOARD_OUTCOME_HEAD_NAME,
     TemporalCabtTransformer,
     build_model,
+)
+from .own_deck_ledger import (
+    OPTION_FEATURE_DIM as OWN_DECK_LEDGER_OPTION_FEATURE_DIM,
+    OWN_DECK_LEDGER_SCHEMA,
+    OWN_DECK_LEDGER_SCHEMA_VERSION,
+    OwnDeckLedgerError,
+    OwnDeckLedgerSnapshot,
+)
+from .own_deck_promotion_metrics import (
+    DEFAULT_CLOSEOUT_THRESHOLD,
+    DEFAULT_TERMINAL_ECE_BINS,
+    collect_own_deck_promotion_metrics as collect_own_deck_promotion_metrics_record,
+    merge_own_deck_promotion_metrics,
+)
+from .own_deck_supervision import (
+    OWN_DECK_SUPERVISION_SCHEMA,
+    OWN_DECK_SUPERVISION_VERSION,
+    TERMINAL_CONVERSION_CLASS_SLICE,
+    TERMINAL_CONVERSION_OUTPUT_DIM,
+    VISIBLE_TUTOR_COMPLETION_OUTPUT_DIM,
+    VISIBLE_TUTOR_COMPLETION_TERMINAL_CLASS_SLICE,
+    terminal_conversion_target_mask,
+    terminal_conversion_target_vector,
+    visible_tutor_completion_target_mask,
+    visible_tutor_completion_target_vector,
 )
 from .strategic_losses import (
     GUIDE_OUTCOME_BACKED_HEAD_IDS,
@@ -108,6 +138,607 @@ SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT = 0.025
 COMBO_STATE_BASE_LOSS_WEIGHT = 0.025
 
 
+R241_PEAK_R195_TRAINING_CONTRACT_SCHEMA = (
+    "poke_bot.r241_peak_r195_training_contract/v1"
+)
+R241_PEAK_R195_LIVE_FUSION_SCHEMA = "poke_bot.peak_r195_live_fusion/v1"
+R241_PEAK_R195_CANDIDATE_ID = "alakazam-new-list-direct-policy-r241"
+R241_PEAK_R195_OWNER_REVISION = 241
+R241_PEAK_R195_CLARIFICATION_REVISION = 251
+R241_PEAK_R195_FIXED_UPDATES = 10
+# The current successor source is revision 262.  Keep the r195 pin separate:
+# its preservation receipt is immutable historical evidence and must not be
+# rewritten merely because the active pre-start successor contract advanced.
+R241_OWNER_CONTRACT_SHA256 = (
+    "sha256:57cbc0ac7ca7ee3791f7257899a16f6f0642749effa218323368e35940cdc202"
+)
+R241_R195_HISTORICAL_OWNER_CONTRACT_SHA256 = (
+    "sha256:2f9ca8fc0d4cb2a7c6acbc12ecce3e96143a2c9e318e198276ea0dd66bb30c7d"
+)
+R241_PEAK_R195_ACTIVE_SOURCES: tuple[str, ...] = (
+    *DECISION_FUSION_REQUIRED_HEADS,
+    "setup_board_outcome",
+)
+R241_PEAK_R195_PHYSICAL_SOURCES: tuple[str, ...] = (
+    *R241_PEAK_R195_ACTIVE_SOURCES,
+    "combo_state",
+)
+R241_PEAK_R195_EXPANDED_MODULES: tuple[str, ...] = (
+    *EXPANDED_HEAD_NAMES,
+    SETUP_BOARD_OUTCOME_HEAD_NAME,
+    COMBO_STATE_HEAD_NAME,
+)
+R241_PEAK_R195_ACTIVE_EXPANDED_MODULES: tuple[str, ...] = tuple(
+    name
+    for name in R241_PEAK_R195_EXPANDED_MODULES
+    if name != COMBO_STATE_HEAD_NAME
+)
+_R241_SOURCE_MODULES: dict[str, str] = {
+    "value": "value_head",
+    "archetype": "aux_head",
+    "opponent_hand": "opp_hand_head",
+    "opponent_remainder": "opp_remainder_head",
+    "lethal_threat": "lethal_threat_head",
+    "prize_race": "prize_race_head",
+    "action_q": "action_q_head",
+    "action_type": "action_type_head",
+    "action_target": "action_target_head",
+    "action_resource": "action_resource_head",
+    "action_utility": "action_utility_head",
+    "tactical_outcomes": "tactical_outcome_head",
+    "opponent_response": "opponent_response_head",
+    "resource_forecast": "resource_forecast_head",
+    "game_phase": "game_phase_head",
+    "outcome_distribution": "outcome_distribution_head",
+    "remaining_turns": "remaining_turns_head",
+    "setup_board_outcome": SETUP_BOARD_OUTCOME_HEAD_NAME,
+}
+_R241_H10_RESIDUAL_ALIASES: dict[str, str] = {
+    "tactical_outcomes": "tactical_outcome",
+}
+
+
+def _is_canonical_sha256(value: object) -> bool:
+    text = str(value or "")
+    return bool(
+        len(text) == 71
+        and text.startswith("sha256:")
+        and all(char in "0123456789abcdef" for char in text[7:])
+    )
+
+
+def canonical_r241_peak_r195_training_contract(
+    values: Optional[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Validate the exact r241 opt-in without changing generic training.
+
+    This is deliberately a receipt-derived mapping, not a boolean feature
+    switch. The immutable r195 learner keeps its isolated, dormant Matchup
+    Adapter optimizer; this contract only proves that every non-combo learned
+    source and dedicated fusion route remains live in the ordinary full-model
+    update.
+    """
+
+    if not values:
+        return {}
+    raw = dict(values)
+    expected_scalars = {
+        "schema": R241_PEAK_R195_TRAINING_CONTRACT_SCHEMA,
+        "candidate_id": R241_PEAK_R195_CANDIDATE_ID,
+        "owner_decision_revision": R241_PEAK_R195_OWNER_REVISION,
+        "owner_clarification_revision": R241_PEAK_R195_CLARIFICATION_REVISION,
+        "fixed_cycle_updates": R241_PEAK_R195_FIXED_UPDATES,
+        "combo_state_loss_weight": 0.0,
+        "combo_state_fusion_route_enabled": False,
+    }
+    for name, expected in expected_scalars.items():
+        if raw.get(name) != expected:
+            raise ValueError(
+                f"r241 peak-r195 training contract changed {name}: "
+                f"expected={expected!r} actual={raw.get(name)!r}"
+            )
+    if tuple(raw.get("physical_source_names") or ()) != (
+        R241_PEAK_R195_PHYSICAL_SOURCES
+    ):
+        raise ValueError("r241 peak-r195 physical source inventory changed")
+    if tuple(raw.get("active_non_combo_source_names") or ()) != (
+        R241_PEAK_R195_ACTIVE_SOURCES
+    ):
+        raise ValueError("r241 peak-r195 active source inventory changed")
+    if tuple(raw.get("disabled_source_names") or ()) != ("combo_state",):
+        raise ValueError("r241 peak-r195 disabled source inventory changed")
+    for name in (
+        "anchor_parent_sha256",
+        "serialized_model_config_sha256",
+        "serialized_state_schema_sha256",
+    ):
+        if not _is_canonical_sha256(raw.get(name)):
+            raise ValueError(f"r241 peak-r195 contract lacks canonical {name}")
+    if int(raw.get("trainable_parameter_count", -1)) != 10_750_146:
+        raise ValueError("r241 peak-r195 trainable parameter count changed")
+    for identity_name in (
+        "preservation_receipt",
+        "owner_contract",
+        "head_role_map",
+        "baseline_adapter_roster",
+    ):
+        identity = dict(raw.get(identity_name) or {})
+        if (
+            not str(identity.get("path") or "")
+            or not _is_canonical_sha256(identity.get("digest"))
+            or int(identity.get("size_bytes", 0)) <= 0
+        ):
+            raise ValueError(
+                f"r241 peak-r195 contract has invalid {identity_name} identity"
+            )
+    if (
+        raw["owner_contract"]["digest"]
+        != R241_R195_HISTORICAL_OWNER_CONTRACT_SHA256
+    ):
+        raise ValueError("r241 typed owner-source checksum changed")
+    source_snapshot = dict(raw.get("source_snapshot") or {})
+    if (
+        source_snapshot.get("schema")
+        != "poke_bot.alakazam_new_list_direct_r241_source_snapshot/v1"
+        or source_snapshot.get("status")
+        != "authenticated_immutable_source_snapshot"
+        or source_snapshot.get("authenticated") is not True
+        or not str(source_snapshot.get("root") or "")
+        or source_snapshot.get("source_execution_root")
+        != source_snapshot.get("root")
+        or not str(source_snapshot.get("manifest") or "")
+        or not _is_canonical_sha256(source_snapshot.get("manifest_sha256"))
+        or not _is_canonical_sha256(source_snapshot.get("source_tree_sha256"))
+        or not _is_canonical_sha256(source_snapshot.get("file_inventory_sha256"))
+        or source_snapshot.get("owner_contract_sha256")
+        != R241_R195_HISTORICAL_OWNER_CONTRACT_SHA256
+        or not str(source_snapshot.get("outputs_root") or "")
+        or source_snapshot.get("host") not in {"inzi", "elmo"}
+    ):
+        raise ValueError("r241 authenticated source-snapshot identity changed")
+    migration = dict(raw.get("adapter_slot_migration") or {})
+    if (
+        migration.get("schema")
+        != "poke_bot.alakazam_new_list_direct_policy_r241_adapter_slot_migration/v1"
+        or migration.get("status") != "no_slot_change"
+        or migration.get("existing_slots_byte_immutable") is not True
+        or int(migration.get("retained_slot_count", -1)) != 20
+        or list(migration.get("new_slots") or [])
+        or list(migration.get("new_slot_proofs") or [])
+        or not _is_canonical_sha256(
+            migration.get("parent_slot_registry_sha256")
+        )
+        or migration.get("candidate_slot_registry_sha256")
+        != migration.get("parent_slot_registry_sha256")
+        or not _is_canonical_sha256(
+            migration.get("retained_slot_tensor_inventory_sha256")
+        )
+    ):
+        raise ValueError("r241 adapter roster must remain the no-slot-change E60 bank")
+    if not _is_canonical_sha256(raw.get("checkpoint_audit_fingerprint_sha256")):
+        raise ValueError("r241 checkpoint-derived audit fingerprint is invalid")
+    expected_ordinary_loss_profile = {
+        "value": 1.0,
+        "archetype": 0.05,
+        "opponent_hand": 0.05,
+        "opponent_remainder": 0.05,
+        "lethal_threat": 0.025,
+        "prize_race": 0.025,
+        "setup_board_outcome": 0.025,
+        "combo_state": 0.0,
+        "guide": 0.05,
+    }
+    if dict(raw.get("ordinary_rl_loss_profile") or {}) != (
+        expected_ordinary_loss_profile
+    ) or dict(raw.get("expert_refresh_loss_profile") or {}) != {
+        **expected_ordinary_loss_profile,
+        "guide": 0.0,
+    }:
+        raise ValueError("r241 ordinary/expert loss profile changed")
+    expanded_loss_weights = dict(raw.get("expanded_head_loss_weights") or {})
+    if (
+        set(expanded_loss_weights) != set(EXPANDED_HEAD_IDS)
+        or any(float(value) <= 0.0 for value in expanded_loss_weights.values())
+    ):
+        raise ValueError("r241 expanded-head loss profile is incomplete")
+    raw["expanded_head_loss_weights"] = {
+        name: float(expanded_loss_weights[name]) for name in EXPANDED_HEAD_IDS
+    }
+    adapter = dict(raw.get("matchup_adapter") or {})
+    isolated = dict(adapter.get("isolated_fit") or {})
+    if isolated != {
+        "serialized_runtime_enabled": False,
+        "serialized_training_enabled": False,
+        "main_optimizer_included": False,
+        "base_frozen_during_fit": True,
+        "optimizer_scope": "matchup_adapter_bank_only",
+        "continuation_state_required": True,
+    }:
+        raise ValueError("r241 peak-r195 isolated adapter-fit contract changed")
+    runtime = dict(adapter.get("external_runtime_activation") or {})
+    if (
+        runtime.get("collection_enabled") is not True
+        or runtime.get("terminal_package_enabled") is not True
+        or not _is_canonical_sha256(runtime.get("public_tree_sha256"))
+        or not _is_canonical_sha256(runtime.get("activation_receipt_sha256"))
+    ):
+        raise ValueError("r241 external Matchup Adapter runtime proof is invalid")
+    return copy.deepcopy(raw)
+
+
+def _optimizer_parameter_ids(
+    optimizer: torch.optim.Optimizer,
+) -> set[int]:
+    return {
+        id(parameter)
+        for group in optimizer.param_groups
+        for parameter in group.get("params", ())
+    }
+
+
+def validate_r241_isolated_adapter_continuation(
+    fit: Mapping[str, Any],
+    optimizer_state: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Require the unchanged r195 bank-only fit and resumable optimizer proof."""
+
+    raw = dict(fit or {})
+    route_rows = dict(raw.get("route_decisions") or {})
+    if not (
+        raw.get("schema") == "poke_bot.dormant_matchup_adapter_fit/v1"
+        and raw.get("runtime_enabled") is False
+        and raw.get("base_frozen") is True
+        and raw.get("optimizer_scope") == "matchup_adapter_bank_only"
+        and int(raw.get("epochs", 0)) > 0
+        and int(raw.get("steps", 0)) > 0
+        and int(raw.get("rows", 0)) > 0
+        and sum(int(value) for value in route_rows.values()) > 0
+        and bool(dict(optimizer_state or {}))
+    ):
+        raise ValueError(
+            "r241 requires the complete isolated Matchup Adapter fit and "
+            "continuation optimizer state"
+        )
+    return copy.deepcopy(raw)
+
+
+def build_r241_peak_r195_live_fusion_record(
+    model: TemporalCabtTransformer,
+    *,
+    optimizer: torch.optim.Optimizer,
+    contract: Mapping[str, Any],
+    combo_state_loss_weight: float,
+    phase: str,
+    boundary_iteration: int,
+) -> dict[str, Any]:
+    """Prove the exact live-head contract against tensors and optimizer IDs."""
+
+    canonical = canonical_r241_peak_r195_training_contract(contract)
+    if not canonical:
+        raise ValueError("r241 peak-r195 live-fusion proof requires its contract")
+    phase = str(phase)
+    boundary_iteration = int(boundary_iteration)
+    if phase == "rl":
+        if not 0 <= boundary_iteration < R241_PEAK_R195_FIXED_UPDATES:
+            raise ValueError("r241 RL boundary must be in 0..9")
+    elif phase == "expert_refresh":
+        if boundary_iteration not in {5, 10}:
+            raise ValueError("r241 expert refresh boundary must be 5 or 10")
+    else:
+        raise ValueError("r241 peak-r195 phase must be rl or expert_refresh")
+    if float(combo_state_loss_weight) != 0.0:
+        raise ValueError("r241 combo-state loss must remain exactly zero")
+
+    cfg = model.cfg
+    required_true = (
+        "expanded_heads_enabled",
+        "setup_board_outcome_head_enabled",
+        "combo_state_head_enabled",
+        "h10_capacity_enabled",
+        "decision_fusion_enabled",
+        "decision_fusion_runtime_enabled",
+        "decision_fusion_dedicated_routes_enabled",
+        "decision_fusion_dedicated_routes_runtime_enabled",
+        "decision_fusion_typed_output_centered_routes_enabled",
+    )
+    drifted = [
+        name for name in required_true if getattr(cfg, name, None) is not True
+    ]
+    if drifted:
+        raise ValueError(
+            "r241 peak-r195 model disabled required head/fusion flags: "
+            f"{drifted}"
+        )
+    if str(getattr(cfg, "decision_context", "")) != "history":
+        raise ValueError("r241 peak-r195 learner must retain history context")
+    if getattr(cfg, "combo_state_route_enabled", None) is not False:
+        raise ValueError("r241 combo-state fusion route must remain disabled")
+    if not math.isclose(
+        float(getattr(cfg, "decision_fusion_action_type_reliability_cap", -1.0)),
+        0.25,
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
+        raise ValueError("r241 action-type fusion reliability cap changed")
+    if getattr(cfg, "matchup_adapters_enabled", None) is not False:
+        raise ValueError(
+            "r241 training checkpoint must keep Matchup Adapters runtime-off"
+        )
+
+    expanded_inventory = model.expanded_head_inventory()
+    if (
+        expanded_inventory.get("enabled") is not True
+        or tuple(dict(expanded_inventory.get("modules") or {}))
+        != R241_PEAK_R195_EXPANDED_MODULES
+        or tuple(expanded_inventory.get("runtime_enabled_heads") or ())
+        != R241_PEAK_R195_ACTIVE_EXPANDED_MODULES
+        or tuple(expanded_inventory.get("runtime_disabled_heads") or ())
+        != (COMBO_STATE_HEAD_NAME,)
+    ):
+        raise ValueError("r241 expanded-head runtime inventory changed")
+    fusion_inventory = model.decision_fusion_inventory()
+    routes = dict(fusion_inventory.get("dedicated_routes") or {})
+    if (
+        fusion_inventory.get("schema") != DECISION_FUSION_V3_SCHEMA
+        or fusion_inventory.get("enabled") is not True
+        or fusion_inventory.get("runtime_enabled") is not True
+        or tuple(fusion_inventory.get("required_heads") or ())
+        != R241_PEAK_R195_PHYSICAL_SOURCES
+        or tuple(fusion_inventory.get("active_required_heads") or ())
+        != R241_PEAK_R195_ACTIVE_SOURCES
+        or routes.get("schema") != DECISION_FUSION_V3_ROUTE_SCHEMA
+        or routes.get("enabled") is not True
+        or routes.get("runtime_enabled") is not True
+        or int(routes.get("route_count", -1)) != 19
+        or tuple(routes.get("route_names") or ())
+        != R241_PEAK_R195_PHYSICAL_SOURCES
+        or tuple(routes.get("active_route_names") or ())
+        != R241_PEAK_R195_ACTIVE_SOURCES
+        or tuple(routes.get("disabled_route_names") or ())
+        != ("combo_state",)
+        or routes.get("combo_state_route_enabled") is not False
+        or not math.isclose(
+            float(routes.get("total_delta_cap", -1.0)),
+            1.0,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+        or list(routes.get("reliability_bounds") or ())
+        != [
+            DECISION_FUSION_V3_MIN_RELIABILITY,
+            DECISION_FUSION_V3_MAX_RELIABILITY,
+        ]
+        or not math.isclose(
+            float(routes.get("action_type_reliability_cap", -1.0)),
+            0.25,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+    ):
+        raise ValueError("r241 decision-fusion source/route inventory changed")
+
+    optimizer_ids = _optimizer_parameter_ids(optimizer)
+    source_parameter_counts: dict[str, int] = {}
+    route_parameter_counts: dict[str, int] = {}
+    fusion = getattr(model, "decision_fusion", None)
+    dedicated_routes = getattr(fusion, "dedicated_routes", None)
+    reliability = getattr(fusion, "dedicated_route_log_reliability", None)
+    residuals = getattr(model, "h10_head_residuals", None)
+    for source in R241_PEAK_R195_ACTIVE_SOURCES:
+        module = getattr(model, _R241_SOURCE_MODULES[source], None)
+        if not isinstance(module, torch.nn.Module):
+            raise ValueError(f"r241 active source module is missing: {source}")
+        parameters = list(module.parameters())
+        residual_key = _R241_H10_RESIDUAL_ALIASES.get(source, source)
+        if residuals is not None and residual_key in residuals:
+            parameters.extend(residuals[residual_key].parameters())
+        if not parameters or any(
+            not parameter.requires_grad for parameter in parameters
+        ):
+            raise ValueError(f"r241 active source is not trainable: {source}")
+        if any(id(parameter) not in optimizer_ids for parameter in parameters):
+            raise ValueError(
+                f"r241 active source is absent from ordinary optimizer: {source}"
+            )
+        source_parameter_counts[source] = sum(
+            int(parameter.numel()) for parameter in parameters
+        )
+
+        if dedicated_routes is None or source not in dedicated_routes:
+            raise ValueError(f"r241 active fusion route is missing: {source}")
+        route_parameters = list(dedicated_routes[source].parameters())
+        if reliability is not None and source in reliability:
+            route_parameters.append(reliability[source])
+        if not route_parameters or any(
+            not parameter.requires_grad for parameter in route_parameters
+        ):
+            raise ValueError(f"r241 active fusion route is not trainable: {source}")
+        if any(id(parameter) not in optimizer_ids for parameter in route_parameters):
+            raise ValueError(
+                f"r241 active fusion route is absent from ordinary optimizer: {source}"
+            )
+        route_parameter_counts[source] = sum(
+            int(parameter.numel()) for parameter in route_parameters
+        )
+
+    adapter_bank = getattr(model, "matchup_adapter_bank", None)
+    if adapter_bank is None:
+        raise ValueError("r241 peak-r195 learner lost its Matchup Adapter bank")
+    adapter_parameters = list(adapter_bank.parameters())
+    if (
+        bool(getattr(adapter_bank, "enabled", False))
+        or any(parameter.requires_grad for parameter in adapter_parameters)
+        or any(id(parameter) in optimizer_ids for parameter in adapter_parameters)
+    ):
+        raise ValueError(
+            "r241 training checkpoint changed the isolated Matchup Adapter contract"
+        )
+
+    return {
+        "schema": R241_PEAK_R195_LIVE_FUSION_SCHEMA,
+        "candidate_id": R241_PEAK_R195_CANDIDATE_ID,
+        "owner_decision_revision": R241_PEAK_R195_OWNER_REVISION,
+        "owner_clarification_revision": R241_PEAK_R195_CLARIFICATION_REVISION,
+        "fixed_cycle_updates": R241_PEAK_R195_FIXED_UPDATES,
+        "phase": phase,
+        "boundary_iteration": boundary_iteration,
+        "anchor_parent_sha256": canonical["anchor_parent_sha256"],
+        "preservation_receipt": copy.deepcopy(
+            canonical["preservation_receipt"]
+        ),
+        "owner_contract": copy.deepcopy(canonical["owner_contract"]),
+        "head_role_map": copy.deepcopy(canonical["head_role_map"]),
+        "source_snapshot": copy.deepcopy(canonical["source_snapshot"]),
+        "baseline_adapter_roster": copy.deepcopy(
+            canonical["baseline_adapter_roster"]
+        ),
+        "adapter_slot_migration": copy.deepcopy(
+            canonical["adapter_slot_migration"]
+        ),
+        "checkpoint_audit_fingerprint_sha256": canonical[
+            "checkpoint_audit_fingerprint_sha256"
+        ],
+        "physical_source_names": list(R241_PEAK_R195_PHYSICAL_SOURCES),
+        "active_non_combo_source_names": list(R241_PEAK_R195_ACTIVE_SOURCES),
+        "disabled_source_names": ["combo_state"],
+        "physical_head_count": 19,
+        "active_non_combo_head_count": 18,
+        "combo_state": {
+            "head_present": True,
+            "loss_weight": 0.0,
+            "fusion_route_enabled": False,
+        },
+        "expanded_head_inventory": copy.deepcopy(expanded_inventory),
+        "decision_fusion_inventory": copy.deepcopy(fusion_inventory),
+        "ordinary_optimizer": {
+            "all_active_source_parameters_included": True,
+            "all_active_route_parameters_included": True,
+            "source_parameter_counts": source_parameter_counts,
+            "route_parameter_counts": route_parameter_counts,
+        },
+        "matchup_adapter_training_checkpoint": {
+            "runtime_enabled": False,
+            "training_enabled": False,
+            "main_optimizer_included": False,
+            "isolated_fit_preserved": True,
+        },
+        "external_matchup_adapter_runtime_activation": copy.deepcopy(
+            canonical["matchup_adapter"]["external_runtime_activation"]
+        ),
+        "fused_policy_authoritative": True,
+        "guide_training_only": True,
+    }
+
+
+def validate_r241_peak_r195_live_fusion_record(
+    record: Mapping[str, Any],
+    *,
+    contract: Mapping[str, Any],
+    phase: Optional[str] = None,
+    boundary_iteration: Optional[int] = None,
+) -> dict[str, Any]:
+    """Validate a serialized sidecar during recovery without rebuilding a model."""
+
+    canonical = canonical_r241_peak_r195_training_contract(contract)
+    raw = dict(record or {})
+    expected = {
+        "schema": R241_PEAK_R195_LIVE_FUSION_SCHEMA,
+        "candidate_id": R241_PEAK_R195_CANDIDATE_ID,
+        "owner_decision_revision": R241_PEAK_R195_OWNER_REVISION,
+        "owner_clarification_revision": R241_PEAK_R195_CLARIFICATION_REVISION,
+        "fixed_cycle_updates": R241_PEAK_R195_FIXED_UPDATES,
+        "anchor_parent_sha256": canonical["anchor_parent_sha256"],
+        "physical_head_count": 19,
+        "active_non_combo_head_count": 18,
+        "physical_source_names": list(R241_PEAK_R195_PHYSICAL_SOURCES),
+        "active_non_combo_source_names": list(R241_PEAK_R195_ACTIVE_SOURCES),
+        "disabled_source_names": ["combo_state"],
+        "fused_policy_authoritative": True,
+        "guide_training_only": True,
+    }
+    for name, value in expected.items():
+        if raw.get(name) != value:
+            raise ValueError(f"r241 live-fusion sidecar changed {name}")
+    recorded_phase = str(raw.get("phase") or "")
+    recorded_boundary = int(raw.get("boundary_iteration", -1))
+    if (
+        recorded_phase == "rl"
+        and not 0 <= recorded_boundary < R241_PEAK_R195_FIXED_UPDATES
+    ) or (
+        recorded_phase == "expert_refresh"
+        and recorded_boundary not in {5, 10}
+    ) or recorded_phase not in {"rl", "expert_refresh"}:
+        raise ValueError("r241 live-fusion sidecar phase/boundary is invalid")
+    if raw.get("preservation_receipt") != canonical["preservation_receipt"]:
+        raise ValueError("r241 sidecar preservation receipt identity changed")
+    if raw.get("head_role_map") != canonical["head_role_map"]:
+        raise ValueError("r241 sidecar head-role map identity changed")
+    for name in (
+        "source_snapshot",
+        "owner_contract",
+        "baseline_adapter_roster",
+        "adapter_slot_migration",
+        "checkpoint_audit_fingerprint_sha256",
+    ):
+        if raw.get(name) != canonical[name]:
+            raise ValueError(f"r241 sidecar changed {name}")
+    if phase is not None and raw.get("phase") != str(phase):
+        raise ValueError("r241 sidecar phase changed")
+    if boundary_iteration is not None and int(
+        raw.get("boundary_iteration", -1)
+    ) != int(boundary_iteration):
+        raise ValueError("r241 sidecar boundary iteration changed")
+    if raw.get("combo_state") != {
+        "head_present": True,
+        "loss_weight": 0.0,
+        "fusion_route_enabled": False,
+    }:
+        raise ValueError("r241 sidecar combo-state contract changed")
+    optimizer = dict(raw.get("ordinary_optimizer") or {})
+    source_counts = dict(optimizer.get("source_parameter_counts") or {})
+    route_counts = dict(optimizer.get("route_parameter_counts") or {})
+    if (
+        optimizer.get("all_active_source_parameters_included") is not True
+        or optimizer.get("all_active_route_parameters_included") is not True
+        or set(source_counts) != set(R241_PEAK_R195_ACTIVE_SOURCES)
+        or set(route_counts) != set(R241_PEAK_R195_ACTIVE_SOURCES)
+        or any(int(value) <= 0 for value in source_counts.values())
+        or any(int(value) <= 0 for value in route_counts.values())
+    ):
+        raise ValueError("r241 sidecar ordinary optimizer proof is incomplete")
+    if raw.get("matchup_adapter_training_checkpoint") != {
+        "runtime_enabled": False,
+        "training_enabled": False,
+        "main_optimizer_included": False,
+        "isolated_fit_preserved": True,
+    }:
+        raise ValueError("r241 sidecar changed the isolated adapter contract")
+    if raw.get("external_matchup_adapter_runtime_activation") != (
+        canonical["matchup_adapter"]["external_runtime_activation"]
+    ):
+        raise ValueError("r241 sidecar external adapter runtime proof changed")
+    fusion = dict(raw.get("decision_fusion_inventory") or {})
+    routes = dict(fusion.get("dedicated_routes") or {})
+    expanded = dict(raw.get("expanded_head_inventory") or {})
+    if (
+        fusion.get("schema") != DECISION_FUSION_V3_SCHEMA
+        or fusion.get("runtime_enabled") is not True
+        or tuple(fusion.get("required_heads") or ())
+        != R241_PEAK_R195_PHYSICAL_SOURCES
+        or tuple(fusion.get("active_required_heads") or ())
+        != R241_PEAK_R195_ACTIVE_SOURCES
+        or tuple(routes.get("active_route_names") or ())
+        != R241_PEAK_R195_ACTIVE_SOURCES
+        or tuple(routes.get("disabled_route_names") or ()) != ("combo_state",)
+        or tuple(expanded.get("runtime_enabled_heads") or ())
+        != R241_PEAK_R195_ACTIVE_EXPANDED_MODULES
+        or tuple(expanded.get("runtime_disabled_heads") or ())
+        != (COMBO_STATE_HEAD_NAME,)
+    ):
+        raise ValueError("r241 sidecar serialized model inventory is incomplete")
+    return copy.deepcopy(raw)
+
+
 @dataclass
 class TrainConfig:
     """Bootstrap supervised training knobs."""
@@ -142,6 +773,39 @@ class TrainConfig:
     #: Slowking-only observed causal combo targets. Non-Slowking runs leave
     #: this zero, preserving their forward path and optimizer exactly.
     combo_state_loss_weight: float = 0.0
+    #: Dormant successor heads remain completely inert until a future trainer
+    #: explicitly assigns a positive loss.  Their targets never enter
+    #: ``aux_labels`` or the r241 configuration surface.
+    visible_tutor_completion_loss_weight: float = 0.0
+    terminal_conversion_loss_weight: float = 0.0
+    #: Explicit offline/shadow telemetry collection for the staged successor.
+    #: This never enables a loss, an optimizer route, or serving authority.
+    collect_own_deck_promotion_metrics: bool = False
+    #: Threshold for selected-option terminal-head recall only; the separate
+    #: missed-expert-closeout gate is direct policy top-1 disagreement.
+    own_deck_promotion_metrics_closeout_threshold: float = (
+        DEFAULT_CLOSEOUT_THRESHOLD
+    )
+    own_deck_promotion_metrics_terminal_ece_bins: int = (
+        DEFAULT_TERMINAL_ECE_BINS
+    )
+    #: Optional successor-only imbalance controls.  They are neutral at 1.0
+    #: and only take effect when their corresponding zero-default loss is
+    #: explicitly enabled after a sidecar-count receipt exists.
+    visible_tutor_completion_class_weights: tuple[float, ...] = (
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+    )
+    visible_tutor_completion_positive_weight: float = 1.0
+    terminal_conversion_class_weights: tuple[float, ...] = (
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+    )
+    terminal_conversion_positive_weight: float = 1.0
     #: Checksum-gated future curriculum artifacts, recorded in checkpoints.
     current_deck_guide_curriculum_spec: str = ""
     current_deck_guide_head_role_map: str = ""
@@ -210,6 +874,10 @@ class TrainConfig:
     #: Adapter-only option decoding has a different peak-memory curve from the
     #: ordinary learner.  Never inherit a large H10 learner cap blindly.
     dormant_matchup_adapter_max_decisions_per_batch: int = 2048
+    #: Exact r241 receipt-derived opt-in.  Empty preserves every generic and
+    #: legacy training path; a populated mapping adds validation/telemetry only
+    #: and does not change the r195 optimizer or dormant-adapter semantics.
+    r241_peak_r195_training_contract: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def pure_rl_defaults(cls, **overrides: Any) -> "TrainConfig":
@@ -224,6 +892,8 @@ class TrainConfig:
             opp_hand_loss_weight=0.0,
             opp_remainder_loss_weight=0.0,
             alakazam_guide_loss_weight=0.0,
+            visible_tutor_completion_loss_weight=0.0,
+            terminal_conversion_loss_weight=0.0,
             lethal_threat_loss_weight=0.0,
             prize_race_loss_weight=0.0,
             early_stop_patience=3,
@@ -259,6 +929,8 @@ class BatchMetrics:
     guide_strategic_curriculum_loss: float = 0.0
     setup_board_outcome_loss: float = 0.0
     combo_state_loss: float = 0.0
+    visible_tutor_completion_loss: float = 0.0
+    terminal_conversion_loss: float = 0.0
     lethal_threat_loss: float = 0.0
     prize_race_loss: float = 0.0
     history_identity_loss: float = 0.0
@@ -275,12 +947,20 @@ class BatchMetrics:
     n_opp_remainder_rows: int = 0
     n_lethal_threat_rows: int = 0
     n_prize_race_rows: int = 0
+    n_visible_tutor_completion_rows: int = 0
+    n_terminal_conversion_rows: int = 0
     n_matchup_adapter_rows: int = 0
     n_teacher_policy_rows: int = 0
     expanded_head_metrics: dict[str, Any] = field(default_factory=dict)
     guide_curriculum_head_metrics: dict[str, Any] = field(default_factory=dict)
     setup_board_outcome_metrics: dict[str, Any] = field(default_factory=dict)
     combo_state_metrics: dict[str, Any] = field(default_factory=dict)
+    #: Target coverage and the exact bounded imbalance configuration used for
+    #: dormant successor heads.  It is absent/empty on historical paths.
+    own_deck_supervision_metrics: dict[str, Any] = field(default_factory=dict)
+    #: Factual, selected-expert-action promotion telemetry.  It is populated
+    #: only by the explicit offline/shadow collection flag.
+    own_deck_promotion_metrics: dict[str, Any] = field(default_factory=dict)
     # Backward-compatible pipeline signal consumed by pure_rl.aborts. It is
     # deliberately the raw mean absolute advantage, not a signed/whitened mean.
     mean_advantage: float = 0.0
@@ -1208,6 +1888,117 @@ def _maybe_strategic_curriculum_training_record(
     )
 
 
+def _maybe_own_deck_supervision_training_record(
+    *,
+    cfg: TrainConfig,
+    train_metrics: BatchMetrics,
+    validation_metrics: BatchMetrics,
+) -> dict[str, Any]:
+    """Checkpoint the exact dormant-target weighting and factual coverage.
+
+    This is deliberately absent while both zero-default losses remain off, so
+    historical/r241 checkpoints retain their exact training behavior and do
+    not acquire an implied successor activation.  When a post-refresh run
+    enables either loss, the serialized record is sufficient to tie its
+    bounded reweighting back to sidecar counts without embedding any targets.
+    """
+
+    tutor_loss_weight = float(cfg.visible_tutor_completion_loss_weight)
+    terminal_loss_weight = float(cfg.terminal_conversion_loss_weight)
+    if tutor_loss_weight <= 0.0 and terminal_loss_weight <= 0.0:
+        return {}
+
+    tutor_class_weights = _bounded_own_deck_class_weights(
+        cfg.visible_tutor_completion_class_weights,
+        expected_count=(
+            int(VISIBLE_TUTOR_COMPLETION_TERMINAL_CLASS_SLICE.stop)
+            - int(VISIBLE_TUTOR_COMPLETION_TERMINAL_CLASS_SLICE.start or 0)
+        ),
+        family="visible-tutor completion",
+    )
+    terminal_class_weights = _bounded_own_deck_class_weights(
+        cfg.terminal_conversion_class_weights,
+        expected_count=(
+            int(TERMINAL_CONVERSION_CLASS_SLICE.stop)
+            - int(TERMINAL_CONVERSION_CLASS_SLICE.start or 0)
+        ),
+        family="terminal conversion",
+    )
+    return {
+        "schema": "poke_bot.own_deck_supervision_training/v1",
+        "target_schema": OWN_DECK_SUPERVISION_SCHEMA,
+        "target_schema_version": OWN_DECK_SUPERVISION_VERSION,
+        "training_only": True,
+        "runtime_action_authority": False,
+        "max_reweight": float(_OWN_DECK_SUPERVISION_MAX_REWEIGHT),
+        "heads": {
+            "visible_tutor_completion": {
+                "loss_weight": tutor_loss_weight,
+                "class_weights": list(tutor_class_weights),
+                "positive_weight": _bounded_own_deck_positive_weight(
+                    cfg.visible_tutor_completion_positive_weight,
+                    family="visible-tutor completion",
+                ),
+                "train_loss": float(train_metrics.visible_tutor_completion_loss),
+                "validation_loss": float(
+                    validation_metrics.visible_tutor_completion_loss
+                ),
+            },
+            "terminal_conversion": {
+                "loss_weight": terminal_loss_weight,
+                "class_weights": list(terminal_class_weights),
+                "positive_weight": _bounded_own_deck_positive_weight(
+                    cfg.terminal_conversion_positive_weight,
+                    family="terminal conversion",
+                ),
+                "train_loss": float(train_metrics.terminal_conversion_loss),
+                "validation_loss": float(
+                    validation_metrics.terminal_conversion_loss
+                ),
+            },
+        },
+        "train_coverage": copy.deepcopy(
+            train_metrics.own_deck_supervision_metrics
+        ),
+        "validation_coverage": copy.deepcopy(
+            validation_metrics.own_deck_supervision_metrics
+        ),
+    }
+
+
+def _maybe_own_deck_promotion_metrics_record(
+    *,
+    cfg: TrainConfig,
+    train_metrics: BatchMetrics,
+    validation_metrics: BatchMetrics,
+) -> dict[str, Any]:
+    """Persist explicit shadow telemetry without implying a loss or route gate."""
+
+    if not bool(cfg.collect_own_deck_promotion_metrics):
+        return {}
+    train_record = dict(train_metrics.own_deck_promotion_metrics or {})
+    validation_record = dict(validation_metrics.own_deck_promotion_metrics or {})
+    if not train_record or not validation_record:
+        raise ValueError(
+            "own-deck promotion metrics were requested but are absent from "
+            "the train or validation aggregation"
+        )
+    return {
+        "schema": "poke_bot.own_deck_promotion_metrics_training/v1",
+        "collection_enabled": True,
+        "gradient_contribution": False,
+        "runtime_route_authority": False,
+        "closeout_threshold": float(
+            cfg.own_deck_promotion_metrics_closeout_threshold
+        ),
+        "terminal_ece_bins": int(
+            cfg.own_deck_promotion_metrics_terminal_ece_bins
+        ),
+        "train": copy.deepcopy(train_record),
+        "validation": copy.deepcopy(validation_record),
+    }
+
+
 def count_usable_strategic_guide_rows(
     sequences: Sequence[GameSequence],
 ) -> int:
@@ -1305,6 +2096,321 @@ def _combo_state_targets_from_aux(
     )
 
 
+_OWN_DECK_SUPERVISION_MAX_REWEIGHT = 32.0
+
+
+def _validate_own_deck_snapshot(snapshot: object) -> OwnDeckLedgerSnapshot:
+    """Reject a successor corpus whose immutable input contract drifted.
+
+    The model itself neutralizes malformed inference packets.  Training is
+    stricter: silently treating a missing/mismatched training snapshot as zero
+    would produce an architecture/corpus split that is very difficult to
+    detect from aggregate loss alone.
+    """
+
+    if not isinstance(snapshot, OwnDeckLedgerSnapshot):
+        raise ValueError(
+            "own-deck ledger training requires typed OwnDeckLedgerSnapshot rows"
+        )
+    if (
+        snapshot.schema != OWN_DECK_LEDGER_SCHEMA
+        or snapshot.version != OWN_DECK_LEDGER_SCHEMA_VERSION
+    ):
+        raise ValueError("own-deck ledger snapshot schema does not match runtime")
+    if snapshot.integrity_ok is not True or snapshot.fail_closed is not False:
+        raise ValueError(
+            "own-deck ledger training requires an integrity-ok non-fail-closed "
+            "snapshot"
+        )
+    # ``from_dict`` recomputes and verifies the canonical fingerprint.  Keep
+    # this explicit here rather than trusting a dataclass assembled in-memory:
+    # next-lineage training must reject a stale or tampered sidecar packet.
+    try:
+        round_trip = OwnDeckLedgerSnapshot.from_dict(snapshot.to_dict())
+    except (OwnDeckLedgerError, TypeError, ValueError, KeyError) as exc:
+        raise ValueError("own-deck ledger snapshot fingerprint is invalid") from exc
+    if round_trip != snapshot:
+        raise ValueError("own-deck ledger snapshot canonical round-trip drifted")
+    return snapshot
+
+
+def _bounded_own_deck_class_weights(
+    value: Sequence[float],
+    *,
+    expected_count: int,
+    family: str,
+) -> tuple[float, ...]:
+    """Validate explicit, sidecar-derived class weights without guessing them.
+
+    The fixed ceiling is a numerical guardrail only; neutral 1.0 defaults are
+    the sole built-in setting.  A future receipt may provide any finite
+    positive value inside the bound, but cannot silently turn a rare class
+    into an unbounded optimizer update.
+    """
+
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise ValueError(f"{family} class weights must be a numeric sequence")
+    if len(value) != int(expected_count):
+        raise ValueError(
+            f"{family} class weights must have {int(expected_count)} entries"
+        )
+    result: list[float] = []
+    for raw in value:
+        if isinstance(raw, bool):
+            raise ValueError(f"{family} class weights must be numeric")
+        try:
+            parsed = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{family} class weights must be numeric") from exc
+        if not math.isfinite(parsed) or not 0.0 < parsed <= _OWN_DECK_SUPERVISION_MAX_REWEIGHT:
+            raise ValueError(
+                f"{family} class weights must be finite in "
+                f"(0, {_OWN_DECK_SUPERVISION_MAX_REWEIGHT}]"
+            )
+        result.append(parsed)
+    return tuple(result)
+
+
+def _bounded_own_deck_positive_weight(value: float, *, family: str) -> float:
+    """Validate one bounded BCE positive-class multiplier per target family."""
+
+    if isinstance(value, bool):
+        raise ValueError(f"{family} positive weight must be numeric")
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{family} positive weight must be numeric") from exc
+    if not math.isfinite(parsed) or not 0.0 < parsed <= _OWN_DECK_SUPERVISION_MAX_REWEIGHT:
+        raise ValueError(
+            f"{family} positive weight must be finite in "
+            f"(0, {_OWN_DECK_SUPERVISION_MAX_REWEIGHT}]"
+        )
+    return parsed
+
+
+def _own_deck_target_coverage(
+    *,
+    targets: torch.Tensor,
+    masks: torch.Tensor,
+    categorical_slice: slice,
+) -> dict[str, Any]:
+    """Report factual support without exposing target rows or replay inputs."""
+
+    start = int(categorical_slice.start or 0)
+    stop = int(categorical_slice.stop or start)
+    categorical_mask = masks[:, start:stop]
+    categorical_rows = categorical_mask.all(dim=1)
+    if not torch.equal(categorical_mask.any(dim=1), categorical_rows):
+        raise ValueError("own-deck categorical target mask must cover its full class")
+    categorical_counts = [0] * (stop - start)
+    if bool(categorical_rows.any().item()):
+        selected = targets[categorical_rows, start:stop].argmax(dim=1)
+        categorical_counts = [
+            int((selected == index).sum().item())
+            for index in range(stop - start)
+        ]
+    scalar_mask = masks.clone()
+    scalar_mask[:, start:stop] = False
+    scalar_targets = targets.masked_select(scalar_mask)
+    return {
+        "labeled_rows": int(masks.any(dim=1).sum().item()),
+        "categorical_rows": int(categorical_rows.sum().item()),
+        "categorical_class_counts": categorical_counts,
+        "scalar_labeled_facts": int(scalar_mask.sum().item()),
+        "scalar_positive_facts": int(
+            scalar_targets.gt(0.5).sum().item()
+        ),
+    }
+
+
+def _validated_ledger_option_features(
+    value: object,
+    *,
+    option_count: int,
+) -> tuple[tuple[float, ...], ...]:
+    """Validate the dataset's immutable current-menu ledger rows."""
+
+    if not isinstance(value, (list, tuple)) or len(value) != int(option_count):
+        raise ValueError(
+            "own-deck ledger option rows must align exactly with legal options"
+        )
+    result: list[tuple[float, ...]] = []
+    for row in value:
+        if not isinstance(row, (list, tuple)) or len(row) != int(
+            OWN_DECK_LEDGER_OPTION_FEATURE_DIM
+        ):
+            raise ValueError("own-deck ledger option feature width mismatch")
+        try:
+            parsed = tuple(float(component) for component in row)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("own-deck ledger option feature is not numeric") from exc
+        if not all(math.isfinite(component) for component in parsed):
+            raise ValueError("own-deck ledger option feature is non-finite")
+        result.append(parsed)
+    return tuple(result)
+
+
+def _own_deck_supervision_for_stage(
+    decision: object,
+    *,
+    family: str,
+    stage_index: int,
+    stage_count: int,
+) -> object | None:
+    """Return one target family only at its causally aligned policy stage.
+
+    A visible tutor completion fact belongs to each selected visible-deck card
+    position, not an autoregressive STOP candidate that happens to follow it.
+    Terminal conversion remains one completed-action fact at the final stage.
+    Older/manual packets lacking the new mapping may retain terminal labels,
+    but tutor labels are safely masked rather than guessed onto STOP.
+    """
+
+    labels = getattr(decision, "own_deck_supervision", None)
+    if not isinstance(labels, Mapping):
+        return None
+    mapping = getattr(decision, "own_deck_supervision_stage_indices", {})
+    if isinstance(mapping, Mapping) and family in mapping:
+        raw_indices = mapping.get(family)
+        if not isinstance(raw_indices, (tuple, list)):
+            raise ValueError("own-deck supervision stage mapping is malformed")
+        indices = {int(value) for value in raw_indices}
+        if any(index < 0 or index >= int(stage_count) for index in indices):
+            raise ValueError("own-deck supervision stage mapping is out of bounds")
+        return labels if int(stage_index) in indices else None
+    if family == "terminal_conversion" and int(stage_index) == int(stage_count) - 1:
+        return labels
+    return None
+
+
+def _own_deck_target_tensors(
+    supervision_rows: Sequence[object],
+    *,
+    family: str,
+    output_dim: int,
+    vector_builder: Callable[[Mapping[str, Any]], Sequence[float]],
+    mask_builder: Callable[[Mapping[str, Any]], Sequence[bool]],
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Materialize target-only successor labels with an explicit schema gate."""
+
+    targets: list[list[float]] = []
+    masks: list[list[bool]] = []
+    for row in supervision_rows:
+        if row is None:
+            targets.append([0.0] * output_dim)
+            masks.append([False] * output_dim)
+            continue
+        if not isinstance(row, Mapping):
+            raise ValueError("own-deck supervision row must be a mapping")
+        if (
+            row.get("schema") != OWN_DECK_SUPERVISION_SCHEMA
+            or row.get("version") != OWN_DECK_SUPERVISION_VERSION
+        ):
+            raise ValueError("own-deck supervision schema does not match runtime")
+        labels = row.get(family)
+        if not isinstance(labels, Mapping):
+            raise ValueError(f"own-deck supervision row lacks {family} labels")
+        vector = [float(value) for value in vector_builder(labels)]
+        mask = [bool(value) for value in mask_builder(labels)]
+        if (
+            len(vector) != output_dim
+            or len(mask) != output_dim
+            or not all(math.isfinite(value) for value in vector)
+        ):
+            raise ValueError("own-deck supervision target shape is invalid")
+        targets.append(vector)
+        masks.append(mask)
+    return (
+        torch.tensor(targets, device=device, dtype=dtype),
+        torch.tensor(masks, device=device, dtype=torch.bool),
+    )
+
+
+def _masked_own_deck_typed_option_loss(
+    logits: torch.Tensor,
+    *,
+    selected_indices: torch.Tensor,
+    targets: torch.Tensor,
+    masks: torch.Tensor,
+    categorical_slice: slice,
+    class_weights: Sequence[float],
+    positive_weight: float,
+) -> tuple[torch.Tensor, int]:
+    """Loss for a fixed typed option head, masked per factual label.
+
+    A categorical group counts as one supervised fact (cross entropy); scalar
+    outputs are independent BCE facts.  This function consumes only the
+    already materialized target tensors and never reads replay transitions.
+    """
+
+    if logits.ndim != 3:
+        raise ValueError("own-deck option head logits must be [batch, option, output]")
+    rows, _options, width = logits.shape
+    if (
+        targets.shape != (rows, width)
+        or masks.shape != (rows, width)
+        or selected_indices.shape != (rows,)
+    ):
+        raise ValueError("own-deck typed target rows do not align with option logits")
+    start = int(categorical_slice.start or 0)
+    stop = int(categorical_slice.stop or start)
+    if not 0 <= start < stop <= width:
+        raise ValueError("own-deck categorical target slice is invalid")
+    normalized_class_weights = _bounded_own_deck_class_weights(
+        class_weights,
+        expected_count=stop - start,
+        family="own-deck typed option",
+    )
+    normalized_positive_weight = _bounded_own_deck_positive_weight(
+        positive_weight,
+        family="own-deck typed option",
+    )
+    selected = logits[
+        torch.arange(rows, device=logits.device), selected_indices.to(dtype=torch.long)
+    ]
+    categorical_mask = masks[:, start:stop]
+    categorical_rows = categorical_mask.all(dim=1)
+    if not torch.equal(categorical_mask.any(dim=1), categorical_rows):
+        raise ValueError("own-deck categorical target mask must cover its full class")
+    loss_sum = selected.sum() * 0.0
+    facts = 0
+    if bool(categorical_rows.any().item()):
+        class_targets = targets[categorical_rows, start:stop].argmax(dim=1)
+        loss_sum = loss_sum + F.cross_entropy(
+            selected[categorical_rows, start:stop],
+            class_targets,
+            weight=torch.as_tensor(
+                normalized_class_weights,
+                device=selected.device,
+                dtype=selected.dtype,
+            ),
+            reduction="sum",
+        )
+        facts += int(categorical_rows.sum().item())
+    scalar_mask = masks.clone()
+    scalar_mask[:, start:stop] = False
+    if bool(scalar_mask.any().item()):
+        scalar_targets = targets[scalar_mask]
+        if not bool(
+            ((scalar_targets >= 0.0) & (scalar_targets <= 1.0)).all().item()
+        ):
+            raise ValueError("own-deck scalar target must be in [0, 1]")
+        loss_sum = loss_sum + F.binary_cross_entropy_with_logits(
+            selected[scalar_mask],
+            scalar_targets,
+            pos_weight=torch.as_tensor(
+                normalized_positive_weight,
+                device=selected.device,
+                dtype=selected.dtype,
+            ),
+            reduction="sum",
+        )
+        facts += int(scalar_mask.sum().item())
+    return loss_sum / max(facts, 1), int(masks.any(dim=1).sum().item())
+
+
 def _decision_guide_confidences(
     *,
     row_confidences: Sequence[float],
@@ -1386,6 +2492,19 @@ def sequence_losses(
         SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
     ),
     combo_state_loss_weight: float = 0.0,
+    visible_tutor_completion_loss_weight: float = 0.0,
+    terminal_conversion_loss_weight: float = 0.0,
+    collect_own_deck_promotion_metrics: bool = False,
+    own_deck_promotion_metrics_closeout_threshold: float = (
+        DEFAULT_CLOSEOUT_THRESHOLD
+    ),
+    own_deck_promotion_metrics_terminal_ece_bins: int = (
+        DEFAULT_TERMINAL_ECE_BINS
+    ),
+    visible_tutor_completion_class_weights: Sequence[float] = (1.0, 1.0, 1.0, 1.0),
+    visible_tutor_completion_positive_weight: float = 1.0,
+    terminal_conversion_class_weights: Sequence[float] = (1.0, 1.0, 1.0, 1.0),
+    terminal_conversion_positive_weight: float = 1.0,
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     expanded_head_weights: Optional[dict[str, float]] = None,
@@ -1406,6 +2525,25 @@ def sequence_losses(
         current_deck_guide_training_mode=current_deck_guide_training_mode,
         setup_board_outcome_loss_weight=setup_board_outcome_loss_weight,
         combo_state_loss_weight=combo_state_loss_weight,
+        visible_tutor_completion_loss_weight=visible_tutor_completion_loss_weight,
+        terminal_conversion_loss_weight=terminal_conversion_loss_weight,
+        collect_own_deck_promotion_metrics=(
+            collect_own_deck_promotion_metrics
+        ),
+        own_deck_promotion_metrics_closeout_threshold=(
+            own_deck_promotion_metrics_closeout_threshold
+        ),
+        own_deck_promotion_metrics_terminal_ece_bins=(
+            own_deck_promotion_metrics_terminal_ece_bins
+        ),
+        visible_tutor_completion_class_weights=(
+            visible_tutor_completion_class_weights
+        ),
+        visible_tutor_completion_positive_weight=(
+            visible_tutor_completion_positive_weight
+        ),
+        terminal_conversion_class_weights=terminal_conversion_class_weights,
+        terminal_conversion_positive_weight=terminal_conversion_positive_weight,
         lethal_threat_weight=lethal_threat_weight,
         prize_race_weight=prize_race_weight,
         expanded_head_weights=expanded_head_weights,
@@ -1430,6 +2568,19 @@ def batch_losses(
         SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
     ),
     combo_state_loss_weight: float = 0.0,
+    visible_tutor_completion_loss_weight: float = 0.0,
+    terminal_conversion_loss_weight: float = 0.0,
+    collect_own_deck_promotion_metrics: bool = False,
+    own_deck_promotion_metrics_closeout_threshold: float = (
+        DEFAULT_CLOSEOUT_THRESHOLD
+    ),
+    own_deck_promotion_metrics_terminal_ece_bins: int = (
+        DEFAULT_TERMINAL_ECE_BINS
+    ),
+    visible_tutor_completion_class_weights: Sequence[float] = (1.0, 1.0, 1.0, 1.0),
+    visible_tutor_completion_positive_weight: float = 1.0,
+    terminal_conversion_class_weights: Sequence[float] = (1.0, 1.0, 1.0, 1.0),
+    terminal_conversion_positive_weight: float = 1.0,
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     expanded_head_weights: Optional[dict[str, float]] = None,
@@ -1527,10 +2678,145 @@ def batch_losses(
         raise ValueError(
             "nonzero combo-state loss requires a combo-state-head checkpoint"
         )
+    for name, weight in (
+        ("visible_tutor_completion", visible_tutor_completion_loss_weight),
+        ("terminal_conversion", terminal_conversion_loss_weight),
+    ):
+        if not math.isfinite(float(weight)) or float(weight) < 0.0:
+            raise ValueError(f"{name} loss weight must be finite and nonnegative")
+    if type(collect_own_deck_promotion_metrics) is not bool:
+        raise ValueError("own-deck promotion metric collection flag must be bool")
+    if collect_own_deck_promotion_metrics:
+        if (
+            isinstance(own_deck_promotion_metrics_closeout_threshold, bool)
+            or not math.isfinite(
+                float(own_deck_promotion_metrics_closeout_threshold)
+            )
+            or not 0.0
+            < float(own_deck_promotion_metrics_closeout_threshold)
+            <= 1.0
+        ):
+            raise ValueError(
+                "own-deck promotion closeout threshold must be finite in (0, 1]"
+            )
+        if (
+            isinstance(own_deck_promotion_metrics_terminal_ece_bins, bool)
+            or not isinstance(own_deck_promotion_metrics_terminal_ece_bins, int)
+            or not 2
+            <= int(own_deck_promotion_metrics_terminal_ece_bins)
+            <= 100
+        ):
+            raise ValueError(
+                "own-deck promotion terminal ECE bin count must be int in [2, 100]"
+            )
+        if prediction_only:
+            raise ValueError(
+                "own-deck promotion metric collection requires an evaluated "
+                "selected-expert-action batch, not prediction-only decoding"
+            )
+        if matchup_adapter_training:
+            raise ValueError(
+                "matchup adapter fitting cannot collect own-deck promotion "
+                "metrics"
+            )
+    tutor_class_weights = _bounded_own_deck_class_weights(
+        visible_tutor_completion_class_weights,
+        expected_count=(
+            int(VISIBLE_TUTOR_COMPLETION_TERMINAL_CLASS_SLICE.stop)
+            - int(VISIBLE_TUTOR_COMPLETION_TERMINAL_CLASS_SLICE.start or 0)
+        ),
+        family="visible-tutor completion",
+    )
+    tutor_positive_weight = _bounded_own_deck_positive_weight(
+        visible_tutor_completion_positive_weight,
+        family="visible-tutor completion",
+    )
+    terminal_class_weights = _bounded_own_deck_class_weights(
+        terminal_conversion_class_weights,
+        expected_count=(
+            int(TERMINAL_CONVERSION_CLASS_SLICE.stop)
+            - int(TERMINAL_CONVERSION_CLASS_SLICE.start or 0)
+        ),
+        family="terminal conversion",
+    )
+    terminal_positive_weight = _bounded_own_deck_positive_weight(
+        terminal_conversion_positive_weight,
+        family="terminal conversion",
+    )
+    use_visible_tutor_completion = float(visible_tutor_completion_loss_weight) > 0.0
+    use_terminal_conversion = float(terminal_conversion_loss_weight) > 0.0
+    use_own_deck_option_heads = bool(
+        use_visible_tutor_completion
+        or use_terminal_conversion
+        or collect_own_deck_promotion_metrics
+    )
+    if use_visible_tutor_completion and not bool(
+        getattr(model, "visible_tutor_completion_head_enabled", False)
+    ):
+        raise ValueError(
+            "nonzero visible-tutor completion loss requires its physical head"
+        )
+    if use_terminal_conversion and not bool(
+        getattr(model, "terminal_conversion_head_enabled", False)
+    ):
+        raise ValueError(
+            "nonzero terminal-conversion loss requires its physical head"
+        )
+    ledger_model_enabled = bool(getattr(model, "own_deck_ledger_enabled", False))
+    if use_own_deck_option_heads and not ledger_model_enabled:
+        raise ValueError(
+            "own-deck target losses or promotion metrics require an own-deck-ledger "
+            "successor model"
+        )
+    if collect_own_deck_promotion_metrics and not bool(
+        getattr(model, "terminal_conversion_head_enabled", False)
+    ):
+        raise ValueError(
+            "own-deck promotion metric collection requires the physical "
+            "terminal-conversion head"
+        )
     use_expanded_heads = strategic_curriculum or any(
         weight > 0.0 for weight in expanded_weights.values()
     )
-    use_option_aux_heads = (use_expanded_heads or use_combo_state) and not prediction_only
+    # A separately authorized successor route may already participate in the
+    # ordinary *training* policy.  Requesting decoder hidden states for that
+    # path regardless of the telemetry flag makes collection unable to change
+    # the decoder branch or grant a typed route influence of its own.  Runtime
+    # remains governed solely by the model's existing runtime gates.
+    own_deck_route_active_here = bool(
+        (
+            bool(getattr(model, "visible_tutor_completion_route_enabled", False))
+            and (
+                bool(model.training)
+                or bool(
+                    getattr(
+                        model,
+                        "visible_tutor_completion_route_runtime_enabled",
+                        False,
+                    )
+                )
+            )
+        )
+        or (
+            bool(getattr(model, "terminal_conversion_route_enabled", False))
+            and (
+                bool(model.training)
+                or bool(
+                    getattr(
+                        model,
+                        "terminal_conversion_route_runtime_enabled",
+                        False,
+                    )
+                )
+            )
+        )
+    )
+    use_option_aux_heads = (
+        use_expanded_heads
+        or use_combo_state
+        or use_own_deck_option_heads
+        or own_deck_route_active_here
+    ) and not prediction_only
     if use_expanded_heads and not bool(
         getattr(model, "expanded_heads_enabled", False)
     ):
@@ -1545,7 +2831,24 @@ def batch_losses(
         return torch.zeros((), device=device, requires_grad=True), BatchMetrics()
 
     all_boards = [d.board for g in games for d in g.decisions]
+    all_ledger_snapshots = [
+        getattr(d, "ledger_snapshot", None) for g in games for d in g.decisions
+    ]
+    if ledger_model_enabled:
+        all_ledger_snapshots = [
+            _validate_own_deck_snapshot(snapshot)
+            for snapshot in all_ledger_snapshots
+        ]
     spatial_all = model.encode_board(all_boards)
+    ledger_residual_all = model.own_deck_ledger_residuals(
+        all_ledger_snapshots if ledger_model_enabled else None,
+        batch_size=len(all_boards),
+        device=spatial_all.device,
+        dtype=spatial_all.dtype,
+        # Offline loss/validation must exercise the physical successor input
+        # even while model.eval() deliberately keeps serving authority off.
+        offline_training_path=ledger_model_enabled,
+    )
     packed_game_states: list[torch.Tensor] | None = None
     packed_identity_states: list[torch.Tensor] | None = None
     if pack_temporal_games:
@@ -1565,9 +2868,10 @@ def batch_losses(
                 + [decision.action_token for decision in game.decisions[:-1]]
             )
         ]
-        cls_all = model.pool_cls(spatial_all)
-        cls_all = cls_all + float(model.cfg.history_action_scale) * (
-            model.encode_previous_actions(previous_actions)
+        cls_all = model.history_tokens(
+            spatial_all,
+            previous_actions,
+            ledger_residual_all,
         )
         cls_by_game = list(cls_all.split(lengths))
         padded_cls = pad_sequence(cls_by_game, batch_first=True)
@@ -1594,6 +2898,7 @@ def batch_losses(
     valid_states: list[torch.Tensor] = []
     valid_identity_states: list[torch.Tensor] = []
     valid_options = []
+    ledger_option_feature_rows: list[Optional[tuple[tuple[float, ...], ...]]] = []
     valid_n: list[int] = []
     soft_targets: list[Optional[list[float]]] = []
     hard_idx: list[int] = []
@@ -1602,6 +2907,8 @@ def batch_losses(
     aux_rows: list[int] = []
     aux_labels: list[int] = []
     decision_aux: list[dict[str, Any]] = []
+    visible_tutor_supervision_rows: list[object] = []
+    terminal_conversion_supervision_rows: list[object] = []
     expanded_stage_indices: list[int] = []
     expanded_decision_keys: list[tuple[int, int]] = []
     matchup_routes: list[int] = []
@@ -1626,6 +2933,11 @@ def batch_losses(
         factorized_pt = g.factorized_policy_targets
         length = len(g.decisions)
         game_spatial = spatial_all[spatial_offset : spatial_offset + length]
+        game_ledger_residuals = (
+            None
+            if ledger_residual_all is None
+            else ledger_residual_all[spatial_offset : spatial_offset + length]
+        )
         spatial_offset += length
         if model.decision_context == "history":
             if packed_game_states is not None and packed_identity_states is not None:
@@ -1636,7 +2948,9 @@ def batch_losses(
                     decision.action_token for decision in g.decisions[:-1]
                 ]
                 cls = model.history_tokens(
-                    game_spatial, previous_actions
+                    game_spatial,
+                    previous_actions,
+                    game_ledger_residuals,
                 ).unsqueeze(0)
                 game_states, _ = model.temporal_encode(
                     cls, append=False, return_all=True
@@ -1646,7 +2960,14 @@ def batch_losses(
                     model.pool_cls(game_spatial)
                 ).detach()
         else:
-            cls = model.pool_cls(game_spatial).unsqueeze(1)
+            # Stateless legacy models still use one realized decision token;
+            # preserve the exact old ``pool_cls`` result when the successor
+            # adapter is absent, but include the same shared ledger residual
+            # whenever the physical ledger architecture is being trained.
+            cls = model.history_tokens(
+                game_spatial,
+                ledger_residuals=game_ledger_residuals,
+            ).unsqueeze(1)
             game_states, _ = model.temporal_encode(
                 cls, append=False, return_all=True
             )
@@ -1716,12 +3037,37 @@ def batch_losses(
                 valid_states.append(game_states[t])
                 valid_identity_states.append(game_identity_states[t])
                 valid_options.append(stage.options)
+                if ledger_model_enabled:
+                    ledger_option_feature_rows.append(
+                        _validated_ledger_option_features(
+                            getattr(stage, "ledger_option_features", None),
+                            option_count=n_opt,
+                        )
+                    )
+                else:
+                    ledger_option_feature_rows.append(None)
                 valid_n.append(n_opt)
                 soft_targets.append(soft)
                 hard_idx.append(idx)
                 value_targets.append(val)
                 awr_baseline_keys.append((id(g), t, stage_i))
                 decision_aux.append(dict(d.aux_labels or {}))
+                visible_tutor_supervision_rows.append(
+                    _own_deck_supervision_for_stage(
+                        d,
+                        family="visible_tutor_completion",
+                        stage_index=stage_i,
+                        stage_count=len(stages),
+                    )
+                )
+                terminal_conversion_supervision_rows.append(
+                    _own_deck_supervision_for_stage(
+                        d,
+                        family="terminal_conversion",
+                        stage_index=stage_i,
+                        stage_count=len(stages),
+                    )
+                )
                 expanded_stage_indices.append(stage_i)
                 expanded_decision_keys.append((game_index, t))
                 matchup_routes.append(matchup_route)
@@ -1752,6 +3098,14 @@ def batch_losses(
             BatchMetrics(n_games=len(games)),
         )
 
+    if not (
+        len(ledger_option_feature_rows)
+        == len(visible_tutor_supervision_rows)
+        == len(terminal_conversion_supervision_rows)
+        == len(valid_options)
+    ):
+        raise AssertionError("own-deck option metadata lost policy-row alignment")
+
     state_all = torch.stack(valid_states, dim=0)
     identity_state_all = torch.stack(valid_identity_states, dim=0)
     current_spatial = torch.stack(valid_spatial, dim=0)
@@ -1774,6 +3128,10 @@ def batch_losses(
         n_options=valid_n,
         return_hidden=use_option_aux_heads,
         decision_fusion_state_vec=state_all,
+        ledger_option_features=(
+            ledger_option_feature_rows if ledger_model_enabled else None
+        ),
+        offline_training_path=ledger_model_enabled,
     )
     if use_option_aux_heads:
         if not isinstance(decoded, tuple):
@@ -1785,12 +3143,27 @@ def batch_losses(
         else:
             expanded_option_outputs = {}
             expanded_state_outputs = {}
+        if use_own_deck_option_heads:
+            if use_visible_tutor_completion or use_terminal_conversion:
+                own_deck_option_outputs = model.own_deck_option_head_logits(
+                    option_hidden
+                )
+            else:
+                # Shadow metrics deliberately observe detached outputs only:
+                # they never add a gradient path or turn on an option route.
+                with torch.no_grad():
+                    own_deck_option_outputs = model.own_deck_option_head_logits(
+                        option_hidden.detach()
+                    )
+        else:
+            own_deck_option_outputs = {}
     else:
         if isinstance(decoded, tuple):
             raise AssertionError("legacy option decoder unexpectedly returned a tuple")
         logits_all = decoded
         expanded_option_outputs = {}
         expanded_state_outputs = {}
+        own_deck_option_outputs = {}
     if prediction_only:
         predictions = logits_all.argmax(dim=1)
         if prediction_sink is not None:
@@ -2117,6 +3490,106 @@ def batch_losses(
         + float(prize_race_weight) * prize_race_loss
         + float(history_identity_weight) * history_identity_loss
     )
+    visible_tutor_completion_loss = total.sum() * 0.0
+    terminal_conversion_loss = total.sum() * 0.0
+    n_visible_tutor_completion_rows = 0
+    n_terminal_conversion_rows = 0
+    own_deck_supervision_metrics: dict[str, Any] = {}
+    own_deck_promotion_metrics: dict[str, Any] = {}
+    if use_visible_tutor_completion:
+        tutor_logits = own_deck_option_outputs.get(
+            "visible_tutor_completion_logits"
+        )
+        if tutor_logits is None:
+            raise ValueError("visible-tutor completion head output is unavailable")
+        tutor_target, tutor_mask = _own_deck_target_tensors(
+            visible_tutor_supervision_rows,
+            family="visible_tutor_completion",
+            output_dim=VISIBLE_TUTOR_COMPLETION_OUTPUT_DIM,
+            vector_builder=visible_tutor_completion_target_vector,
+            mask_builder=visible_tutor_completion_target_mask,
+            device=device,
+            dtype=tutor_logits.dtype,
+        )
+        (
+            visible_tutor_completion_loss,
+            n_visible_tutor_completion_rows,
+        ) = _masked_own_deck_typed_option_loss(
+            tutor_logits,
+            selected_indices=target_idx,
+            targets=tutor_target,
+            masks=tutor_mask,
+            categorical_slice=VISIBLE_TUTOR_COMPLETION_TERMINAL_CLASS_SLICE,
+            class_weights=tutor_class_weights,
+            positive_weight=tutor_positive_weight,
+        )
+        own_deck_supervision_metrics["visible_tutor_completion"] = {
+            "loss_weight": float(visible_tutor_completion_loss_weight),
+            "class_weights": list(tutor_class_weights),
+            "positive_weight": float(tutor_positive_weight),
+            **_own_deck_target_coverage(
+                targets=tutor_target,
+                masks=tutor_mask,
+                categorical_slice=VISIBLE_TUTOR_COMPLETION_TERMINAL_CLASS_SLICE,
+            ),
+        }
+        total = total + float(visible_tutor_completion_loss_weight) * (
+            visible_tutor_completion_loss
+        )
+    if use_terminal_conversion:
+        terminal_logits = own_deck_option_outputs.get("terminal_conversion_logits")
+        if terminal_logits is None:
+            raise ValueError("terminal-conversion head output is unavailable")
+        terminal_target, terminal_mask = _own_deck_target_tensors(
+            terminal_conversion_supervision_rows,
+            family="terminal_conversion",
+            output_dim=TERMINAL_CONVERSION_OUTPUT_DIM,
+            vector_builder=terminal_conversion_target_vector,
+            mask_builder=terminal_conversion_target_mask,
+            device=device,
+            dtype=terminal_logits.dtype,
+        )
+        terminal_conversion_loss, n_terminal_conversion_rows = (
+            _masked_own_deck_typed_option_loss(
+                terminal_logits,
+                selected_indices=target_idx,
+                targets=terminal_target,
+                masks=terminal_mask,
+                categorical_slice=TERMINAL_CONVERSION_CLASS_SLICE,
+                class_weights=terminal_class_weights,
+                positive_weight=terminal_positive_weight,
+            )
+        )
+        own_deck_supervision_metrics["terminal_conversion"] = {
+            "loss_weight": float(terminal_conversion_loss_weight),
+            "class_weights": list(terminal_class_weights),
+            "positive_weight": float(terminal_positive_weight),
+            **_own_deck_target_coverage(
+                targets=terminal_target,
+                masks=terminal_mask,
+                categorical_slice=TERMINAL_CONVERSION_CLASS_SLICE,
+            ),
+        }
+        total = total + float(terminal_conversion_loss_weight) * (
+            terminal_conversion_loss
+        )
+    if collect_own_deck_promotion_metrics:
+        terminal_logits = own_deck_option_outputs.get("terminal_conversion_logits")
+        if terminal_logits is None:
+            raise ValueError(
+                "own-deck promotion metric collection requires terminal logits"
+            )
+        own_deck_promotion_metrics = collect_own_deck_promotion_metrics_record(
+            policy_logits=logits_all,
+            selected_indices=target_idx,
+            terminal_logits=terminal_logits,
+            visible_tutor_supervision_rows=visible_tutor_supervision_rows,
+            terminal_conversion_supervision_rows=(
+                terminal_conversion_supervision_rows
+            ),
+            threshold=float(own_deck_promotion_metrics_closeout_threshold),
+            ece_bins=int(own_deck_promotion_metrics_terminal_ece_bins),
+        )
     expanded_loss = total.sum() * 0.0
     expanded_metrics: dict[str, Any] = {}
     guide_strategic_curriculum_loss = total.sum() * 0.0
@@ -2302,6 +3775,10 @@ def batch_losses(
         ),
         setup_board_outcome_loss=float(setup_loss.detach().item()),
         combo_state_loss=float(combo_loss.detach().item()),
+        visible_tutor_completion_loss=float(
+            visible_tutor_completion_loss.detach().item()
+        ),
+        terminal_conversion_loss=float(terminal_conversion_loss.detach().item()),
         opp_hand_loss=float(opp_hand_loss.detach().item()),
         opp_remainder_loss=float(opp_remainder_loss.detach().item()),
         lethal_threat_loss=float(lethal_threat_loss.detach().item()),
@@ -2320,6 +3797,8 @@ def batch_losses(
         n_opp_remainder_rows=int(n_remainder_rows),
         n_lethal_threat_rows=len(lethal_rows),
         n_prize_race_rows=len(race_rows),
+        n_visible_tutor_completion_rows=int(n_visible_tutor_completion_rows),
+        n_terminal_conversion_rows=int(n_terminal_conversion_rows),
         n_matchup_adapter_rows=(
             sum(route != UNKNOWN_ROUTE for route in matchup_routes)
             if matchup_adapter_training
@@ -2329,6 +3808,8 @@ def batch_losses(
         guide_curriculum_head_metrics=guide_curriculum_metrics,
         setup_board_outcome_metrics=setup_metrics,
         combo_state_metrics=combo_metrics,
+        own_deck_supervision_metrics=own_deck_supervision_metrics,
+        own_deck_promotion_metrics=own_deck_promotion_metrics,
         mean_advantage=awr_mean_adv,
         raw_advantage_mean=raw_adv_mean,
         raw_advantage_std=raw_adv_std,
@@ -2394,6 +3875,59 @@ def _resident_hard_target_objective(
     return total, metrics
 
 
+def _reject_own_deck_ledger_resident_path(
+    model: TemporalCabtTransformer,
+    *,
+    path: str,
+) -> None:
+    """Fail closed until the resident corpus owns aligned ledger packets.
+
+    ``DeviceResidentBootstrapCorpus`` currently stores packed feature tensors,
+    not immutable per-decision ledger snapshots or variable menu rows.  Letting
+    a successor model use it would silently bypass both ledger adapters and
+    typed own-deck losses, so every resident entry point rejects that pairing.
+    """
+
+    if bool(getattr(model, "own_deck_ledger_enabled", False)):
+        raise ValueError(
+            f"{path} cannot use an own-deck-ledger model until the resident "
+            "corpus carries aligned ledger snapshots and option features; use "
+            "the host GameSequence path"
+        )
+
+
+def _assert_own_deck_dataset_contract(
+    model: TemporalCabtTransformer,
+    dataset: BootstrapDataset,
+    *,
+    path: str,
+) -> None:
+    """Bind successor models to an explicitly successor-built host corpus.
+
+    ``BootstrapDataset.from_jsonl`` records this immutable conversion choice.
+    Hand-built test/diagnostic datasets have no provenance mapping, so their
+    individual typed snapshots remain the strict fallback gate in
+    :func:`batch_losses`.  A real converted corpus must never silently inherit
+    an ambient config value different from its model architecture.
+    """
+
+    if not bool(getattr(model, "own_deck_ledger_enabled", False)):
+        return
+    provenance = dict(getattr(dataset, "conversion_stats", {}) or {})
+    if not provenance:
+        return
+    if (
+        provenance.get("own_deck_ledger_enabled") is not True
+        or provenance.get("own_deck_ledger_schema") != OWN_DECK_LEDGER_SCHEMA
+        or provenance.get("own_deck_ledger_schema_version")
+        != OWN_DECK_LEDGER_SCHEMA_VERSION
+    ):
+        raise ValueError(
+            f"{path} own-deck-ledger model requires an explicitly successor-"
+            "built corpus with matching ledger schema provenance"
+        )
+
+
 def device_batch_losses(
     model: TemporalCabtTransformer,
     corpus: DeviceResidentBootstrapCorpus,
@@ -2408,6 +3942,7 @@ def device_batch_losses(
     actions and all auxiliary heads disabled.  Keeping that contract explicit
     prevents the fast path from silently discarding a future target type.
     """
+    _reject_own_deck_ledger_resident_path(model, path="device-resident bootstrap")
     if model.decision_context != "stateless":
         raise ValueError("device-resident bootstrap requires stateless context")
     if (
@@ -2475,6 +4010,7 @@ def device_temporal_batch_losses(
     masks are valid.  In particular, an absent exact opponent hand is not
     interpreted as an observed empty hand.
     """
+    _reject_own_deck_ledger_resident_path(model, path="device-resident temporal")
     if model.decision_context != "history":
         raise ValueError("temporal resident loss requires history context")
     guide_training_mode = canonical_guide_training_mode(
@@ -3257,6 +4793,9 @@ def device_temporal_greedy_policy_targets(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Return global sample IDs and causal greedy actions for resident games."""
 
+    _reject_own_deck_ledger_resident_path(
+        model, path="resident temporal teacher-policy scan"
+    )
     if model.decision_context != "history":
         raise ValueError("teacher policy targets require temporal history")
     (
@@ -3363,6 +4902,9 @@ def device_exact_value_predictions(
     sample_ids: torch.Tensor,
 ) -> torch.Tensor:
     """Value predictions for an exact resident batch without option gathers."""
+    _reject_own_deck_ledger_resident_path(
+        model, path="resident exact value prediction"
+    )
     if model.decision_context != "stateless":
         raise ValueError("device-resident exact replay requires stateless context")
     board, _board_ids = corpus.board_batch(sample_ids)
@@ -3394,6 +4936,7 @@ def device_exact_batch_losses(
     entropy_bonus: float = 0.01,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Full AWR + exact-hidden losses with all source tensors on-device."""
+    _reject_own_deck_ledger_resident_path(model, path="resident exact AWR")
     if (
         canonical_guide_training_mode(current_deck_guide_training_mode)
         == GUIDE_TRAINING_MODE_STRATEGIC
@@ -3629,6 +5172,12 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
     remainder_rows = sum(int(p.n_opp_remainder_rows) for p in parts)
     lethal_rows = sum(int(p.n_lethal_threat_rows) for p in parts)
     prize_rows = sum(int(p.n_prize_race_rows) for p in parts)
+    tutor_completion_rows = sum(
+        int(p.n_visible_tutor_completion_rows) for p in parts
+    )
+    terminal_conversion_rows = sum(
+        int(p.n_terminal_conversion_rows) for p in parts
+    )
     matchup_adapter_rows = sum(int(p.n_matchup_adapter_rows) for p in parts)
     teacher_policy_rows = sum(int(p.n_teacher_policy_rows) for p in parts)
     guide_loss = (
@@ -3647,6 +5196,25 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         )
         / teacher_policy_rows
         if teacher_policy_rows > 0
+        else 0.0
+    )
+    tutor_completion_loss = (
+        sum(
+            float(p.visible_tutor_completion_loss)
+            * int(p.n_visible_tutor_completion_rows)
+            for p in parts
+        )
+        / tutor_completion_rows
+        if tutor_completion_rows > 0
+        else 0.0
+    )
+    terminal_conversion_loss = (
+        sum(
+            float(p.terminal_conversion_loss) * int(p.n_terminal_conversion_rows)
+            for p in parts
+        )
+        / terminal_conversion_rows
+        if terminal_conversion_rows > 0
         else 0.0
     )
     expanded_parts = [
@@ -3890,6 +5458,91 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
             },
         }
 
+    own_deck_parts = [
+        dict(part.own_deck_supervision_metrics)
+        for part in parts
+        if part.own_deck_supervision_metrics
+    ]
+    own_deck_metrics: dict[str, Any] = {}
+    if own_deck_parts:
+        heads: dict[str, Any] = {}
+        head_names = sorted(
+            {
+                str(name)
+                for record in own_deck_parts
+                for name in record
+            }
+        )
+        for name in head_names:
+            records = [
+                dict(record[name])
+                for record in own_deck_parts
+                if isinstance(record.get(name), Mapping)
+            ]
+            if not records:
+                continue
+            first = records[0]
+            class_weights = [float(value) for value in first["class_weights"]]
+            positive_weight = float(first["positive_weight"])
+            loss_weight = float(first["loss_weight"])
+            for record in records[1:]:
+                if (
+                    [float(value) for value in record.get("class_weights", ())]
+                    != class_weights
+                    or float(record.get("positive_weight", float("nan")))
+                    != positive_weight
+                    or float(record.get("loss_weight", float("nan")))
+                    != loss_weight
+                ):
+                    raise ValueError(
+                        "own-deck supervision weights changed within one "
+                        "merged metric record"
+                    )
+            class_count_width = len(class_weights)
+            class_counts = [
+                sum(
+                    int(
+                        list(record.get("categorical_class_counts") or ())[index]
+                    )
+                    for record in records
+                )
+                for index in range(class_count_width)
+            ]
+            heads[name] = {
+                "loss_weight": loss_weight,
+                "class_weights": class_weights,
+                "positive_weight": positive_weight,
+                "labeled_rows": sum(
+                    int(record.get("labeled_rows", 0)) for record in records
+                ),
+                "categorical_rows": sum(
+                    int(record.get("categorical_rows", 0)) for record in records
+                ),
+                "categorical_class_counts": class_counts,
+                "scalar_labeled_facts": sum(
+                    int(record.get("scalar_labeled_facts", 0))
+                    for record in records
+                ),
+                "scalar_positive_facts": sum(
+                    int(record.get("scalar_positive_facts", 0))
+                    for record in records
+                ),
+            }
+        if heads:
+            own_deck_metrics = {
+                "schema": "poke_bot.own_deck_supervision_training_metrics/v1",
+                "heads": heads,
+            }
+
+    own_deck_promotion_parts = [
+        dict(part.own_deck_promotion_metrics)
+        for part in parts
+        if part.own_deck_promotion_metrics
+    ]
+    own_deck_promotion_metrics = merge_own_deck_promotion_metrics(
+        own_deck_promotion_parts
+    )
+
     return BatchMetrics(
         policy_loss=wavg("policy_loss"),
         teacher_policy_loss=teacher_policy_loss,
@@ -3901,6 +5554,8 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         ),
         setup_board_outcome_loss=wavg("setup_board_outcome_loss"),
         combo_state_loss=wavg("combo_state_loss"),
+        visible_tutor_completion_loss=tutor_completion_loss,
+        terminal_conversion_loss=terminal_conversion_loss,
         opp_hand_loss=wavg("opp_hand_loss"),
         opp_remainder_loss=wavg("opp_remainder_loss"),
         lethal_threat_loss=wavg("lethal_threat_loss"),
@@ -3919,12 +5574,16 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         n_opp_remainder_rows=remainder_rows,
         n_lethal_threat_rows=lethal_rows,
         n_prize_race_rows=prize_rows,
+        n_visible_tutor_completion_rows=tutor_completion_rows,
+        n_terminal_conversion_rows=terminal_conversion_rows,
         n_matchup_adapter_rows=matchup_adapter_rows,
         n_teacher_policy_rows=teacher_policy_rows,
         expanded_head_metrics=expanded_metrics,
         guide_curriculum_head_metrics=guide_curriculum_metrics,
         setup_board_outcome_metrics=setup_metrics,
         combo_state_metrics=combo_metrics,
+        own_deck_supervision_metrics=own_deck_metrics,
+        own_deck_promotion_metrics=own_deck_promotion_metrics,
         mean_advantage=wavg("mean_advantage"),
         raw_advantage_mean=raw_mean,
         raw_advantage_std=math.sqrt(max(raw_mean_sq - raw_mean * raw_mean, 0.0)),
@@ -4301,6 +5960,31 @@ def evaluate(
                     cfg.setup_board_outcome_loss_weight
                 ),
                 combo_state_loss_weight=cfg.combo_state_loss_weight,
+                visible_tutor_completion_loss_weight=(
+                    cfg.visible_tutor_completion_loss_weight
+                ),
+                terminal_conversion_loss_weight=cfg.terminal_conversion_loss_weight,
+                collect_own_deck_promotion_metrics=(
+                    cfg.collect_own_deck_promotion_metrics
+                ),
+                own_deck_promotion_metrics_closeout_threshold=(
+                    cfg.own_deck_promotion_metrics_closeout_threshold
+                ),
+                own_deck_promotion_metrics_terminal_ece_bins=(
+                    cfg.own_deck_promotion_metrics_terminal_ece_bins
+                ),
+                visible_tutor_completion_class_weights=(
+                    cfg.visible_tutor_completion_class_weights
+                ),
+                visible_tutor_completion_positive_weight=(
+                    cfg.visible_tutor_completion_positive_weight
+                ),
+                terminal_conversion_class_weights=(
+                    cfg.terminal_conversion_class_weights
+                ),
+                terminal_conversion_positive_weight=(
+                    cfg.terminal_conversion_positive_weight
+                ),
                 expanded_head_weights=cfg.expanded_head_loss_weights,
                 archetype_residual_weights=cfg.archetype_residual_loss_weights,
                 pure_rl=bool(cfg.pure_rl),
@@ -4333,6 +6017,12 @@ def evaluate_device_corpus(
     teacher_policy_weight: float = 0.0,
 ) -> BatchMetrics:
     """Evaluate the validation partition without moving inputs off device."""
+    if cfg.collect_own_deck_promotion_metrics:
+        raise ValueError(
+            "own-deck promotion metric collection requires host GameSequence "
+            "evaluation; resident corpora do not retain stage-aligned labels"
+        )
+    _reject_own_deck_ledger_resident_path(model, path="resident validation")
     model.eval()
     parts: list[BatchMetrics] = []
     temporal = model.decision_context == "history"
@@ -4409,6 +6099,7 @@ def _device_exact_value_cache(
     desc: str,
 ) -> torch.Tensor:
     """Freeze V(s) for every resident train/validation sample on-device."""
+    _reject_own_deck_ledger_resident_path(model, path="resident value cache")
     was_training = model.training
     model.eval()
     values = torch.empty(
@@ -4450,6 +6141,9 @@ def _device_exact_policy_predictions(
     desc: str,
 ) -> torch.Tensor:
     """Stable argmax policy rows for resident parent/candidate agreement."""
+    _reject_own_deck_ledger_resident_path(
+        model, path="resident policy agreement scan"
+    )
     was_training = model.training
     model.eval()
     predictions = torch.empty(
@@ -4507,6 +6201,9 @@ def _evaluate_device_exact_corpus(
     desc: str,
 ) -> BatchMetrics:
     """Evaluate exact resident validation rows with the frozen AWR baseline."""
+    _reject_own_deck_ledger_resident_path(
+        model, path="resident exact validation"
+    )
     was_training = model.training
     model.eval()
     parts: list[BatchMetrics] = []
@@ -4565,6 +6262,7 @@ def _fit_device_batch_size(
     min_step_free_gib: float = 2.0,
 ) -> int:
     """Prove corpus + forward/backward fit, reducing only after a real OOM."""
+    _reject_own_deck_ledger_resident_path(model, path="resident fit probe")
     size = min(max(1, int(requested)), corpus.train_samples)
     if size <= 0:
         raise ValueError("device corpus has no training samples")
@@ -4614,6 +6312,12 @@ def _fit_device_batch_size(
                                 cfg.setup_board_outcome_loss_weight
                             ),
                             combo_state_loss_weight=cfg.combo_state_loss_weight,
+                            visible_tutor_completion_loss_weight=(
+                                cfg.visible_tutor_completion_loss_weight
+                            ),
+                            terminal_conversion_loss_weight=(
+                                cfg.terminal_conversion_loss_weight
+                            ),
                             expanded_head_weights=(
                                 cfg.expanded_head_loss_weights
                             ),
@@ -4771,6 +6475,20 @@ def train_bootstrap(
         if source_path is not None
         else build_model(model_cfg or config.MODEL, device=device)
     )
+    _assert_own_deck_dataset_contract(
+        model,
+        dataset,
+        path="bootstrap training",
+    )
+    if device_resident and cfg.collect_own_deck_promotion_metrics:
+        raise ValueError(
+            "own-deck promotion metric collection requires host GameSequence "
+            "evaluation; resident corpora do not retain stage-aligned labels"
+        )
+    if device_resident:
+        _reject_own_deck_ledger_resident_path(
+            model, path="device-resident bootstrap"
+        )
     cfg.current_deck_guide_training_mode = canonical_guide_training_mode(
         cfg.current_deck_guide_training_mode
     )
@@ -4839,6 +6557,11 @@ def train_bootstrap(
     adapter_activation: Optional[ActivationReceipt] = None
     adapter_parent_path: Optional[Path] = None
     if cfg.matchup_adapter_training:
+        if cfg.collect_own_deck_promotion_metrics:
+            raise ValueError(
+                "matchup adapter fitting cannot collect own-deck promotion "
+                "metrics"
+            )
         if trainable_prefixes:
             raise ValueError(
                 "matchup adapter training cannot be combined with generic "
@@ -4857,6 +6580,10 @@ def train_bootstrap(
                 "opp_hand": cfg.opp_hand_loss_weight,
                 "opp_remainder": cfg.opp_remainder_loss_weight,
                 "guide": cfg.alakazam_guide_loss_weight,
+                "visible_tutor_completion": (
+                    cfg.visible_tutor_completion_loss_weight
+                ),
+                "terminal_conversion": cfg.terminal_conversion_loss_weight,
                 "lethal": cfg.lethal_threat_loss_weight,
                 "prize": cfg.prize_race_loss_weight,
                 "history_identity": cfg.history_identity_loss_weight,
@@ -5077,6 +6804,10 @@ def train_bootstrap(
         if cfg.matchup_adapter_training
         else {}
     )
+    # Updated after each complete train/validation epoch.  The checkpoint
+    # closure reads this immutable telemetry record but collection itself never
+    # contributes a gradient or changes a route.
+    latest_own_deck_promotion_metrics_record: dict[str, Any] = {}
 
     def build_ckpt() -> dict[str, Any]:
         if cfg.matchup_adapter_training:
@@ -5141,6 +6872,10 @@ def train_bootstrap(
             )
             extra["matchup_adapter_per_route_validation"] = copy.deepcopy(
                 latest_adapter_validation
+            )
+        if latest_own_deck_promotion_metrics_record:
+            extra["own_deck_promotion_metrics"] = copy.deepcopy(
+                latest_own_deck_promotion_metrics_record
             )
         return checkpoint.build_checkpoint(
             model=model,
@@ -5239,6 +6974,33 @@ def train_bootstrap(
                                 cfg.setup_board_outcome_loss_weight
                             ),
                             combo_state_loss_weight=cfg.combo_state_loss_weight,
+                            visible_tutor_completion_loss_weight=(
+                                cfg.visible_tutor_completion_loss_weight
+                            ),
+                            terminal_conversion_loss_weight=(
+                                cfg.terminal_conversion_loss_weight
+                            ),
+                            collect_own_deck_promotion_metrics=(
+                                cfg.collect_own_deck_promotion_metrics
+                            ),
+                            own_deck_promotion_metrics_closeout_threshold=(
+                                cfg.own_deck_promotion_metrics_closeout_threshold
+                            ),
+                            own_deck_promotion_metrics_terminal_ece_bins=(
+                                cfg.own_deck_promotion_metrics_terminal_ece_bins
+                            ),
+                            visible_tutor_completion_class_weights=(
+                                cfg.visible_tutor_completion_class_weights
+                            ),
+                            visible_tutor_completion_positive_weight=(
+                                cfg.visible_tutor_completion_positive_weight
+                            ),
+                            terminal_conversion_class_weights=(
+                                cfg.terminal_conversion_class_weights
+                            ),
+                            terminal_conversion_positive_weight=(
+                                cfg.terminal_conversion_positive_weight
+                            ),
                             expanded_head_weights=(
                                 cfg.expanded_head_loss_weights
                             ),
@@ -5361,6 +7123,14 @@ def train_bootstrap(
                 val_m = train_m
                 metric = train_m.total_loss
 
+            latest_own_deck_promotion_metrics_record = (
+                _maybe_own_deck_promotion_metrics_record(
+                    cfg=cfg,
+                    train_metrics=train_m,
+                    validation_metrics=val_m,
+                )
+            )
+
             if cfg.matchup_adapter_training:
                 latest_adapter_validation.clear()
                 for route, archetype_id in enumerate(EXPERT_IDS):
@@ -5405,6 +7175,10 @@ def train_bootstrap(
             if cfg.matchup_adapter_training:
                 row["matchup_adapter_per_route_validation"] = copy.deepcopy(
                     latest_adapter_validation
+                )
+            if latest_own_deck_promotion_metrics_record:
+                row["own_deck_promotion_metrics"] = copy.deepcopy(
+                    latest_own_deck_promotion_metrics_record
                 )
             state.history.append(row)
 
@@ -5463,6 +7237,15 @@ def train_bootstrap(
         "best_path": str(best) if best.is_file() else None,
         "latest_path": str(latest) if latest.is_file() else None,
         "history": state.history,
+        **(
+            {
+                "own_deck_promotion_metrics": (
+                    latest_own_deck_promotion_metrics_record
+                )
+            }
+            if latest_own_deck_promotion_metrics_record
+            else {}
+        ),
     }
 
 
@@ -5508,6 +7291,7 @@ def supervised_rehearsal_step(
     training_seat_split_receipt: Optional[dict[str, Any]] = None,
     training_game_sampling_weights: Optional[torch.Tensor] = None,
     training_game_importance_contract: Optional[dict[str, Any]] = None,
+    r241_peak_r195_training_contract: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """Run a bounded, resumable expert-policy rehearsal on a resident corpus.
 
@@ -5571,6 +7355,9 @@ def supervised_rehearsal_step(
     )
     canonical_residuals = canonical_residual_weights(
         archetype_residual_loss_weights
+    )
+    canonical_r241_contract = canonical_r241_peak_r195_training_contract(
+        r241_peak_r195_training_contract
     )
     importance_contract = dict(training_game_importance_contract or {})
     importance_enabled = training_game_sampling_weights is not None
@@ -5691,6 +7478,7 @@ def supervised_rehearsal_step(
         ),
         expanded_head_loss_weights=canonical_expanded_weights,
         archetype_residual_loss_weights=canonical_residuals,
+        r241_peak_r195_training_contract=canonical_r241_contract,
         amp=device.type == "cuda",
         seed=int(seed),
     )
@@ -5806,6 +7594,18 @@ def supervised_rehearsal_step(
     # the explicitly recorded conservative LR while preserving the moments.
     for group in optimizer.param_groups:
         group["lr"] = cfg.lr
+    if canonical_r241_contract:
+        # Validate before the first optimizer step as well as immediately
+        # before serialization.  This is a proof-only sidecar; it never changes
+        # parameter membership or the inherited r195 optimizer state.
+        build_r241_peak_r195_live_fusion_record(
+            model,
+            optimizer=optimizer,
+            contract=canonical_r241_contract,
+            combo_state_loss_weight=float(cfg.combo_state_loss_weight),
+            phase="expert_refresh",
+            boundary_iteration=int(rehearsal_iteration),
+        )
 
     batch_size = _fit_device_batch_size(
         model,
@@ -6273,6 +8073,29 @@ def supervised_rehearsal_step(
         "status": "not_measured_for_supervised_rehearsal",
         "parent_digest": actual_parent_digest,
     }
+    if canonical_r241_contract:
+        validate_r241_isolated_adapter_continuation(
+            dict(inherited_extra.get("dormant_matchup_adapter_fit") or {}),
+            dict(
+                inherited_extra.get("dormant_matchup_adapter_optimizer_state")
+                or {}
+            ),
+        )
+    peak_r195_live_fusion = (
+        build_r241_peak_r195_live_fusion_record(
+            model,
+            optimizer=optimizer,
+            contract=canonical_r241_contract,
+            combo_state_loss_weight=float(cfg.combo_state_loss_weight),
+            phase="expert_refresh",
+            boundary_iteration=int(rehearsal_iteration),
+        )
+        if canonical_r241_contract
+        else {}
+    )
+    if peak_r195_live_fusion:
+        inherited_extra["peak_r195_live_fusion"] = peak_r195_live_fusion
+        rehearsal_record["peak_r195_live_fusion"] = peak_r195_live_fusion
     payload = checkpoint.build_checkpoint(
         model=model,
         optimizer=optimizer,
@@ -6311,6 +8134,7 @@ def supervised_rehearsal_step(
         "train_metrics": train_metrics.__dict__,
         "validation_metrics": val_metrics.__dict__,
         "expanded_head_training": expanded_training_contract,
+        "peak_r195_live_fusion": peak_r195_live_fusion,
         "rehearsal": rehearsal_record,
         "output_archetype_id": str(payload.get("archetype_id") or ""),
         "output_model_id": str(payload.get("model_id") or ""),
@@ -6458,12 +8282,46 @@ def _capture_value_only_awr_plans(
         for plan in plans
         for decision in plan.sequence.decisions
     ]
+    # Keep the frozen value baseline on the exact same successor state path as
+    # ``batch_losses``.  This path intentionally bypasses option decoding, but
+    # it must not bypass the shared causal OwnDeckLedger input when a successor
+    # checkpoint is being evaluated offline.
+    ledger_model_enabled = bool(getattr(model, "own_deck_ledger_enabled", False))
+    all_ledger_snapshots = [
+        getattr(decision, "ledger_snapshot", None)
+        for plan in plans
+        for decision in plan.sequence.decisions
+    ]
+    if ledger_model_enabled:
+        all_ledger_snapshots = [
+            _validate_own_deck_snapshot(snapshot)
+            for snapshot in all_ledger_snapshots
+        ]
     spatial_all = model.encode_board(all_boards)
     all_lengths = [len(plan.sequence.decisions) for plan in plans]
     spatial_by_plan = {
         id(plan): spatial
         for plan, spatial in zip(plans, spatial_all.split(all_lengths))
     }
+    ledger_residual_all = model.own_deck_ledger_residuals(
+        all_ledger_snapshots if ledger_model_enabled else None,
+        batch_size=len(all_boards),
+        device=spatial_all.device,
+        dtype=spatial_all.dtype,
+        # Evaluation deliberately keeps serving authority disabled.  This is
+        # the offline-only path used by the exact AWR parity contract.
+        offline_training_path=ledger_model_enabled,
+    )
+    ledger_by_plan = (
+        {}
+        if ledger_residual_all is None
+        else {
+            id(plan): residual
+            for plan, residual in zip(
+                plans, ledger_residual_all.split(all_lengths)
+            )
+        }
+    )
     buckets: dict[int, list[_AwrValueGamePlan]] = {}
     if pack_temporal_games:
         for plan in plans:
@@ -6482,6 +8340,13 @@ def _capture_value_only_awr_plans(
         lengths = [len(game.decisions) for game in games]
         bucket_spatial = [spatial_by_plan[id(plan)] for plan in bucket_plans]
         spatial_all = torch.cat(bucket_spatial, dim=0)
+        bucket_ledger_residuals = (
+            None
+            if ledger_residual_all is None
+            else torch.cat(
+                [ledger_by_plan[id(plan)] for plan in bucket_plans], dim=0
+            )
+        )
 
         if model.decision_context == "history":
             previous_actions = [
@@ -6495,7 +8360,11 @@ def _capture_value_only_awr_plans(
                     ]
                 )
             ]
-            cls_all = model.history_tokens(spatial_all, previous_actions)
+            cls_all = model.history_tokens(
+                spatial_all,
+                previous_actions,
+                bucket_ledger_residuals,
+            )
             cls_by_game = list(cls_all.split(lengths))
             padded_cls = pad_sequence(cls_by_game, batch_first=True)
             length_tensor = torch.tensor(lengths, device=device, dtype=torch.long)
@@ -6512,7 +8381,10 @@ def _capture_value_only_awr_plans(
             for row, (plan, length) in enumerate(zip(bucket_plans, lengths)):
                 states_by_plan[id(plan)] = packed_states[row, :length]
         else:
-            cls = model.pool_cls(spatial_all).unsqueeze(1)
+            cls = model.history_tokens(
+                spatial_all,
+                ledger_residuals=bucket_ledger_residuals,
+            ).unsqueeze(1)
             states, _ = model.temporal_encode(
                 cls, append=False, return_all=True
             )
@@ -6695,6 +8567,24 @@ def _precompute_awr_baseline_cache_reference(
                             cfg.setup_board_outcome_loss_weight
                         ),
                         combo_state_loss_weight=cfg.combo_state_loss_weight,
+                        visible_tutor_completion_loss_weight=(
+                            cfg.visible_tutor_completion_loss_weight
+                        ),
+                        terminal_conversion_loss_weight=(
+                            cfg.terminal_conversion_loss_weight
+                        ),
+                        visible_tutor_completion_class_weights=(
+                            cfg.visible_tutor_completion_class_weights
+                        ),
+                        visible_tutor_completion_positive_weight=(
+                            cfg.visible_tutor_completion_positive_weight
+                        ),
+                        terminal_conversion_class_weights=(
+                            cfg.terminal_conversion_class_weights
+                        ),
+                        terminal_conversion_positive_weight=(
+                            cfg.terminal_conversion_positive_weight
+                        ),
                         expanded_head_weights=cfg.expanded_head_loss_weights,
                         archetype_residual_weights=cfg.archetype_residual_loss_weights,
                         pure_rl=True,
@@ -7067,9 +8957,14 @@ def archetype_residual_gradient_diagnostics(
         epoch=0,
     )
 
-    def _loss(work: list[GameSequence], vector: dict[str, float]):
+    def _loss(
+        work: list[GameSequence],
+        vector: dict[str, float],
+        *,
+        active_model: TemporalCabtTransformer = model,
+    ):
         return batch_losses(
-            model,
+            active_model,
             work,
             value_weight=cfg.value_loss_weight,
             aux_weight=cfg.aux_loss_weight,
@@ -7081,6 +8976,20 @@ def archetype_residual_gradient_diagnostics(
             current_deck_guide_training_mode=cfg.current_deck_guide_training_mode,
             setup_board_outcome_loss_weight=cfg.setup_board_outcome_loss_weight,
             combo_state_loss_weight=cfg.combo_state_loss_weight,
+            visible_tutor_completion_loss_weight=(
+                cfg.visible_tutor_completion_loss_weight
+            ),
+            terminal_conversion_loss_weight=cfg.terminal_conversion_loss_weight,
+            visible_tutor_completion_class_weights=(
+                cfg.visible_tutor_completion_class_weights
+            ),
+            visible_tutor_completion_positive_weight=(
+                cfg.visible_tutor_completion_positive_weight
+            ),
+            terminal_conversion_class_weights=cfg.terminal_conversion_class_weights,
+            terminal_conversion_positive_weight=(
+                cfg.terminal_conversion_positive_weight
+            ),
             expanded_head_weights=cfg.expanded_head_loss_weights,
             archetype_residual_weights=vector,
             pure_rl=bool(cfg.pure_rl),
@@ -7136,6 +9045,7 @@ def archetype_residual_gradient_diagnostics(
             if all(coverage.values()):
                 break
     finally:
+        del _loss
         del model
         if selected_device.type == "cuda":
             torch.cuda.empty_cache()
@@ -7340,6 +9250,8 @@ def _train_dormant_matchup_adapter_phase(
                         opp_hand_weight=0.0,
                         opp_remainder_weight=0.0,
                         alakazam_guide_weight=0.0,
+                        visible_tutor_completion_loss_weight=0.0,
+                        terminal_conversion_loss_weight=0.0,
                         # Dormant adapters are an isolated residual fit. They
                         # intentionally consume neither legacy guide imitation nor
                         # the future strategic-head curriculum.
@@ -7497,6 +9409,218 @@ def _inherited_dormant_matchup_adapter_continuation(
     )
 
 
+def streaming_r260_host_rehearsal_step(
+    *,
+    manifest_path: Union[str, Path],
+    manifest_digest: str,
+    sidecar_index: Any,
+    base_ckpt: Union[str, Path],
+    output_path: Union[str, Path],
+    archetype_id: str,
+    epochs: int,
+    cfg: TrainConfig,
+    seed: int,
+    max_context: Optional[int],
+    batch_games: int,
+    device: Optional[torch.device] = None,
+) -> dict[str, Any]:
+    """Bounded host-only r260 refresh; never packs the full expert window."""
+    from .feature_shards import COMPACT_MODE_TEMPORAL_EXPERT
+    from .pure_rl.expert_feature_stream import EpisodeGroupedFeatureManifest
+
+    if int(batch_games) <= 0 or int(epochs) <= 0:
+        raise ValueError("r260 streaming batch/epochs must be positive")
+    if float(cfg.visible_tutor_completion_loss_weight) != 0.025 or float(cfg.terminal_conversion_loss_weight) != 0.025:
+        raise ValueError("r260 streaming refresh requires fixed 0.025/0.025 losses")
+    base = Path(base_ckpt).expanduser().resolve()
+    output = Path(output_path).expanduser().resolve()
+    if output.exists():
+        raise FileExistsError(output)
+    model = load_model_from_checkpoint(base, device=torch.device("cpu"))
+    train_device = device or device_mod.training_device(
+        prefer_name=config.HARDWARE.train_gpu_name,
+        allow_cpu=False,
+    )
+    model.to(train_device).train()
+    optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=cfg.lr, weight_decay=cfg.weight_decay)
+    parent_payload = checkpoint.load_checkpoint(base, map_location=train_device)
+    checkpoint.apply_checkpoint(parent_payload, model=model, optimizer=optimizer, restore_rng=True)
+    seen_keys: list[tuple[str, int, int, str]] = []
+    losses: list[float] = []
+    prefixes = (
+        "own_deck_ledger_adapter.",
+        "visible_tutor_completion_head.",
+        "terminal_conversion_head.",
+        "visible_tutor_completion_route.",
+        "terminal_conversion_route.",
+        "decision_fusion.",
+    )
+    finite_nonzero_gradients = {prefix: False for prefix in prefixes}
+
+    def _attach_and_record(batch_rows: Sequence[GameSequence]) -> None:
+        """Attach exactly one host batch and retain only its audit keys."""
+
+        sidecar_index.attach_batch(batch_rows)
+        for game in batch_rows:
+            for decision in game.decisions:
+                seen_keys.append(
+                    (
+                        str(game.episode_id),
+                        int(game.seat),
+                        int(decision.env_step),
+                        str(decision.observation_fingerprint),
+                    )
+                )
+
+    def _fit(batch_rows: Sequence[GameSequence], *, tail: bool = False) -> None:
+        optimizer.zero_grad(set_to_none=True)
+        loss, _metrics = batch_losses(
+            model,
+            batch_rows,
+            value_weight=cfg.value_loss_weight,
+            aux_weight=cfg.aux_loss_weight,
+            opp_hand_weight=cfg.opp_hand_loss_weight,
+            opp_remainder_weight=cfg.opp_remainder_loss_weight,
+            alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+            current_deck_guide_training_mode=cfg.current_deck_guide_training_mode,
+            setup_board_outcome_loss_weight=cfg.setup_board_outcome_loss_weight,
+            combo_state_loss_weight=cfg.combo_state_loss_weight,
+            visible_tutor_completion_loss_weight=cfg.visible_tutor_completion_loss_weight,
+            terminal_conversion_loss_weight=cfg.terminal_conversion_loss_weight,
+            collect_own_deck_promotion_metrics=cfg.collect_own_deck_promotion_metrics,
+            visible_tutor_completion_class_weights=cfg.visible_tutor_completion_class_weights,
+            visible_tutor_completion_positive_weight=cfg.visible_tutor_completion_positive_weight,
+            terminal_conversion_class_weights=cfg.terminal_conversion_class_weights,
+            terminal_conversion_positive_weight=cfg.terminal_conversion_positive_weight,
+        )
+        if not bool(torch.isfinite(loss)):
+            raise FloatingPointError(
+                "r260 streaming tail rehearsal loss is nonfinite"
+                if tail
+                else "r260 streaming rehearsal loss is nonfinite"
+            )
+        loss.backward()
+        # Weight decay can move a parameter even when its supervised gradient
+        # is zero.  Record actual finite, nonzero gradients before the step so
+        # the receipt cannot mistake decay for tutor/terminal learning.
+        for name, parameter in model.named_parameters():
+            gradient = parameter.grad
+            if gradient is None:
+                continue
+            for prefix in prefixes:
+                if name.startswith(prefix):
+                    finite_nonzero_gradients[prefix] = (
+                        finite_nonzero_gradients[prefix]
+                        or (
+                            bool(torch.isfinite(gradient).all())
+                            and bool(torch.count_nonzero(gradient).item())
+                        )
+                    )
+                    break
+        optimizer.step()
+        losses.append(float(loss.detach().cpu()))
+
+    for epoch in range(int(epochs)):
+        plan = EpisodeGroupedFeatureManifest.open(Path(manifest_path), expected_manifest_digest=manifest_digest, val_frac=0.10, seed=int(seed), max_context=max_context, expected_compact_mode=COMPACT_MODE_TEMPORAL_EXPERT, workers=1)
+        try:
+            train, _validation = plan.splits()
+            batch: list[GameSequence] = []
+            for sequence in train:
+                batch.append(sequence)
+                if len(batch) < int(batch_games):
+                    continue
+                _attach_and_record(batch)
+                _fit(batch)
+                batch = []
+            if batch:
+                _attach_and_record(batch)
+                _fit(batch, tail=True)
+        finally:
+            del plan
+    child_state = model.state_dict(); parent_state = parent_payload["model_state_dict"]
+    changed = {
+        prefix: (
+            finite_nonzero_gradients[prefix]
+            and any(
+                name.startswith(prefix)
+                and name in parent_state
+                and not torch.equal(
+                    value.detach().cpu(), parent_state[name].detach().cpu()
+                )
+                and bool(torch.isfinite(value).all())
+                for name, value in child_state.items()
+            )
+        )
+        for prefix in prefixes
+    }
+    if not all(changed.values()):
+        raise FloatingPointError("r260 streaming rehearsal missing finite gradient reachability")
+    payload = checkpoint.build_checkpoint(model=model, optimizer=optimizer, step=int(parent_payload.get("step", 0)), epoch=int(parent_payload.get("epoch", 0)) + int(epochs), rl_iteration=int(parent_payload.get("rl_iteration", 0)), archetype_id=archetype_id, model_id=str(parent_payload.get("model_id") or "alakazam") + ".r260-expert", model_config=model.cfg, extra={**dict(parent_payload.get("extra") or {}), "pure_rl": True, "r260_streaming_rehearsal": {"schema": "poke_bot.r260_streaming_expert_rehearsal/v1", "loss_weights": {"visible_tutor_completion": 0.025, "terminal_conversion": 0.025}, "max_games_per_batch": int(batch_games), "full_window_device_resident": False, "sampled_key_count": len(seen_keys), "gradient_reachability": changed}})
+    output.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint.immutable_torch_save(payload, output)
+    return {"candidate_path": str(output), "candidate_digest": checkpoint.checkpoint_digest(output), "parent_digest": checkpoint.checkpoint_digest(base), "rl_iteration": int(parent_payload.get("rl_iteration", 0)), "sampled_keys": seen_keys[:1024], "max_games_per_batch": int(batch_games), "gradient_reachability": changed, "mean_loss": sum(losses) / max(1, len(losses))}
+
+
+def supervised_r260_host_rehearsal_step(
+    dataset: BootstrapDataset,
+    *,
+    base_ckpt: Union[str, Path],
+    output_path: Union[str, Path],
+    archetype_id: str,
+    epochs: int,
+    cfg: TrainConfig,
+    seed: int,
+    training_provenance: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Run a host-only r260 expert refresh without advancing the RL counter."""
+    if not dataset.conversion_stats.get("r260_sidecar_provenance"):
+        raise ValueError("r260 host rehearsal requires an exact-key joined sidecar")
+    if (
+        float(cfg.visible_tutor_completion_loss_weight) != 0.025
+        or float(cfg.terminal_conversion_loss_weight) != 0.025
+    ):
+        raise ValueError("r260 host rehearsal requires the fixed 0.025/0.025 losses")
+    cfg = copy.deepcopy(cfg)
+    cfg.pure_rl = False
+    result = rl_train_step(
+        dataset,
+        base_ckpt=base_ckpt,
+        out_run_name="r260-own-deck-expert-rehearsal",
+        archetype_id=archetype_id,
+        epochs=epochs,
+        cfg=cfg,
+        seed=seed,
+        output_path=output_path,
+        training_provenance=training_provenance,
+        preserve_rl_iteration=True,
+        checkpoint_pure_rl_override=True,
+    )
+    parent = checkpoint.load_checkpoint(base_ckpt, map_location="cpu")
+    child = checkpoint.load_checkpoint(result["candidate_path"], map_location="cpu")
+    parent_state = dict(parent.get("model_state_dict") or {})
+    child_state = dict(child.get("model_state_dict") or {})
+    required = (
+        "own_deck_ledger_adapter.",
+        "visible_tutor_completion_head.",
+        "terminal_conversion_head.",
+        "visible_tutor_completion_route.",
+        "terminal_conversion_route.",
+        "decision_fusion.",
+    )
+    changed: dict[str, bool] = {}
+    for prefix in required:
+        values = [
+            value for name, value in child_state.items()
+            if name.startswith(prefix) and name in parent_state
+            and not torch.equal(value, parent_state[name])
+        ]
+        changed[prefix] = bool(values) and all(bool(torch.isfinite(value).all()) for value in values)
+    if not all(changed.values()):
+        raise FloatingPointError("r260 host rehearsal lacks finite nonzero updates for " + ", ".join(prefix for prefix, ok in changed.items() if not ok))
+    result["r260_gradient_reachability"] = changed
+    return result
+
+
 def rl_train_step(
     dataset: BootstrapDataset,
     *,
@@ -7513,6 +9637,8 @@ def rl_train_step(
     replace_existing: bool = False,
     device_resident: bool = False,
     device_resident_min_free_gib: float = DEFAULT_MIN_FREE_GIB,
+    preserve_rl_iteration: bool = False,
+    checkpoint_pure_rl_override: Optional[bool] = None,
 ) -> dict[str, Any]:
     """One immutable history-policy candidate fit for the RL loop.
 
@@ -7540,6 +9666,10 @@ def rl_train_step(
     cfg.current_deck_guide_training_mode = canonical_guide_training_mode(
         cfg.current_deck_guide_training_mode
     )
+    canonical_r241_contract = canonical_r241_peak_r195_training_contract(
+        cfg.r241_peak_r195_training_contract
+    )
+    cfg.r241_peak_r195_training_contract = canonical_r241_contract
     if int(cfg.dormant_matchup_adapter_epochs) < 0:
         raise ValueError("dormant matchup adapter epochs cannot be negative")
     if float(cfg.dormant_matchup_adapter_lr) <= 0.0:
@@ -7558,6 +9688,11 @@ def rl_train_step(
             "exact shadow AWR weight quantiles currently require host-batched "
             "temporal training"
         )
+    if device_resident and cfg.collect_own_deck_promotion_metrics:
+        raise ValueError(
+            "own-deck promotion metric collection requires host GameSequence "
+            "evaluation; resident corpora do not retain stage-aligned labels"
+        )
     device = device or device_mod.training_device(
         prefer_name=config.HARDWARE.train_gpu_name, allow_cpu=False
     )
@@ -7565,6 +9700,15 @@ def rl_train_step(
     random.seed(seed)
 
     model = load_model_from_checkpoint(base_ckpt, device=device)
+    _assert_own_deck_dataset_contract(
+        model,
+        dataset,
+        path="RL training",
+    )
+    if device_resident:
+        _reject_own_deck_ledger_resident_path(
+            model, path="device-resident RL training"
+        )
     if (
         cfg.current_deck_guide_training_mode
         == GUIDE_TRAINING_MODE_STRATEGIC
@@ -7606,6 +9750,15 @@ def rl_train_step(
     optimizer = torch.optim.AdamW(
         ordinary_trainable_parameters, lr=cfg.lr, weight_decay=cfg.weight_decay
     )
+    if canonical_r241_contract:
+        build_r241_peak_r195_live_fusion_record(
+            model,
+            optimizer=optimizer,
+            contract=canonical_r241_contract,
+            combo_state_loss_weight=float(cfg.combo_state_loss_weight),
+            phase="rl",
+            boundary_iteration=int((training_provenance or {}).get("iteration", -1)),
+        )
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
     use_amp = bool(cfg.amp and device.type == "cuda")
@@ -7927,6 +10080,33 @@ def rl_train_step(
                             cfg.setup_board_outcome_loss_weight
                         ),
                         combo_state_loss_weight=cfg.combo_state_loss_weight,
+                        visible_tutor_completion_loss_weight=(
+                            cfg.visible_tutor_completion_loss_weight
+                        ),
+                        terminal_conversion_loss_weight=(
+                            cfg.terminal_conversion_loss_weight
+                        ),
+                        collect_own_deck_promotion_metrics=(
+                            cfg.collect_own_deck_promotion_metrics
+                        ),
+                        own_deck_promotion_metrics_closeout_threshold=(
+                            cfg.own_deck_promotion_metrics_closeout_threshold
+                        ),
+                        own_deck_promotion_metrics_terminal_ece_bins=(
+                            cfg.own_deck_promotion_metrics_terminal_ece_bins
+                        ),
+                        visible_tutor_completion_class_weights=(
+                            cfg.visible_tutor_completion_class_weights
+                        ),
+                        visible_tutor_completion_positive_weight=(
+                            cfg.visible_tutor_completion_positive_weight
+                        ),
+                        terminal_conversion_class_weights=(
+                            cfg.terminal_conversion_class_weights
+                        ),
+                        terminal_conversion_positive_weight=(
+                            cfg.terminal_conversion_positive_weight
+                        ),
                         expanded_head_weights=cfg.expanded_head_loss_weights,
                         archetype_residual_weights=cfg.archetype_residual_loss_weights,
                         pure_rl=bool(cfg.pure_rl),
@@ -8407,6 +10587,20 @@ def rl_train_step(
         train_metrics=last,
         validation_metrics=validation_metrics,
     )
+    own_deck_supervision_training_record = (
+        _maybe_own_deck_supervision_training_record(
+            cfg=cfg,
+            train_metrics=last,
+            validation_metrics=validation_metrics,
+        )
+    )
+    own_deck_promotion_metrics_record = (
+        _maybe_own_deck_promotion_metrics_record(
+            cfg=cfg,
+            train_metrics=last,
+            validation_metrics=validation_metrics,
+        )
+    )
 
     delta_sq = 0.0
     base_sq = 0.0
@@ -8420,13 +10614,31 @@ def rl_train_step(
     update_norm = math.sqrt(delta_sq)
     relative_update_norm = update_norm / max(math.sqrt(base_sq), 1e-12)
 
+    if canonical_r241_contract:
+        validate_r241_isolated_adapter_continuation(
+            dormant_adapter_fit,
+            dormant_adapter_optimizer_state,
+        )
+    peak_r195_live_fusion = (
+        build_r241_peak_r195_live_fusion_record(
+            model,
+            optimizer=optimizer,
+            contract=canonical_r241_contract,
+            combo_state_loss_weight=float(cfg.combo_state_loss_weight),
+            phase="rl",
+            boundary_iteration=int((training_provenance or {}).get("iteration", -1)),
+        )
+        if canonical_r241_contract
+        else {}
+    )
+
     ckpt = checkpoint.build_checkpoint(
         model=model,
         optimizer=optimizer,
         scaler=scaler if use_amp else None,
         step=step,
         epoch=int(base_epoch + (best_epoch_offset or stepped_epochs)),
-        rl_iteration=int(base_rl_iteration + 1),
+        rl_iteration=int(base_rl_iteration if preserve_rl_iteration else base_rl_iteration + 1),
         best_metric=best_metric if best_state is not None else last.total_loss,
         early_stop_state={
             "patience_left": patience_left,
@@ -8436,7 +10648,11 @@ def rl_train_step(
         model_id=out_run_name,
         model_config=model.cfg,
         extra={
-            "pure_rl": bool(cfg.pure_rl),
+            "pure_rl": (
+                bool(cfg.pure_rl)
+                if checkpoint_pure_rl_override is None
+                else bool(checkpoint_pure_rl_override)
+            ),
             "param_count": int(sum(p.numel() for p in model.parameters())),
             "rl_metrics": rl_metrics,
             "validation_metrics": validation_metrics.__dict__,
@@ -8506,6 +10722,11 @@ def rl_train_step(
                 dormant_adapter_optimizer_state
             ),
             **(
+                {"peak_r195_live_fusion": peak_r195_live_fusion}
+                if peak_r195_live_fusion
+                else {}
+            ),
+            **(
                 {"expanded_head_training": rl_expanded_contract}
                 if rl_expanded_contract
                 else {}
@@ -8517,6 +10738,24 @@ def rl_train_step(
                     )
                 }
                 if strategic_training_record
+                else {}
+            ),
+            **(
+                {
+                    "own_deck_supervision_training": (
+                        own_deck_supervision_training_record
+                    )
+                }
+                if own_deck_supervision_training_record
+                else {}
+            ),
+            **(
+                {
+                    "own_deck_promotion_metrics": (
+                        own_deck_promotion_metrics_record
+                    )
+                }
+                if own_deck_promotion_metrics_record
                 else {}
             ),
         },
@@ -8545,6 +10784,16 @@ def rl_train_step(
         **(
             {"current_deck_guide_training": strategic_training_record}
             if strategic_training_record
+            else {}
+        ),
+        **(
+            {"own_deck_supervision_training": own_deck_supervision_training_record}
+            if own_deck_supervision_training_record
+            else {}
+        ),
+        **(
+            {"own_deck_promotion_metrics": own_deck_promotion_metrics_record}
+            if own_deck_promotion_metrics_record
             else {}
         ),
         "step": step,
@@ -8598,6 +10847,7 @@ def rl_train_step(
         "policy_prev_agreement": policy_prev_agreement,
         "policy_prev_agreement_rows": parent_rows,
         "dormant_matchup_adapter_fit": dormant_adapter_fit,
+        "peak_r195_live_fusion": peak_r195_live_fusion,
     }
 
 
@@ -8656,7 +10906,24 @@ def load_model_from_checkpoint(
     ckpt = checkpoint.load_checkpoint(path, map_location=device)
     snap = ckpt.get("model_config")
     if snap is None:
-        cfg = config.MODEL
+        # Some early checkpoints did not serialize a model config at all.
+        # Preserve their historical base profile while explicitly refusing to
+        # inherit this process's successor-only own-deck architecture.
+        cfg = replace(
+            config.MODEL,
+            own_deck_ledger_enabled=False,
+            own_deck_ledger_runtime_enabled=False,
+            own_deck_ledger_width=128,
+            own_deck_ledger_option_feature_dim=(
+                OWN_DECK_LEDGER_OPTION_FEATURE_DIM
+            ),
+            visible_tutor_completion_head_enabled=False,
+            terminal_conversion_head_enabled=False,
+            visible_tutor_completion_route_enabled=False,
+            visible_tutor_completion_route_runtime_enabled=False,
+            terminal_conversion_route_enabled=False,
+            terminal_conversion_route_runtime_enabled=False,
+        )
     elif not isinstance(snap, dict):
         raise ValueError(
             f"checkpoint {path} has invalid model_config type {type(snap).__name__}"
@@ -8679,6 +10946,23 @@ def load_model_from_checkpoint(
         # environment variable must never materialize them while loading an
         # immutable V5 checkpoint.
         snap.setdefault("expanded_heads_enabled", False)
+        # Own-deck ledger adapters and their typed tutor/terminal heads are a
+        # successor-only architecture.  Historical checkpoints must serialize
+        # their absence explicitly rather than inheriting a process environment
+        # that would instantiate unmatched tensors before strict loading.
+        snap.setdefault("own_deck_ledger_enabled", False)
+        snap.setdefault("own_deck_ledger_runtime_enabled", False)
+        snap.setdefault("own_deck_ledger_width", 128)
+        snap.setdefault(
+            "own_deck_ledger_option_feature_dim",
+            OWN_DECK_LEDGER_OPTION_FEATURE_DIM,
+        )
+        snap.setdefault("visible_tutor_completion_head_enabled", False)
+        snap.setdefault("terminal_conversion_head_enabled", False)
+        snap.setdefault("visible_tutor_completion_route_enabled", False)
+        snap.setdefault("visible_tutor_completion_route_runtime_enabled", False)
+        snap.setdefault("terminal_conversion_route_enabled", False)
+        snap.setdefault("terminal_conversion_route_runtime_enabled", False)
         snap.setdefault("decision_fusion_enabled", False)
         snap.setdefault("decision_fusion_runtime_enabled", False)
         snap.setdefault("decision_fusion_width", 16)

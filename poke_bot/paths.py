@@ -75,7 +75,15 @@ HAMMER_PULT_DECK: Path = (
     / "2026-05_regional-campinas-2026_4th_dragapult-dudunsparce.csv"
 )
 
-BASELINES_DIR: Path = REPO_ROOT / "baselines"
+# An r241 source snapshot intentionally contains no baseline packages.  Its
+# launcher supplies this narrow external mount override after validating a
+# host-local attestation.  Ordinary runs retain the checkout-relative library.
+_baselines_override = os.environ.get("POKEBOT_BASELINES_DIR", "").strip()
+BASELINES_DIR: Path = (
+    Path(_baselines_override).expanduser().resolve()
+    if _baselines_override
+    else REPO_ROOT / "baselines"
+)
 BASELINES_MANIFEST: Path = BASELINES_DIR / "manifest.json"
 
 # ---------------------------------------------------------------------------
@@ -84,7 +92,17 @@ BASELINES_MANIFEST: Path = BASELINES_DIR / "manifest.json"
 
 DATA_DIR: Path = REPO_ROOT / "data"
 CACHE_DIR: Path = DATA_DIR / "cache"
-OUTPUTS_DIR: Path = REPO_ROOT / "outputs"
+# A sealed source snapshot is intentionally code-only.  Managed candidates may
+# therefore bind durable artifacts to an external root without causing writes
+# to land inside the immutable snapshot.  The override is deliberately narrow
+# (only generated output/state artifacts) and preserves the historical
+# repository-relative layout for every existing invocation.
+_outputs_override = os.environ.get("POKEBOT_OUTPUTS_DIR", "").strip()
+OUTPUTS_DIR: Path = (
+    Path(_outputs_override).expanduser().resolve()
+    if _outputs_override
+    else REPO_ROOT / "outputs"
+)
 CHECKPOINTS_DIR: Path = OUTPUTS_DIR / "checkpoints"
 
 

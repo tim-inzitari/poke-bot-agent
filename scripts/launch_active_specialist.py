@@ -1525,7 +1525,32 @@ def _validate_exact_runtime_identity(
 
     from scripts.train_pure_rl import _our_decks
 
-    decks = _our_decks("specialist", specialist_id)
+    previous_deck_env = {
+        name: os.environ.get(name)
+        for name in (
+            "POKEBOT_SPECIALIST_DECK_PATH",
+            "POKEBOT_SPECIALIST_DECK_SHA256",
+            "POKEBOT_SPECIALIST_DECK_MULTISET_SHA256",
+        )
+    }
+    deck_binding = dict(row.get("exact_deck") or {})
+    if deck_binding:
+        os.environ["POKEBOT_SPECIALIST_DECK_PATH"] = str(deck_binding["path"])
+        os.environ["POKEBOT_SPECIALIST_DECK_SHA256"] = str(deck_binding["sha256"])
+        os.environ["POKEBOT_SPECIALIST_DECK_MULTISET_SHA256"] = str(
+            deck_binding["canonical_multiset_sha256"]
+        )
+    else:
+        for name in previous_deck_env:
+            os.environ.pop(name, None)
+    try:
+        decks = _our_decks("specialist", specialist_id)
+    finally:
+        for name, value in previous_deck_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
     if len(decks) != 1 or decks[0][0] != specialist_id or len(decks[0][1]) != 60:
         raise RuntimeError(
             "selected specialist has no unique exact 60-card runtime identity"
@@ -1547,9 +1572,13 @@ def _validate_exact_runtime_identity(
         )
     previous_id = os.environ.get("POKEBOT_CURRENT_DECK_GUIDE")
     previous_targets = os.environ.get("POKEBOT_CURRENT_DECK_GUIDE_TARGETS")
+    previous_version = os.environ.get("POKEBOT_CURRENT_DECK_GUIDE_VERSION")
     try:
         os.environ["POKEBOT_CURRENT_DECK_GUIDE"] = guide_id
         os.environ["POKEBOT_CURRENT_DECK_GUIDE_TARGETS"] = "1"
+        os.environ["POKEBOT_CURRENT_DECK_GUIDE_VERSION"] = str(
+            row.get("guide_version") or ""
+        )
         if not deck_guides.enabled():
             raise RuntimeError("selected current-deck guide is not enabled")
         if deck_guides.guide_version() != str(row.get("guide_version") or ""):
@@ -1565,6 +1594,10 @@ def _validate_exact_runtime_identity(
             os.environ.pop("POKEBOT_CURRENT_DECK_GUIDE_TARGETS", None)
         else:
             os.environ["POKEBOT_CURRENT_DECK_GUIDE_TARGETS"] = previous_targets
+        if previous_version is None:
+            os.environ.pop("POKEBOT_CURRENT_DECK_GUIDE_VERSION", None)
+        else:
+            os.environ["POKEBOT_CURRENT_DECK_GUIDE_VERSION"] = previous_version
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1619,10 +1652,25 @@ def main(argv: list[str] | None = None) -> int:
         environment["POKEBOT_CURRENT_DECK_GUIDE_CONTRACT"] = str(
             Path(str(row["guide_contract"])).expanduser().resolve()
         )
+        environment["POKEBOT_CURRENT_DECK_GUIDE_VERSION"] = str(
+            row["guide_version"]
+        )
     else:
         environment.pop("POKEBOT_CURRENT_DECK_GUIDE", None)
         environment.pop("POKEBOT_CURRENT_DECK_GUIDE_TARGETS", None)
         environment.pop("POKEBOT_CURRENT_DECK_GUIDE_CONTRACT", None)
+        environment.pop("POKEBOT_CURRENT_DECK_GUIDE_VERSION", None)
+    deck_binding = dict(row.get("exact_deck") or {})
+    if deck_binding:
+        environment["POKEBOT_SPECIALIST_DECK_PATH"] = str(deck_binding["path"])
+        environment["POKEBOT_SPECIALIST_DECK_SHA256"] = str(deck_binding["sha256"])
+        environment["POKEBOT_SPECIALIST_DECK_MULTISET_SHA256"] = str(
+            deck_binding["canonical_multiset_sha256"]
+        )
+    else:
+        environment.pop("POKEBOT_SPECIALIST_DECK_PATH", None)
+        environment.pop("POKEBOT_SPECIALIST_DECK_SHA256", None)
+        environment.pop("POKEBOT_SPECIALIST_DECK_MULTISET_SHA256", None)
     environment["POKEBOT_MATCHUP_ADAPTER_RUNTIME"] = "1"
     environment["POKEBOT_PUBLIC_MATCHUP_TREE_PATH"] = str(runtime_tree)
     environment["POKEBOT_MATCHUP_ADAPTER_ROUTER_MODE"] = "runtime"

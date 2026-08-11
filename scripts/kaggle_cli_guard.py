@@ -13,12 +13,14 @@ import argparse
 import datetime as dt
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 import time
 import uuid
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +40,45 @@ GO_FIRST_VERIFIED_CASES = {
     "string_enum_reversed_options",
     "live_engine_prompt",
 }
+
+
+@lru_cache(maxsize=1)
+def _r235_tooling() -> Any:
+    """Load optional R235 validation without weakening ordinary grants.
+
+    This guard is also installed as a standalone script, so importing through
+    the repository package name is not reliable.  Resolve only the adjacent
+    offline support file and never import a Kaggle client here.
+    """
+
+    source = Path(__file__).with_name("r235_direct_submission_tooling.py")
+    spec = importlib.util.spec_from_file_location("r235_direct_submission_tooling", source)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("R235 support tooling cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _has_r235_marker(authorization: dict[str, Any]) -> bool:
+    return (
+        authorization.get("authority_kind") == "r235_direct_single_upload"
+        or any(
+            str(key).startswith(
+                (
+                    "r225_",
+                    "r235_",
+                    "r236_",
+                    "r238_",
+                    "r240_",
+                    "r242_",
+                    "r244_",
+                    "r246_",
+                )
+            )
+            for key in authorization
+        )
+    )
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -164,6 +205,22 @@ def _validate_authorization(
             expected_preference=expected_turn_order,
         )
     )
+    r235_valid = True
+    r235_reason = "not_r235"
+    r235_details: dict[str, Any] = {}
+    if _has_r235_marker(authorization):
+        try:
+            tooling = _r235_tooling()
+            r235_valid, r235_reason, r235_details = tooling.validate_r235_authorization(
+                authorization,
+                file_path=file_path,
+                file_sha256=digest,
+                competition=competition,
+                message=message,
+            )
+        except Exception as exc:  # Fail closed if optional R235 validation drifts.
+            r235_valid = False
+            r235_reason = f"R235 support tooling error: {type(exc).__name__}: {exc}"
 
     now = time.time()
     expires_at = authorization.get("expires_at_epoch")
@@ -183,6 +240,7 @@ def _validate_authorization(
         "turn_order_preference": expected_turn_order
         in {"first_if_allowed", "second_if_allowed"},
         "go_first_attestation": go_first_valid,
+        "r235_binding": r235_valid,
     }
     failed = [name for name, passed in checks.items() if not passed]
     details = {
@@ -194,10 +252,13 @@ def _validate_authorization(
         "nonce": nonce,
         "checks": checks,
         "go_first_attestation": go_first_details,
+        "r235_binding": r235_details,
     }
     reason = ", ".join(failed) if failed else "authorized"
     if not go_first_valid:
         reason += f" ({go_first_reason})"
+    if not r235_valid:
+        reason += f" ({r235_reason})"
     return not failed, reason, details
 
 
@@ -235,6 +296,28 @@ def main() -> int:
             )
             return 73
 
+        r235_consumption: Path | None = None
+        if _has_r235_marker(authorization):
+            try:
+                r235_consumption = _r235_tooling().consume_r235_authority(
+                    authorization, identity=details
+                )
+            except Exception as exc:  # Consumption must precede every upload.
+                print(
+                    "Kaggle submission BLOCKED: R235 immutable authority could not "
+                    f"be consumed before upload ({type(exc).__name__}: {exc}).",
+                    file=sys.stderr,
+                )
+                return 73
+            if r235_consumption is None:
+                print(
+                    "Kaggle submission BLOCKED: R235 authority had no immutable "
+                    "consumption receipt.",
+                    file=sys.stderr,
+                )
+                return 73
+            details = {**details, "r235_authority_consumption": str(r235_consumption)}
+
         nonce = str(details["nonce"])
         consumed_path = _receipt_path(parsed.receipts, nonce).with_suffix(
             ".authorization-consumed.json"
@@ -246,6 +329,8 @@ def main() -> int:
             "consumed_before_upload": True,
             "argv_identity": details,
         }
+        if r235_consumption is not None:
+            consumed["r235_authority_consumption"] = str(r235_consumption)
         _atomic_json(consumed_path, consumed)
         parsed.authorization.unlink()
 

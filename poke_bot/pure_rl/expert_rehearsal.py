@@ -561,6 +561,7 @@ def _validate_receipt(
     option_conditioned_loss_weights: Optional[dict[str, Any]] = None,
     archetype_residual_loss_weights: Optional[dict[str, Any]] = None,
     training_seat_split_receipt: Optional[dict[str, Any]] = None,
+    r241_peak_r195_training_contract: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     from poke_bot.promotion import CheckpointIdentity
 
@@ -650,6 +651,22 @@ def _validate_receipt(
             expected_expanded,
             expected_residuals,
         )
+    peak_r195_live_fusion = dict(
+        receipt.get("peak_r195_live_fusion") or {}
+    )
+    if r241_peak_r195_training_contract:
+        from poke_bot.train import validate_r241_peak_r195_live_fusion_record
+
+        validate_r241_peak_r195_live_fusion_record(
+            peak_r195_live_fusion,
+            contract=r241_peak_r195_training_contract,
+            phase="expert_refresh",
+            boundary_iteration=int(before_iteration),
+        )
+    elif peak_r195_live_fusion:
+        raise RuntimeError(
+            "expert receipt has an unrequested r241 peak-r195 sidecar"
+        )
     return {**receipt, "checkpoint_identity": output.as_dict(), "reused": True}
 
 
@@ -667,6 +684,7 @@ def recover_rehearsal(
     option_conditioned_loss_weights: Optional[dict[str, Any]] = None,
     archetype_residual_loss_weights: Optional[dict[str, Any]] = None,
     training_seat_split_receipt: Optional[dict[str, Any]] = None,
+    r241_peak_r195_training_contract: Optional[dict[str, Any]] = None,
 ) -> Optional[dict[str, Any]]:
     """Reuse a receipt, or reconstruct it after checkpoint-before-receipt crash."""
     from poke_bot import checkpoint
@@ -688,6 +706,9 @@ def recover_rehearsal(
             option_conditioned_loss_weights=option_conditioned_loss_weights,
             archetype_residual_loss_weights=archetype_residual_loss_weights,
             training_seat_split_receipt=training_seat_split_receipt,
+            r241_peak_r195_training_contract=(
+                r241_peak_r195_training_contract
+            ),
         )
     if not checkpoint_path.is_file():
         return None
@@ -729,6 +750,9 @@ def recover_rehearsal(
         raise RuntimeError("orphan expert checkpoint training-seat mismatch")
     expanded_training = dict(
         (payload.get("extra") or {}).get("expanded_head_training") or {}
+    )
+    peak_r195_live_fusion = dict(
+        (payload.get("extra") or {}).get("peak_r195_live_fusion") or {}
     )
     from poke_bot.archetype_loss_contract import canonical_residual_weights
 
@@ -802,6 +826,11 @@ def recover_rehearsal(
             if expected_expanded
             else {}
         ),
+        **(
+            {"peak_r195_live_fusion": peak_r195_live_fusion}
+            if r241_peak_r195_training_contract
+            else {}
+        ),
     }
     _write_json_exclusive(receipt_path, receipt)
     return _validate_receipt(
@@ -817,6 +846,7 @@ def recover_rehearsal(
         option_conditioned_loss_weights=option_conditioned_loss_weights,
         archetype_residual_loss_weights=archetype_residual_loss_weights,
         training_seat_split_receipt=training_seat_split_receipt,
+        r241_peak_r195_training_contract=r241_peak_r195_training_contract,
     )
 
 
@@ -835,6 +865,7 @@ def commit_rehearsal_receipt(
     option_conditioned_loss_weights: Optional[dict[str, Any]] = None,
     archetype_residual_loss_weights: Optional[dict[str, Any]] = None,
     training_seat_split_receipt: Optional[dict[str, Any]] = None,
+    r241_peak_r195_training_contract: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Commit the small durable receipt after the immutable checkpoint exists."""
     from poke_bot.promotion import CheckpointIdentity
@@ -877,6 +908,9 @@ def commit_rehearsal_receipt(
     ) != _canonical_training_seat_receipt_identity(training_seat_split_receipt):
         raise RuntimeError("rehearsal result training-seat contract mismatch")
     expanded_training = dict(result.get("expanded_head_training") or {})
+    peak_r195_live_fusion = dict(
+        result.get("peak_r195_live_fusion") or {}
+    )
     if expected_expanded:
         _validate_expanded_training_record(
             expanded_training,
@@ -943,6 +977,11 @@ def commit_rehearsal_receipt(
             if expected_expanded
             else {}
         ),
+        **(
+            {"peak_r195_live_fusion": peak_r195_live_fusion}
+            if r241_peak_r195_training_contract
+            else {}
+        ),
     }
     _write_json_exclusive(receipt_path, receipt)
     return _validate_receipt(
@@ -958,6 +997,7 @@ def commit_rehearsal_receipt(
         option_conditioned_loss_weights=option_conditioned_loss_weights,
         archetype_residual_loss_weights=archetype_residual_loss_weights,
         training_seat_split_receipt=training_seat_split_receipt,
+        r241_peak_r195_training_contract=r241_peak_r195_training_contract,
     )
 
 
@@ -1217,6 +1257,7 @@ class ResidentExpertCorpusCache:
         self.require_exact_seat_split = bool(require_exact_seat_split)
         self.seat_split_evidence = loaded_seat_metadata
         return corpus
+
 
 
 def carry_learner_candidate(

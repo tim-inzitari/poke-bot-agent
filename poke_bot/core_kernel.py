@@ -35,7 +35,7 @@ import hashlib
 import random
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional, Sequence, Union
 
@@ -50,6 +50,49 @@ from .model import TemporalCabtTransformer, build_model
 
 Tensor = torch.Tensor
 PathLike = Union[str, Path]
+
+
+# A checkpoint snapshot is the architecture authority.  These fields were
+# added after historical core/r241 checkpoints were sealed, so an omitted
+# value is an explicit legacy ``False`` -- never permission to inherit a
+# deployment environment that happens to enable a successor-only module.
+#
+# Keep the ledger dimensions explicit too.  They do not instantiate tensors
+# while the ledger is disabled, but pinning them prevents a legacy config
+# reconstruction from acquiring ambient successor metadata.
+_LEGACY_CORE_KERNEL_FUTURE_CONFIG_DEFAULTS: dict[str, object] = {
+    "setup_board_outcome_head_enabled": False,
+    "combo_state_head_enabled": False,
+    "decision_fusion_dedicated_routes_enabled": False,
+    "decision_fusion_dedicated_routes_runtime_enabled": False,
+    "decision_fusion_typed_output_centered_routes_enabled": False,
+    "decision_fusion_action_type_reliability_cap": 1.0,
+    "own_deck_ledger_enabled": False,
+    "own_deck_ledger_runtime_enabled": False,
+    "own_deck_ledger_width": 128,
+    "own_deck_ledger_option_feature_dim": 8,
+    "visible_tutor_completion_head_enabled": False,
+    "terminal_conversion_head_enabled": False,
+    "visible_tutor_completion_route_enabled": False,
+    "visible_tutor_completion_route_runtime_enabled": False,
+    "terminal_conversion_route_enabled": False,
+    "terminal_conversion_route_runtime_enabled": False,
+}
+
+
+def _legacy_core_kernel_config_defaults(
+    values: dict[str, object],
+) -> dict[str, object]:
+    """Fill only omitted successor fields with legacy-safe architecture values.
+
+    An explicit successor checkpoint is still authoritative: it serializes
+    every opt-in itself and is deliberately not rewritten here.  This helper
+    exists solely for older snapshots (including r241) that could not have
+    named the r258/r259 tensor inventory.
+    """
+    for field, value in _LEGACY_CORE_KERNEL_FUTURE_CONFIG_DEFAULTS.items():
+        values.setdefault(field, value)
+    return values
 
 
 # ---------------------------------------------------------------------------
@@ -304,25 +347,22 @@ class CoreKernel(nn.Module):
                     for k, v in snap.items()
                     if k in known and not isinstance(v, dict)
                 }
-                # Historical checkpoints predate these future-specialist-only
+                # Historical checkpoints predate future-specialist-only
                 # tensors. Ambient deployment flags must never make a legacy
                 # core kernel instantiate a wider architecture on load.
-                for field in (
-                    "setup_board_outcome_head_enabled",
-                    "combo_state_head_enabled",
-                    "decision_fusion_dedicated_routes_enabled",
-                    "decision_fusion_dedicated_routes_runtime_enabled",
-                    "decision_fusion_typed_output_centered_routes_enabled",
-                ):
-                    filtered_snap.setdefault(field, False)
-                filtered_snap.setdefault(
-                    "decision_fusion_action_type_reliability_cap", 1.0
-                )
+                _legacy_core_kernel_config_defaults(filtered_snap)
                 cfg = config.ModelConfig(
                     **filtered_snap
                 )
             else:
-                cfg = config.MODEL
+                # A few very old core checkpoints have no config snapshot at
+                # all. We must retain their ambient-compatible base sizing,
+                # but the post-r241 successor inventory is still absent and
+                # therefore explicitly false rather than environment-derived.
+                cfg = replace(
+                    config.MODEL,
+                    **_LEGACY_CORE_KERNEL_FUTURE_CONFIG_DEFAULTS,
+                )
         kernel = cls(
             cfg=cfg,
             device=device,

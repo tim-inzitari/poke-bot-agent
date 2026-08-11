@@ -5,8 +5,10 @@ examining the checksum-bound model associated with a cached Kaggle submission. I
 not part of the training dashboard and it has no selector, trainer,
 checkpoint-publication, submission, or service-control authority.
 
-The product contract is staged in
-[`state/replay-model-inspector-owner-design-r176.json`](../state/replay-model-inspector-owner-design-r176.json).
+The base product contract is recorded in
+[`state/replay-model-inspector-owner-design-r176.json`](../state/replay-model-inspector-owner-design-r176.json),
+and the current physical-game materialization policy is recorded in
+[`state/replay-model-inspector-physical-game-materialization-r243.json`](../state/replay-model-inspector-physical-game-materialization-r243.json).
 It is intended for post-training analysis and fine-tuning research without
 changing the active training workload.
 
@@ -90,17 +92,37 @@ the fields accepted by `replay_inspector.config.InspectorConfig`; keep
 The service defaults are intentionally conservative:
 
 - bind only to `127.0.0.1:8791`;
-- CPU inference only, with GPU devices hidden from the process;
+- CPU inference by default for a normal workstation launch;
 - lazy checkpoint loading with at most one resident model;
 - no remote checkpoint reload or training invocation;
 - no writes below replay, rollout, bundle, checkpoint, or provenance roots.
+
+Baseline exact-trace payloads may be retained only as disposable, derived data
+under `game_trace_cache_root`, which defaults to
+`/tmp/pokebot-replay-inspector-game-cache-v1`. The configured root is required
+to be strictly below `/tmp`; loading frozen configuration neither creates it
+nor resolves symlinks. The cache owner performs those runtime safety checks.
+The Elmo defaults reserve 64 MiB of the 256 MiB `tmpfs` and bound compressed
+cache data to 128 MiB globally, 96 MiB per physical game, and 8 MiB per entry.
+Set `game_trace_cache_enabled` to `false` to bypass it, or override the root
+and byte limits with the corresponding `POKEBOT_REPLAY_INSPECTOR_GAME_TRACE_CACHE_*`
+environment variables. This cache never contains source replays, checkpoints,
+submitted runtimes, receipts, or training artifacts.
 
 Use a Python environment containing the project, the competition `cg` runtime,
 and CPU-capable PyTorch. The Elmo deployment instead uses the independent
 container configuration in
 [`ops/elmo/replay-model-inspector-config-r176.json`](../ops/elmo/replay-model-inspector-config-r176.json).
-It clears GPU visibility and caps common CPU thread pools so it cannot contend
-with the live GPU trainer.
+It uses Elmo's `cuda:0` for serialized exact-runtime inference and caps
+common CPU thread pools. Selecting an identity-bound physical game starts or
+joins one baseline materialization for its selectable own-agent steps and
+factorized stages. Each causal decision receives one exact state evaluation
+inside bounded forward batches, and all of that decision's factorized stages
+reuse the resulting state. Later step/stage navigation reads that game result
+or joins its in-flight job rather than requesting another reconstruction. The
+browser has no fixed elapsed-time cutoff for a healthy materialization;
+selecting another submission or physical game only detaches the stale client
+request and never corrupts a completed cache entry.
 
 ## Exact provenance manifest
 
@@ -282,7 +304,7 @@ intentionally unavailable.
 [`ops/elmo/pokebot-replay-model-inspector.service`](../ops/elmo/pokebot-replay-model-inspector.service)
 is independent of all training and dashboard units. It does not start, stop,
 reload, query, or alter another managed service. Elmo's host Python does not
-contain Torch, so this unit launches a separate CPU-only, read-only container
+contain Torch, so this unit launches a separate CUDA-enabled, read-only container
 from the already-installed worker image; it never execs into or modifies the
 live worker container. The source deployment directory and every NAS mount are
 read-only inside the inspector container.
@@ -309,8 +331,8 @@ sudo systemctl status pokebot-replay-model-inspector.service
 ```
 
 The service's hardening is intentionally scoped to this read-only tool:
-read-only root and bind mounts, no Linux capabilities, no GPU visibility,
-bounded CPU/memory/PIDs, `NoNewPrivileges`, and loopback-only application
+read-only root and bind mounts, no Linux capabilities, visibility of only
+Elmo's selected CUDA device, bounded CPU/memory/PIDs, `NoNewPrivileges`, and loopback-only application
 configuration. It is not a mechanism for controlling interactive or training
 sessions.
 

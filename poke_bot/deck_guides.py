@@ -12,6 +12,7 @@ from types import ModuleType
 
 from . import (
     alakazam_heuristics,
+    alakazam_new_list_heuristics,
     archaludon_ex_heuristics,
     garchomp_heuristics,
     grimmsnarl_heuristics,
@@ -34,6 +35,13 @@ _GUIDES: dict[str, ModuleType] = {
     "team-rockets-spidops": team_rockets_spidops_heuristics,
     "teal-mask-ogerpon-ex": teal_mask_ogerpon_heuristics,
     "thwackey": thwackey_heuristics,
+}
+
+_ALAKAZAM_GUIDE_VERSIONS: dict[str, ModuleType] = {
+    str(alakazam_heuristics.GUIDE_VERSION): alakazam_heuristics,
+    str(alakazam_new_list_heuristics.GUIDE_VERSION): (
+        alakazam_new_list_heuristics
+    ),
 }
 
 
@@ -62,17 +70,33 @@ def enabled() -> bool:
         return False
     if selected not in _GUIDES:
         raise RuntimeError(f"unknown current-deck guide: {selected!r}")
+    module = _selected_module(selected)
     # An explicit selector is itself fail-closed authorization. The additional
     # boolean is useful to pre-stage a selector while target generation is off.
     return _truthy("POKEBOT_CURRENT_DECK_GUIDE_TARGETS") or (
-        selected == "alakazam" and alakazam_heuristics.enabled()
+        selected == "alakazam" and module.enabled()
     )
+
+
+def _selected_module(selected: str | None = None) -> ModuleType:
+    selected = selected if selected is not None else selected_id()
+    if selected is None or selected not in _GUIDES:
+        raise RuntimeError(f"unknown current-deck guide: {selected!r}")
+    if selected != "alakazam":
+        return _GUIDES[selected]
+    requested = os.environ.get(
+        "POKEBOT_CURRENT_DECK_GUIDE_VERSION",
+        str(alakazam_heuristics.GUIDE_VERSION),
+    ).strip()
+    module = _ALAKAZAM_GUIDE_VERSIONS.get(requested)
+    if module is None:
+        raise RuntimeError(f"unknown Alakazam guide version: {requested!r}")
+    return module
 
 
 def guide_version() -> str | None:
     selected = selected_id()
-    module = _GUIDES.get(selected or "")
-    return None if module is None else str(module.GUIDE_VERSION)
+    return None if selected is None else str(_selected_module(selected).GUIDE_VERSION)
 
 
 def supported_ids() -> tuple[str, ...]:
@@ -90,8 +114,8 @@ def guide_scores(
         return None
     selected = selected_id()
     assert selected is not None
-    module = _GUIDES[selected]
-    if selected == "alakazam" and alakazam_heuristics.enabled():
+    module = _selected_module(selected)
+    if module is alakazam_heuristics and alakazam_heuristics.enabled():
         # Preserve the original callable contract for old feature workers and
         # tests which monkeypatch the validated Alakazam teacher directly.
         return module.guide_scores(obs, action_combos, deck=deck)

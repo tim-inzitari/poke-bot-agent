@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Sequence, Union
+from typing import Any, Mapping, Optional, Sequence, Union
 
 import torch
 import torch.nn as nn
@@ -45,6 +45,21 @@ from .matchup_adapters_v6 import (
     ADAPTER_CHECKPOINT_FORMAT as MATCHUP_ADAPTER_V6_FORMAT,
 )
 from .matchup_adapters_v6 import MatchupAdapterBankV6
+from .own_deck_supervision import (
+    OWN_DECK_SUPERVISION_SCHEMA,
+    TERMINAL_CONVERSION_OUTPUT_DIM,
+    TERMINAL_CONVERSION_OUTPUT_LAYOUT,
+    VISIBLE_TUTOR_COMPLETION_OUTPUT_DIM,
+    VISIBLE_TUTOR_COMPLETION_OUTPUT_LAYOUT,
+)
+from .own_deck_ledger import (
+    OPTION_FEATURE_DIM as OWN_DECK_LEDGER_CORE_OPTION_FEATURE_DIM,
+    OPTION_FEATURE_NAMES as OWN_DECK_LEDGER_OPTION_FEATURE_NAMES,
+    OWN_DECK_LEDGER_SCHEMA as OWN_DECK_LEDGER_CORE_SCHEMA,
+    OWN_DECK_LEDGER_SCHEMA_VERSION as OWN_DECK_LEDGER_CORE_SCHEMA_VERSION,
+    SCALAR_VECTOR_NAMES as OWN_DECK_LEDGER_SCALAR_VECTOR_NAMES,
+    OwnDeckLedgerSnapshot,
+)
 
 Tensor = torch.Tensor
 
@@ -87,6 +102,22 @@ H10_CAPACITY_SCHEMA = "poke_bot.h10_capacity/v1"
 H10_CAPACITY_INIT_SEED = 0x10_2026_07
 LATENT_LOOKAHEAD_SCHEMA = "poke_bot.action_conditioned_latent_lookahead/v1"
 LATENT_LOOKAHEAD_INIT_SEED = 0x114_2026_08
+# v2 preserves card-availability identity/fact pairing with a nonlinear
+# per-card interaction before pooling.  The v1 additive mean was invariant to
+# swapping two cards' availability rows, so it could not represent which
+# specific combo piece remained in deck.
+OWN_DECK_LEDGER_ADAPTER_SCHEMA = "poke_bot.own_deck_ledger_adapter/v2"
+OWN_DECK_LEDGER_ADAPTER_INIT_SEED = 0x258_2026_08
+OWN_DECK_LEDGER_SCALAR_DIM = len(OWN_DECK_LEDGER_SCALAR_VECTOR_NAMES)
+OWN_DECK_LEDGER_CARD_STATS_DIM = 5
+OWN_DECK_LEDGER_OPTION_ADAPTER_SCHEMA = (
+    "poke_bot.own_deck_ledger_option_adapter/v1"
+)
+VISIBLE_TUTOR_COMPLETION_HEAD_SCHEMA = (
+    "poke_bot.visible_tutor_completion_head/v1"
+)
+TERMINAL_CONVERSION_HEAD_SCHEMA = "poke_bot.terminal_conversion_head/v1"
+OWN_DECK_OPTION_ROUTE_SCHEMA = "poke_bot.own_deck_option_route/v1"
 H10_STRATEGIC_OUTPUT_DIMS: dict[str, int] = {
     "action_q": 1,
     "action_type": 1,
@@ -213,6 +244,255 @@ class ComboStateHead(nn.Module):
             "parameters": int(
                 sum(parameter.numel() for parameter in self.parameters())
             ),
+        }
+
+
+class OwnDeckLedgerAdapter(nn.Module):
+    """Encode one public own-deck ledger snapshot into a shared residual.
+
+    This is deliberately an input adapter rather than another prediction head.
+    Its only output is added once to a realized-history token before temporal
+    encoding, allowing every existing downstream policy/value/auxiliary route
+    to consume the same causal information.  The final projection starts at
+    exact zero so an architecture migration is behavior-preserving until the
+    successor is trained.
+    """
+
+    def __init__(
+        self,
+        *,
+        card_vocab: int,
+        d_model: int,
+        width: int,
+        scalar_dim: int = OWN_DECK_LEDGER_SCALAR_DIM,
+    ) -> None:
+        super().__init__()
+        if min(int(card_vocab), int(d_model), int(width), int(scalar_dim)) <= 0:
+            raise ValueError("own-deck ledger adapter dimensions must be positive")
+        self.card_vocab = int(card_vocab)
+        self.d_model = int(d_model)
+        self.width = int(width)
+        self.scalar_dim = int(scalar_dim)
+        self.card_embedding = nn.Embedding(self.card_vocab, self.width)
+        self.card_stats = nn.Sequential(
+            nn.LayerNorm(OWN_DECK_LEDGER_CARD_STATS_DIM),
+            nn.Linear(OWN_DECK_LEDGER_CARD_STATS_DIM, self.width),
+            nn.GELU(),
+            nn.Linear(self.width, self.width),
+        )
+        # Pooling ``identity + facts`` would lose the association between a
+        # particular card and its availability: sum/mean distributes over the
+        # addition.  Make the association explicit with a nonlinear row MLP
+        # before pooling, so e.g. "key card A remains" differs from "key card
+        # B remains" even when the multiset of availability facts is equal.
+        self.availability_row = nn.Sequential(
+            nn.LayerNorm(2 * self.width),
+            nn.Linear(2 * self.width, self.width),
+            nn.GELU(),
+            nn.Linear(self.width, self.width),
+        )
+        # The two revealed-menu zones intentionally use different card tables:
+        # a card merely visible in ``looking`` has a distinct causal meaning
+        # from a card exposed as a legal ``select.deck`` tutor candidate.
+        self.select_card_embedding = nn.Embedding(self.card_vocab, self.width)
+        self.looking_card_embedding = nn.Embedding(self.card_vocab, self.width)
+        self.menu_count = nn.Linear(1, self.width)
+        self.scalar_encoder = nn.Sequential(
+            nn.LayerNorm(self.scalar_dim),
+            nn.Linear(self.scalar_dim, self.width),
+            nn.GELU(),
+            nn.Linear(self.width, self.width),
+        )
+        self.trunk = nn.Sequential(
+            nn.LayerNorm(4 * self.width),
+            nn.Linear(4 * self.width, self.width),
+            nn.GELU(),
+        )
+        self.output = nn.Linear(self.width, self.d_model)
+        nn.init.zeros_(self.output.weight)
+        nn.init.zeros_(self.output.bias)
+
+    def _menu_summary(
+        self,
+        card_ids: Tensor,
+        counts: Tensor,
+        embedding: nn.Embedding,
+    ) -> Tensor:
+        if card_ids.numel() == 0:
+            return torch.zeros(
+                self.width,
+                device=counts.device,
+                dtype=counts.dtype,
+            )
+        encoded = embedding(card_ids) + self.menu_count(counts.unsqueeze(-1))
+        return encoded.mean(dim=0)
+
+    def forward(
+        self,
+        *,
+        availability_card_ids: Tensor,
+        availability_stats: Tensor,
+        scalar_vector: Tensor,
+        select_card_ids: Tensor,
+        select_counts: Tensor,
+        looking_card_ids: Tensor,
+        looking_counts: Tensor,
+    ) -> Tensor:
+        """Return one bounded ``[d_model]`` residual for a validated snapshot."""
+
+        if availability_card_ids.dim() != 1:
+            raise ValueError("ledger availability card ids must be rank 1")
+        if availability_stats.shape != (
+            availability_card_ids.numel(),
+            OWN_DECK_LEDGER_CARD_STATS_DIM,
+        ):
+            raise ValueError("ledger availability stats shape changed")
+        if scalar_vector.shape != (self.scalar_dim,):
+            raise ValueError("ledger scalar-vector shape changed")
+        for name, ids, counts in (
+            ("select", select_card_ids, select_counts),
+            ("looking", looking_card_ids, looking_counts),
+        ):
+            if ids.dim() != 1 or counts.shape != ids.shape:
+                raise ValueError(f"ledger {name} menu shape changed")
+        availability = self.availability_row(
+            torch.cat(
+                (
+                    self.card_embedding(availability_card_ids),
+                    self.card_stats(availability_stats),
+                ),
+                dim=-1,
+            )
+        ).mean(dim=0)
+        select = self._menu_summary(
+            select_card_ids, select_counts, self.select_card_embedding
+        )
+        looking = self._menu_summary(
+            looking_card_ids, looking_counts, self.looking_card_embedding
+        )
+        scalar = self.scalar_encoder(scalar_vector)
+        return torch.tanh(
+            self.output(self.trunk(torch.cat((availability, select, looking, scalar))))
+        )
+
+    def inventory(self, *, runtime_enabled: bool) -> dict[str, object]:
+        return {
+            "schema": OWN_DECK_LEDGER_ADAPTER_SCHEMA,
+            "enabled": True,
+            "runtime_enabled": bool(runtime_enabled),
+            "ledger_snapshot_schema": OWN_DECK_LEDGER_CORE_SCHEMA,
+            "ledger_snapshot_version": OWN_DECK_LEDGER_CORE_SCHEMA_VERSION,
+            "injection": "pre_temporal_realized_history_token_residual",
+            "shared_by": "policy_value_aux_expanded_and_fusion_branches",
+            "availability_aggregation": (
+                "nonlinear_identity_conditioned_per_card_mean"
+            ),
+            "availability_row_interaction": (
+                "concat(card_identity, availability_facts) -> learned_mlp -> mean"
+            ),
+            "card_stats": [
+                "lower",
+                "upper",
+                "expected",
+                "probability_at_least_one",
+                "exact",
+            ],
+            "scalar_dim": self.scalar_dim,
+            "scalar_feature_names": list(OWN_DECK_LEDGER_SCALAR_VECTOR_NAMES),
+            "width": self.width,
+            "zero_safe_final_projection": True,
+            "bounded_output": "tanh",
+            "parameters": int(sum(parameter.numel() for parameter in self.parameters())),
+        }
+
+
+class OwnDeckLedgerOptionAdapter(nn.Module):
+    """Zero-safe explicit lookup residual for already-visible legal options."""
+
+    def __init__(self, *, feature_dim: int, d_model: int, width: int) -> None:
+        super().__init__()
+        if min(int(feature_dim), int(d_model), int(width)) <= 0:
+            raise ValueError("own-deck ledger option adapter dimensions must be positive")
+        self.feature_dim = int(feature_dim)
+        self.d_model = int(d_model)
+        self.width = int(width)
+        self.network = nn.Sequential(
+            nn.LayerNorm(self.feature_dim),
+            nn.Linear(self.feature_dim, self.width),
+            nn.GELU(),
+            nn.Linear(self.width, self.d_model),
+        )
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+
+    def forward(self, features: Tensor) -> Tensor:
+        if features.dim() != 3 or features.size(-1) != self.feature_dim:
+            raise ValueError("ledger option features must be [B,N,F]")
+        return torch.tanh(self.network(features))
+
+    def inventory(self, *, runtime_enabled: bool) -> dict[str, object]:
+        return {
+            "schema": OWN_DECK_LEDGER_OPTION_ADAPTER_SCHEMA,
+            "enabled": True,
+            "runtime_enabled": bool(runtime_enabled),
+            "input": "explicit_current_visible_legal_option_features_only",
+            "feature_dim": self.feature_dim,
+            "feature_names": list(OWN_DECK_LEDGER_OPTION_FEATURE_NAMES),
+            "width": self.width,
+            "zero_safe_final_projection": True,
+            "bounded_output": "tanh",
+            "parameters": int(sum(parameter.numel() for parameter in self.parameters())),
+        }
+
+
+class TypedOwnDeckOptionHead(nn.Module):
+    """One dormant typed option head with target-only supervision semantics."""
+
+    def __init__(
+        self,
+        *,
+        d_model: int,
+        outputs: int,
+        schema: str,
+        output_layout: Sequence[str],
+    ) -> None:
+        super().__init__()
+        if min(int(d_model), int(outputs)) <= 0:
+            raise ValueError("own-deck option-head dimensions must be positive")
+        if len(tuple(output_layout)) != int(outputs):
+            raise ValueError("own-deck option-head output layout mismatch")
+        self.d_model = int(d_model)
+        self.outputs = int(outputs)
+        self.schema = str(schema)
+        self.output_layout = tuple(str(item) for item in output_layout)
+        self.projection = nn.Linear(self.d_model, self.outputs)
+
+    def forward(self, option_hidden: Tensor) -> Tensor:
+        if option_hidden.dim() != 3 or option_hidden.size(-1) != self.d_model:
+            raise ValueError("own-deck option head input must be [B,N,D]")
+        return self.projection(option_hidden)
+
+    def inventory(
+        self,
+        *,
+        name: str,
+        route_enabled: bool,
+        route_runtime_enabled: bool,
+    ) -> dict[str, object]:
+        return {
+            "schema": self.schema,
+            "name": str(name),
+            "enabled": True,
+            "outputs": self.outputs,
+            "output_layout": list(self.output_layout),
+            "target_schema": OWN_DECK_SUPERVISION_SCHEMA,
+            "input": "ledger_enriched_board_state_cross_attended_legal_option_hidden",
+            "target_only_supervision": True,
+            "direct_action_selection_authority": False,
+            "route_enabled": bool(route_enabled),
+            "route_runtime_enabled": bool(route_runtime_enabled),
+            "zero_safe_route_required_for_policy_influence": True,
+            "parameters": int(sum(parameter.numel() for parameter in self.parameters())),
         }
 
 
@@ -1572,6 +1852,168 @@ class TemporalCabtTransformer(nn.Module):
         else:
             self.latent_lookahead = None
 
+        # The own-deck ledger is a successor-only *shared input* adapter, not
+        # a sixth belief/strategy head.  Construct it last under a forked RNG
+        # so a disabled adapter has no state-dict, parameter-count, or fresh
+        # initialization effect on frozen historical/r241 models.
+        self.own_deck_ledger_enabled = bool(
+            getattr(cfg, "own_deck_ledger_enabled", False)
+        )
+        self.own_deck_ledger_runtime_enabled = bool(
+            getattr(cfg, "own_deck_ledger_runtime_enabled", False)
+        )
+        self.own_deck_ledger_width = int(
+            getattr(cfg, "own_deck_ledger_width", 128)
+        )
+        self.own_deck_ledger_option_feature_dim = int(
+            getattr(cfg, "own_deck_ledger_option_feature_dim", 8)
+        )
+        if (
+            self.own_deck_ledger_runtime_enabled
+            and not self.own_deck_ledger_enabled
+        ):
+            raise ValueError(
+                "own_deck_ledger_runtime_enabled requires own_deck_ledger_enabled"
+            )
+        if self.own_deck_ledger_enabled and self.own_deck_ledger_width <= 0:
+            raise ValueError("own_deck_ledger_width must be positive")
+        if (
+            self.own_deck_ledger_enabled
+            and self.own_deck_ledger_option_feature_dim <= 0
+        ):
+            raise ValueError("own_deck_ledger_option_feature_dim must be positive")
+        if (
+            self.own_deck_ledger_enabled
+            and self.own_deck_ledger_option_feature_dim
+            != OWN_DECK_LEDGER_CORE_OPTION_FEATURE_DIM
+        ):
+            raise ValueError(
+                "own_deck_ledger_option_feature_dim must match the core "
+                f"snapshot contract ({OWN_DECK_LEDGER_CORE_OPTION_FEATURE_DIM})"
+            )
+        if self.own_deck_ledger_enabled:
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(OWN_DECK_LEDGER_ADAPTER_INIT_SEED)
+                self.own_deck_ledger_adapter = OwnDeckLedgerAdapter(
+                    card_vocab=self.belief_card_vocab,
+                    d_model=cfg.d_model,
+                    width=self.own_deck_ledger_width,
+                )
+                self.own_deck_ledger_option_adapter = OwnDeckLedgerOptionAdapter(
+                    feature_dim=self.own_deck_ledger_option_feature_dim,
+                    d_model=cfg.d_model,
+                    width=self.own_deck_ledger_width,
+                )
+        else:
+            self.own_deck_ledger_adapter = None
+            self.own_deck_ledger_option_adapter = None
+
+        # Successor-only typed option heads.  These are intentionally outside
+        # the frozen H10 decision-fusion inventory: their separately gated,
+        # zero-safe routes can be ablated without changing the existing source
+        # denominator or granting a target head independent action authority.
+        self.visible_tutor_completion_head_enabled = bool(
+            getattr(cfg, "visible_tutor_completion_head_enabled", False)
+        )
+        self.terminal_conversion_head_enabled = bool(
+            getattr(cfg, "terminal_conversion_head_enabled", False)
+        )
+        self.visible_tutor_completion_route_enabled = bool(
+            getattr(cfg, "visible_tutor_completion_route_enabled", False)
+        )
+        self.visible_tutor_completion_route_runtime_enabled = bool(
+            getattr(cfg, "visible_tutor_completion_route_runtime_enabled", False)
+        )
+        self.terminal_conversion_route_enabled = bool(
+            getattr(cfg, "terminal_conversion_route_enabled", False)
+        )
+        self.terminal_conversion_route_runtime_enabled = bool(
+            getattr(cfg, "terminal_conversion_route_runtime_enabled", False)
+        )
+        if (
+            self.visible_tutor_completion_head_enabled
+            or self.terminal_conversion_head_enabled
+        ) and not self.own_deck_ledger_enabled:
+            raise ValueError(
+                "own-deck successor heads require own_deck_ledger_enabled"
+            )
+        if (
+            self.visible_tutor_completion_route_enabled
+            and not self.visible_tutor_completion_head_enabled
+        ):
+            raise ValueError(
+                "visible tutor completion route requires its physical head"
+            )
+        if (
+            self.terminal_conversion_route_enabled
+            and not self.terminal_conversion_head_enabled
+        ):
+            raise ValueError("terminal conversion route requires its physical head")
+        if (
+            self.visible_tutor_completion_route_runtime_enabled
+            and not self.visible_tutor_completion_route_enabled
+        ):
+            raise ValueError(
+                "visible tutor completion route runtime requires its route"
+            )
+        if (
+            self.terminal_conversion_route_runtime_enabled
+            and not self.terminal_conversion_route_enabled
+        ):
+            raise ValueError(
+                "terminal conversion route runtime requires its route"
+            )
+        if (
+            self.visible_tutor_completion_route_runtime_enabled
+            or self.terminal_conversion_route_runtime_enabled
+        ) and not self.own_deck_ledger_runtime_enabled:
+            raise ValueError(
+                "own-deck successor route runtime requires "
+                "own_deck_ledger_runtime_enabled"
+            )
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(OWN_DECK_LEDGER_ADAPTER_INIT_SEED + 1)
+            self.visible_tutor_completion_head = (
+                TypedOwnDeckOptionHead(
+                    d_model=cfg.d_model,
+                    outputs=VISIBLE_TUTOR_COMPLETION_OUTPUT_DIM,
+                    schema=VISIBLE_TUTOR_COMPLETION_HEAD_SCHEMA,
+                    output_layout=VISIBLE_TUTOR_COMPLETION_OUTPUT_LAYOUT,
+                )
+                if self.visible_tutor_completion_head_enabled
+                else None
+            )
+            self.terminal_conversion_head = (
+                TypedOwnDeckOptionHead(
+                    d_model=cfg.d_model,
+                    outputs=TERMINAL_CONVERSION_OUTPUT_DIM,
+                    schema=TERMINAL_CONVERSION_HEAD_SCHEMA,
+                    output_layout=TERMINAL_CONVERSION_OUTPUT_LAYOUT,
+                )
+                if self.terminal_conversion_head_enabled
+                else None
+            )
+            self.visible_tutor_completion_route = (
+                OptionConditionedHeadRoute(
+                    d_model=cfg.d_model,
+                    head_dim=VISIBLE_TUTOR_COMPLETION_OUTPUT_DIM,
+                    width=DECISION_FUSION_V2_ROUTE_WIDTH,
+                    typed_output_centered=True,
+                )
+                if self.visible_tutor_completion_route_enabled
+                else None
+            )
+            self.terminal_conversion_route = (
+                OptionConditionedHeadRoute(
+                    d_model=cfg.d_model,
+                    head_dim=TERMINAL_CONVERSION_OUTPUT_DIM,
+                    width=DECISION_FUSION_V2_ROUTE_WIDTH,
+                    typed_output_centered=True,
+                )
+                if self.terminal_conversion_route_enabled
+                else None
+            )
+
     def _load_from_state_dict(
         self,
         state_dict,
@@ -1773,6 +2215,559 @@ class TemporalCabtTransformer(nn.Module):
                 self.latent_lookahead_action_authority_enabled
             )
         )
+
+    def own_deck_ledger_inventory(self) -> dict[str, object]:
+        """Return the successor-only shared-ledger tensor contract.
+
+        This remains separate from :meth:`decision_fusion_inventory`: the
+        ledger is an input adapter shared by all branches, not a new fusion
+        source that would silently change the frozen H10 route denominator.
+        """
+
+        adapter = self.own_deck_ledger_adapter
+        option_adapter = self.own_deck_ledger_option_adapter
+        if not isinstance(adapter, OwnDeckLedgerAdapter):
+            return {
+                "schema": OWN_DECK_LEDGER_ADAPTER_SCHEMA,
+                "enabled": False,
+                "runtime_enabled": False,
+                "parameters": 0,
+                "option_adapter": {
+                    "schema": OWN_DECK_LEDGER_OPTION_ADAPTER_SCHEMA,
+                    "enabled": False,
+                    "runtime_enabled": False,
+                    "parameters": 0,
+                },
+            }
+        if not isinstance(option_adapter, OwnDeckLedgerOptionAdapter):
+            raise RuntimeError("own-deck ledger adapter is missing option adapter")
+        return {
+            **adapter.inventory(
+                runtime_enabled=self.own_deck_ledger_runtime_enabled
+            ),
+            "option_adapter": option_adapter.inventory(
+                runtime_enabled=self.own_deck_ledger_runtime_enabled
+            ),
+        }
+
+    def _own_deck_ledger_active(
+        self,
+        *,
+        offline_training_path: bool = False,
+    ) -> bool:
+        """Whether the physical successor adapter may affect this computation.
+
+        Ordinary ``eval()`` forwards are serving paths and therefore remain
+        neutral until the runtime receipt enables the ledger.  Offline loss
+        evaluation deliberately supplies ``offline_training_path=True`` so
+        validation/shadow metrics exercise the same successor representation
+        as training without granting any serving action authority.
+        """
+
+        return bool(
+            isinstance(self.own_deck_ledger_adapter, OwnDeckLedgerAdapter)
+            and (
+                self.training
+                or self.own_deck_ledger_runtime_enabled
+                or bool(offline_training_path)
+            )
+        )
+
+    @staticmethod
+    def _ledger_attr(snapshot: object, name: str) -> object:
+        if isinstance(snapshot, Mapping):
+            return snapshot.get(name)
+        return getattr(snapshot, name, None)
+
+    def _ledger_menu_counts(
+        self,
+        value: object,
+    ) -> tuple[list[int], list[float]] | None:
+        """Parse the core's public ``(card_id, count)`` menu aggregate safely."""
+
+        if isinstance(value, Mapping):
+            pairs = list(value.items())
+        elif isinstance(value, (list, tuple)):
+            pairs = list(value)
+        else:
+            return None
+        card_ids: list[int] = []
+        counts: list[float] = []
+        seen: set[int] = set()
+        for item in pairs:
+            if isinstance(item, Mapping):
+                card_id = item.get("card_id", item.get("id"))
+                count = item.get("count", item.get("copies"))
+            elif hasattr(item, "card_id"):
+                card_id = getattr(item, "card_id")
+                count = getattr(item, "count", getattr(item, "copies", None))
+            elif isinstance(item, (list, tuple)) and len(item) == 2:
+                card_id, count = item
+            else:
+                return None
+            if isinstance(card_id, bool) or not isinstance(card_id, int):
+                return None
+            try:
+                parsed_count = float(count)
+            except (TypeError, ValueError):
+                return None
+            if (
+                card_id < 0
+                or card_id >= self.belief_card_vocab
+                or card_id in seen
+                or not math.isfinite(parsed_count)
+                or parsed_count < 0.0
+            ):
+                return None
+            seen.add(card_id)
+            card_ids.append(card_id)
+            counts.append(parsed_count)
+        return card_ids, counts
+
+    def _ledger_snapshot_tensors(
+        self,
+        snapshot: object,
+        *,
+        device: torch.device,
+    ) -> dict[str, Tensor] | None:
+        """Materialize one immutable public snapshot or fail closed to neutral.
+
+        This intentionally accepts only the public immutable snapshot contract
+        from :mod:`poke_bot.own_deck_ledger`.  Missing integrity metadata,
+        malformed counts, non-finite values, or out-of-vocabulary cards never
+        reach a learned adapter and therefore cannot become an accidental
+        hidden-state side channel.
+        """
+
+        if snapshot is None:
+            return None
+        if isinstance(snapshot, Mapping):
+            # Serialized snapshots are an untrusted boundary.  Rebuild them
+            # through the canonical ledger contract so nested rows are
+            # validated and all starting-count/conservation fields must match
+            # the canonical fingerprint before learned input is materialized.
+            # The immutable
+            # typed snapshot produced by the per-match ledger remains the fast
+            # path and incurs no serialization round trip.
+            try:
+                snapshot = OwnDeckLedgerSnapshot.from_dict(snapshot)
+            except (KeyError, RuntimeError, TypeError, ValueError, OverflowError):
+                return None
+        elif not isinstance(snapshot, OwnDeckLedgerSnapshot):
+            return None
+        if self._ledger_attr(snapshot, "schema") != OWN_DECK_LEDGER_CORE_SCHEMA:
+            return None
+        if (
+            self._ledger_attr(snapshot, "version")
+            != OWN_DECK_LEDGER_CORE_SCHEMA_VERSION
+        ):
+            return None
+        if self._ledger_attr(snapshot, "integrity_ok") is not True:
+            return None
+        if self._ledger_attr(snapshot, "fail_closed") is not False:
+            return None
+        rows = self._ledger_attr(snapshot, "card_availability")
+        scalars = self._ledger_attr(snapshot, "scalar_vector")
+        if not isinstance(rows, (list, tuple)) or not rows:
+            return None
+        if not isinstance(scalars, (list, tuple)) or len(scalars) != OWN_DECK_LEDGER_SCALAR_DIM:
+            return None
+        card_ids: list[int] = []
+        stats: list[list[float]] = []
+        seen: set[int] = set()
+        for row in rows:
+            card_id = self._ledger_attr(row, "card_id")
+            if isinstance(card_id, bool) or not isinstance(card_id, int):
+                return None
+            if card_id < 0 or card_id >= self.belief_card_vocab or card_id in seen:
+                return None
+            values: list[float] = []
+            for field in ("lower", "upper"):
+                try:
+                    value = float(self._ledger_attr(row, field))
+                except (TypeError, ValueError):
+                    return None
+                if not math.isfinite(value) or value < 0.0:
+                    return None
+                values.append(value)
+            # The ledger correctly uses ``None`` for expectation/probability
+            # when public bounds are valid but a distribution is not provable.
+            # Preserve that uncertainty as the neutral numeric component;
+            # never reject an otherwise integrity-safe public snapshot.
+            for field in ("expected", "probability_at_least_one"):
+                raw = self._ledger_attr(row, field)
+                if raw is None:
+                    values.append(0.0)
+                    continue
+                try:
+                    value = float(raw)
+                except (TypeError, ValueError):
+                    return None
+                if not math.isfinite(value) or value < 0.0:
+                    return None
+                values.append(value)
+            exact = self._ledger_attr(row, "exact")
+            if not isinstance(exact, bool):
+                return None
+            if values[0] > values[1] or not 0.0 <= values[3] <= 1.0:
+                return None
+            values.append(float(exact))
+            seen.add(card_id)
+            card_ids.append(card_id)
+            stats.append(values)
+        scalar_values: list[float] = []
+        for value in scalars:
+            try:
+                parsed = float(value)
+            except (TypeError, ValueError):
+                return None
+            if not math.isfinite(parsed):
+                return None
+            scalar_values.append(parsed)
+        select = self._ledger_menu_counts(
+            self._ledger_attr(snapshot, "select_deck_counts")
+        )
+        looking = self._ledger_menu_counts(
+            self._ledger_attr(snapshot, "looking_counts")
+        )
+        if select is None or looking is None:
+            return None
+        return {
+            "availability_card_ids": torch.tensor(
+                card_ids, dtype=torch.long, device=device
+            ),
+            "availability_stats": torch.tensor(
+                stats, dtype=torch.float32, device=device
+            ),
+            "scalar_vector": torch.tensor(
+                scalar_values, dtype=torch.float32, device=device
+            ),
+            "select_card_ids": torch.tensor(
+                select[0], dtype=torch.long, device=device
+            ),
+            "select_counts": torch.tensor(
+                select[1], dtype=torch.float32, device=device
+            ),
+            "looking_card_ids": torch.tensor(
+                looking[0], dtype=torch.long, device=device
+            ),
+            "looking_counts": torch.tensor(
+                looking[1], dtype=torch.float32, device=device
+            ),
+        }
+
+    @staticmethod
+    def _normalize_ledger_snapshots(
+        snapshots: object,
+        *,
+        batch_size: int,
+    ) -> list[object] | None:
+        if snapshots is None:
+            return None
+        if isinstance(snapshots, (list, tuple)):
+            result = list(snapshots)
+        elif batch_size == 1:
+            result = [snapshots]
+        else:
+            return None
+        return result if len(result) == batch_size else None
+
+    def own_deck_ledger_residuals(
+        self,
+        snapshots: object,
+        *,
+        batch_size: int,
+        device: torch.device,
+        dtype: torch.dtype,
+        offline_training_path: bool = False,
+    ) -> Tensor | None:
+        """Encode public snapshots into ``[B,D]`` or return an exact bypass.
+
+        ``offline_training_path`` is an internal loss/validation-only opt-in.
+        It must be passed deliberately by offline trainers; public forward
+        APIs leave it false so ``eval()`` remains receipt-gated serving.
+        """
+
+        if not self._own_deck_ledger_active(
+            offline_training_path=offline_training_path
+        ):
+            return None
+        normalized = self._normalize_ledger_snapshots(
+            snapshots, batch_size=batch_size
+        )
+        adapter = self.own_deck_ledger_adapter
+        if normalized is None or not isinstance(adapter, OwnDeckLedgerAdapter):
+            return None
+        residuals: list[Tensor] = []
+        any_valid = False
+        for snapshot in normalized:
+            encoded = self._ledger_snapshot_tensors(snapshot, device=device)
+            if encoded is None:
+                residuals.append(torch.zeros(adapter.d_model, device=device))
+                continue
+            try:
+                residual = adapter(**encoded)
+            except (RuntimeError, TypeError, ValueError):
+                # A malformed successor snapshot is intentionally neutral, not
+                # an inference failure or a chance to inspect fallback state.
+                residuals.append(torch.zeros(adapter.d_model, device=device))
+                continue
+            residuals.append(residual)
+            any_valid = True
+        if not any_valid:
+            return None
+        return torch.stack(residuals, dim=0).to(dtype=dtype)
+
+    def own_deck_ledger_option_residuals(
+        self,
+        ledger_option_features: object,
+        *,
+        batch_size: int,
+        max_options: int,
+        device: torch.device,
+        dtype: torch.dtype,
+        offline_training_path: bool = False,
+    ) -> Tensor | None:
+        """Encode explicit current-menu facts or fail closed to neutral.
+
+        ``offline_training_path`` mirrors :meth:`own_deck_ledger_residuals`
+        and is intentionally not inferred from ``eval()``.
+        """
+
+        if (
+            not self._own_deck_ledger_active(
+                offline_training_path=offline_training_path
+            )
+            or ledger_option_features is None
+        ):
+            return None
+        adapter = self.own_deck_ledger_option_adapter
+        if not isinstance(adapter, OwnDeckLedgerOptionAdapter):
+            return None
+        try:
+            if isinstance(ledger_option_features, Tensor):
+                values = ledger_option_features.to(device=device, dtype=torch.float32)
+                if values.dim() == 1 and batch_size == 1:
+                    values = values.unsqueeze(0).unsqueeze(0)
+                if values.dim() == 2 and batch_size == 1:
+                    values = values.unsqueeze(0)
+                if values.dim() != 3 or values.size(0) != batch_size:
+                    return None
+                if values.size(1) > max_options or values.size(2) != adapter.feature_dim:
+                    return None
+                if values.size(1) < max_options:
+                    padded = torch.zeros(
+                        batch_size,
+                        max_options,
+                        adapter.feature_dim,
+                        device=device,
+                        dtype=values.dtype,
+                    )
+                    padded[:, : values.size(1)] = values
+                    values = padded
+            elif isinstance(ledger_option_features, (list, tuple)):
+                # A batch-one caller naturally supplies the core snapshot's
+                # direct ``tuple[option_row, ...]`` result.  Treat that as a
+                # single matrix rather than mistaking every legal option for a
+                # separate batch element.
+                direct_single = None
+                if batch_size == 1:
+                    try:
+                        direct_single = torch.as_tensor(
+                            ledger_option_features,
+                            device=device,
+                            dtype=torch.float32,
+                        )
+                    except (RuntimeError, TypeError, ValueError):
+                        direct_single = None
+                if direct_single is not None and direct_single.dim() in {1, 2}:
+                    values = (
+                        direct_single.reshape(1, 1, -1)
+                        if direct_single.dim() == 1
+                        else direct_single.unsqueeze(0)
+                    )
+                    if (
+                        values.size(1) > max_options
+                        or values.size(2) != adapter.feature_dim
+                    ):
+                        return None
+                    if values.size(1) < max_options:
+                        padded = torch.zeros(
+                            batch_size,
+                            max_options,
+                            adapter.feature_dim,
+                            device=device,
+                            dtype=values.dtype,
+                        )
+                        padded[:, : values.size(1)] = values
+                        values = padded
+                elif len(ledger_option_features) != batch_size:
+                    return None
+                else:
+                    values = torch.zeros(
+                        batch_size,
+                        max_options,
+                        adapter.feature_dim,
+                        device=device,
+                        dtype=torch.float32,
+                    )
+                    for index, row in enumerate(ledger_option_features):
+                        if row is None:
+                            continue
+                        parsed = torch.as_tensor(row, device=device, dtype=torch.float32)
+                        if parsed.dim() == 1:
+                            parsed = parsed.unsqueeze(0)
+                        if (
+                            parsed.dim() != 2
+                            or parsed.size(0) > max_options
+                            or parsed.size(1) != adapter.feature_dim
+                        ):
+                            # A malformed successor row is neutral for that
+                            # row; it must not erase unrelated valid packets.
+                            continue
+                        values[index, : parsed.size(0)] = parsed
+            else:
+                return None
+            if not torch.isfinite(values).all():
+                return None
+            # STOP/non-card options and mixed legacy packets are represented by
+            # exact zero feature rows.  Mask after the learned projection so a
+            # trained bias can never turn an absent/exposed-nothing row into an
+            # action preference.
+            nonzero = values.abs().sum(dim=-1, keepdim=True) > 0
+            residuals = adapter(values) * nonzero.to(dtype=values.dtype)
+            return residuals.to(dtype=dtype)
+        except (RuntimeError, TypeError, ValueError):
+            return None
+
+    def own_deck_option_head_inventory(self) -> dict[str, object]:
+        """Describe dormant tutor/terminal heads without changing H10 fusion."""
+
+        modules: dict[str, object] = {}
+        tutor = self.visible_tutor_completion_head
+        terminal = self.terminal_conversion_head
+        if isinstance(tutor, TypedOwnDeckOptionHead):
+            route = self.visible_tutor_completion_route
+            modules["visible_tutor_completion"] = {
+                **tutor.inventory(
+                    name="visible_tutor_completion",
+                    route_enabled=self.visible_tutor_completion_route_enabled,
+                    route_runtime_enabled=(
+                        self.visible_tutor_completion_route_runtime_enabled
+                    ),
+                ),
+                "route_parameters": int(
+                    sum(parameter.numel() for parameter in route.parameters())
+                ) if isinstance(route, OptionConditionedHeadRoute) else 0,
+            }
+        if isinstance(terminal, TypedOwnDeckOptionHead):
+            route = self.terminal_conversion_route
+            modules["terminal_conversion"] = {
+                **terminal.inventory(
+                    name="terminal_conversion",
+                    route_enabled=self.terminal_conversion_route_enabled,
+                    route_runtime_enabled=(
+                        self.terminal_conversion_route_runtime_enabled
+                    ),
+                ),
+                "route_parameters": int(
+                    sum(parameter.numel() for parameter in route.parameters())
+                ) if isinstance(route, OptionConditionedHeadRoute) else 0,
+            }
+        return {
+            "schema": OWN_DECK_OPTION_ROUTE_SCHEMA,
+            "target_schema": OWN_DECK_SUPERVISION_SCHEMA,
+            "enabled": bool(modules),
+            "legacy_decision_fusion_denominator_changed": False,
+            "modules": modules,
+            "route_width": DECISION_FUSION_V2_ROUTE_WIDTH,
+            "aggregate_delta_cap": DECISION_FUSION_V2_TOTAL_DELTA_CAP,
+        }
+
+    def own_deck_option_head_logits(
+        self,
+        option_hidden: Tensor,
+    ) -> dict[str, Tensor]:
+        """Evaluate physical successor-only typed heads on decoder states."""
+
+        result: dict[str, Tensor] = {}
+        tutor = self.visible_tutor_completion_head
+        terminal = self.terminal_conversion_head
+        if isinstance(tutor, TypedOwnDeckOptionHead):
+            result["visible_tutor_completion_logits"] = tutor(option_hidden)
+        if isinstance(terminal, TypedOwnDeckOptionHead):
+            result["terminal_conversion_logits"] = terminal(option_hidden)
+        return result
+
+    def _own_deck_option_heads_present(self) -> bool:
+        return bool(
+            isinstance(self.visible_tutor_completion_head, TypedOwnDeckOptionHead)
+            or isinstance(self.terminal_conversion_head, TypedOwnDeckOptionHead)
+        )
+
+    def _own_deck_option_route_active(self, name: str) -> bool:
+        if name == "visible_tutor_completion":
+            return bool(
+                self.visible_tutor_completion_route_enabled
+                and (
+                    self.training
+                    or self.visible_tutor_completion_route_runtime_enabled
+                )
+                and isinstance(
+                    self.visible_tutor_completion_route,
+                    OptionConditionedHeadRoute,
+                )
+            )
+        if name == "terminal_conversion":
+            return bool(
+                self.terminal_conversion_route_enabled
+                and (
+                    self.training or self.terminal_conversion_route_runtime_enabled
+                )
+                and isinstance(self.terminal_conversion_route, OptionConditionedHeadRoute)
+            )
+        raise ValueError(f"unknown own-deck option route: {name}")
+
+    def own_deck_option_route_deltas(
+        self,
+        option_hidden: Tensor,
+    ) -> dict[str, Tensor]:
+        """Expose active zero-safe successor route deltas for audits/training."""
+
+        typed = self.own_deck_option_head_logits(option_hidden)
+        deltas: dict[str, Tensor] = {}
+        if self._own_deck_option_route_active("visible_tutor_completion"):
+            route = self.visible_tutor_completion_route
+            logits = typed.get("visible_tutor_completion_logits")
+            if not isinstance(route, OptionConditionedHeadRoute) or logits is None:
+                raise RuntimeError("visible tutor route/head contract is incomplete")
+            deltas["visible_tutor_completion"] = route(option_hidden, logits)
+        if self._own_deck_option_route_active("terminal_conversion"):
+            route = self.terminal_conversion_route
+            logits = typed.get("terminal_conversion_logits")
+            if not isinstance(route, OptionConditionedHeadRoute) or logits is None:
+                raise RuntimeError("terminal conversion route/head contract is incomplete")
+            deltas["terminal_conversion"] = route(option_hidden, logits)
+        return deltas
+
+    def own_deck_option_aided_policy_logits(
+        self,
+        option_hidden: Tensor,
+        base_logits: Tensor,
+    ) -> Tensor:
+        """Apply separately gated, bounded typed successor routes if active."""
+
+        if not (
+            self._own_deck_option_route_active("visible_tutor_completion")
+            or self._own_deck_option_route_active("terminal_conversion")
+        ):
+            return base_logits
+        deltas = self.own_deck_option_route_deltas(option_hidden)
+        if not deltas:
+            return base_logits
+        total = torch.stack(list(deltas.values()), dim=0).sum(dim=0)
+        cap = float(DECISION_FUSION_V2_TOTAL_DELTA_CAP)
+        return base_logits + cap * torch.tanh(total / cap)
 
     def latent_lookahead_outputs(
         self,
@@ -2172,16 +3167,23 @@ class TemporalCabtTransformer(nn.Module):
         self,
         spatial_memory: Tensor,
         previous_actions: Optional[Sequence[Optional[SparseVector]]] = None,
+        ledger_residuals: Optional[Tensor] = None,
     ) -> Tensor:
-        """Fuse current observable board with the previous realized own action."""
+        """Fuse board/action history with an optional public ledger residual."""
         cls = self.pool_cls(spatial_memory)
-        if previous_actions is None:
+        if previous_actions is not None:
+            if len(previous_actions) != cls.size(0):
+                raise ValueError("previous-action history length mismatch")
+            cls = cls + float(self.cfg.history_action_scale) * self.encode_previous_actions(
+                previous_actions
+            )
+        if ledger_residuals is None:
             return cls
-        if len(previous_actions) != cls.size(0):
-            raise ValueError("previous-action history length mismatch")
-        return cls + float(self.cfg.history_action_scale) * self.encode_previous_actions(
-            previous_actions
-        )
+        if ledger_residuals.shape != cls.shape:
+            raise ValueError(
+                "ledger residual shape does not match realized-history tokens"
+            )
+        return cls + ledger_residuals.to(device=cls.device, dtype=cls.dtype)
 
     def temporal_encode(
         self,
@@ -2363,6 +3365,7 @@ class TemporalCabtTransformer(nn.Module):
         *,
         return_all: bool = False,
         previous_actions: Optional[Sequence[Optional[SparseVector]]] = None,
+        ledger_history: Optional[Sequence["OwnDeckLedgerSnapshot"]] = None,
     ) -> tuple[Tensor, Tensor]:
         """Encode one acting-seat history with no hidden/opponent-private input.
 
@@ -2378,8 +3381,26 @@ class TemporalCabtTransformer(nn.Module):
             boards = boards[-self.max_context :]
             if previous_actions is not None:
                 previous_actions = list(previous_actions)[-self.max_context :]
+        ledger_steps: object = None
+        if ledger_history is not None:
+            try:
+                candidate = list(ledger_history)
+            except TypeError:
+                candidate = []
+            if len(candidate) == len(board_history):
+                ledger_steps = candidate[-len(boards) :]
         spatial = self.encode_board(boards)
-        cls = self.history_tokens(spatial, previous_actions).unsqueeze(0)
+        ledger_residuals = self.own_deck_ledger_residuals(
+            ledger_steps,
+            batch_size=len(boards),
+            device=spatial.device,
+            dtype=spatial.dtype,
+        )
+        cls = self.history_tokens(
+            spatial,
+            previous_actions,
+            ledger_residuals,
+        ).unsqueeze(0)
         temporal, _ = self.temporal_encode(
             cls,
             kv_cache=None,
@@ -2401,6 +3422,10 @@ class TemporalCabtTransformer(nn.Module):
             Sequence[Sequence[Optional[SparseVector]]]
         ] = None,
         matchup_routes: Optional[Union[Tensor, Sequence[int]]] = None,
+        ledger_histories: Optional[
+            Sequence[Sequence["OwnDeckLedgerSnapshot"]]
+        ] = None,
+        ledger_option_features: Optional[object] = None,
     ) -> dict[str, Union[Tensor, Optional[TemporalKVCache]]]:
         """Evaluate variable-length realized histories.
 
@@ -2416,6 +3441,30 @@ class TemporalCabtTransformer(nn.Module):
         histories = [history[-self.max_context :] for history in raw_histories]
         if not histories or any(not h for h in histories):
             raise ValueError("every history must contain at least one observation")
+        ledger_steps_by_history: list[list[object]] | None = None
+        if ledger_histories is not None:
+            try:
+                raw_ledgers = list(ledger_histories)
+            except TypeError:
+                raw_ledgers = []
+            if len(raw_ledgers) == len(raw_histories):
+                candidate: list[list[object]] = []
+                valid = True
+                for raw_history, raw_ledger in zip(raw_histories, raw_ledgers):
+                    if raw_ledger is None:
+                        candidate.append([None] * len(raw_history))
+                        continue
+                    try:
+                        steps = list(raw_ledger)
+                    except TypeError:
+                        valid = False
+                        break
+                    if len(steps) != len(raw_history):
+                        valid = False
+                        break
+                    candidate.append(steps[-self.max_context :])
+                if valid:
+                    ledger_steps_by_history = candidate
         if isinstance(options, SparseVector):
             options = [options]
         options = list(options)
@@ -2438,6 +3487,19 @@ class TemporalCabtTransformer(nn.Module):
                 raise ValueError("board/action history lengths do not match")
         flat_boards = [board for history in histories for board in history]
         flat_spatial = self.encode_board(flat_boards)
+        flat_ledger_steps: object = None
+        if ledger_steps_by_history is not None:
+            flat_ledger_steps = [
+                snapshot
+                for history in ledger_steps_by_history
+                for snapshot in history
+            ]
+        flat_ledger_residuals = self.own_deck_ledger_residuals(
+            flat_ledger_steps,
+            batch_size=len(flat_boards),
+            device=flat_spatial.device,
+            dtype=flat_spatial.dtype,
+        )
         states: list[Tensor] = []
         current_spatial: list[Tensor] = []
         start = 0
@@ -2445,7 +3507,16 @@ class TemporalCabtTransformer(nn.Module):
             lengths, position_offsets, action_histories
         ):
             spatial = flat_spatial[start : start + length]
-            cls = self.history_tokens(spatial, previous_actions).unsqueeze(0)
+            ledger_residuals = (
+                None
+                if flat_ledger_residuals is None
+                else flat_ledger_residuals[start : start + length]
+            )
+            cls = self.history_tokens(
+                spatial,
+                previous_actions,
+                ledger_residuals,
+            ).unsqueeze(0)
             state, _ = self.temporal_encode(
                 cls, append=False, position_offset=position_offset
             )
@@ -2457,13 +3528,20 @@ class TemporalCabtTransformer(nn.Module):
         policy_value_state = self.matchup_policy_value_state(
             state_vec, matchup_routes
         )
-        logits = self.decode_options(
+        decoded = self.decode_options(
             options,
             spatial_memory,
             policy_value_state,
             n_options=n_options,
             decision_fusion_state_vec=state_vec,
+            ledger_option_features=ledger_option_features,
+            return_hidden=self._own_deck_option_heads_present(),
         )
+        if isinstance(decoded, tuple):
+            logits, option_hidden = decoded
+        else:
+            logits = decoded
+            option_hidden = None
         out = {
             "policy_logits": logits,
             "value": torch.tanh(self.value_head(policy_value_state)).squeeze(-1),
@@ -2472,6 +3550,8 @@ class TemporalCabtTransformer(nn.Module):
             "kv_cache": None,
         }
         out.update(self.belief_aux_logits(state_vec))
+        if option_hidden is not None:
+            out.update(self.own_deck_option_head_logits(option_hidden))
         return out
 
     def decode_options(
@@ -2483,6 +3563,8 @@ class TemporalCabtTransformer(nn.Module):
         n_options: Optional[Sequence[int]] = None,
         return_hidden: bool = False,
         decision_fusion_state_vec: Optional[Tensor] = None,
+        ledger_option_features: Optional[object] = None,
+        offline_training_path: bool = False,
     ) -> Union[Tensor, tuple[Tensor, Tensor]]:
         """Score option vectors, optionally returning shared decoder states.
 
@@ -2535,6 +3617,8 @@ class TemporalCabtTransformer(nn.Module):
             n_options=n_options,
             return_hidden=return_hidden,
             decision_fusion_state_vec=decision_fusion_state_vec,
+            ledger_option_features=ledger_option_features,
+            offline_training_path=offline_training_path,
         )
 
     def decode_options_packed(
@@ -2547,6 +3631,8 @@ class TemporalCabtTransformer(nn.Module):
         batch_size: int,
         return_hidden: bool = False,
         decision_fusion_state_vec: Optional[Tensor] = None,
+        ledger_option_features: Optional[object] = None,
+        offline_training_path: bool = False,
     ) -> Union[Tensor, tuple[Tensor, Tensor]]:
         """Decode a packed option batch, optionally returning decoder states."""
         b = int(batch_size)
@@ -2580,6 +3666,8 @@ class TemporalCabtTransformer(nn.Module):
             n_options=n_options,
             return_hidden=return_hidden,
             decision_fusion_state_vec=decision_fusion_state_vec,
+            ledger_option_features=ledger_option_features,
+            offline_training_path=offline_training_path,
         )
 
     def _decode_option_tokens(
@@ -2591,10 +3679,22 @@ class TemporalCabtTransformer(nn.Module):
         n_options: Union[Sequence[int], Tensor],
         return_hidden: bool = False,
         decision_fusion_state_vec: Optional[Tensor] = None,
+        ledger_option_features: Optional[object] = None,
+        offline_training_path: bool = False,
     ) -> Union[Tensor, tuple[Tensor, Tensor]]:
         """Shared option decoder after sparse bags have already been embedded."""
         device = opt_tokens.device
         b, max_n, _ = opt_tokens.shape
+        ledger_option_residuals = self.own_deck_ledger_option_residuals(
+            ledger_option_features,
+            batch_size=b,
+            max_options=max_n,
+            device=device,
+            dtype=opt_tokens.dtype,
+            offline_training_path=offline_training_path,
+        )
+        if ledger_option_residuals is not None:
+            opt_tokens = opt_tokens + ledger_option_residuals
 
         # Memory = spatial tokens + state as an extra key.
         # Normalize shapes so both the batched inference route (state_vec is
@@ -2633,6 +3733,7 @@ class TemporalCabtTransformer(nn.Module):
         )
         logits = self.fused_policy_logits(h, fusion_state, logits)
         logits = self.latent_aided_policy_logits(h, fusion_state, logits)
+        logits = self.own_deck_option_aided_policy_logits(h, logits)
 
         # Mask padded options.
         counts = torch.as_tensor(n_options, device=device, dtype=torch.long).reshape(-1)
@@ -2656,13 +3757,17 @@ class TemporalCabtTransformer(nn.Module):
         n_options: Optional[Sequence[int]] = None,
         previous_action: Optional[SparseVector] = None,
         matchup_routes: Optional[Union[Tensor, Sequence[int]]] = None,
+        ledger_snapshots: Optional[object] = None,
+        ledger_option_features: Optional[object] = None,
     ) -> dict[str, Union[Tensor, Optional[TemporalKVCache]]]:
         """Evaluate one decision per batch row, optionally appending KV history.
 
         Returns dict with ``policy_logits``, ``value``, ``aux_logits``,
         ``opp_hand_logits``, ``opp_remainder_logits``,
         ``lethal_threat_logits``, ``prize_race_pred``, ``state_vec``,
-        ``spatial_memory``, ``kv_cache``.
+        ``spatial_memory``, ``kv_cache``.  A supplied public ledger snapshot
+        is encoded before temporal history; absent/disabled/malformed input is
+        an exact neutral bypass.
         """
         if self.decision_context == "stateless" and (kv_cache is not None or append_cache):
             raise ValueError(
@@ -2681,9 +3786,16 @@ class TemporalCabtTransformer(nn.Module):
         spatial = self.encode_board(board)
         if previous_action is not None and len(board) != 1:
             raise ValueError("previous_action incremental input requires batch size one")
+        ledger_residuals = self.own_deck_ledger_residuals(
+            ledger_snapshots,
+            batch_size=len(board),
+            device=spatial.device,
+            dtype=spatial.dtype,
+        )
         cls = self.history_tokens(
             spatial,
             [previous_action] if previous_action is not None else None,
+            ledger_residuals,
         ).unsqueeze(1)
         state_vec, new_cache = self.temporal_encode(
             cls, kv_cache, append=append_cache
@@ -2691,13 +3803,20 @@ class TemporalCabtTransformer(nn.Module):
         policy_value_state = self.matchup_policy_value_state(
             state_vec, matchup_routes
         )
-        logits = self.decode_options(
+        decoded = self.decode_options(
             options,
             spatial,
             policy_value_state,
             n_options=n_options,
             decision_fusion_state_vec=state_vec,
+            ledger_option_features=ledger_option_features,
+            return_hidden=self._own_deck_option_heads_present(),
         )
+        if isinstance(decoded, tuple):
+            logits, option_hidden = decoded
+        else:
+            logits = decoded
+            option_hidden = None
         value = torch.tanh(self.value_head(policy_value_state)).squeeze(-1)
         out: dict[str, Union[Tensor, Optional[TemporalKVCache]]] = {
             "policy_logits": logits,
@@ -2707,6 +3826,8 @@ class TemporalCabtTransformer(nn.Module):
             "kv_cache": new_cache,
         }
         out.update(self.belief_aux_logits(state_vec))
+        if option_hidden is not None:
+            out.update(self.own_deck_option_head_logits(option_hidden))
         return out
 
     def forward_from_obs(
@@ -2718,6 +3839,8 @@ class TemporalCabtTransformer(nn.Module):
         append_cache: bool = False,
         assert_info: bool = True,
         previous_action: Optional[SparseVector] = None,
+        ledger_snapshot: Optional["OwnDeckLedgerSnapshot"] = None,
+        ledger_option_features: Optional[object] = None,
     ) -> dict[str, Union[Tensor, Optional[TemporalKVCache], list]]:
         """Featurize one observation and run incremental inference (info-set only)."""
         if assert_info:
@@ -2725,12 +3848,21 @@ class TemporalCabtTransformer(nn.Module):
         board = features.build_board_tokens(obs, your_deck)
         combos = features.enumerate_action_combos(obs)
         opt = features.build_option_tokens(obs, combos)
+        if ledger_option_features is None and ledger_snapshot is not None:
+            option_features = getattr(ledger_snapshot, "option_features", None)
+            if callable(option_features):
+                try:
+                    ledger_option_features = option_features(obs, combos)
+                except (RuntimeError, TypeError, ValueError):
+                    ledger_option_features = None
         out = self.forward(
             board,
             opt,
             kv_cache,
             append_cache=append_cache,
             previous_action=previous_action,
+            ledger_snapshots=ledger_snapshot,
+            ledger_option_features=ledger_option_features,
         )
         out["action_combos"] = combos
         return out

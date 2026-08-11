@@ -52,6 +52,16 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# An r241 source snapshot is intentionally read-only and code-only.  Direct
+# invocations of this helper must honor the same durable artifact boundary as
+# the parent launcher, rather than defaulting to ``<snapshot>/outputs``.
+_outputs_override = os.environ.get("POKEBOT_OUTPUTS_DIR", "").strip()
+OUTPUTS_ROOT = (
+    Path(_outputs_override).expanduser().resolve()
+    if _outputs_override
+    else ROOT / "outputs"
+)
+
 
 # --------------------------------------------------------------------------
 # Sampling helpers (no torch import — cheap + isolated)
@@ -234,13 +244,13 @@ def main(argv=None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--interval", type=float, default=30.0, help="Sample period (s).")
     ap.add_argument("--log", type=Path,
-                    default=ROOT / "outputs" / "logs" / "resource_watcher.log")
+                    default=OUTPUTS_ROOT / "logs" / "resource_watcher.log")
     ap.add_argument("--plan", type=Path,
-                    default=ROOT / "outputs" / "state" / "resource_plan.json")
+                    default=OUTPUTS_ROOT / "state" / "resource_plan.json")
     ap.add_argument(
         "--live-pool-plan",
         type=Path,
-        default=ROOT / "outputs" / "state" / "live_pool_plan.json",
+        default=OUTPUTS_ROOT / "state" / "live_pool_plan.json",
         help="Iteration-boundary plan for running trainers "
              "(workers / leaf_servers). Pure-RL + RR consume at next iter.",
     )

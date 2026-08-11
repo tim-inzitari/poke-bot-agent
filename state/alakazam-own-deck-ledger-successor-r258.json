@@ -1,0 +1,418 @@
+{
+  "schema": "poke_bot.alakazam_own_deck_ledger_successor_r258/v1",
+  "canonical": true,
+  "owner_decision_revision": 258,
+  "latest_owner_clarification_revision": 259,
+  "latest_owner_clarification_recorded_at_utc": "2026-08-11T06:39:05Z",
+  "recorded_at_utc": "2026-08-11T06:18:20Z",
+  "status": "staged_dormant",
+  "specialist_id": "alakazam",
+  "candidate_id": "alakazam-own-deck-ledger-successor-r258",
+  "owner_intent": "Fully build and test an isolated Alakazam own-deck ledger successor now and materialize its causal replay features on Elmo as a separate checksum-bound expert-corpus side store for the next training lineage. Do not mutate active r241 or its source corpus. The new bounded Elmo side-store service may start now, but no pre-refresh successor training, existing-service action, restart, selector change, package, or submission is authorized. After receipt-proven terminal completion of the Alakazam refresh, this owner decision authorizes the staged isolated migration, training canary, source-disjoint evaluation, and receipt-backed activation sequence; every stage remains fail-closed and production promotion still requires its own completed receipt.",
+  "lineage": {
+    "predecessor_manifest": "state/alakazam-new-list-direct-policy-r241.json",
+    "predecessor_revision": 241,
+    "predecessor_is_immutable": true,
+    "predecessor_runtime_registry": "state/alakazam-new-list-direct-r241-runtime-registry.json",
+    "successor_isolated_until_activation": true,
+    "active_r241_mutation_allowed": false
+  },
+  "authority": {
+    "isolated_successor_build_and_offline_test_now": true,
+    "active_lineage_implementation_before_refresh_completion_receipt": false,
+    "active_lineage_activation_before_refresh_completion_receipt": false,
+    "post_refresh_isolated_migration_training_and_evaluation": true,
+    "r241_training": false,
+    "existing_managed_service_start_stop_restart_or_reconfigure": false,
+    "new_elmo_side_store_managed_service_start": true,
+    "elmo_expert_rollout_side_store_materialization_now": true,
+    "elmo_side_store_may_feed_active_r241": false,
+    "selector_change": false,
+    "runtime_package_creation_or_publication": false,
+    "submission": false,
+    "automatic_promotion": false
+  },
+  "refresh_completion_dependency": {
+    "required": true,
+    "required_before": [
+      "active_lineage_implementation",
+      "runtime_activation",
+      "training_canary",
+      "evaluation_promotion"
+    ],
+    "receipt_schema": "poke_bot.alakazam_refresh_completion/v1",
+    "receipt_requirements": [
+      "immutable Alakazam refresh lineage identity",
+      "completed refresh boundary identity",
+      "checkpoint identity and sha256",
+      "source and runtime receipt chain integrity"
+    ],
+    "receipt_path": null,
+    "receipt_status": "not_yet_proven",
+    "absence_fails_closed": true
+  },
+  "invariants": {
+    "direct_policy_only": true,
+    "no_mcts": true,
+    "no_recursive_turn_planner": true,
+    "no_search_target_generation": true,
+    "no_hidden_snapshot_labels": true,
+    "no_guide_runtime_action_authority": true,
+    "no_selector_or_submission_authority": true,
+    "all_existing_decision_heads_remain_present_and_trainable_when_a_successor_is_explicitly_activated": true,
+    "combo_head_status_must_not_be_changed_by_this_manifest": true,
+    "r241_exact_deck_guide_and_public_matchup_selector_remain_unchanged": true,
+    "source_manifest_and_runtime_receipts_remain_authoritative": true,
+    "successor_outputs_are_bounded_option_conditioned_inputs_not_action_overrides": true,
+    "unknown_deck_or_prize_identity_is_never_materialized": true
+  },
+  "leakage_boundaries": {
+    "permitted_state": [
+      "owner exact starting deck multiset",
+      "current public own hand",
+      "current public own active, bench, attached cards, and player-owned stadium",
+      "public own discard",
+      "publicly revealed own cards and known prize cards",
+      "current legal action stage and legal option",
+      "current explicitly exposed looking or select.deck tutor menu",
+      "public counts including deckCount, hand count, and prize count"
+    ],
+    "forbidden_state": [
+      "face-down own prize identities",
+      "unrevealed own deck identities",
+      "opponent private hand, deck, prize, or future state",
+      "hidden simulator snapshots",
+      "sampled or determinized hidden card placements",
+      "future transitions not present in the current recorded trajectory"
+    ],
+    "own_deck_ledger_rule": "Derive only the public residual multiset by subtracting observed own cards from the exact starting multiset. For each card, represent an interval over deck plus unknown prize slots; do not represent a hidden card as known to be in deck.",
+    "bound_rule": "For residual copies R, unknown own prize slots U, and public deckCount D, deck copies are bounded by max(0, R-U) through min(R, D).",
+    "tutor_boundary": "Before a tutor menu is actually observed, use only public residual bounds. Once the current recorded select.deck or looking menu explicitly reveals legal cards, exact menu-local features and deterministic candidate predicates are permitted only for that menu.",
+    "target_rule": "Train only on deterministic legal current-state facts or the actual later observation from the same recorded trajectory. No synthetic counterfactual outcome, hidden-card, or future-action target is permitted.",
+    "mask_rule": "Mask an incomplete, hidden, ambiguous, or illegally staged tutor or terminal target rather than imputing it."
+  },
+  "elmo_expert_rollout_side_store": {
+    "owner_clarification_revision": 259,
+    "status": "authorized_for_build_and_managed_start",
+    "purpose": "next_training_lineage_only",
+    "host": "elmo",
+    "source_manifest": "/mnt/Main/main/poke-bot-agent/archive/expert-r241-20260722-20260810/current.json",
+    "source_manifest_sha256": "sha256:09848f04a6c863a02c517fdcd5b7a61a139eceafd3348aa2a08705fd6e971a16",
+    "source_window": {
+      "start_date": "2026-07-22",
+      "end_date": "2026-08-10",
+      "day_count": 20,
+      "validated_episode_count": 91253
+    },
+    "source_access": "read_only",
+    "record_scope": "acting-seat records whose exact starting deck is classified as Alakazam",
+    "source_attempt": 6,
+    "source_identity_namespace": "de844af19ca6",
+    "source_snapshot_root": "/home/admin/pokebot-own-deck-r259-src-de844af19ca6",
+    "sealed_runtime_snapshot_root": "/var/lib/pokebot-own-deck-r259-src-de844af19ca6",
+    "sealed_runtime_source_lock": "/etc/pokebot-own-deck-r259/de844af19ca6/source-tree.lock.json",
+    "controller_expected_inventory": "/etc/pokebot-own-deck-r259/de844af19ca6/expected-file-inventory.json",
+    "sealed_runtime_stager": "/etc/pokebot-own-deck-r259/de844af19ca6/stage-source",
+    "runtime_lock_root": "/run/pokebot-own-deck-r259-de844af19ca6",
+    "prior_failed_preflight_attempts": [
+      {
+        "attempt": 1,
+        "status": "failed_closed_before_output_or_service_start",
+        "source_snapshot_root": "/home/admin/pokebot-own-deck-r259-src",
+        "sealed_runtime_snapshot_root": "/var/lib/pokebot-own-deck-r259-src",
+        "sealed_runtime_source_lock": "/etc/pokebot-own-deck-r259/source-tree.lock.json",
+        "source_tree_sha256": "sha256:e879340e0e94c956e7783c88fc5576e7906821a66670ba17dd44bf530279dbf9",
+        "file_inventory_sha256": "sha256:cf1648b814b2df7735216a2236671f84cd75c823c3dd013ec41e2a83857c1caa",
+        "runtime_lock_sha256": "sha256:718b44d7057b20602c9d0f807d1dfeea4edba6adbaebd867c2de1c16e157b5c0",
+        "failure": "contained archive-native smoke encountered a generic-converter INACTIVE replay echo; no row, output root, unit installation, or service start was authorized",
+        "preserve_immutable": true
+      },
+      {
+        "attempt": 2,
+        "status": "failed_closed_before_output_or_service_start",
+        "source_snapshot_root": "/home/admin/pokebot-own-deck-r259-src-cc72a4e27f94",
+        "sealed_runtime_snapshot_root": "/var/lib/pokebot-own-deck-r259-src-cc72a4e27f94",
+        "sealed_runtime_source_lock": "/etc/pokebot-own-deck-r259/cc72a4e27f94/source-tree.lock.json",
+        "source_tree_sha256": "sha256:cd8b311a4689faf95a9fdc2f94133367ffc56e5b9b37966897de4121ffb3115a",
+        "file_inventory_sha256": "sha256:f0d8c76aec3364f7a7d6ee2caf25dcafdaecccc9e9a9d2dbbb6c6e0c791721af",
+        "runtime_lock_sha256": "sha256:6d0140654a40773ad137e7529712ac00f52dc5da8fe3117807934d11eae46aed",
+        "failure": "contained nonroot smoke could not read root-only 0400 source produced from a 0600 retry origin; no row, output root, unit installation, or service start was authorized",
+        "preserve_immutable": true
+      },
+      {
+        "attempt": 3,
+        "status": "failed_closed_during_uncommitted_first_day_materialization",
+        "source_snapshot_root": "/home/admin/pokebot-own-deck-r259-src-cc72a4e27f94-a3",
+        "sealed_runtime_snapshot_root": "/var/lib/pokebot-own-deck-r259-src-cc72a4e27f94-a3",
+        "sealed_runtime_source_lock": "/etc/pokebot-own-deck-r259/cc72a4e27f94-a3/source-tree.lock.json",
+        "source_tree_sha256": "sha256:d7ba94639411878d497f6c38a4581d1f4d9d79feed0ec4a53d40a815a985028c",
+        "file_inventory_sha256": "sha256:0adb1bd738ff6bc6e57e1123a071930a09c017a433f68a926151d41076ee85f7",
+        "runtime_lock_sha256": "sha256:7816b3925c225ab5bd665319c44bdc9a910f3f200803eb9c0f4ff66f2f8241f3",
+        "service_started_at": "2026-08-11T08:38:27Z",
+        "service_failed_at": "2026-08-11T08:40:20Z",
+        "service_restart_count": 0,
+        "failure": "legacy replay converter rejected exact source member 2026-07-22:87394115.json with statuses TIMEOUT,DONE and rewards None,1; no daily metadata or committed sidecar directory was published",
+        "uncommitted_partial": {
+          "path": "/mnt/Main/main/poke-bot-agent/archive/expert-r258-own-deck-ledger-sidecar/2026-07-22_2026-08-10/daily/.2026-07-22.r259.22btqls1/own_deck_rollouts.jsonl.gz",
+          "bytes": 4207023,
+          "sha256": "sha256:6a1988d09f9e698abc384ac563866e007d3f11baa4607926a34f4942077a0e95",
+          "committed": false,
+          "metadata_present": false
+        },
+        "preserve_immutable": true
+      },
+      {
+        "attempt": 4,
+        "status": "failed_closed_during_contained_exact_member_smoke",
+        "source_snapshot_root": "/home/admin/pokebot-own-deck-r259-src-3c8a28a0afd9",
+        "sealed_runtime_snapshot_root": "/var/lib/pokebot-own-deck-r259-src-3c8a28a0afd9",
+        "sealed_runtime_source_lock": "/etc/pokebot-own-deck-r259/3c8a28a0afd9/source-tree.lock.json",
+        "source_tree_sha256": "sha256:87f46c8d5fd176f078caae86dfe0bc600307bdce71a57bdfff310176ce535b3a",
+        "file_inventory_sha256": "sha256:14a31ebc51f71e134d831549a7b396f9e962474939377dba6a9c2a3d1c870240",
+        "runtime_lock_sha256": "sha256:f5ddc878f99064a0357a8ff4f6048aa99ab4f435ca4851dc78182930b053d7e4",
+        "failure": "the exact 87394115.json smoke correctly used the winner-free path but built the full roughly 1850-decision fallback record before applying its row bound and was killed by the required 1 GiB smoke memory cap with exit 137",
+        "output_or_service_restart_occurred": false,
+        "preserve_immutable": true
+      },
+      {
+        "attempt": 5,
+        "status": "superseded_before_contained_smoke",
+        "source_snapshot_root": "/home/admin/pokebot-own-deck-r259-src-b96413d63f68",
+        "sealed_runtime_snapshot_root": "/var/lib/pokebot-own-deck-r259-src-b96413d63f68",
+        "sealed_runtime_source_lock": "/etc/pokebot-own-deck-r259/b96413d63f68/source-tree.lock.json",
+        "source_tree_sha256": "sha256:c65e96a48c3cd6fea282700856e883fdef78f40b0a143511ccc8a22518b83b09",
+        "file_inventory_sha256": "sha256:501b615d5d0b2118301e153531a5dd493133d4097199568777fce447e60bc6f3",
+        "runtime_lock_sha256": "sha256:cfffddb883f1404bd606639c70f34b20db75d4f239a5a4fd0673279b21e6a15f",
+        "failure": "the sealed source still combined the normal record and exact 87394115.json checks in one 1 GiB smoke process; it was superseded by process-isolated 1 GiB normal and production-sized 2 GiB exact-member preflights before any contained smoke evidence, output publication, unit replacement, or service restart",
+        "contained_smoke_status": "not_run_or_not_proven",
+        "output_or_service_restart_occurred": false,
+        "preserve_immutable": true
+      }
+    ],
+    "output_root": "/mnt/Main/main/poke-bot-agent/archive/expert-r258-own-deck-ledger-sidecar/2026-07-22_2026-08-10",
+    "managed_service": "pokebot-own-deck-rollout-store-r259.service",
+    "container_image": "poke-bot-truenas-worker:matchup-v33-runtime",
+    "container_image_id": "sha256:74d66c41fda841e96ee89e88fab1fa800b82ab8c6a06cabdff146803a1b05a0f",
+    "classifier_asset_root": "/home/admin/pokebot-expert-src-v6-strategic/data/training_mixes",
+    "record_key": [
+      "episode_id",
+      "seat",
+      "env_step",
+      "observation_fingerprint"
+    ],
+    "storage_contract": "daily atomic idempotent gzip JSONL sidecars plus immutable metadata and sha256 receipts",
+    "source_corpus_mutation_allowed": false,
+    "current_r241_training_eligible": false,
+    "post_refresh_successor_training_eligible_after_join_and_parity_receipt": true
+  },
+  "stages": [
+    {
+      "id": "ledger_core",
+      "status": "staged_dormant",
+      "scope": "Build a serial-aware public own-deck residual ledger with card and role-level lower and upper deck availability bounds.",
+      "deliverables": [
+        "exact-starting-multiset counter",
+        "public-zone de-duplication and conservation checks",
+        "unknown-prize interval encoding",
+        "card-identity-conditioned availability encoding from which attacker, evolution, Rare Candy, Psychic attachment, draw, Boss, recovery, and combo roles can be learned without a hardcoded guide-role map"
+      ],
+      "acceptance": [
+        "every visible own card is counted once",
+        "all interval bounds are internally feasible and consistent with deckCount and prize slots",
+        "two states differing only in hidden prize/deck realization produce identical ledger features",
+        "swapping availability between two distinct card identities changes the learned ledger input once the zero-safe adapter is trained",
+        "no belief sampling, determinization, or hidden snapshot access occurs"
+      ]
+    },
+    {
+      "id": "shared_all_head_input",
+      "status": "staged_dormant",
+      "scope": "Make the public ledger available as a shared causal board-and-legal-option input to every existing learned decision route, without removing, bypassing, or granting override authority to any head.",
+      "deliverables": [
+        "versioned feature schema",
+        "typed shared ledger embedding or tokens",
+        "option interaction contract",
+        "checkpoint and absent-feature compatibility handling"
+      ],
+      "acceptance": [
+        "all existing non-combo decision sources receive the same causal ledger input contract",
+        "no action is selected by the ledger alone",
+        "aggregate action influence remains bounded and auditable",
+        "missing or malformed ledger data fails closed to masked or neutral successor inputs"
+      ]
+    },
+    {
+      "id": "visible_tutor_learning",
+      "status": "staged_dormant",
+      "scope": "Represent tutor and search choices only after a real visible menu exposes selectable cards; learn continuity and completion predicates without predicting hidden deck realization.",
+      "deliverables": [
+        "menu-local tutor candidate features",
+        "current-attacker, replacement-attacker, attack-ready, and closeout-ready continuity predicates",
+        "masked causal labels for actual observed tutor transitions"
+      ],
+      "acceptance": [
+        "pre-menu features never name an unexposed deck card as present",
+        "candidate labels apply only to cards explicitly shown in the current menu or to deterministic legal current-state facts",
+        "incomplete selection stages are wholly masked",
+        "no guide, heuristic, or auxiliary target gains runtime action authority"
+      ]
+    },
+    {
+      "id": "terminal_conversion",
+      "status": "staged_dormant",
+      "scope": "Represent immediate legal prize conversion and terminal closeout as option-conditioned direct-policy signals.",
+      "deliverables": [
+        "current legal KO, prize, multi-prize, terminal-win, blocker, and continuity predicates",
+        "exact Powerful Hand threshold handling",
+        "visible Boss target and hand-cost handling",
+        "masked observed-transition labels where deterministic labels are unavailable"
+      ],
+      "acceptance": [
+        "terminal labels describe the current legal action rather than a generic future prize event",
+        "protection, immunity, legality, deck-out, and replacement-attacker constraints are represented or cause masking",
+        "only publicly visible active or bench targets are used",
+        "no rollout, search, or imagined opponent response is used"
+      ]
+    },
+    {
+      "id": "dataset_runtime_remote_parity",
+      "status": "staged_dormant",
+      "scope": "Version the dataset, replay, feature, runtime, and remote-worker contracts so the same public ledger is reproduced everywhere.",
+      "deliverables": [
+        "dataset and feature-shard schema migrations",
+        "raw-observation provenance required for ledger derivation",
+        "local replay and remote-worker parity fixtures",
+        "checksum and schema compatibility receipts"
+      ],
+      "acceptance": [
+        "identical recorded observations produce byte-identical or explicitly tolerance-bounded ledger features locally and remotely",
+        "no stale precomputed static-deck feature is silently treated as a dynamic ledger",
+        "feature schema mismatch fails closed",
+        "remote parity evidence contains no hidden state or private-zone export"
+      ]
+    },
+    {
+      "id": "elmo_expert_rollout_side_store",
+      "status": "authorized_building",
+      "scope": "Read the checksum-pinned expert corpus on Elmo and materialize causal OwnDeckLedger plus tutor and terminal supervision as a separate per-observation side store for the next training lineage.",
+      "deliverables": [
+        "Alakazam acting-seat replay rows reconstructed from the exact source manifest",
+        "episode-seat-step keyed compressed sidecars with observation fingerprints",
+        "daily atomic completion metadata and sha256 receipts",
+        "bounded managed-service execution and restart-safe idempotence"
+      ],
+      "acceptance": [
+        "the protected source manifest and every source archive remain byte-unchanged",
+        "source identity, feature schema, code identity, row counts, and output digest are receipt-bound",
+        "duplicate starts neither duplicate nor silently replace a completed daily shard",
+        "every joined row reproduces local causal ledger and supervision outputs",
+        "the side store is excluded from active r241 and all evaluation or Kaggle training inputs"
+      ]
+    },
+    {
+      "id": "shadow_ablations",
+      "status": "staged_dormant",
+      "scope": "Run offline and shadow-only ablations of ledger, tutor, and terminal signals without affecting active r241 selection, training, services, packages, or submissions.",
+      "deliverables": [
+        "baseline versus ledger ablation protocol",
+        "tutor-menu calibration and missed-closeout metrics",
+        "false-aggression, blocker, deck-out, and continuity audits",
+        "shadow receipt with frozen input and model identities"
+      ],
+      "acceptance": [
+        "shadow execution has zero selector and runtime-action influence",
+        "metrics distinguish public availability bounds from later revealed tutor truth",
+        "terminal conversion is assessed separately from generic prize-race outcomes",
+        "all inputs, code, and replay identities are checksum-bound"
+      ]
+    },
+    {
+      "id": "post_refresh_training_canary_eval_promotion",
+      "status": "blocked_pending_refresh_completion_and_prior_stage_receipts",
+      "scope": "After refresh completion is independently receipt-proven, conduct an isolated training canary, evaluation, and any possible promotion under a new explicit receipt.",
+      "entry_requirements": [
+        "refresh_completion_dependency receipt is present and valid",
+        "all prior stage acceptance receipts pass",
+        "r258-authorized checksum-bound training canary receipt exists",
+        "r258-authorized source-disjoint evaluation receipt exists",
+        "a distinct promotion receipt exists before any production selector change"
+      ],
+      "acceptance": [
+        "canary uses only the approved successor lineage",
+        "direct-policy and leakage invariants are independently revalidated",
+        "no active selector change occurs without the separate promotion receipt",
+        "no package or submission occurs under this manifest alone"
+      ],
+      "separate_receipt_required": true,
+      "this_manifest_authorizes_post_refresh_training_and_evaluation": true,
+      "production_promotion_requires_completed_distinct_receipt": true
+    }
+  ],
+  "acceptance_gates": {
+    "global": [
+      "JSON schema and canonical-path validation",
+      "r241 immutability audit",
+      "public-information-only audit",
+      "direct-policy-only audit",
+      "no-existing-service-restart-no-selector-no-package-no-submission audit"
+    ],
+    "ledger": [
+      "multiset conservation under duplicate card names and attached cards",
+      "unknown-prize permutation invariance",
+      "visible tutor-menu exactness",
+      "no-card-leakage negative tests"
+    ],
+    "learning": [
+      "causal target provenance audit",
+      "whole-stage masking audit",
+      "bounded option-conditioned influence audit",
+      "all-head shared-input audit"
+    ],
+    "release": [
+      "receipt-proven Alakazam refresh completion",
+      "post-refresh canary receipt",
+      "evaluation receipt",
+      "separate promotion receipt",
+      "runtime and remote parity receipt"
+    ]
+  },
+  "source_paths": {
+    "r241_contract": "state/alakazam-new-list-direct-policy-r241.json",
+    "r241_runtime_registry": "state/alakazam-new-list-direct-r241-runtime-registry.json",
+    "r241_head_roles": "state/alakazam-new-list-direct-r241-strategic-head-roles.json",
+    "r241_guide_contract": "config/deck_guides/alakazam-new-list-direct-r241.yaml",
+    "r241_human_guide": "docs/deck_guides/alakazam-new-list-direct-r241-expert-brief.md",
+    "r241_deck": "decks/archetype-samples/alakazam-new-list-direct-r241.csv",
+    "public_inventory_reference": "poke_bot/belief.py",
+    "feature_encoder": "poke_bot/features.py",
+    "dataset_encoder": "poke_bot/dataset.py",
+    "feature_shards": "poke_bot/feature_shards.py",
+    "direct_policy_model": "poke_bot/model.py",
+    "training_contract": "poke_bot/train.py",
+    "existing_alakazam_teacher": "poke_bot/alakazam_new_list_heuristics.py",
+    "lethal_and_prize_labels": "poke_bot/blackwell_heads.py",
+    "strategic_action_labels": "poke_bot/strategic_heads.py"
+    ,"own_deck_ledger": "poke_bot/own_deck_ledger.py"
+    ,"own_deck_supervision": "poke_bot/own_deck_supervision.py"
+    ,"own_deck_rollout_store": "poke_bot/own_deck_rollout_store.py"
+    ,"own_deck_rollout_store_cli": "scripts/update_own_deck_rollout_store.py"
+    ,"elmo_own_deck_rollout_stager": "ops/elmo/stage_own_deck_rollout_store_r259_source.sh"
+    ,"elmo_own_deck_rollout_launcher": "ops/elmo/run_own_deck_rollout_store_r259.sh"
+    ,"elmo_own_deck_rollout_service": "ops/elmo/pokebot-own-deck-rollout-store-r259.service"
+  },
+  "receipt_plan": {
+    "stage_receipt_schema": "poke_bot.alakazam_own_deck_ledger_stage_receipt/v1",
+    "required_fields": [
+      "stage_id",
+      "status",
+      "source_sha256s",
+      "test_command_or_fixture_identity",
+      "test_result",
+      "public_information_audit",
+      "direct_policy_audit",
+      "r241_nonmutation_audit"
+    ],
+    "activation_receipt_is_distinct_from_stage_receipts": true,
+    "promotion_receipt_is_distinct_from_activation_receipt": true
+  }
+}

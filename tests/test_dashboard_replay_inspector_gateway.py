@@ -6,6 +6,7 @@ import http.client
 import json
 import subprocess
 import threading
+import time
 from collections.abc import Iterator
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -46,6 +47,13 @@ def gateway(
                 )
                 self.end_headers()
                 return
+            if self.path in {
+                "/delayed-non-trace",
+                "/api/submissions/987/games/654/steps/3?stage=0",
+            }:
+                # The trace target deliberately waits past the test's legacy
+                # generic upstream deadline. Non-trace resources must not.
+                time.sleep(0.075)
             body = json.dumps({"upstream_path": self.path}).encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -53,7 +61,11 @@ def gateway(
             self.send_header("Set-Cookie", "upstream=must-not-pass")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except BrokenPipeError:
+                # The bounded non-trace gateway intentionally closed first.
+                return
 
         def log_message(self, _fmt: str, *_args: object) -> None:
             return
@@ -265,6 +277,77 @@ def test_gateway_rejects_upstream_redirects_and_oversized_responses(
         "/redirect",
         "/oversize",
     ]
+
+
+def test_trace_wait_is_unbounded_but_non_trace_wait_remains_bounded(
+    gateway: tuple[int, dict[str, list[dict[str, Any]]]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only exact trace headers bypass the legacy generic upstream deadline."""
+
+    port, observed = gateway
+    monkeypatch.setattr(dashboard_server, "INSPECTOR_PROXY_TIMEOUT_SECONDS", 0.02)
+    monkeypatch.setattr(
+        dashboard_server, "INSPECTOR_PROXY_CONNECT_TIMEOUT_SECONDS", 0.02
+    )
+
+    started = time.monotonic()
+    status, _headers, body = _request(
+        port,
+        "GET",
+        "/replay-inspector/api/submissions/987/games/654/steps/3?stage=0",
+    )
+    elapsed = time.monotonic() - started
+    assert status == HTTPStatus.OK
+    assert json.loads(body)["upstream_path"].endswith("steps/3?stage=0")
+    assert elapsed >= 0.05
+
+    status, _headers, _body = _request(
+        port, "GET", "/replay-inspector/delayed-non-trace"
+    )
+    assert status == HTTPStatus.GATEWAY_TIMEOUT
+    assert [request["path"] for request in observed["requests"]] == [
+        "/api/submissions/987/games/654/steps/3?stage=0",
+        "/delayed-non-trace",
+    ]
+
+
+def test_trace_waiter_capacity_rejects_before_upstream(
+    gateway: tuple[int, dict[str, list[dict[str, Any]]]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    port, observed = gateway
+    monkeypatch.setattr(
+        dashboard_server,
+        "_INSPECTOR_TRACE_WAITERS",
+        threading.BoundedSemaphore(0),
+    )
+
+    status, _headers, _body = _request(
+        port,
+        "GET",
+        "/replay-inspector/api/submissions/987/games/654/steps/3?stage=0",
+    )
+    assert status == HTTPStatus.SERVICE_UNAVAILABLE
+    assert observed["requests"] == []
+
+
+def test_trace_wait_policy_matches_only_exact_trace_targets() -> None:
+    assert dashboard_server._is_inspector_trace_target(
+        "/api/submissions/987/games/654/steps/3?stage=0"
+    )
+    assert dashboard_server._is_inspector_trace_target(
+        "/api/submissions/987/games/654/steps/3?stage=0&scales=value:0.5"
+    )
+    assert not dashboard_server._is_inspector_trace_target(
+        "/api/submissions/987/games/654/steps"
+    )
+    assert not dashboard_server._is_inspector_trace_target(
+        "/api/submissions/987/games/654/parameters"
+    )
+    assert dashboard_server.INSPECTOR_PROXY_CONNECT_TIMEOUT_SECONDS > 0
+    assert dashboard_server.INSPECTOR_PROXY_TRACE_RESPONSE_READ_TIMEOUT_SECONDS > 0
+    assert dashboard_server.INSPECTOR_PROXY_MAX_PENDING_TRACE_REQUESTS > 0
 
 
 def test_gateway_rejects_dns_rebinding_and_conflicting_origins(
