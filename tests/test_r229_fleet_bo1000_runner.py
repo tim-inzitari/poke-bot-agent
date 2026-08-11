@@ -32,6 +32,14 @@ def _package_manifest(tmp_path: Path) -> Path:
         "required_distinct_per_lane_handle_identity_count": 2,
         "required_handle_scoped_search_id_chain_count": 2,
         "required_distinct_handle_first_search_id_composite_count": 2,
+        "handle_scoped_first_search_id_composite_state_array_field": (
+            "handle_scoped_first_search_id_composite_states"
+        ),
+        "handle_scoped_first_search_id_composite_state_entry_exact_keys_in_order": [
+            "lane_id",
+            "handle_identity",
+            "first_search_id",
+        ],
         "search_begin_identity_scope": "arena_handle_plus_handle_local_search_id",
         "raw_search_id_global_uniqueness_required": False,
         "logical_frontier_leaf_count_per_frozen_model_batch": 2,
@@ -254,6 +262,15 @@ def test_package_identity_rejects_mixed_libcg_manifest(tmp_path):
     payload["canonical_native_libraries"]["linux_x86_64"]["sha256"] = "sha256:" + "0" * 64
     manifest.write_text(json.dumps(payload))
     with pytest.raises(runner.R229FleetError, match="mixed or incomplete"):
+        runner._package_identity({"package_manifest_path": str(manifest)})
+
+
+def test_package_identity_rejects_missing_public_handle_scoped_shape(tmp_path):
+    manifest = _package_manifest(tmp_path)
+    payload = json.loads(manifest.read_text())
+    payload.pop("handle_scoped_first_search_id_composite_state_array_field")
+    manifest.write_text(json.dumps(payload))
+    with pytest.raises(runner.R229FleetError, match="violates the r229 identity"):
         runner._package_identity({"package_manifest_path": str(manifest)})
 
 

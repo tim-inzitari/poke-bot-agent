@@ -40,6 +40,14 @@ def _package(monkeypatch, tmp_path: Path) -> Path:
         "required_distinct_per_lane_handle_identity_count": 2,
         "required_handle_scoped_search_id_chain_count": 2,
         "required_distinct_handle_first_search_id_composite_count": 2,
+        "handle_scoped_first_search_id_composite_state_array_field": (
+            "handle_scoped_first_search_id_composite_states"
+        ),
+        "handle_scoped_first_search_id_composite_state_entry_exact_keys_in_order": [
+            "lane_id",
+            "handle_identity",
+            "first_search_id",
+        ],
         "search_begin_identity_scope": "arena_handle_plus_handle_local_search_id",
         "raw_search_id_global_uniqueness_required": False,
         "logical_frontier_leaf_count_per_frozen_model_batch": 2,

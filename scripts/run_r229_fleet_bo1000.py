@@ -114,6 +114,12 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
         or manifest.get("required_distinct_per_lane_handle_identity_count") != 2
         or manifest.get("required_handle_scoped_search_id_chain_count") != 2
         or manifest.get("required_distinct_handle_first_search_id_composite_count") != 2
+        or manifest.get("handle_scoped_first_search_id_composite_state_array_field")
+        != "handle_scoped_first_search_id_composite_states"
+        or manifest.get(
+            "handle_scoped_first_search_id_composite_state_entry_exact_keys_in_order"
+        )
+        != ["lane_id", "handle_identity", "first_search_id"]
         or manifest.get("search_begin_identity_scope")
         != "arena_handle_plus_handle_local_search_id"
         or manifest.get("raw_search_id_global_uniqueness_required") is not False

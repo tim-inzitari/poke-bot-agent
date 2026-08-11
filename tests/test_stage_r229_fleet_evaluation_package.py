@@ -22,6 +22,18 @@ def test_game_runner_and_watchdog_are_sealed_package_overlays():
     }
 
 
+def test_manifest_binds_public_handle_scoped_composite_shape():
+    # The complete stage path is covered by the exact-package test below; this
+    # focused assertion protects the canonical field names from accidental drift.
+    source = Path(stage.__file__).read_text()
+    assert '"handle_scoped_first_search_id_composite_state_array_field"' in source
+    assert '"handle_scoped_first_search_id_composite_states"' in source
+    assert (
+        '"handle_scoped_first_search_id_composite_state_entry_exact_keys_in_order"'
+        in source
+    )
+
+
 def test_payload_tree_digest_binds_paths_and_bytes(tmp_path):
     root = tmp_path / "root"
     root.mkdir()
