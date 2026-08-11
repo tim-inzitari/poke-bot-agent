@@ -144,6 +144,9 @@ def _validate_two_lane_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
             continue
         chains = row.get("per_lane_search_id_chains") or ()
         handles = row.get("per_lane_handle_identities") or ()
+        composite_states = (
+            row.get("handle_scoped_first_search_id_composite_states") or ()
+        )
         valid_chains = [
             chain
             for chain in chains
@@ -161,6 +164,23 @@ def _validate_two_lane_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
             (str(handles[index]), chains[index][0])
             for index in range(2)
         ] if len(valid_handles) == len(valid_chains) == 2 else []
+        valid_composite_states = (
+            (
+                isinstance(composite_states, list)
+                and len(composite_states) == 2
+                and all(
+                    isinstance(state, dict)
+                    and list(state)
+                    == ["lane_id", "handle_identity", "first_search_id"]
+                    and state["lane_id"] == lane_id
+                    and state["handle_identity"] == handles[lane_id]
+                    and state["first_search_id"] == chains[lane_id][0]
+                    for lane_id, state in enumerate(composite_states)
+                )
+            )
+            if len(valid_handles) == len(valid_chains) == 2
+            else False
+        )
         microbatches = row.get("microbatch_sizes") or ()
         if (
             row.get("requested_simulator_lane_count") != 2
@@ -177,6 +197,7 @@ def _validate_two_lane_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
             or len(chains) != 2
             or len(valid_chains) != 2
             or len(set(scoped_search_states)) != 2
+            or not valid_composite_states
             or not microbatches
             or any(size != 2 for size in microbatches)
             or row.get("outstanding_virtual_loss") != 0

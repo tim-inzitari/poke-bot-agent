@@ -161,6 +161,9 @@ search_inputs=tuple(dict(search_inputs) for _ in range(8))
     assert "range(2)" in repaired
     assert "per_lane_search_id_chains" in repaired
     assert "per_lane_handle_identities" in repaired
+    assert "handle_scoped_first_search_id_composite_states" in repaired
+    assert '"lane_id": lane_id' in repaired
+    assert '"first_search_id": receipt.per_lane_search_id_chains[lane_id][0]' in repaired
     assert "requested_simulator_lane_count" in repaired
     assert "LANES = 2" in (destination / "poke_bot/r228_async_shared_tree_queue.py").read_text()
     assert "two-lane frontier batch was incomplete" in (

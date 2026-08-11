@@ -104,6 +104,10 @@ def _two_lane_receipt():
         "max_simulator_calls_in_flight": 2,
         "per_lane_depth": [1, 1],
         "per_lane_search_id_chains": [[0], [0]],
+        "handle_scoped_first_search_id_composite_states": [
+            {"lane_id": 0, "handle_identity": 1001, "first_search_id": 0},
+            {"lane_id": 1, "handle_identity": 1002, "first_search_id": 0},
+        ],
         "microbatch_sizes": [2],
         "outstanding_virtual_loss": 0,
     }
@@ -113,6 +117,18 @@ def test_decision_receipt_requires_two_distinct_lanes_and_full_batches():
     game._validate_two_lane_receipts([_two_lane_receipt()])
     bad = _two_lane_receipt()
     bad["per_lane_handle_identities"] = [1001, 1001]
+    with pytest.raises(game.R229GameError, match="exact two-lane"):
+        game._validate_two_lane_receipts([bad])
+    bad = _two_lane_receipt()
+    bad["handle_scoped_first_search_id_composite_states"][1]["handle_identity"] = 1001
+    with pytest.raises(game.R229GameError, match="exact two-lane"):
+        game._validate_two_lane_receipts([bad])
+    bad = _two_lane_receipt()
+    bad["handle_scoped_first_search_id_composite_states"][0] = {
+        "handle_identity": 1001,
+        "lane_id": 0,
+        "first_search_id": 0,
+    }
     with pytest.raises(game.R229GameError, match="exact two-lane"):
         game._validate_two_lane_receipts([bad])
     bad = _two_lane_receipt()

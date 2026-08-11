@@ -141,6 +141,14 @@ def repair_r233_runtime_for_r229(path: Path) -> None:
                     "per_lane_search_id_chains": [
                         list(chain) for chain in receipt.per_lane_search_id_chains
                     ],
+                    "handle_scoped_first_search_id_composite_states": [
+                        {
+                            "lane_id": lane_id,
+                            "handle_identity": receipt.per_lane_handle_identities[lane_id],
+                            "first_search_id": receipt.per_lane_search_id_chains[lane_id][0],
+                        }
+                        for lane_id in range(2)
+                    ],
                     "search_release_calls": receipt.search_release_calls,'''
     payload = _replace_once(
         payload, old_lane_receipt, new_lane_receipt, label="two-lane search ids"
