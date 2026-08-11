@@ -17,8 +17,6 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-import torch
-
 from . import checkpoint
 from . import own_deck_migration as migration
 from .own_deck_successor import receipt_digest, seal_receipt
@@ -749,7 +747,6 @@ def validate_r260_inzi_dataset_binding(
         if int(binding.get(key, -1)) != expected:
             raise R241OwnDeckSuccessorError(f"r260 Inzi dataset changed {key}")
     dataset = _identity_row(binding.get("inzi_joined_dataset"), label="r260 Inzi joined dataset identity", verify_file=require_local_dataset)
-    size = dataset["size_bytes"]
     if dataset.get("sha256") != binding.get("inzi_joined_dataset_sha256"):
         raise R241OwnDeckSuccessorError("r260 Inzi joined dataset identity drifted")
     path_text = str(dataset.get("path") or "")

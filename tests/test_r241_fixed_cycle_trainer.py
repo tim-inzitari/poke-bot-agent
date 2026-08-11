@@ -235,7 +235,7 @@ def test_r241_boundary_five_refresh_is_dispatched_before_next_collection() -> No
 
 def test_r260_branch_streams_before_the_unchanged_resident_rehearsal_path() -> None:
     source = inspect.getsource(train_pure_rl.run_full_loop)
-    r260_branch = source.index("if r260_own_deck_training_inputs:")
+    r260_branch = source.rindex("if r260_own_deck_training_inputs:")
     resident_path = source.index("# A completed rehearsal is immutable training evidence.")
     r260_source = source[r260_branch:resident_path]
 

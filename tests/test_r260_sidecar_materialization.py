@@ -297,6 +297,7 @@ def test_full_materialization_transport_parity_and_final_bind(tmp_path: Path) ->
         completion=completion,
         source_transport_receipt=transported.transport_receipt.path,
         owner_contract=fixture.contract,
+        validate_with_launcher=False,
     )
     binding = json.loads(binding_path.path.read_text(encoding="utf-8"))
     assert parity.path == completion.parity_receipt.path

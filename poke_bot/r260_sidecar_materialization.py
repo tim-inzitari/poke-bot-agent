@@ -96,6 +96,8 @@ class _OwnerContract(Protocol):
     source_manifest_sha256: str
     source_window_receipt_sha256: str
     side_store_root: str
+    inzi_training_root: str
+    inzi_prefix_staging_root: str
 
 
 @dataclass(frozen=True)
@@ -258,6 +260,7 @@ def materialize_r260_sidecar(
     evidence_root: Path | str,
     owner_contract: _OwnerContract | None = None,
     expected_sidecar_root: Path | str | None = None,
+    receipt_identity_root: Path | str | None = None,
 ) -> MaterializationResult:
     """Create a deterministic joined dataset after a strict 20/20 source audit.
 
@@ -273,7 +276,16 @@ def materialize_r260_sidecar(
         owner_contract=contract,
         expected_sidecar_root=expected_sidecar_root,
     )
+    physical_root = audit.sidecar_root
     root = _new_directory(evidence_root, label="r260 evidence root")
+    _require_descendant(root, physical_root, label="r260 evidence root")
+    logical_root = _receipt_identity_root(
+        physical_root=physical_root,
+        receipt_identity_root=receipt_identity_root,
+    )
+    if receipt_identity_root is not None:
+        _require_staging_inzi_root(physical_root, contract)
+        _require_final_inzi_root(logical_root, contract)
     joined_dir = _new_directory(root / JOINED_DIRECTORY_NAME, label="r260 joined directory")
     receipts_dir = _new_directory(root / RECEIPTS_DIRECTORY_NAME, label="r260 receipt directory")
 
@@ -300,12 +312,22 @@ def materialize_r260_sidecar(
             "schema": R260_JOINED_DATASET_MANIFEST_SCHEMA,
             "status": "complete",
             "owner_contract_sha256": contract.sha256,
-            "source_manifest": source_manifest_copy.as_dict(),
-            "source_window_receipt": source_window_copy.as_dict(),
+            "source_manifest": _project_identity(
+                source_manifest_copy, physical_root=physical_root, logical_root=logical_root
+            ).as_dict(),
+            "source_window_receipt": _project_identity(
+                source_window_copy, physical_root=physical_root, logical_root=logical_root
+            ).as_dict(),
             "record_key": list(RECORD_KEY_FIELDS),
-            "daily_sidecar_meta_files": audit.daily_meta_identities,
-            "daily_sidecar_shard_files": audit.daily_shard_identities,
-            "joined_dataset": joined_dataset.as_dict(),
+            "daily_sidecar_meta_files": _project_daily_identities(
+                audit.daily_meta_identities, physical_root=physical_root, logical_root=logical_root
+            ),
+            "daily_sidecar_shard_files": _project_daily_identities(
+                audit.daily_shard_identities, physical_root=physical_root, logical_root=logical_root
+            ),
+            "joined_dataset": _project_identity(
+                joined_dataset, physical_root=physical_root, logical_root=logical_root
+            ).as_dict(),
             "joined_row_count": row_count,
             "joined_rows_sha256": rows_sha,
             "joined_keys_sha256": keys_sha,
@@ -325,10 +347,18 @@ def materialize_r260_sidecar(
         "source_manifest_sha256": contract.source_manifest_sha256,
         "source_window_receipt_sha256": contract.source_window_receipt_sha256,
         "record_key": list(RECORD_KEY_FIELDS),
-        "daily_sidecar_meta_files": audit.daily_meta_identities,
-        "daily_sidecar_shard_files": audit.daily_shard_identities,
-        "joined_dataset": joined_dataset.as_dict(),
-        "joined_manifest": joined_manifest.as_dict(),
+        "daily_sidecar_meta_files": _project_daily_identities(
+            audit.daily_meta_identities, physical_root=physical_root, logical_root=logical_root
+        ),
+        "daily_sidecar_shard_files": _project_daily_identities(
+            audit.daily_shard_identities, physical_root=physical_root, logical_root=logical_root
+        ),
+        "joined_dataset": _project_identity(
+            joined_dataset, physical_root=physical_root, logical_root=logical_root
+        ).as_dict(),
+        "joined_manifest": _project_identity(
+            joined_manifest, physical_root=physical_root, logical_root=logical_root
+        ).as_dict(),
         "joined_row_count": row_count,
         "joined_rows_sha256": rows_sha,
         "joined_keys_sha256": keys_sha,
@@ -400,8 +430,12 @@ def materialize_r260_sidecar(
                 "status": "passed",
                 **common,
                 "daily_build_identity": dict(audit.daily_build_identity),
-                "source_manifest_copy": source_manifest_copy.as_dict(),
-                "source_window_receipt_copy": source_window_copy.as_dict(),
+                "source_manifest_copy": _project_identity(
+                    source_manifest_copy, physical_root=physical_root, logical_root=logical_root
+                ).as_dict(),
+                "source_window_receipt_copy": _project_identity(
+                    source_window_copy, physical_root=physical_root, logical_root=logical_root
+                ).as_dict(),
                 "all_daily_artifacts_rehashed": True,
             },
             field="receipt_sha256",
@@ -579,6 +613,74 @@ def _audit_r260_sidecar(
     )
 
 
+def attest_r260_existing_inzi_transport(
+    *,
+    elmo_sidecar_root: Path | str,
+    elmo_evidence_root: Path | str,
+    inzi_sidecar_root: Path | str,
+    inzi_evidence_root: Path | str,
+    expected_elmo_sidecar_root: Path | str,
+    owner_contract: _OwnerContract | None = None,
+    receipt_identity_root: Path | str | None = None,
+) -> FileIdentity:
+    """Receipt an already copied full Inzi tree without copying it again.
+
+    This is the revision-262 completion path: daily directories may have
+    arrived append-only in the noneligible staging root, then the deterministic
+    join is created there.  The function rehashes both full trees and accepts
+    only exact byte-identical transport before writing a create-only receipt.
+    ``receipt_identity_root`` precommits the exact final sibling paths that
+    become real only after the atomic promotion.
+    """
+
+    contract = _owner_contract(owner_contract)
+    expected_elmo = _regular_directory(
+        expected_elmo_sidecar_root, label="expected Elmo sidecar root"
+    )
+    local_root = _regular_directory(elmo_sidecar_root, label="Elmo sidecar root")
+    if local_root != expected_elmo:
+        raise R260SidecarMaterializationError("r260 transport local root is not Elmo")
+    local_evidence = _regular_directory(elmo_evidence_root, label="Elmo evidence root")
+    _require_descendant(local_evidence, local_root, label="Elmo evidence root")
+    remote_text = Path(inzi_sidecar_root).expanduser()
+    _reject_elmo_destination(remote_text, expected_elmo)
+    remote_root = _regular_directory(remote_text, label="Inzi sidecar root")
+    configured_final = _configured_inzi_root(
+        contract, "inzi_training_root", label="r260 configured Inzi final root"
+    )
+    configured_staging = _configured_inzi_root(
+        contract, "inzi_prefix_staging_root", label="r260 configured Inzi staging root"
+    )
+    if remote_root == configured_staging:
+        if receipt_identity_root is None or Path(receipt_identity_root).expanduser().resolve() != configured_final:
+            raise R260SidecarMaterializationError(
+                "staging transport receipts must precommit the configured final Inzi root"
+            )
+    elif remote_root != configured_final:
+        raise R260SidecarMaterializationError(
+            "r260 transport receipt root is neither configured staging nor final Inzi root"
+        )
+    remote_evidence = _regular_directory(inzi_evidence_root, label="Inzi evidence root")
+    _require_descendant(remote_evidence, remote_root, label="Inzi evidence root")
+    local = _materialization_from_existing(
+        sidecar_root=local_root,
+        evidence_root=local_evidence,
+        owner_contract=contract,
+    )
+    remote = _materialization_from_existing(
+        sidecar_root=remote_root,
+        evidence_root=remote_evidence,
+        owner_contract=contract,
+    )
+    return _write_transport_receipt(
+        source=local,
+        remote=remote,
+        inzi_evidence_root=remote_evidence,
+        owner_contract=contract,
+        receipt_identity_root=receipt_identity_root,
+    )
+
+
 def transport_r260_sidecar_to_inzi(
     *,
     source_sidecar_root: Path | str,
@@ -596,8 +698,8 @@ def transport_r260_sidecar_to_inzi(
     """
 
     contract = _owner_contract(owner_contract)
-    elmo_root = _regular_directory(
-        expected_elmo_sidecar_root, label="expected Elmo sidecar root"
+    elmo_root = _expected_elmo_sidecar_path(
+        expected_elmo_sidecar_root, contract, require_directory=True
     )
     source_root = _regular_directory(source_sidecar_root, label="Elmo sidecar root")
     if source_root != elmo_root:
@@ -615,6 +717,12 @@ def transport_r260_sidecar_to_inzi(
     )
     destination = Path(inzi_sidecar_root).expanduser()
     _reject_elmo_destination(destination, elmo_root)
+    if destination.resolve() != _configured_inzi_root(
+        contract, "inzi_training_root", label="r260 configured Inzi final root"
+    ):
+        raise R260SidecarMaterializationError(
+            "r260 transport destination is not the configured final Inzi root"
+        )
     destination_root = _new_directory(destination, label="Inzi sidecar root")
     inzi_daily_root = _new_directory(
         destination_root / rollout_store.DAILY_DIRECTORY_NAME,
@@ -649,34 +757,12 @@ def transport_r260_sidecar_to_inzi(
         evidence_root=inzi_evidence,
         owner_contract=contract,
     )
-    if remote.joined_dataset.sha256 != source.joined_dataset.sha256 or remote.joined_dataset.size_bytes != source.joined_dataset.size_bytes:
-        raise R260SidecarMaterializationError("r260 joined dataset transport is not byte-identical")
-    transport_payload = _seal(
-        {
-            "schema": R260_TRANSPORT_RECEIPT_SCHEMA,
-            "status": "passed",
-            "owner_contract_sha256": contract.sha256,
-            "transport_kind": "create_only_copy",
-            "source_elmo_sidecar_root": str(source_root),
-            "inzi_sidecar_root": str(destination_root),
-            "source_joined_dataset": source.joined_dataset.as_dict(),
-            "inzi_joined_dataset": remote.joined_dataset.as_dict(),
-            "joined_dataset_byte_identical": True,
-            "source_joined_manifest": source.joined_manifest.as_dict(),
-            "inzi_joined_manifest": remote.joined_manifest.as_dict(),
-            "daily_meta_source": source.audit.daily_meta_identities,
-            "daily_meta_inzi": remote.audit.daily_meta_identities,
-            "daily_shard_source": source.audit.daily_shard_identities,
-            "daily_shard_inzi": remote.audit.daily_shard_identities,
-            "source_manifest_sha256": contract.source_manifest_sha256,
-            "source_window_receipt_sha256": contract.source_window_receipt_sha256,
-        },
-        field="receipt_sha256",
-    )
-    transport_receipt = _write_json_create_only(
-        inzi_evidence / RECEIPTS_DIRECTORY_NAME / TRANSPORT_RECEIPT_NAME,
-        transport_payload,
-        label="r260 Inzi transport receipt",
+    transport_receipt = _write_transport_receipt(
+        source=source,
+        remote=remote,
+        inzi_evidence_root=inzi_evidence,
+        owner_contract=contract,
+        receipt_identity_root=None,
     )
     return TransportResult(
         source=source,
@@ -707,8 +793,8 @@ def stage_r260_sidecar_prefix_to_inzi(
     """
 
     contract = _owner_contract(owner_contract)
-    elmo_root = _regular_directory(
-        expected_elmo_sidecar_root, label="expected Elmo sidecar root"
+    elmo_root = _expected_elmo_sidecar_path(
+        expected_elmo_sidecar_root, contract, require_directory=True
     )
     source_root = _regular_directory(source_sidecar_root, label="Elmo sidecar root")
     if source_root != elmo_root:
@@ -724,10 +810,17 @@ def stage_r260_sidecar_prefix_to_inzi(
     )
     destination_text = Path(inzi_staging_root).expanduser()
     _reject_elmo_destination(destination_text, elmo_root)
+    if destination_text.resolve() != _configured_inzi_root(
+        contract, "inzi_prefix_staging_root", label="r260 configured Inzi staging root"
+    ):
+        raise R260SidecarMaterializationError(
+            "r260 prefix transfer destination is not the configured Inzi staging root"
+        )
     if destination_text.exists() or destination_text.is_symlink():
         destination = _regular_directory(destination_text, label="Inzi sidecar staging root")
     else:
         destination = _new_directory(destination_text, label="Inzi sidecar staging root")
+    _require_staging_inzi_root(destination, contract)
     daily_root = destination / rollout_store.DAILY_DIRECTORY_NAME
     if daily_root.exists() or daily_root.is_symlink():
         target_daily = _regular_directory(daily_root, label="Inzi staging daily root")
@@ -833,23 +926,30 @@ def promote_r260_inzi_staging_root(
     expected_elmo_sidecar_root: Path | str,
     owner_contract: _OwnerContract | None = None,
 ) -> Path:
-    """Atomically promote only a fully committed twenty-day staging root.
+    """Atomically promote only a fully receipted twenty-day staging tree.
 
-    The promotion intentionally verifies daily data before the rename and does
-    not create any training/launch receipt.  Final materialization and its
-    launch-validator receipts are then created *inside the atomically promoted
-    final root*, so every typed FileIdentity records the final local path
-    rather than a stale staging path.
+    Revision 262 requires the join, byte-transport, causal-parity, completion,
+    and aggregate precommit receipts to pass *before* the rename.  Their
+    FileIdentity paths must already name the exact final sibling root, so the
+    promotion makes those paths real without rewriting any evidence byte.
     """
 
     contract = _owner_contract(owner_contract)
-    elmo_root = _regular_directory(
-        expected_elmo_sidecar_root, label="expected Elmo sidecar root"
+    elmo_root = _expected_elmo_sidecar_path(
+        expected_elmo_sidecar_root, contract, require_directory=False
     )
     staging_text = Path(inzi_staging_root).expanduser()
     final_text = Path(inzi_final_root).expanduser()
     _reject_elmo_destination(staging_text, elmo_root)
     _reject_elmo_destination(final_text, elmo_root)
+    if staging_text.resolve() != _configured_inzi_root(
+        contract, "inzi_prefix_staging_root", label="r260 configured Inzi staging root"
+    ) or final_text.resolve() != _configured_inzi_root(
+        contract, "inzi_training_root", label="r260 configured Inzi final root"
+    ):
+        raise R260SidecarMaterializationError(
+            "r260 promotion roots do not match the owner-configured staging/final paths"
+        )
     staging = _regular_directory(staging_text, label="Inzi sidecar staging root")
     if final_text.exists() or final_text.is_symlink():
         raise R260SidecarMaterializationError("Inzi final sidecar root already exists")
@@ -873,6 +973,71 @@ def promote_r260_inzi_staging_root(
     days = tuple(sorted(child.name for child in daily_root.iterdir() if not child.name.startswith(".")))
     if days != expected_days():
         raise R260SidecarMaterializationError("Inzi staging root is not 20/20")
+    evidence = _regular_directory(
+        staging / EVIDENCE_DIRECTORY_NAME, label="Inzi staged r260 evidence root"
+    )
+    materialized = _materialization_from_existing(
+        sidecar_root=staging, evidence_root=evidence, owner_contract=contract
+    )
+    receipts_dir = _regular_directory(
+        evidence / RECEIPTS_DIRECTORY_NAME, label="Inzi staged r260 receipt directory"
+    )
+    join = _read_receipt(receipts_dir / JOIN_RECEIPT_NAME, R260_JOIN_RECEIPT_SCHEMA)
+    schema = _read_receipt(receipts_dir / SCHEMA_RECEIPT_NAME, R260_SCHEMA_RECEIPT_SCHEMA)
+    count = _read_receipt(receipts_dir / COUNT_RECEIPT_NAME, R260_COUNT_RECEIPT_SCHEMA)
+    digest = _read_receipt(receipts_dir / DIGEST_RECEIPT_NAME, R260_DIGEST_RECEIPT_SCHEMA)
+    transport = _read_receipt(
+        receipts_dir / TRANSPORT_RECEIPT_NAME, R260_TRANSPORT_RECEIPT_SCHEMA
+    )
+    parity = _read_receipt(receipts_dir / PARITY_RECEIPT_NAME, R260_PARITY_RECEIPT_SCHEMA)
+    completion_receipt = _read_receipt(
+        receipts_dir / COMPLETION_RECEIPT_NAME, R260_COMPLETION_RECEIPT_SCHEMA
+    )
+    _validate_materialization_receipts(
+        materialized, contract=contract, receipts=(join, schema, count, digest)
+    )
+    _validate_precommit_materialization_paths(
+        materialized=materialized,
+        contract=contract,
+        physical_root=staging,
+        logical_root=final_text.resolve(),
+    )
+    _validate_transport_receipt(transport, materialized=materialized, contract=contract)
+    if transport.payload.get("inzi_sidecar_root") != str(final_text.resolve()):
+        raise R260SidecarMaterializationError(
+            "staged transport receipt does not precommit the configured final root"
+        )
+    _validate_parity_receipt(parity, materialized=materialized, contract=contract)
+    expected_joined = _project_identity(
+        materialized.joined_dataset,
+        physical_root=staging,
+        logical_root=final_text.resolve(),
+    ).as_dict()
+    if parity.payload.get("inzi_joined_dataset") != expected_joined:
+        raise R260SidecarMaterializationError(
+            "staged parity receipt does not precommit the configured final root"
+        )
+    completion_identity = file_identity(
+        completion_receipt.path, label="r260 staged completion receipt"
+    )
+    _validate_completion_receipt(
+        completion_receipt,
+        materialized=materialized,
+        contract=contract,
+        physical_root=staging,
+        logical_root=final_text.resolve(),
+    )
+    aggregate_payload = _read_json_object(
+        evidence / AGGREGATE_BINDING_NAME, label="r260 staged aggregate binding"
+    )
+    _validate_aggregate_binding_payload(
+        aggregate_payload,
+        materialized=materialized,
+        completion=completion_identity,
+        contract=contract,
+        physical_root=staging,
+        logical_root=final_text.resolve(),
+    )
     try:
         os.replace(staging, final_text)
     except OSError as exc:
@@ -902,6 +1067,7 @@ def attest_r260_causal_local_remote_parity(
     expected_elmo_sidecar_root: Path | str,
     owner_contract: _OwnerContract | None = None,
     sample_limit: int = DEFAULT_CAUSAL_PARITY_SAMPLES,
+    receipt_identity_root: Path | str | None = None,
 ) -> FileIdentity:
     """Write bounded semantic causal parity evidence in the Inzi evidence root."""
 
@@ -928,6 +1094,25 @@ def attest_r260_causal_local_remote_parity(
         evidence_root=inzi_evidence_root,
         owner_contract=contract,
     )
+    configured_final = _configured_inzi_root(
+        contract, "inzi_training_root", label="r260 configured Inzi final root"
+    )
+    configured_staging = _configured_inzi_root(
+        contract, "inzi_prefix_staging_root", label="r260 configured Inzi staging root"
+    )
+    if remote.audit.sidecar_root == configured_staging:
+        if receipt_identity_root is None or Path(receipt_identity_root).expanduser().resolve() != configured_final:
+            raise R260SidecarMaterializationError(
+                "staging parity receipts must precommit the configured final Inzi root"
+            )
+    elif remote.audit.sidecar_root != configured_final:
+        raise R260SidecarMaterializationError(
+            "r260 parity root is neither configured staging nor final Inzi root"
+        )
+    logical_remote_root = _receipt_identity_root(
+        physical_root=remote.audit.sidecar_root,
+        receipt_identity_root=receipt_identity_root,
+    )
     _assert_transport_identity(local, remote)
     count = local.row_count
     if count <= 0:
@@ -946,7 +1131,11 @@ def attest_r260_causal_local_remote_parity(
             "source_window_receipt_sha256": contract.source_window_receipt_sha256,
             "record_key": list(RECORD_KEY_FIELDS),
             "elmo_joined_dataset": local.joined_dataset.as_dict(),
-            "inzi_joined_dataset": remote.joined_dataset.as_dict(),
+            "inzi_joined_dataset": _project_identity(
+                remote.joined_dataset,
+                physical_root=remote.audit.sidecar_root,
+                logical_root=logical_remote_root,
+            ).as_dict(),
             "joined_dataset_byte_identical": True,
             "daily_meta_byte_identical": True,
             "daily_shard_byte_identical": True,
@@ -978,8 +1167,15 @@ def finalize_r260_inzi_sidecar(
     expected_elmo_sidecar_root: Path | str,
     owner_contract: _OwnerContract | None = None,
     validate_with_launcher: bool = True,
+    receipt_identity_root: Path | str | None = None,
 ) -> CompletionResult:
-    """Publish Inzi-local completion and aggregate binding after remote parity."""
+    """Publish completion/aggregate evidence after parity and transport pass.
+
+    With ``receipt_identity_root`` the receipts are precommitted in a complete
+    staging tree for the exact final sibling root.  Callers must atomically
+    promote that tree and then run :func:`verify_r260_inzi_sidecar_completion`
+    before creating the final Inzi dataset binding.
+    """
 
     contract = _owner_contract(owner_contract)
     expected_elmo = _regular_directory(
@@ -993,6 +1189,24 @@ def finalize_r260_inzi_sidecar(
     materialized = _materialization_from_existing(
         sidecar_root=root, evidence_root=evidence, owner_contract=contract
     )
+    logical_root = _receipt_identity_root(
+        physical_root=root, receipt_identity_root=receipt_identity_root
+    )
+    configured_final = _configured_inzi_root(
+        contract, "inzi_training_root", label="r260 configured Inzi final root"
+    )
+    configured_staging = _configured_inzi_root(
+        contract, "inzi_prefix_staging_root", label="r260 configured Inzi staging root"
+    )
+    if root == configured_staging:
+        if logical_root != configured_final:
+            raise R260SidecarMaterializationError(
+                "staging completion must precommit the configured final Inzi root"
+            )
+    elif root != configured_final or logical_root != configured_final:
+        raise R260SidecarMaterializationError(
+            "r260 completion must target configured staging precommit or final Inzi root"
+        )
     receipts_dir = _regular_directory(
         evidence / RECEIPTS_DIRECTORY_NAME, label="Inzi r260 receipt directory"
     )
@@ -1000,12 +1214,16 @@ def finalize_r260_inzi_sidecar(
     schema = _read_receipt(receipts_dir / SCHEMA_RECEIPT_NAME, R260_SCHEMA_RECEIPT_SCHEMA)
     count = _read_receipt(receipts_dir / COUNT_RECEIPT_NAME, R260_COUNT_RECEIPT_SCHEMA)
     digest = _read_receipt(receipts_dir / DIGEST_RECEIPT_NAME, R260_DIGEST_RECEIPT_SCHEMA)
+    transport = _read_receipt(
+        receipts_dir / TRANSPORT_RECEIPT_NAME, R260_TRANSPORT_RECEIPT_SCHEMA
+    )
     parity = _read_receipt(receipts_dir / PARITY_RECEIPT_NAME, R260_PARITY_RECEIPT_SCHEMA)
     _validate_materialization_receipts(
         materialized,
         contract=contract,
         receipts=(join, schema, count, digest),
     )
+    _validate_transport_receipt(transport, materialized=materialized, contract=contract)
     _validate_parity_receipt(parity, materialized=materialized, contract=contract)
     parity_identity = file_identity(parity.path, label="r260 parity receipt")
     completion_payload = _seal(
@@ -1018,12 +1236,32 @@ def finalize_r260_inzi_sidecar(
             "day_count": len(materialized.audit.daily),
             "validated_episode_count": materialized.audit.validated_episode_count,
             "source_archive_bytes": materialized.audit.source_archive_bytes,
-            "joined_dataset": materialized.joined_dataset.as_dict(),
-            "join_receipt": join.as_dict(),
-            "schema_receipt": schema.as_dict(),
-            "count_receipt": count.as_dict(),
-            "digest_receipt": digest.as_dict(),
-            "causal_local_remote_parity_receipt": parity_identity.as_dict(),
+            "joined_dataset": _project_identity(
+                materialized.joined_dataset, physical_root=root, logical_root=logical_root
+            ).as_dict(),
+            "join_receipt": _project_identity(
+                file_identity(join.path, label="r260 join receipt"),
+                physical_root=root,
+                logical_root=logical_root,
+            ).as_dict(),
+            "schema_receipt": _project_identity(
+                file_identity(schema.path, label="r260 schema receipt"),
+                physical_root=root,
+                logical_root=logical_root,
+            ).as_dict(),
+            "count_receipt": _project_identity(
+                file_identity(count.path, label="r260 count receipt"),
+                physical_root=root,
+                logical_root=logical_root,
+            ).as_dict(),
+            "digest_receipt": _project_identity(
+                file_identity(digest.path, label="r260 digest receipt"),
+                physical_root=root,
+                logical_root=logical_root,
+            ).as_dict(),
+            "causal_local_remote_parity_receipt": _project_identity(
+                parity_identity, physical_root=root, logical_root=logical_root
+            ).as_dict(),
             "complete_twenty_day_sidecar": True,
             "active_r241_training_eligible": False,
         },
@@ -1035,12 +1273,32 @@ def finalize_r260_inzi_sidecar(
         label="r260 completion receipt",
     )
     terminal = {
-        "completion": completion.as_dict(),
-        "join": join.as_dict(),
-        "schema": schema.as_dict(),
-        "count": count.as_dict(),
-        "digest": digest.as_dict(),
-        "causal_local_remote_parity": parity_identity.as_dict(),
+        "completion": _project_identity(
+            completion, physical_root=root, logical_root=logical_root
+        ).as_dict(),
+        "join": _project_identity(
+            file_identity(join.path, label="r260 join receipt"),
+            physical_root=root,
+            logical_root=logical_root,
+        ).as_dict(),
+        "schema": _project_identity(
+            file_identity(schema.path, label="r260 schema receipt"),
+            physical_root=root,
+            logical_root=logical_root,
+        ).as_dict(),
+        "count": _project_identity(
+            file_identity(count.path, label="r260 count receipt"),
+            physical_root=root,
+            logical_root=logical_root,
+        ).as_dict(),
+        "digest": _project_identity(
+            file_identity(digest.path, label="r260 digest receipt"),
+            physical_root=root,
+            logical_root=logical_root,
+        ).as_dict(),
+        "causal_local_remote_parity": _project_identity(
+            parity_identity, physical_root=root, logical_root=logical_root
+        ).as_dict(),
     }
     binding_payload = {
         "schema": R260_AGGREGATE_BINDING_SCHEMA,
@@ -1051,7 +1309,11 @@ def finalize_r260_inzi_sidecar(
         "day_count": len(materialized.audit.daily),
         "validated_episode_count": materialized.audit.validated_episode_count,
         "source_archive_bytes": materialized.audit.source_archive_bytes,
-        "daily_sidecar_meta_receipts": materialized.audit.daily_meta_identities,
+        "daily_sidecar_meta_receipts": _project_daily_identities(
+            materialized.audit.daily_meta_identities,
+            physical_root=root,
+            logical_root=logical_root,
+        ),
         "terminal_receipts": terminal,
         "daily_build_identity": dict(materialized.audit.daily_build_identity),
         "partial_or_unreceipted_side_store_training_eligible": False,
@@ -1064,11 +1326,26 @@ def finalize_r260_inzi_sidecar(
         binding_payload,
         label="r260 aggregate sidecar binding",
     )
+    _validate_completion_receipt(
+        _read_receipt(completion.path, R260_COMPLETION_RECEIPT_SCHEMA),
+        materialized=materialized,
+        contract=contract,
+        physical_root=root,
+        logical_root=logical_root,
+    )
+    _validate_aggregate_binding_payload(
+        _read_json_object(aggregate.path, label="r260 aggregate binding"),
+        materialized=materialized,
+        completion=completion,
+        contract=contract,
+        physical_root=root,
+        logical_root=logical_root,
+    )
     # Keep production coupled to the actual launch validator rather than a
     # hand-maintained lookalike.  The opt-out exists only for lightweight
     # receipt-fixture tests running in an environment deliberately without the
     # model runtime; it is never exposed by the CLI or deployment path.
-    if validate_with_launcher:
+    if validate_with_launcher and logical_root == root:
         try:
             from .r241_own_deck_successor import validate_r260_sidecar_binding
 
@@ -1096,11 +1373,107 @@ def finalize_r260_inzi_sidecar(
     )
 
 
+def verify_r260_inzi_sidecar_completion(
+    *,
+    inzi_sidecar_root: Path | str,
+    inzi_evidence_root: Path | str,
+    expected_elmo_sidecar_root: Path | str,
+    owner_contract: _OwnerContract | None = None,
+    validate_with_launcher: bool = True,
+) -> CompletionResult:
+    """Rehash and accept a fully promoted Inzi completion without writing.
+
+    This is the mandatory post-rename step for revision-262 precommit
+    receipts: all projected final FileIdentity paths must now exist and pass
+    the actual r241 aggregate validator before an Inzi binding can be made.
+    """
+
+    contract = _owner_contract(owner_contract)
+    expected_elmo = _regular_directory(
+        expected_elmo_sidecar_root, label="expected Elmo sidecar root"
+    )
+    root_text = Path(inzi_sidecar_root).expanduser()
+    _reject_elmo_destination(root_text, expected_elmo)
+    root = _regular_directory(root_text, label="Inzi sidecar root")
+    _require_final_inzi_root(root, contract)
+    evidence = _regular_directory(inzi_evidence_root, label="Inzi evidence root")
+    _require_descendant(evidence, root, label="Inzi evidence root")
+    materialized = _materialization_from_existing(
+        sidecar_root=root, evidence_root=evidence, owner_contract=contract
+    )
+    receipts_dir = _regular_directory(
+        evidence / RECEIPTS_DIRECTORY_NAME, label="Inzi r260 receipt directory"
+    )
+    join = _read_receipt(receipts_dir / JOIN_RECEIPT_NAME, R260_JOIN_RECEIPT_SCHEMA)
+    schema = _read_receipt(receipts_dir / SCHEMA_RECEIPT_NAME, R260_SCHEMA_RECEIPT_SCHEMA)
+    count = _read_receipt(receipts_dir / COUNT_RECEIPT_NAME, R260_COUNT_RECEIPT_SCHEMA)
+    digest = _read_receipt(receipts_dir / DIGEST_RECEIPT_NAME, R260_DIGEST_RECEIPT_SCHEMA)
+    transport = _read_receipt(
+        receipts_dir / TRANSPORT_RECEIPT_NAME, R260_TRANSPORT_RECEIPT_SCHEMA
+    )
+    parity = _read_receipt(receipts_dir / PARITY_RECEIPT_NAME, R260_PARITY_RECEIPT_SCHEMA)
+    completion_receipt = _read_receipt(
+        receipts_dir / COMPLETION_RECEIPT_NAME, R260_COMPLETION_RECEIPT_SCHEMA
+    )
+    _validate_materialization_receipts(
+        materialized, contract=contract, receipts=(join, schema, count, digest)
+    )
+    _validate_transport_receipt(transport, materialized=materialized, contract=contract)
+    _validate_parity_receipt(parity, materialized=materialized, contract=contract)
+    completion_identity = file_identity(
+        completion_receipt.path, label="r260 completion receipt"
+    )
+    _validate_completion_receipt(
+        completion_receipt,
+        materialized=materialized,
+        contract=contract,
+        physical_root=root,
+        logical_root=root,
+    )
+    aggregate = file_identity(
+        evidence / AGGREGATE_BINDING_NAME, label="r260 aggregate sidecar binding"
+    )
+    aggregate_payload = _read_json_object(
+        aggregate.path, label="r260 aggregate sidecar binding"
+    )
+    _validate_aggregate_binding_payload(
+        aggregate_payload,
+        materialized=materialized,
+        completion=completion_identity,
+        contract=contract,
+        physical_root=root,
+        logical_root=root,
+    )
+    if validate_with_launcher:
+        try:
+            from .r241_own_deck_successor import validate_r260_sidecar_binding
+
+            validate_r260_sidecar_binding(
+                aggregate_payload,
+                owner_contract=contract,  # type: ignore[arg-type]
+                verify_daily_receipt_files=True,
+            )
+        except Exception as exc:
+            raise R260SidecarMaterializationError(
+                "promoted r260 aggregate is not accepted by its launch validator"
+            ) from exc
+    return CompletionResult(
+        audit=materialized.audit,
+        inzi_sidecar_root=root,
+        evidence_root=evidence,
+        aggregate_binding=aggregate,
+        completion_receipt=completion_identity,
+        parity_receipt=file_identity(parity.path, label="r260 parity receipt"),
+        joined_dataset=materialized.joined_dataset,
+    )
+
+
 def bind_r260_inzi_dataset(
     *,
     completion: CompletionResult,
     source_transport_receipt: Path | str,
     owner_contract: _OwnerContract | None = None,
+    validate_with_launcher: bool = True,
 ) -> FileIdentity:
     """Write the final Inzi dataset binding consumed by the r260 launch gate."""
 
@@ -1110,6 +1483,8 @@ def bind_r260_inzi_dataset(
     if root != completion.inzi_sidecar_root.resolve():
         raise R260SidecarMaterializationError("Inzi sidecar root drifted before binding")
     _reject_elmo_text_path(str(root), str(contract.side_store_root))
+    _require_final_inzi_root(root, contract)
+    _require_descendant(evidence, root, label="Inzi evidence root")
     transport = _read_receipt(source_transport_receipt, R260_TRANSPORT_RECEIPT_SCHEMA)
     aggregate_payload = _read_json_object(
         completion.aggregate_binding.path, label="r260 aggregate sidecar binding"
@@ -1169,6 +1544,20 @@ def bind_r260_inzi_dataset(
     payload["binding_sha256"] = semantic_digest(payload, field="binding_sha256")
     target = evidence / INZI_BINDING_NAME
     result = _write_json_create_only(target, payload, label="r260 Inzi dataset binding")
+    if validate_with_launcher:
+        try:
+            from .r241_own_deck_successor import validate_r260_inzi_dataset_binding
+
+            validate_r260_inzi_dataset_binding(
+                _read_json_object(result.path, label="r260 Inzi dataset binding"),
+                sidecar_binding=aggregate_payload,
+                owner_contract=contract,  # type: ignore[arg-type]
+                require_local_dataset=True,
+            )
+        except Exception as exc:
+            raise R260SidecarMaterializationError(
+                "r260 Inzi dataset binding is not accepted by its launch validator"
+            ) from exc
     _seal_directory(evidence)
     return result
 
@@ -1182,6 +1571,13 @@ def _owner_contract(value: _OwnerContract | None) -> _OwnerContract:
         )
         if not str(value.side_store_root or ""):
             raise R260SidecarMaterializationError("r260 owner side-store root is missing")
+        for attribute, label in (
+            ("inzi_training_root", "r260 owner Inzi final root"),
+            ("inzi_prefix_staging_root", "r260 owner Inzi staging root"),
+        ):
+            path_text = str(getattr(value, attribute, "") or "")
+            if not path_text or not Path(path_text).expanduser().is_absolute():
+                raise R260SidecarMaterializationError(f"{label} is missing or not absolute")
         return value
     from .r241_own_deck_successor import load_r260_owner_contract
 
@@ -1560,6 +1956,66 @@ def _copy_evidence_members(source: Path, destination: Path) -> None:
     # The receipt directory must remain writable until local parity/finalization.
 
 
+def _write_transport_receipt(
+    *,
+    source: MaterializationResult,
+    remote: MaterializationResult,
+    inzi_evidence_root: Path,
+    owner_contract: _OwnerContract,
+    receipt_identity_root: Path | str | None,
+) -> FileIdentity:
+    """Write one transport receipt after a complete source/remote re-audit."""
+
+    _assert_transport_identity(source, remote)
+    logical_root = _receipt_identity_root(
+        physical_root=remote.audit.sidecar_root,
+        receipt_identity_root=receipt_identity_root,
+    )
+    transport_payload = _seal(
+        {
+            "schema": R260_TRANSPORT_RECEIPT_SCHEMA,
+            "status": "passed",
+            "owner_contract_sha256": owner_contract.sha256,
+            "transport_kind": "create_only_copy",
+            "source_elmo_sidecar_root": str(source.audit.sidecar_root),
+            "inzi_sidecar_root": str(logical_root),
+            "source_joined_dataset": source.joined_dataset.as_dict(),
+            "inzi_joined_dataset": _project_identity(
+                remote.joined_dataset,
+                physical_root=remote.audit.sidecar_root,
+                logical_root=logical_root,
+            ).as_dict(),
+            "joined_dataset_byte_identical": True,
+            "source_joined_manifest": source.joined_manifest.as_dict(),
+            "inzi_joined_manifest": _project_identity(
+                remote.joined_manifest,
+                physical_root=remote.audit.sidecar_root,
+                logical_root=logical_root,
+            ).as_dict(),
+            "daily_meta_source": source.audit.daily_meta_identities,
+            "daily_meta_inzi": _project_daily_identities(
+                remote.audit.daily_meta_identities,
+                physical_root=remote.audit.sidecar_root,
+                logical_root=logical_root,
+            ),
+            "daily_shard_source": source.audit.daily_shard_identities,
+            "daily_shard_inzi": _project_daily_identities(
+                remote.audit.daily_shard_identities,
+                physical_root=remote.audit.sidecar_root,
+                logical_root=logical_root,
+            ),
+            "source_manifest_sha256": owner_contract.source_manifest_sha256,
+            "source_window_receipt_sha256": owner_contract.source_window_receipt_sha256,
+        },
+        field="receipt_sha256",
+    )
+    return _write_json_create_only(
+        inzi_evidence_root / RECEIPTS_DIRECTORY_NAME / TRANSPORT_RECEIPT_NAME,
+        transport_payload,
+        label="r260 Inzi transport receipt",
+    )
+
+
 def _assert_transport_identity(local: MaterializationResult, remote: MaterializationResult) -> None:
     if (
         local.joined_dataset.sha256 != remote.joined_dataset.sha256
@@ -1635,6 +2091,166 @@ def _validate_joined_row(value: object) -> None:
     _require_sha256(row.get("daily_meta_sha256"), label="r260 joined daily metadata")
 
 
+def _logical_identity_for_path(
+    path: Path,
+    *,
+    label: str,
+    physical_root: Path,
+    logical_root: Path,
+) -> dict[str, object]:
+    return _project_identity(
+        file_identity(path, label=label),
+        physical_root=physical_root,
+        logical_root=logical_root,
+    ).as_dict()
+
+
+def _validate_completion_receipt(
+    receipt: "_Receipt",
+    *,
+    materialized: MaterializationResult,
+    contract: _OwnerContract,
+    physical_root: Path,
+    logical_root: Path,
+) -> None:
+    """Check completion evidence against physical bytes and named logical paths."""
+
+    payload = receipt.payload
+    receipts_dir = materialized.evidence_root / RECEIPTS_DIRECTORY_NAME
+    expected = {
+        "schema": R260_COMPLETION_RECEIPT_SCHEMA,
+        "status": "complete",
+        "owner_contract_sha256": contract.sha256,
+        "source_manifest_sha256": contract.source_manifest_sha256,
+        "source_window_receipt_sha256": contract.source_window_receipt_sha256,
+        "day_count": len(materialized.audit.daily),
+        "validated_episode_count": materialized.audit.validated_episode_count,
+        "source_archive_bytes": materialized.audit.source_archive_bytes,
+        "joined_dataset": _project_identity(
+            materialized.joined_dataset,
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ).as_dict(),
+        "join_receipt": _logical_identity_for_path(
+            receipts_dir / JOIN_RECEIPT_NAME,
+            label="r260 join receipt",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ),
+        "schema_receipt": _logical_identity_for_path(
+            receipts_dir / SCHEMA_RECEIPT_NAME,
+            label="r260 schema receipt",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ),
+        "count_receipt": _logical_identity_for_path(
+            receipts_dir / COUNT_RECEIPT_NAME,
+            label="r260 count receipt",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ),
+        "digest_receipt": _logical_identity_for_path(
+            receipts_dir / DIGEST_RECEIPT_NAME,
+            label="r260 digest receipt",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ),
+        "causal_local_remote_parity_receipt": _logical_identity_for_path(
+            receipts_dir / PARITY_RECEIPT_NAME,
+            label="r260 causal parity receipt",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ),
+        "complete_twenty_day_sidecar": True,
+        "active_r241_training_eligible": False,
+    }
+    unsigned = dict(payload)
+    receipt_sha = unsigned.pop("receipt_sha256", None)
+    if (
+        set(payload) != set(expected) | {"receipt_sha256"}
+        or payload.get("receipt_sha256") != semantic_digest(payload, field="receipt_sha256")
+        or receipt_sha is None
+        or unsigned != expected
+    ):
+        raise R260SidecarMaterializationError("r260 completion receipt drifted")
+
+
+def _validate_aggregate_binding_payload(
+    payload: Mapping[str, Any],
+    *,
+    materialized: MaterializationResult,
+    completion: FileIdentity,
+    contract: _OwnerContract,
+    physical_root: Path,
+    logical_root: Path,
+) -> None:
+    """Validate the strict aggregate ABI before/after staging promotion."""
+
+    receipts_dir = materialized.evidence_root / RECEIPTS_DIRECTORY_NAME
+    terminal = {
+        "completion": _project_identity(
+            completion, physical_root=physical_root, logical_root=logical_root
+        ).as_dict(),
+        "join": _logical_identity_for_path(
+            receipts_dir / JOIN_RECEIPT_NAME,
+            label="r260 join receipt",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ),
+        "schema": _logical_identity_for_path(
+            receipts_dir / SCHEMA_RECEIPT_NAME,
+            label="r260 schema receipt",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ),
+        "count": _logical_identity_for_path(
+            receipts_dir / COUNT_RECEIPT_NAME,
+            label="r260 count receipt",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ),
+        "digest": _logical_identity_for_path(
+            receipts_dir / DIGEST_RECEIPT_NAME,
+            label="r260 digest receipt",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ),
+        "causal_local_remote_parity": _logical_identity_for_path(
+            receipts_dir / PARITY_RECEIPT_NAME,
+            label="r260 causal parity receipt",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ),
+    }
+    expected = {
+        "schema": R260_AGGREGATE_BINDING_SCHEMA,
+        "status": "complete_training_eligible",
+        "owner_contract_sha256": contract.sha256,
+        "source_manifest_sha256": contract.source_manifest_sha256,
+        "source_window_receipt_sha256": contract.source_window_receipt_sha256,
+        "day_count": len(materialized.audit.daily),
+        "validated_episode_count": materialized.audit.validated_episode_count,
+        "source_archive_bytes": materialized.audit.source_archive_bytes,
+        "daily_sidecar_meta_receipts": _project_daily_identities(
+            materialized.audit.daily_meta_identities,
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ),
+        "terminal_receipts": terminal,
+        "daily_build_identity": dict(materialized.audit.daily_build_identity),
+        "partial_or_unreceipted_side_store_training_eligible": False,
+    }
+    unsigned = dict(payload)
+    digest = unsigned.pop("binding_sha256", None)
+    if (
+        set(payload) != set(expected) | {"binding_sha256"}
+        or payload.get("binding_sha256") != semantic_digest(payload, field="binding_sha256")
+        or digest is None
+        or unsigned != expected
+    ):
+        raise R260SidecarMaterializationError("r260 aggregate sidecar binding drifted")
+
+
 def _validate_materialization_receipts(
     materialized: MaterializationResult,
     *,
@@ -1680,6 +2296,167 @@ def _validate_materialization_receipts(
             or payload.get("active_r241_training_eligible") is not False
         ):
             raise R260SidecarMaterializationError("r260 materialization receipt drifted")
+
+
+def _validate_precommit_materialization_paths(
+    *,
+    materialized: MaterializationResult,
+    contract: _OwnerContract,
+    physical_root: Path,
+    logical_root: Path,
+) -> None:
+    """Require staged join evidence to name only its future final paths."""
+
+    evidence = materialized.evidence_root
+    expected_dataset = _project_identity(
+        materialized.joined_dataset,
+        physical_root=physical_root,
+        logical_root=logical_root,
+    ).as_dict()
+    expected_manifest = _project_identity(
+        materialized.joined_manifest,
+        physical_root=physical_root,
+        logical_root=logical_root,
+    ).as_dict()
+    expected_meta = _project_daily_identities(
+        materialized.audit.daily_meta_identities,
+        physical_root=physical_root,
+        logical_root=logical_root,
+    )
+    expected_shards = _project_daily_identities(
+        materialized.audit.daily_shard_identities,
+        physical_root=physical_root,
+        logical_root=logical_root,
+    )
+    joined_manifest = _read_json_object(
+        evidence / JOINED_DIRECTORY_NAME / JOINED_MANIFEST_NAME,
+        label="r260 staged joined manifest",
+    )
+    if (
+        joined_manifest.get("source_manifest")
+        != _logical_identity_for_path(
+            evidence / SOURCE_MANIFEST_COPY_NAME,
+            label="r260 staged source manifest copy",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        )
+        or joined_manifest.get("source_window_receipt")
+        != _logical_identity_for_path(
+            evidence / SOURCE_WINDOW_RECEIPT_COPY_NAME,
+            label="r260 staged source-window receipt copy",
+            physical_root=physical_root,
+            logical_root=logical_root,
+        )
+        or joined_manifest.get("joined_dataset") != expected_dataset
+        or joined_manifest.get("daily_sidecar_meta_files") != expected_meta
+        or joined_manifest.get("daily_sidecar_shard_files") != expected_shards
+        or joined_manifest.get("owner_contract_sha256") != contract.sha256
+    ):
+        raise R260SidecarMaterializationError(
+            "staged joined manifest does not precommit final FileIdentity paths"
+        )
+    receipts_dir = evidence / RECEIPTS_DIRECTORY_NAME
+    for name, schema in (
+        (JOIN_RECEIPT_NAME, R260_JOIN_RECEIPT_SCHEMA),
+        (SCHEMA_RECEIPT_NAME, R260_SCHEMA_RECEIPT_SCHEMA),
+        (COUNT_RECEIPT_NAME, R260_COUNT_RECEIPT_SCHEMA),
+        (DIGEST_RECEIPT_NAME, R260_DIGEST_RECEIPT_SCHEMA),
+    ):
+        payload = _read_receipt(receipts_dir / name, schema).payload
+        if (
+            payload.get("joined_dataset") != expected_dataset
+            or payload.get("joined_manifest") != expected_manifest
+            or payload.get("daily_sidecar_meta_files") != expected_meta
+            or payload.get("daily_sidecar_shard_files") != expected_shards
+        ):
+            raise R260SidecarMaterializationError(
+                "staged materialization receipt does not precommit final FileIdentity paths"
+            )
+
+
+def _validate_transport_receipt(
+    receipt: "_Receipt", *, materialized: MaterializationResult, contract: _OwnerContract
+) -> None:
+    """Validate transport proof against the local Inzi tree by raw content."""
+
+    payload = receipt.payload
+    required = {
+        "schema",
+        "status",
+        "receipt_sha256",
+        "owner_contract_sha256",
+        "transport_kind",
+        "source_elmo_sidecar_root",
+        "inzi_sidecar_root",
+        "source_joined_dataset",
+        "inzi_joined_dataset",
+        "joined_dataset_byte_identical",
+        "source_joined_manifest",
+        "inzi_joined_manifest",
+        "daily_meta_source",
+        "daily_meta_inzi",
+        "daily_shard_source",
+        "daily_shard_inzi",
+        "source_manifest_sha256",
+        "source_window_receipt_sha256",
+    }
+    if set(payload) != required:
+        raise R260SidecarMaterializationError("r260 transport receipt key shape drifted")
+    if (
+        payload.get("owner_contract_sha256") != contract.sha256
+        or payload.get("transport_kind") != "create_only_copy"
+        or payload.get("source_elmo_sidecar_root") != str(contract.side_store_root)
+        or not isinstance(payload.get("inzi_sidecar_root"), str)
+        or not str(payload.get("inzi_sidecar_root") or "")
+        or str(payload.get("inzi_sidecar_root")).startswith(
+            str(contract.side_store_root).rstrip("/") + "/"
+        )
+        or payload.get("source_manifest_sha256") != contract.source_manifest_sha256
+        or payload.get("source_window_receipt_sha256")
+        != contract.source_window_receipt_sha256
+        or payload.get("joined_dataset_byte_identical") is not True
+        or not _content_identity_matches(
+            payload.get("source_joined_dataset"),
+            materialized.joined_dataset,
+            label="r260 transport source joined dataset",
+        )
+        or not _content_identity_matches(
+            payload.get("inzi_joined_dataset"),
+            materialized.joined_dataset,
+            label="r260 transport Inzi joined dataset",
+        )
+        or not _content_identity_matches(
+            payload.get("source_joined_manifest"),
+            materialized.joined_manifest,
+            label="r260 transport source joined manifest",
+        )
+        or not _content_identity_matches(
+            payload.get("inzi_joined_manifest"),
+            materialized.joined_manifest,
+            label="r260 transport Inzi joined manifest",
+        )
+        or not _content_identity_map_matches(
+            payload.get("daily_meta_source"),
+            materialized.audit.daily_meta_identities,
+            label="r260 transport source daily metadata",
+        )
+        or not _content_identity_map_matches(
+            payload.get("daily_meta_inzi"),
+            materialized.audit.daily_meta_identities,
+            label="r260 transport Inzi daily metadata",
+        )
+        or not _content_identity_map_matches(
+            payload.get("daily_shard_source"),
+            materialized.audit.daily_shard_identities,
+            label="r260 transport source daily shards",
+        )
+        or not _content_identity_map_matches(
+            payload.get("daily_shard_inzi"),
+            materialized.audit.daily_shard_identities,
+            label="r260 transport Inzi daily shards",
+        )
+    ):
+        raise R260SidecarMaterializationError("r260 transport receipt drifted")
 
 
 def _validate_parity_receipt(
@@ -1999,6 +2776,63 @@ def _content_identity_map_matches(
         return False
 
 
+def _receipt_identity_root(
+    *, physical_root: Path, receipt_identity_root: Path | str | None
+) -> Path:
+    """Return the root whose absolute paths receipts are expected to name.
+
+    Normally this is the physical root.  Revision 262 additionally permits a
+    complete, sealed staging tree to precommit receipts for its exact sibling
+    final root immediately before an atomic rename.  Only paths below the
+    physical tree may be projected, preserving digest and byte-size evidence.
+    """
+
+    if receipt_identity_root is None:
+        return physical_root
+    candidate = Path(receipt_identity_root).expanduser().resolve()
+    if candidate == physical_root:
+        return physical_root
+    if candidate.parent != physical_root.parent:
+        raise R260SidecarMaterializationError(
+            "precommit receipt identity root must be a sibling of the physical root"
+        )
+    return candidate
+
+
+def _project_identity(
+    identity: FileIdentity, *, physical_root: Path, logical_root: Path
+) -> FileIdentity:
+    """Keep byte identity while projecting a staged path to its final sibling."""
+
+    try:
+        relative = identity.path.relative_to(physical_root)
+    except ValueError as exc:
+        raise R260SidecarMaterializationError(
+            "receipt FileIdentity lies outside the physical sidecar root"
+        ) from exc
+    return FileIdentity(
+        path=(logical_root / relative),
+        sha256=identity.sha256,
+        size_bytes=identity.size_bytes,
+    )
+
+
+def _project_daily_identities(
+    identities: Mapping[str, Mapping[str, object]],
+    *,
+    physical_root: Path,
+    logical_root: Path,
+) -> dict[str, dict[str, object]]:
+    return {
+        day: _project_identity(
+            _identity_from_mapping(identity, label=f"r260 daily {day} FileIdentity"),
+            physical_root=physical_root,
+            logical_root=logical_root,
+        ).as_dict()
+        for day, identity in identities.items()
+    }
+
+
 def _mapping(value: object, *, label: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise R260SidecarMaterializationError(f"{label} must be an object")
@@ -2041,6 +2875,61 @@ def _reject_elmo_destination(path: Path, elmo_root: Path) -> None:
 def _reject_elmo_text_path(path: str, elmo_root: str) -> None:
     if path == elmo_root or path.startswith(elmo_root.rstrip("/") + "/"):
         raise R260SidecarMaterializationError("Inzi binding may not name an Elmo side-store path")
+
+
+def _configured_inzi_root(contract: _OwnerContract, attribute: str, *, label: str) -> Path:
+    value = str(getattr(contract, attribute, "") or "")
+    if not value:
+        raise R260SidecarMaterializationError(f"{label} is absent from the owner contract")
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        raise R260SidecarMaterializationError(f"{label} must be absolute")
+    return path.resolve()
+
+
+def _configured_elmo_sidecar_root(contract: _OwnerContract) -> Path:
+    value = str(contract.side_store_root or "")
+    path = Path(value).expanduser()
+    if not value or not path.is_absolute():
+        raise R260SidecarMaterializationError("r260 configured Elmo side-store root is invalid")
+    return path.resolve()
+
+
+def _expected_elmo_sidecar_path(
+    value: Path | str, contract: _OwnerContract, *, require_directory: bool
+) -> Path:
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        raise R260SidecarMaterializationError("expected Elmo sidecar root must be absolute")
+    expected = _configured_elmo_sidecar_root(contract)
+    resolved = candidate.resolve()
+    if resolved != expected:
+        raise R260SidecarMaterializationError(
+            "expected Elmo sidecar root does not match the owner contract"
+        )
+    if require_directory:
+        return _regular_directory(resolved, label="expected Elmo sidecar root")
+    return resolved
+
+
+def _require_final_inzi_root(root: Path, contract: _OwnerContract) -> None:
+    expected = _configured_inzi_root(
+        contract, "inzi_training_root", label="r260 configured Inzi final root"
+    )
+    if root != expected:
+        raise R260SidecarMaterializationError(
+            "r260 operation requires the configured final Inzi training root"
+        )
+
+
+def _require_staging_inzi_root(root: Path, contract: _OwnerContract) -> None:
+    expected = _configured_inzi_root(
+        contract, "inzi_prefix_staging_root", label="r260 configured Inzi staging root"
+    )
+    if root != expected:
+        raise R260SidecarMaterializationError(
+            "r260 operation requires the configured Inzi prefix staging root"
+        )
 
 
 __all__ = [

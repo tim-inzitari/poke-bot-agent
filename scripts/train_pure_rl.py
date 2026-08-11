@@ -129,7 +129,6 @@ from poke_bot.train import (  # noqa: E402
     R241_PEAK_R195_PHYSICAL_SOURCES,
     R241_PEAK_R195_TRAINING_CONTRACT_SCHEMA,
     R241_R195_HISTORICAL_OWNER_CONTRACT_SHA256,
-    R241_OWNER_CONTRACT_SHA256,
     SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT,
     TrainConfig,
     assert_strategic_curriculum_receipt_contract,
@@ -8717,15 +8716,12 @@ def run_smoke_loop(args: argparse.Namespace) -> int:
                     args.setup_board_outcome_loss_weight
                 ),
                 combo_state_loss_weight=float(args.combo_state_loss_weight),
-                visible_tutor_completion_loss_weight=(
-                    0.025 if r260_own_deck_training_inputs else 0.0
-                ),
-                terminal_conversion_loss_weight=(
-                    0.025 if r260_own_deck_training_inputs else 0.0
-                ),
-                collect_own_deck_promotion_metrics=bool(
-                    r260_own_deck_training_inputs
-                ),
+                # Smoke never resolves the receipt-bound Inzi sidecar.  Keep
+                # its synthetic legacy path incapable of minting r260 labels
+                # or pretending to exercise the runtime-enabled successor.
+                visible_tutor_completion_loss_weight=0.0,
+                terminal_conversion_loss_weight=0.0,
+                collect_own_deck_promotion_metrics=False,
                 current_deck_guide_curriculum_spec=str(
                     args.current_deck_guide_curriculum_spec or ""
                 ),
