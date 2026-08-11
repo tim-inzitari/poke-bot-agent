@@ -1,6 +1,6 @@
 {
   "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229/v1",
-  "owner_decision_revision": 256,
+  "owner_decision_revision": 257,
   "originating_owner_decision_revision": 229,
   "owner_action_space_revision": 230,
   "owner_worker_isolation_revision": 231,
@@ -16,6 +16,7 @@
   "owner_full_mcts_abandonment_revision": 254,
   "owner_selective_tactical_proof_design_revision": 255,
   "owner_all_search_abandonment_revision": 256,
+  "owner_shadow_goal_directed_tactical_sequence_revision": 257,
   "r228_kaggle_viability_evidence": {
     "submission_id": 55416396,
     "status": "SubmissionStatus.ERROR",
@@ -23,9 +24,9 @@
     "usable_claim_passed": false,
     "failed_submission_must_be_preserved": true
   },
-  "recorded_at_utc": "2026-08-11T05:30:00Z",
-  "status": "all_mcts_and_selective_search_abandoned_for_now_frozen_r195_direct_only",
-  "objective": "preserve all stopped search evidence and retain frozen r195 direct policy without launching any MCTS or selective-search evaluation",
+  "recorded_at_utc": "2026-08-11T05:39:59Z",
+  "status": "shadow_goal_directed_tactical_sequence_sidecar_implementation_and_local_tests_only",
+  "objective": "implement and locally test an isolated goal-directed tactical sequence sidecar while frozen r195 remains the only dispatched action and the active Alakazam refresh remains untouched",
   "frozen_identity": {
     "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
     "r195_bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
@@ -329,6 +330,67 @@
     "existing_r253_45_game_prefix_and_abandonment_receipts_remain_immutable": true,
     "kaggle_training_serving_selector_promotion_checkpoint_or_model_update_authority_changed": false,
     "future_search_reconsideration_requires_new_explicit_owner_revision": true
+  },
+  "r257_shadow_goal_directed_tactical_sequence": {
+    "supersedes_r256_only_for": [
+      "new_sidecar_implementation",
+      "focused_deterministic_fixture_tests",
+      "owned_bounded_child_offline_fixture_replay"
+    ],
+    "mcts_or_general_value_search_revived": false,
+    "frozen_r195_direct_policy_is_only_dispatched_action_authority": true,
+    "planner_mode": "shadow_only_policy_ordered_limited_discrepancy_search",
+    "planner_may_dispatch_or_override_action": false,
+    "required_same_state_direct_counterfactual": true,
+    "goals": {
+      "exact_terminal_win_this_turn": {
+        "success_evidence": "simulator_reported_terminal_win_for_root_actor",
+        "same_root_actor_current_turn_deterministic_path_required": true,
+        "shadow_certificate_only": true
+      },
+      "sme_tutor_or_resource_goal": {
+        "success_evidence": "explicit_observed_public_fact_predicate",
+        "shadow_only": true,
+        "tutor_transition_is_information_reobservation_boundary": true,
+        "hidden_deck_prize_or_unobserved_tutor_result_may_be_predicted_or_inspected": false
+      }
+    },
+    "candidate_guidance": {
+      "frozen_r195_policy_may_order_candidates": true,
+      "alakazam_sme_may_define_goals_and_rank_candidates": true,
+      "tactical_outcome_head_may_be_logged_as_hint": true,
+      "tactical_outcome_head_sme_score_policy_prior_value_or_partial_path_is_proof": false
+    },
+    "default_caps": {
+      "max_depth": 8,
+      "max_nodes": 256,
+      "max_discrepancies": 1,
+      "wall_seconds": 0.25,
+      "deterministic_complete_ordered_action_expansion_ceiling": 64
+    },
+    "hard_boundaries": [
+      "explicit_chance_or_stochastic_transition",
+      "hidden_information_or_tutor_reobservation",
+      "actor_or_opponent_change",
+      "turn_change",
+      "deterministic_complete_ordered_action_count_over_64",
+      "deadline_or_typed_cap"
+    ],
+    "simulated_previous_action_token_history_required": true,
+    "source_observation_and_legal_order_fingerprints_required_per_step": true,
+    "native_backend_isolation": "owned_bounded_child_process_only",
+    "in_process_native_backend_allowed": false,
+    "deterministic_in_process_fixture_requires_explicit_test_marker": true,
+    "sidecar_paths": [
+      "poke_bot/tactical_sequence_planner.py",
+      "poke_bot/alakazam_tactical_sequence.py",
+      "poke_bot/tactical_sequence_process_backend.py",
+      "tests/test_tactical_sequence_planner.py"
+    ],
+    "package_preflight_pilot_bo1000_fleet_or_kaggle_authority": false,
+    "training_serving_selector_promotion_checkpoint_or_model_update_authority": false,
+    "managed_service_start_stop_restart_or_reconfigure_authority": false,
+    "active_alakazam_refresh_may_be_interrupted_or_resource_reduced": false
   },
   "post_serial_process_parallel_node_evaluation_investigation": {
     "status": "owner_abandoned_with_full_mcts_under_revision_254",
