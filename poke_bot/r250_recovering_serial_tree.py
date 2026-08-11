@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from .r228_async_shared_tree_queue import (
-    AsyncEightWorkerError,
-    PersistentAsyncEightWorkerMCTS,
-)
+from .r228_async_shared_tree_queue import AsyncEightWorkerError
+from .r253_restarting_serial_mcts import R253RestartingSerialMCTS
 
 
 SCHEMA = "poke_bot.r250_serial_process_lane_recovery/v1"
@@ -76,6 +75,7 @@ class R250RecoveringSerialTree:
         evaluate_batch: Callable[[Sequence[Any]], Sequence[Any]],
         puct_c: float = 1.25,
         coalesce_seconds: float = 0.001,
+        max_rollouts: int | None = None,
     ) -> None:
         self._arena_factory = arena_factory
         self._core_kwargs = {
@@ -83,8 +83,13 @@ class R250RecoveringSerialTree:
             "evaluate_batch": evaluate_batch,
             "puct_c": float(puct_c),
             "coalesce_seconds": float(coalesce_seconds),
+            "max_rollouts": int(
+                os.environ.get("POKEBOT_R253_MAX_ROLLOUTS", "1000")
+                if max_rollouts is None
+                else max_rollouts
+            ),
         }
-        self._core: PersistentAsyncEightWorkerMCTS | None = None
+        self._core: R253RestartingSerialMCTS | None = None
         self._lanes: list[Any] = []
         self.last_decision_recovery: dict[str, Any] = {
             "schema": SCHEMA,
@@ -108,7 +113,7 @@ class R250RecoveringSerialTree:
             lanes.append(lane)
             return lane
 
-        core = PersistentAsyncEightWorkerMCTS(
+        core = R253RestartingSerialMCTS(
             arena_factory=tracked_factory, **self._core_kwargs
         )
         if len(lanes) != 1:

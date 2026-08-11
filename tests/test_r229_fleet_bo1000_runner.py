@@ -19,9 +19,9 @@ spec.loader.exec_module(runner)
 def _package_manifest(tmp_path: Path) -> Path:
     path = tmp_path / "package-manifest.json"
     path.write_text(json.dumps({
-        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r252_package/v1",
-        "status": "sealed_serial_bounded_leaf_evaluation_only",
-        "owner_goal_revision": 252,
+        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r253_package/v1",
+        "status": "sealed_restarting_serial_mcts_leaf_bounded_evaluation_only",
+        "owner_goal_revision": 253,
         "bo_lifecycle_revision": 233,
         "canonical_libcg_revision": 236,
         "superseded_two_lane_topology_revision": 239,
@@ -29,6 +29,7 @@ def _package_manifest(tmp_path: Path) -> Path:
         "owner_process_lane_recovery_revision": 249,
         "owner_serial_mcts_revision": 250,
         "owner_internal_leaf_boundary_revision": 252,
+        "owner_restarting_serial_rollout_revision": 253,
         "native_simulator_worker_process_count": 1,
         "shared_tree_and_frozen_model_remain_in_parent": True,
         "native_search_calls_in_parent_worker_threads": False,
@@ -44,7 +45,8 @@ def _package_manifest(tmp_path: Path) -> Path:
         "clean_full_game_preflight_max_exhausted_recovery_fallbacks": 0,
         "simulator_lane_count": 1,
         "internal_agent_start_arena_count": 1,
-        "required_search_begin_call_count": 1,
+        "minimum_search_begin_call_count_per_searched_decision": 2,
+        "search_begin_call_count_equals_completed_rollout_count": True,
         "required_handle_identity_count": 1,
         "required_handle_scoped_search_id_chain_count": 1,
         "required_handle_first_search_id_composite_count": 1,
@@ -60,7 +62,13 @@ def _package_manifest(tmp_path: Path) -> Path:
         "raw_search_id_global_uniqueness_required": False,
         "logical_frontier_leaf_count_per_frozen_model_batch": 1,
         "partial_frontier_batches_allowed": False,
-        "serial_one_lane_continuation_required": True,
+        "serial_one_lane_continuation_required": False,
+        "independent_exact_root_restart_per_rollout_required": True,
+        "one_new_leaf_or_value_boundary_maximum_per_rollout": True,
+        "rollout_search_id_chain_count_equals_rollout_count": True,
+        "bounded_release_and_search_end_per_rollout_required": True,
+        "minimum_completed_rollouts_for_mcts_action_authority": 2,
+        "maximum_rollouts_per_decision": 1000,
         "one_shared_logical_mcts_tree_required": True,
         "process_parallel_node_evaluation_included": False,
         "checkpoint_sha256": runner.CHECKPOINT,
@@ -82,6 +90,8 @@ def _package_manifest(tmp_path: Path) -> Path:
         "r249_bo_process_lane_boundary_included": True,
         "r250_serial_process_lane_topology_included": True,
         "r252_internal_leaf_boundary_included": True,
+        "r253_restarting_serial_rollout_included": True,
+        "continuous_single_trajectory_action_authority_allowed": False,
         "package_payload_tree_sha256": "sha256:" + "a" * 64,
         "training_eligible": False,
     }))
@@ -116,6 +126,7 @@ def test_run_parses_remote_stdout_and_commits_exact_receipt(monkeypatch, tmp_pat
         "status": "complete", **job, "canonical_libcg_revision": 236,
         "mcts_topology_revision": 250, "search_id_identity_revision": 244,
         "serial_mcts_revision": 250, "internal_leaf_boundary_revision": 252,
+        "serial_rollout_revision": 253,
         "simulator_lane_count": 1,
         "training_eligible": False,
     }
@@ -162,6 +173,7 @@ def test_one_worker_failure_is_receipted_requeued_and_does_not_abort(monkeypatch
             "status": "complete", **current, "canonical_libcg_revision": 236,
             "mcts_topology_revision": 250, "search_id_identity_revision": 244,
             "serial_mcts_revision": 250, "internal_leaf_boundary_revision": 252,
+            "serial_rollout_revision": 253,
             "simulator_lane_count": 1,
             "training_eligible": False,
         })
@@ -288,6 +300,7 @@ def test_package_identity_is_required_and_checksum_bound(tmp_path):
     assert identity["search_id_identity_revision"] == 244
     assert identity["serial_mcts_revision"] == 250
     assert identity["internal_leaf_boundary_revision"] == 252
+    assert identity["serial_rollout_revision"] == 253
     assert identity["simulator_lane_count"] == 1
 
 

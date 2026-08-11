@@ -26,6 +26,7 @@ def test_game_runner_and_watchdog_are_sealed_package_overlays():
         "poke_bot/r249_process_search_lane.py": "poke_bot/r249_process_search_lane.py",
         "poke_bot/r250_recovering_serial_tree.py": "poke_bot/r250_recovering_serial_tree.py",
         "poke_bot/r252_search_leaf_boundary.py": "poke_bot/r252_search_leaf_boundary.py",
+        "poke_bot/r253_restarting_serial_mcts.py": "poke_bot/r253_restarting_serial_mcts.py",
     }
 
 
@@ -284,6 +285,10 @@ search_inputs=tuple(dict(search_inputs) for _ in range(8))
     assert "handle_scoped_first_search_id_composite_states" in repaired
     assert '"lane_id": lane_id' in repaired
     assert '"first_search_id": receipt.per_lane_search_id_chains[lane_id][0]' in repaired
+    assert '"rollout_count": receipt.rollout_count' in repaired
+    assert '"rollout_search_id_chains"' in repaired
+    assert '"root_action_visit_counts"' in repaired
+    assert "clean_deadline_insufficient_rollouts_frozen_model_fallback" in repaired
     assert "requested_simulator_lane_count" in repaired
     assert "R249ProcessSearchLane" in repaired
     assert "R250RecoveringSerialTree" in repaired
@@ -305,14 +310,14 @@ search_inputs=tuple(dict(search_inputs) for _ in range(8))
     assert "terminal cleanup response" in (
         destination / "poke_bot/r228_async_shared_tree_queue.py"
     ).read_text()
-    assert "R252_SERIAL_BOUNDED_FULL_GAMEPLAY_SUCCESS" in (
+    assert "R253_RESTARTING_SERIAL_FULL_GAMEPLAY_SUCCESS" in (
         destination / "main.py"
     ).read_text()
     assert hashes["main.py"] == stage.sha(destination / "main.py")
     assert hashes["main.py"] != stage.sha(source / "main.py")
 
 
-def test_exact_pre_r234_baseline_produces_canonical_r252_bytes(tmp_path: Path):
+def test_exact_pre_r234_baseline_produces_canonical_r253_bytes(tmp_path: Path):
     cache_root = Path("/Users/tsinzitari/.cache/pokebot/r229-r228-package")
     candidates = (
         cache_root / "package-ineligible-pre-r239-r228-59531249",
@@ -338,17 +343,17 @@ def test_exact_pre_r234_baseline_produces_canonical_r252_bytes(tmp_path: Path):
     ):
         pytest.skip("local cache does not contain the canonical pre-r234 bytes")
 
-    destination = tmp_path / "r252"
+    destination = tmp_path / "r253"
     destination.mkdir()
     hashes = stage.overlay_r233_runtime(source=source, destination=destination)
 
     assert hashes == {
-        "main.py": "sha256:5f8bdf204c7dfd449b8d00b453b5777206d28f7276396264fc3917e38d68b498",
+        "main.py": "sha256:bc14cc472817f802bb357e48ecf7494bb4d66b308d6cfecf2cae87cd7531167a",
         "poke_bot/r228_async_shared_tree_queue.py": (
             "sha256:aee55da9e40a7f9345f1c899a1019e3fa1fe71bfb3d71c6bf5d85ca44b87f516"
         ),
         "poke_bot/r228_kaggle_async_runtime.py": (
-            "sha256:aecd17e1c6abc40b3c62e1e098693711bd51220d67981c1b6a8c0cf7936c3a80"
+            "sha256:26b745da2e99661b6bf84022319cf7b557443c9c0468e5c56761ab063aa72cdb"
         ),
     }
     for relative in hashes:

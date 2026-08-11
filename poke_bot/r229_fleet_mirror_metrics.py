@@ -68,6 +68,9 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
     internal_value_boundaries_per_game: list[float] = []
     decisions_with_internal_boundary_per_game: list[float] = []
     max_internal_ordered_actions_per_game: list[float] = []
+    serial_root_rollouts_per_game: list[float] = []
+    multi_root_action_decisions_per_game: list[float] = []
+    max_distinct_root_actions_per_game: list[float] = []
     search_latencies: list[float] = []
     backups: list[float] = []
     microbatches: list[float] = []
@@ -89,6 +92,8 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
         winner = row.get("winner_seat")
         if not isinstance(pair, int) or pair < 0 or pair >= EXPECTED_PAIRS or seat not in (0, 1):
             raise R229MetricsError("invalid pair or MCTS seat")
+        if row.get("serial_rollout_revision") != 253:
+            raise R229MetricsError("game is not bound to restarting serial revision 253")
         if winner not in (0, 1, 2):
             raise R229MetricsError("winner_seat must be 0, 1, or 2 for draw")
         pairs[pair].append(row)
@@ -130,6 +135,13 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
             ),
             "max_internal_ordered_action_count": (
                 max_internal_ordered_actions_per_game
+            ),
+            "serial_root_rollouts": serial_root_rollouts_per_game,
+            "decisions_visiting_multiple_root_actions": (
+                multi_root_action_decisions_per_game
+            ),
+            "max_distinct_root_actions_visited": (
+                max_distinct_root_actions_per_game
             ),
         }
         for name, target in fields.items():
@@ -187,6 +199,8 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
         telemetry_recovered = telemetry_exhausted = telemetry_lane_faults = 0
         telemetry_boundaries = telemetry_boundary_decisions = 0
         telemetry_max_internal = 0
+        telemetry_rollouts = telemetry_multi_root_decisions = 0
+        telemetry_max_distinct_root_actions = 0
         telemetry_boundary_reasons: Counter[str] = Counter()
         for decision in decision_rows:
             if not isinstance(decision, Mapping):
@@ -308,6 +322,48 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
                 completed = decision.get("completed_backups")
                 if latency is None or completed is None:
                     raise R229MetricsError("searched decision lacks latency or backup telemetry")
+                rollout_count = decision.get("rollout_count")
+                rollout_chains = decision.get("rollout_search_id_chains")
+                root_visits = decision.get("root_action_visit_counts")
+                distinct_root_actions = decision.get("distinct_root_actions_visited")
+                if (
+                    isinstance(rollout_count, bool)
+                    or not isinstance(rollout_count, int)
+                    or rollout_count < 2
+                    or decision.get("search_begin_calls") != rollout_count
+                    or completed != rollout_count
+                    or decision.get("root_visits") != rollout_count
+                    or not isinstance(rollout_chains, list)
+                    or len(rollout_chains) != rollout_count
+                    or any(not isinstance(chain, list) or len(chain) < 2 for chain in rollout_chains)
+                    or decision.get("search_release_calls")
+                    != sum(len(chain) for chain in rollout_chains)
+                    or decision.get("search_end_calls") != rollout_count
+                    or not isinstance(root_visits, list)
+                    or len(root_visits) != decision.get("legal_action_count")
+                    or any(
+                        isinstance(value, bool)
+                        or not isinstance(value, int)
+                        or value < 0
+                        for value in root_visits
+                    )
+                    or sum(root_visits) != rollout_count
+                    or distinct_root_actions
+                    != sum(value > 0 for value in root_visits)
+                    or not isinstance(distinct_root_actions, int)
+                    or distinct_root_actions < 1
+                    or decision.get("rollout_ceiling") != 1000
+                    or decision.get("rollout_stop_reason")
+                    not in {"decision_deadline", "rollout_ceiling"}
+                ):
+                    raise R229MetricsError(
+                        "searched decision lacks exact r253 root-rollout telemetry"
+                    )
+                telemetry_rollouts += rollout_count
+                telemetry_multi_root_decisions += int(distinct_root_actions > 1)
+                telemetry_max_distinct_root_actions = max(
+                    telemetry_max_distinct_root_actions, distinct_root_actions
+                )
                 search_latencies.append(float(latency))
                 backups.append(float(completed))
                 microbatches.extend(
@@ -334,6 +390,11 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
             )
             != metrics["internal_deterministic_fanout_boundaries"]
             or telemetry_max_internal != metrics["max_internal_ordered_action_count"]
+            or telemetry_rollouts != metrics["serial_root_rollouts"]
+            or telemetry_multi_root_decisions
+            != metrics["decisions_visiting_multiple_root_actions"]
+            or telemetry_max_distinct_root_actions
+            != metrics["max_distinct_root_actions_visited"]
         ):
             raise R229MetricsError("per-decision telemetry does not match game counters")
 
@@ -379,6 +440,19 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
             ),
             "contained_native_lane_faults_per_game": _quantiles(
                 contained_lane_faults_per_game
+            ),
+            "serial_root_rollouts_total": int(sum(serial_root_rollouts_per_game)),
+            "serial_root_rollouts_per_game": _quantiles(
+                serial_root_rollouts_per_game
+            ),
+            "decisions_visiting_multiple_root_actions_total": int(
+                sum(multi_root_action_decisions_per_game)
+            ),
+            "decisions_visiting_multiple_root_actions_per_game": _quantiles(
+                multi_root_action_decisions_per_game
+            ),
+            "max_distinct_root_actions_visited_per_game": _quantiles(
+                max_distinct_root_actions_per_game
             ),
             "searched_total": searched,
             "action_changed_total": changed,

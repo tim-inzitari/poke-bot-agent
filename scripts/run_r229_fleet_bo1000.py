@@ -103,9 +103,10 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
     manifest = _read(path)
     if (
         manifest.get("schema")
-        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r252_package/v1"
-        or manifest.get("status") != "sealed_serial_bounded_leaf_evaluation_only"
-        or manifest.get("owner_goal_revision") != 252
+        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r253_package/v1"
+        or manifest.get("status")
+        != "sealed_restarting_serial_mcts_leaf_bounded_evaluation_only"
+        or manifest.get("owner_goal_revision") != 253
         or manifest.get("bo_lifecycle_revision") != 233
         or manifest.get("canonical_libcg_revision") != 236
         or manifest.get("superseded_two_lane_topology_revision") != 239
@@ -113,6 +114,7 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
         or manifest.get("owner_process_lane_recovery_revision") != 249
         or manifest.get("owner_serial_mcts_revision") != 250
         or manifest.get("owner_internal_leaf_boundary_revision") != 252
+        or manifest.get("owner_restarting_serial_rollout_revision") != 253
         or manifest.get("native_simulator_worker_process_count") != 1
         or manifest.get("shared_tree_and_frozen_model_remain_in_parent") is not True
         or manifest.get("native_search_calls_in_parent_worker_threads") is not False
@@ -128,7 +130,9 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
         or manifest.get("clean_full_game_preflight_max_exhausted_recovery_fallbacks") != 0
         or manifest.get("simulator_lane_count") != 1
         or manifest.get("internal_agent_start_arena_count") != 1
-        or manifest.get("required_search_begin_call_count") != 1
+        or manifest.get("minimum_search_begin_call_count_per_searched_decision") != 2
+        or manifest.get("search_begin_call_count_equals_completed_rollout_count")
+        is not True
         or manifest.get("required_handle_identity_count") != 1
         or manifest.get("required_handle_scoped_search_id_chain_count") != 1
         or manifest.get("required_handle_first_search_id_composite_count") != 1
@@ -143,7 +147,17 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
         or manifest.get("raw_search_id_global_uniqueness_required") is not False
         or manifest.get("logical_frontier_leaf_count_per_frozen_model_batch") != 1
         or manifest.get("partial_frontier_batches_allowed") is not False
-        or manifest.get("serial_one_lane_continuation_required") is not True
+        or manifest.get("serial_one_lane_continuation_required") is not False
+        or manifest.get("independent_exact_root_restart_per_rollout_required")
+        is not True
+        or manifest.get("one_new_leaf_or_value_boundary_maximum_per_rollout")
+        is not True
+        or manifest.get("rollout_search_id_chain_count_equals_rollout_count")
+        is not True
+        or manifest.get("bounded_release_and_search_end_per_rollout_required")
+        is not True
+        or manifest.get("minimum_completed_rollouts_for_mcts_action_authority") != 2
+        or manifest.get("maximum_rollouts_per_decision") != 1000
         or manifest.get("one_shared_logical_mcts_tree_required") is not True
         or manifest.get("process_parallel_node_evaluation_included") is not False
         or manifest.get("checkpoint_sha256") != CHECKPOINT
@@ -160,6 +174,9 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
         or manifest.get("r249_bo_process_lane_boundary_included") is not True
         or manifest.get("r250_serial_process_lane_topology_included") is not True
         or manifest.get("r252_internal_leaf_boundary_included") is not True
+        or manifest.get("r253_restarting_serial_rollout_included") is not True
+        or manifest.get("continuous_single_trajectory_action_authority_allowed")
+        is not False
         or manifest.get("training_eligible") is not False
     ):
         raise R229FleetError("sealed package manifest violates the r229 identity")
@@ -185,6 +202,7 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
         "search_id_identity_revision": 244,
         "serial_mcts_revision": 250,
         "internal_leaf_boundary_revision": 252,
+        "serial_rollout_revision": 253,
         "simulator_lane_count": 1,
         "canonical_libcg_wheel_sha256": CANONICAL_LIBCG_WHEEL,
         "canonical_native_libraries": expected_libraries,
@@ -206,6 +224,7 @@ def _complete(path: Path, job: Mapping[str, Any]) -> bool:
         and row.get("search_id_identity_revision") == 244
         and row.get("serial_mcts_revision") == 250
         and row.get("internal_leaf_boundary_revision") == 252
+        and row.get("serial_rollout_revision") == 253
         and row.get("simulator_lane_count") == 1
         and row.get("training_eligible") is False
     )
@@ -383,6 +402,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "canonical_native_libraries",
             "mcts_topology_revision", "search_id_identity_revision",
             "serial_mcts_revision", "internal_leaf_boundary_revision",
+            "serial_rollout_revision",
             "simulator_lane_count",
         ):
             if old.get(key) != run_identity.get(key):

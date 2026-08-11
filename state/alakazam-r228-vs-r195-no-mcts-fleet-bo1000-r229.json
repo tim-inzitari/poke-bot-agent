@@ -1,6 +1,6 @@
 {
   "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229/v1",
-  "owner_decision_revision": 252,
+  "owner_decision_revision": 253,
   "originating_owner_decision_revision": 229,
   "owner_action_space_revision": 230,
   "owner_worker_isolation_revision": 231,
@@ -12,6 +12,7 @@
   "owner_process_lane_recovery_revision": 249,
   "owner_serial_mcts_revision": 250,
   "owner_internal_leaf_boundary_revision": 252,
+  "owner_restarting_serial_rollout_revision": 253,
   "r228_kaggle_viability_evidence": {
     "submission_id": 55416396,
     "status": "SubmissionStatus.ERROR",
@@ -19,8 +20,8 @@
     "usable_claim_passed": false,
     "failed_submission_must_be_preserved": true
   },
-  "recorded_at_utc": "2026-08-11T02:56:53Z",
-  "status": "authorized_for_r252_serial_bounded_leaf_implementation_tests_sealing_clean_full_game_preflight_and_mirrored_benchmark_parallel_node_evaluation_gated_on_serial_proof",
+  "recorded_at_utc": "2026-08-11T03:35:30Z",
+  "status": "authorized_for_r253_restarting_serial_rollout_implementation_tests_sealing_clean_full_game_preflight_and_mirrored_benchmark_parallel_node_evaluation_gated_on_serial_proof",
   "objective": "complete a 500-pair 1000-game mirrored r228 MCTS versus standard r195 no-MCTS evaluation and determine whether MCTS strength and decision changes justify its throughput cost",
   "frozen_identity": {
     "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
@@ -183,7 +184,9 @@
     "retry_exhaustion_fallback_receives_mcts_change_or_meaningful_change_credit": false,
     "clean_full_game_launch_preflight_max_exhausted_fallbacks": 0,
     "r239_and_r249_topology_artifacts_execution_eligible": false,
-    "kaggle_broker_queue_runtime_main_or_search_policy_import_allowed": false
+    "kaggle_broker_queue_runtime_main_or_search_policy_import_allowed": false,
+    "continuous_single_trajectory_mechanics_superseded_by_owner_revision": 253,
+    "continuous_single_trajectory_packages_and_results_execution_eligible": false
   },
   "r252_internal_simulated_leaf_boundaries": {
     "scope": "r229_bo1000_serial_mcts_internal_simulated_nodes_only",
@@ -224,9 +227,61 @@
     "fresh_r252_content_addressed_package_and_clean_local_linux_full_game_preflights_required": true,
     "kaggle_r246_semantics_changed": false
   },
+  "r253_restarting_serial_root_rollouts": {
+    "scope": "r229_bo1000_only",
+    "supersedes": "r250 continuous one-trajectory search mechanics only",
+    "authoritative_parent_owned_logical_tree_count_per_attempt": 1,
+    "owned_native_child_process_count": 1,
+    "official_r236_agent_start_handle_count": 1,
+    "concurrent_native_calls_allowed": false,
+    "same_exact_physical_root_search_begin_required_per_rollout": true,
+    "independent_root_rollouts_required": true,
+    "one_new_leaf_or_r252_value_boundary_maximum_per_rollout": true,
+    "parent_tree_visit_accumulation_across_successful_rollouts_required": true,
+    "rollout_search_ids_carry_tree_or_action_authority_between_rollouts": false,
+    "bounded_release_of_every_rollout_search_id_required": true,
+    "bounded_search_end_per_rollout_required": true,
+    "decision_rollout_ceiling": 1000,
+    "decision_seconds_per_attempt": 8.0,
+    "minimum_completed_independent_rollouts_for_mcts_action_authority": 2,
+    "failed_or_timed_out_or_malformed_or_cleanup_failed_rollout_behavior": "fail_complete_attempt_discard_partial_tree_reap_exact_owned_child",
+    "complete_fresh_root_retry_count": 1,
+    "retry_exhaustion_behavior": "explicit_degraded_same_state_frozen_r195_direct_fallback",
+    "r252_internal_value_boundaries_preserved": true,
+    "r252_bo_root_over_65536_direct_boundary_preserved": true,
+    "required_decision_telemetry": [
+      "rollout_count",
+      "rollout_search_id_chains",
+      "rollout_root_actions",
+      "root_action_visit_counts",
+      "distinct_root_actions_visited",
+      "max_rollout_depth",
+      "search_begin_calls",
+      "search_release_calls",
+      "search_end_calls",
+      "stop_reason",
+      "rollout_ceiling"
+    ],
+    "prelaunch_regressions": [
+      "multiple_independent_root_search_begin_calls",
+      "parent_tree_visits_accumulate_across_rollouts",
+      "constructed_case_visits_multiple_root_edges",
+      "constructed_backed_values_change_selected_root_action",
+      "bounded_release_and_end_per_rollout",
+      "zero_leaked_reservations"
+    ],
+    "stopped_r252_launch": {
+      "completed_games": 13,
+      "observed_searches_at_diagnosis": 741,
+      "classification": "immutable_invalid_diagnostic_evidence_only",
+      "bo_result_or_mcts_rate_or_search_effect_or_model_comparison_authority": false,
+      "reason": "one serial lane followed one continuous path and could visit only one root edge"
+    },
+    "kaggle_runtime_package_preflight_or_submission_authority_changed": false
+  },
   "post_serial_process_parallel_node_evaluation_investigation": {
     "status": "gated_not_yet_execution_authorized",
-    "prerequisite": "checksum_bound_r250_serial_package_clean_full_game_preflight_with_zero_exhausted_fallbacks",
+    "prerequisite": "completed_r253_bo1000_evidence_that_restarting_serial_mcts_changes_decisions_and_improves_results_enough_to_justify_throughput_cost",
     "separately_versioned_design_required": true,
     "authoritative_parent_owned_logical_tree_coordination_required": true,
     "one_distinct_native_handle_per_worker_process_required": true,
@@ -262,6 +317,8 @@
     "r249_bo_only_bounded_process_ownership_reap_and_retry_boundary_required": true,
     "r250_exactly_one_serial_process_lane_required": true,
     "r252_internal_leaf_boundary_contract_required": true,
+    "r253_independent_exact_root_restart_per_rollout_required": true,
+    "r250_continuous_single_trajectory_action_authority_allowed": false,
     "concurrent_libcg_calls_allowed": false,
     "failed_partial_tree_may_not_supply_action_authority": true,
     "r250_bounded_retry_exhaustion_may_use_only_same_state_r195_direct": true
@@ -282,6 +339,7 @@
     "decision_changes_by_stage_seat_host_and_game_outcome": true,
     "throughput_games_per_second_by_host_and_overall": true,
     "search_latency_backup_and_microbatch_summary": true,
+    "serial_root_rollout_and_distinct_root_action_visit_summary_required": true,
     "serial_handle_identity_search_id_chain_and_composite_state_telemetry_required": true,
     "internal_value_boundary_reason_count_and_max_fanout_summary_required": true,
     "lane_process_restart_recovered_search_and_exhausted_fallback_summary_required": true,
@@ -302,6 +360,9 @@
     "r250_serial_process_lane_fault_injection_receipt_required_before_fleet_execution": true,
     "r250_clean_full_game_preflight_requires_zero_exhausted_recovery_fallbacks": true,
     "r252_internal_leaf_boundary_receipt_required_before_fleet_execution": true,
+    "r253_multi_root_edge_and_changed_selection_regressions_required_before_fleet_execution": true,
+    "r253_clean_full_game_preflight_requires_multiple_root_rollouts_and_zero_exhausted_fallbacks": true,
+    "stopped_r252_thirteen_game_launch_may_supply_bo_result_or_mcts_effect_authority": false,
     "r239_r249_or_sealed_r236_multi_lane_package_or_receipt_may_satisfy_r250_execution_preflight": false,
     "managed_service_restart_training_kaggle_or_fleet_execution_authorized_by_r250_record_alone": false
   }

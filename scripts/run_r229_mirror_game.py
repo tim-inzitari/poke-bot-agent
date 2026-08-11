@@ -61,7 +61,7 @@ def _atomic(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, object]], dict[str, object]]:
-    manifest_path = stage / "r252_fleet_evaluation_manifest.json"
+    manifest_path = stage / "r253_fleet_evaluation_manifest.json"
     try:
         manifest = json.loads(manifest_path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
@@ -72,15 +72,17 @@ def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, objec
     }
     if (
         manifest.get("schema")
-        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r252_package/v1"
-        or manifest.get("status") != "sealed_serial_bounded_leaf_evaluation_only"
-        or manifest.get("owner_goal_revision") != 252
+        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r253_package/v1"
+        or manifest.get("status")
+        != "sealed_restarting_serial_mcts_leaf_bounded_evaluation_only"
+        or manifest.get("owner_goal_revision") != 253
         or manifest.get("canonical_libcg_revision") != 236
         or manifest.get("superseded_two_lane_topology_revision") != 239
         or manifest.get("owner_handle_scoped_search_id_revision") != 244
         or manifest.get("owner_process_lane_recovery_revision") != 249
         or manifest.get("owner_serial_mcts_revision") != 250
         or manifest.get("owner_internal_leaf_boundary_revision") != 252
+        or manifest.get("owner_restarting_serial_rollout_revision") != 253
         or manifest.get("native_simulator_worker_process_count") != 1
         or manifest.get("shared_tree_and_frozen_model_remain_in_parent") is not True
         or manifest.get("native_search_calls_in_parent_worker_threads") is not False
@@ -92,7 +94,9 @@ def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, objec
         or manifest.get("clean_full_game_preflight_max_exhausted_recovery_fallbacks") != 0
         or manifest.get("simulator_lane_count") != 1
         or manifest.get("internal_agent_start_arena_count") != 1
-        or manifest.get("required_search_begin_call_count") != 1
+        or manifest.get("minimum_search_begin_call_count_per_searched_decision") != 2
+        or manifest.get("search_begin_call_count_equals_completed_rollout_count")
+        is not True
         or manifest.get("required_handle_identity_count") != 1
         or manifest.get("required_handle_scoped_search_id_chain_count") != 1
         or manifest.get("required_handle_first_search_id_composite_count") != 1
@@ -107,7 +111,17 @@ def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, objec
         or manifest.get("raw_search_id_global_uniqueness_required") is not False
         or manifest.get("logical_frontier_leaf_count_per_frozen_model_batch") != 1
         or manifest.get("partial_frontier_batches_allowed") is not False
-        or manifest.get("serial_one_lane_continuation_required") is not True
+        or manifest.get("serial_one_lane_continuation_required") is not False
+        or manifest.get("independent_exact_root_restart_per_rollout_required")
+        is not True
+        or manifest.get("one_new_leaf_or_value_boundary_maximum_per_rollout")
+        is not True
+        or manifest.get("rollout_search_id_chain_count_equals_rollout_count")
+        is not True
+        or manifest.get("bounded_release_and_search_end_per_rollout_required")
+        is not True
+        or manifest.get("minimum_completed_rollouts_for_mcts_action_authority") != 2
+        or manifest.get("maximum_rollouts_per_decision") != 1000
         or manifest.get("one_shared_logical_mcts_tree_required") is not True
         or manifest.get("process_parallel_node_evaluation_included") is not False
         or manifest.get("complete_ordered_action_ceiling") != 65536
@@ -124,6 +138,9 @@ def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, objec
         or manifest.get("r249_bo_process_lane_boundary_included") is not True
         or manifest.get("r250_serial_process_lane_topology_included") is not True
         or manifest.get("r252_internal_leaf_boundary_included") is not True
+        or manifest.get("r253_restarting_serial_rollout_included") is not True
+        or manifest.get("continuous_single_trajectory_action_authority_allowed")
+        is not False
         or manifest.get("canonical_native_libraries") != expected_manifest_libraries
     ):
         raise R229GameError("sealed r252 package manifest identity drifted")
@@ -233,6 +250,14 @@ def _validate_serial_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
             continue
         if exhausted:
             raise R229GameError("non-degraded decision claims exhausted lane recovery")
+        if row.get("mode") == "clean_deadline_insufficient_rollouts_frozen_model_fallback":
+            if (
+                row.get("mcts_action_authority") is not False
+                or row.get("action_changed") is not False
+                or row.get("meaningful_choice_change") not in (None, False)
+            ):
+                raise R229GameError("insufficient serial rollouts gained MCTS authority")
+            continue
         if row.get("mode") != "shared_tree_mcts":
             continue
         chains = row.get("per_lane_search_id_chains") or ()
@@ -253,10 +278,6 @@ def _validate_serial_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
             for handle in handles
             if isinstance(handle, (int, str)) and not isinstance(handle, bool)
         ]
-        scoped_search_states = [
-            (str(handles[index]), chains[index][0])
-            for index in range(1)
-        ] if len(valid_handles) == len(valid_chains) == 1 else []
         valid_composite_states = (
             (
                 isinstance(composite_states, list)
@@ -274,6 +295,49 @@ def _validate_serial_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
             if len(valid_handles) == len(valid_chains) == 1
             else False
         )
+        rollout_count = row.get("rollout_count")
+        rollout_chains = row.get("rollout_search_id_chains") or ()
+        rollout_begin_states = row.get("rollout_search_begin_states") or ()
+        rollout_root_actions = row.get("rollout_root_actions") or ()
+        root_action_visits = row.get("root_action_visit_counts") or ()
+        valid_rollout_chains = (
+            isinstance(rollout_chains, list)
+            and all(
+                isinstance(chain, list)
+                and len(chain) >= 2
+                and all(isinstance(value, int) and not isinstance(value, bool) for value in chain)
+                for chain in rollout_chains
+            )
+        )
+        valid_rollout_begin_states = (
+            isinstance(rollout_begin_states, list)
+            and len(rollout_begin_states) == len(rollout_chains)
+            and all(
+                isinstance(state, dict)
+                and list(state)
+                == ["rollout_index", "handle_identity", "first_search_id"]
+                and state["rollout_index"] == index
+                and state["handle_identity"] == handles[0]
+                and state["first_search_id"] == rollout_chains[index][0]
+                for index, state in enumerate(rollout_begin_states)
+            )
+        )
+        valid_root_actions = (
+            isinstance(rollout_root_actions, list)
+            and all(
+                isinstance(action, list)
+                and all(isinstance(value, int) and not isinstance(value, bool) for value in action)
+                for action in rollout_root_actions
+            )
+        )
+        valid_root_visits = (
+            isinstance(root_action_visits, list)
+            and len(root_action_visits) == row.get("legal_action_count")
+            and all(
+                isinstance(value, int) and not isinstance(value, bool) and value >= 0
+                for value in root_action_visits
+            )
+        )
         microbatches = row.get("microbatch_sizes") or ()
         if (
             row.get("requested_simulator_lane_count") != 1
@@ -282,20 +346,45 @@ def _validate_serial_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
             or row.get("unique_handle_count") != 1
             or len(valid_handles) != 1
             or len(set(map(str, valid_handles))) != 1
-            or row.get("search_begin_calls") != 1
-            or row.get("search_release_calls", 0) < 1
-            or row.get("search_end_calls") != 1
+            or isinstance(rollout_count, bool)
+            or not isinstance(rollout_count, int)
+            or rollout_count < 2
+            or row.get("search_begin_calls") != rollout_count
+            or row.get("completed_backups") != rollout_count
+            or row.get("root_visits") != rollout_count
+            or not valid_rollout_chains
+            or len(rollout_chains) != rollout_count
+            or not valid_rollout_begin_states
+            or not valid_root_actions
+            or len(rollout_root_actions) != rollout_count
+            or not valid_root_visits
+            or sum(root_action_visits) != rollout_count
+            or row.get("distinct_root_actions_visited")
+            != sum(value > 0 for value in root_action_visits)
+            or row.get("distinct_root_actions_visited", 0) < 1
+            or row.get("search_release_calls")
+            != sum(len(chain) for chain in rollout_chains)
+            or row.get("search_end_calls") != rollout_count
             or row.get("max_simulator_calls_in_flight") != 1
             or len(row.get("per_lane_depth") or ()) != 1
+            or row.get("per_lane_depth", [None])[0] != row.get("max_rollout_depth")
+            or not isinstance(row.get("max_rollout_depth"), int)
+            or row.get("max_rollout_depth", 0) < 1
             or len(chains) != 1
             or len(valid_chains) != 1
-            or len(set(scoped_search_states)) != 1
+            or chains[0] != rollout_chains[0]
             or not valid_composite_states
             or not microbatches
             or any(size != 1 for size in microbatches)
+            or len(microbatches) != row.get("search_step_calls")
+            or row.get("rollout_stop_reason")
+            not in {"decision_deadline", "rollout_ceiling"}
+            or row.get("rollout_ceiling") != 1000
             or row.get("outstanding_virtual_loss") != 0
         ):
-            raise R229GameError("searched decision lacks an exact serial receipt")
+            raise R229GameError(
+                "searched decision lacks an exact restarting-serial receipt"
+            )
 
 
 def _legal(obs: Mapping[str, Any], action: Sequence[int]) -> None:
@@ -324,7 +413,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
     from poke_bot.r228_async_shared_tree_queue import LANES
 
     if LANES != 1:
-        raise R229GameError("r252 experimental arm is not exactly one serial lane")
+        raise R229GameError("r253 experimental arm is not exactly one serial lane")
     direct_module = module._direct()
     deck, model, _base_policy = direct_module._ensure_runtime()
     runtime = module._runtime()
@@ -508,6 +597,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
             "process_lane_recovery_revision": 249,
             "serial_mcts_revision": 250,
             "internal_leaf_boundary_revision": 252,
+            "serial_rollout_revision": 253,
             "simulator_lane_count": 1,
             "canonical_native_libraries": native_set,
             "elapsed_seconds": elapsed,
@@ -541,6 +631,20 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
                 ),
                 "max_internal_ordered_action_count": (
                     max_internal_ordered_action_count
+                ),
+                "serial_root_rollouts": sum(
+                    int(row.get("rollout_count", 0)) for row in receipts
+                ),
+                "decisions_visiting_multiple_root_actions": sum(
+                    int(row.get("distinct_root_actions_visited", 0) > 1)
+                    for row in receipts
+                ),
+                "max_distinct_root_actions_visited": max(
+                    (
+                        int(row.get("distinct_root_actions_visited", 0))
+                        for row in receipts
+                    ),
+                    default=0,
                 ),
                 "action_changed": changed,
                 "meaningful_choice_change": meaningful,

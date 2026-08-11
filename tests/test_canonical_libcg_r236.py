@@ -23,7 +23,7 @@ R225_PATH = ROOT / "state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic
 R229_PATH = ROOT / "state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json"
 OFFICIAL_WHEEL_ENV = "POKEBOT_R236_OFFICIAL_WHEEL_PATH"
 R225_R246_SHA256 = "sha256:3225b07997bc58cc5e89239491533628cae654b48c092dec76ce56a6b8205eb3"
-R229_R252_SHA256 = "sha256:f286dc44b3d8914b34f9681f992927858f5bc2813f794f452f4383daeaa55db1"
+R229_R253_SHA256 = "sha256:ac2430ffcc852f3110904168d37d0da521b6fb8b8b8d02b6a00ca759cb64d813"
 
 OFFICIAL_WHEEL = {
     "package_version": "1.32.6",
@@ -323,25 +323,27 @@ def test_r244_search_id_rule_is_retained_by_r246_and_r252() -> None:
     ]
 
 
-def test_r252_serial_worker_and_leaf_bounds_preserve_r236_and_r233() -> None:
-    """R252 bounds serial search leaves while retaining owned-process recovery."""
+def test_r253_restarting_serial_rollouts_preserve_r252_r236_and_r233() -> None:
+    """R253 restarts exact roots while retaining r252 boundaries and recovery."""
 
     r229 = _json(R229_PATH)
     recovery = r229["r249_two_process_native_lane_recovery"]
     serial = r229["r250_serial_process_native_lane"]
     boundaries = r229["r252_internal_simulated_leaf_boundaries"]
+    rollouts = r229["r253_restarting_serial_root_rollouts"]
     parallel = r229["post_serial_process_parallel_node_evaluation_investigation"]
     fleet = r229["fleet"]
     lifecycle = r229["r229_lifecycle_boundary"]
     safety = r229["safety"]
 
-    assert _sha256(R229_PATH) == R229_R252_SHA256
-    assert r229["owner_decision_revision"] == 252
+    assert _sha256(R229_PATH) == R229_R253_SHA256
+    assert r229["owner_decision_revision"] == 253
     assert r229["owner_process_lane_recovery_revision"] == 249
     assert r229["owner_canonical_libcg_revision"] == 236
     assert r229["owner_handle_scoped_search_id_revision"] == 244
     assert r229["owner_serial_mcts_revision"] == 250
     assert r229["owner_internal_leaf_boundary_revision"] == 252
+    assert r229["owner_restarting_serial_rollout_revision"] == 253
 
     assert recovery["scope"] == "r229_bo1000_only"
     assert recovery["authoritative_game_process_owns_frozen_model"]
@@ -409,6 +411,8 @@ def test_r252_serial_worker_and_leaf_bounds_preserve_r236_and_r233() -> None:
     assert serial["clean_full_game_launch_preflight_max_exhausted_fallbacks"] == 0
     assert serial["r239_and_r249_topology_artifacts_execution_eligible"] is False
     assert serial["kaggle_broker_queue_runtime_main_or_search_policy_import_allowed"] is False
+    assert serial["continuous_single_trajectory_mechanics_superseded_by_owner_revision"] == 253
+    assert serial["continuous_single_trajectory_packages_and_results_execution_eligible"] is False
 
     assert boundaries["root_complete_ordered_action_ceiling"] == 65536
     assert boundaries["root_action_enumeration_or_authority_changed"] is False
@@ -439,6 +443,26 @@ def test_r252_serial_worker_and_leaf_bounds_preserve_r236_and_r233() -> None:
     assert boundaries["r250_package_preflights_and_partial_results_execution_eligible"] is False
     assert boundaries["kaggle_r246_semantics_changed"] is False
 
+    assert rollouts["scope"] == "r229_bo1000_only"
+    assert rollouts["owned_native_child_process_count"] == 1
+    assert rollouts["official_r236_agent_start_handle_count"] == 1
+    assert rollouts["concurrent_native_calls_allowed"] is False
+    assert rollouts["same_exact_physical_root_search_begin_required_per_rollout"]
+    assert rollouts["independent_root_rollouts_required"]
+    assert rollouts["one_new_leaf_or_r252_value_boundary_maximum_per_rollout"]
+    assert rollouts["parent_tree_visit_accumulation_across_successful_rollouts_required"]
+    assert rollouts["rollout_search_ids_carry_tree_or_action_authority_between_rollouts"] is False
+    assert rollouts["bounded_release_of_every_rollout_search_id_required"]
+    assert rollouts["bounded_search_end_per_rollout_required"]
+    assert rollouts["decision_rollout_ceiling"] == 1000
+    assert rollouts["minimum_completed_independent_rollouts_for_mcts_action_authority"] == 2
+    assert rollouts["complete_fresh_root_retry_count"] == 1
+    assert rollouts["stopped_r252_launch"]["completed_games"] == 13
+    assert rollouts["stopped_r252_launch"][
+        "bo_result_or_mcts_rate_or_search_effect_or_model_comparison_authority"
+    ] is False
+    assert rollouts["kaggle_runtime_package_preflight_or_submission_authority_changed"] is False
+
     assert fleet["execution_data_plane"] == "host_local_sealed_package"
     assert fleet["lan_control_plane"] == "claims_heartbeats_and_json_receipts_only"
     assert fleet[
@@ -466,6 +490,8 @@ def test_r252_serial_worker_and_leaf_bounds_preserve_r236_and_r233() -> None:
     assert lifecycle["r249_bo_only_bounded_process_ownership_reap_and_retry_boundary_required"]
     assert lifecycle["r250_exactly_one_serial_process_lane_required"]
     assert lifecycle["r252_internal_leaf_boundary_contract_required"]
+    assert lifecycle["r253_independent_exact_root_restart_per_rollout_required"]
+    assert lifecycle["r250_continuous_single_trajectory_action_authority_allowed"] is False
     assert lifecycle["concurrent_libcg_calls_allowed"] is False
     assert lifecycle["failed_partial_tree_may_not_supply_action_authority"]
     assert lifecycle["r250_bounded_retry_exhaustion_may_use_only_same_state_r195_direct"]
@@ -473,6 +499,12 @@ def test_r252_serial_worker_and_leaf_bounds_preserve_r236_and_r233() -> None:
     assert safety["r250_serial_process_lane_fault_injection_receipt_required_before_fleet_execution"]
     assert safety["r250_clean_full_game_preflight_requires_zero_exhausted_recovery_fallbacks"]
     assert safety["r252_internal_leaf_boundary_receipt_required_before_fleet_execution"]
+    assert safety[
+        "r253_multi_root_edge_and_changed_selection_regressions_required_before_fleet_execution"
+    ]
+    assert safety[
+        "stopped_r252_thirteen_game_launch_may_supply_bo_result_or_mcts_effect_authority"
+    ] is False
     assert safety["kaggle_specific_r228_lifecycle_may_be_changed_by_bo1000"] is False
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seal the r252 BO evaluator with serial MCTS and value-only leaf bounds."""
+"""Seal the r253 BO evaluator with restarting serial root rollouts."""
 
 from __future__ import annotations
 
@@ -59,6 +59,7 @@ OVERLAYS = {
     "poke_bot/r249_process_search_lane.py": "poke_bot/r249_process_search_lane.py",
     "poke_bot/r250_recovering_serial_tree.py": "poke_bot/r250_recovering_serial_tree.py",
     "poke_bot/r252_search_leaf_boundary.py": "poke_bot/r252_search_leaf_boundary.py",
+    "poke_bot/r253_restarting_serial_mcts.py": "poke_bot/r253_restarting_serial_mcts.py",
 }
 
 
@@ -116,11 +117,12 @@ one frozen model and one shared search tree per decision.  Eight persistent
 thread-affine ``AgentStart`` arenas advance independent simulator states and
 feed ready leaves to the same model-backed coordinator queue.
 """''',
-        b'''"""Serial process-owned stock-libcg MCTS for the r252 BO evaluation.
+        b'''"""Serial process-owned stock-libcg MCTS for the r253 BO evaluation.
 
-One authoritative game process owns the frozen model and one logical tree.
-Exactly one thread-affine proxy talks to one child-owned ``AgentStart`` handle;
-the parent can bound and reap that child if a native Search call does not return.
+One authoritative game process owns the frozen model and one logical tree. One
+thread-affine proxy talks to one child-owned ``AgentStart`` handle; every MCTS
+rollout independently reopens the exact physical root, expands and backs one
+leaf, then boundedly releases before the next rollout.
 """''',
         label="serial runtime description",
     )
@@ -140,14 +142,14 @@ the parent can bound and reap that child if a native Search call does not return
     payload = _replace_once(
         payload,
         b'SCHEMA = "poke_bot.r228_async_eight_worker_kaggle_viability/v1"',
-        b'SCHEMA = "poke_bot.r252_serial_bounded_fleet_mirror/v1"',
-        label="r252 runtime schema",
+        b'SCHEMA = "poke_bot.r253_restarting_serial_mcts_fleet_mirror/v1"',
+        label="r253 runtime schema",
     )
     payload = _replace_once(
         payload,
         b'DECISION_PREFIX = "R228_ASYNC_EIGHT_WORKER_DECISION"',
-        b'DECISION_PREFIX = "R252_SERIAL_BOUNDED_MCTS_DECISION"',
-        label="r252 decision marker",
+        b'DECISION_PREFIX = "R253_RESTARTING_SERIAL_MCTS_DECISION"',
+        label="r253 decision marker",
     )
     payload = _replace_once(
         payload,
@@ -169,6 +171,32 @@ the parent can bound and reap that child if a native Search call does not return
                         }
                         for lane_id in range(1)
                     ],
+                    "rollout_count": receipt.rollout_count,
+                    "rollout_search_id_chains": [
+                        list(chain) for chain in receipt.rollout_search_id_chains
+                    ],
+                    "rollout_search_begin_states": [
+                        {
+                            "rollout_index": rollout_index,
+                            "handle_identity": receipt.per_lane_handle_identities[0],
+                            "first_search_id": chain[0],
+                        }
+                        for rollout_index, chain in enumerate(
+                            receipt.rollout_search_id_chains
+                        )
+                    ],
+                    "rollout_root_actions": [
+                        list(action) for action in receipt.rollout_root_actions
+                    ],
+                    "root_action_visit_counts": list(
+                        receipt.root_action_visit_counts
+                    ),
+                    "distinct_root_actions_visited": (
+                        receipt.distinct_root_actions_visited
+                    ),
+                    "max_rollout_depth": receipt.max_rollout_depth,
+                    "rollout_stop_reason": receipt.stop_reason,
+                    "rollout_ceiling": receipt.rollout_ceiling,
                     "search_release_calls": receipt.search_release_calls,'''
     payload = _replace_once(
         payload, old_lane_receipt, new_lane_receipt, label="serial search id"
@@ -202,12 +230,12 @@ the parent can bound and reap that child if a native Search call does not return
         payload,
         b''')
 
-SCHEMA = "poke_bot.r252_serial_bounded_fleet_mirror/v1"''',
+SCHEMA = "poke_bot.r253_restarting_serial_mcts_fleet_mirror/v1"''',
         b''')
 from .r250_recovering_serial_tree import R250SerialRecoveryExhausted
 from .r252_search_leaf_boundary import classify_search_leaf
 
-SCHEMA = "poke_bot.r252_serial_bounded_fleet_mirror/v1"''',
+SCHEMA = "poke_bot.r253_restarting_serial_mcts_fleet_mirror/v1"''',
         label="module-global recovery and leaf-boundary imports",
     )
     payload = _replace_once(
@@ -311,7 +339,7 @@ SCHEMA = "poke_bot.r252_serial_bounded_fleet_mirror/v1"''',
         try:
             receipt = self._search.run_decision(''',
         b'''        started = time.monotonic()
-        print("R252_SERIAL_SEARCH_BEGIN", flush=True)
+        print("R253_RESTARTING_SERIAL_SEARCH_BEGIN", flush=True)
         try:
             receipt = self._search.run_decision(''',
         label="serial search phase marker",
@@ -343,22 +371,27 @@ SCHEMA = "poke_bot.r252_serial_bounded_fleet_mirror/v1"''',
                 receipt = None
                 mode = "bounded_lane_recovery_exhausted_direct_fallback"
             else:
-                # Preserve the historical clean-deadline zero-backup behavior.
-                # Model/tree/identity failures remain hard failures.
-                if "completed no backups" not in str(exc):
+                # Fewer than two independent roots cannot receive MCTS action
+                # authority. Model/tree/identity failures remain hard failures.
+                if "completed fewer than two independent root rollouts" in str(exc):
+                    selected = direct_action
+                    receipt = None
+                    mode = "clean_deadline_insufficient_rollouts_frozen_model_fallback"
+                elif "completed no backups" not in str(exc):
                     raise
-                selected = tuple(
-                    int(item)
-                    for item in self.policy._factorized_greedy_prepared(
-                        obs,
-                        board,
-                        target_source="r228_clean_deadline_fallback",
+                else:
+                    selected = tuple(
+                        int(item)
+                        for item in self.policy._factorized_greedy_prepared(
+                            obs,
+                            board,
+                            target_source="r228_clean_deadline_fallback",
+                        )
                     )
-                )
-                if selected not in legal:
-                    raise R228GameplayError("clean-deadline frozen fallback was illegal")
-                receipt = None
-                mode = "clean_deadline_zero_backup_frozen_model_fallback"'''
+                    if selected not in legal:
+                        raise R228GameplayError("clean-deadline frozen fallback was illegal")
+                    receipt = None
+                    mode = "clean_deadline_zero_backup_frozen_model_fallback"'''
     payload = _replace_once(
         payload, old_failure, new_failure, label="r250 bounded recovery fallback"
     )
@@ -602,22 +635,22 @@ def repair_r233_main_for_r250_serial(path: Path) -> None:
     replacements = (
         (
             b"r228 asynchronous eight-worker viability smoke",
-            b"r252 serial bounded-choice fleet mirror",
+            b"r253 restarting-serial MCTS fleet mirror",
             "entrypoint description",
         ),
         (
             b"R228_ASYNC_EIGHT_WORKER_FULL_GAMEPLAY_SUCCESS",
-            b"R252_SERIAL_BOUNDED_FULL_GAMEPLAY_SUCCESS",
+            b"R253_RESTARTING_SERIAL_FULL_GAMEPLAY_SUCCESS",
             "full-game marker",
         ),
         (
             b"poke_bot.r228_async_eight_worker_kaggle_viability/v1",
-            b"poke_bot.r252_serial_bounded_fleet_mirror/v1",
+            b"poke_bot.r253_restarting_serial_mcts_fleet_mirror/v1",
             "full-game schema",
         ),
         (
             b"R228_ASYNC_EIGHT_WORKER_HARD_FAILURE",
-            b"R252_SERIAL_BOUNDED_HARD_FAILURE",
+            b"R253_RESTARTING_SERIAL_HARD_FAILURE",
             "hard-failure marker",
         ),
     )
@@ -742,9 +775,9 @@ def stage(*, source_root: Path, archive: Path, r233_runtime_source: Path, wheel:
             overlay_hashes[destination] = sha(temporary / destination)
         native_libraries = overlay_canonical_native_set(wheel=wheel, destination=temporary)
         manifest = {
-            "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r252_package/v1",
-            "status": "sealed_serial_bounded_leaf_evaluation_only",
-            "owner_goal_revision": 252,
+            "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r253_package/v1",
+            "status": "sealed_restarting_serial_mcts_leaf_bounded_evaluation_only",
+            "owner_goal_revision": 253,
             "bo_lifecycle_revision": 233,
             "canonical_libcg_revision": 236,
             "superseded_two_lane_topology_revision": 239,
@@ -752,6 +785,7 @@ def stage(*, source_root: Path, archive: Path, r233_runtime_source: Path, wheel:
             "owner_process_lane_recovery_revision": 249,
             "owner_serial_mcts_revision": 250,
             "owner_internal_leaf_boundary_revision": 252,
+            "owner_restarting_serial_rollout_revision": 253,
             "native_simulator_worker_process_count": 1,
             "shared_tree_and_frozen_model_remain_in_parent": True,
             "native_search_calls_in_parent_worker_threads": False,
@@ -767,7 +801,8 @@ def stage(*, source_root: Path, archive: Path, r233_runtime_source: Path, wheel:
             "clean_full_game_preflight_max_exhausted_recovery_fallbacks": 0,
             "simulator_lane_count": 1,
             "internal_agent_start_arena_count": 1,
-            "required_search_begin_call_count": 1,
+            "minimum_search_begin_call_count_per_searched_decision": 2,
+            "search_begin_call_count_equals_completed_rollout_count": True,
             "required_handle_identity_count": 1,
             "required_handle_scoped_search_id_chain_count": 1,
             "required_handle_first_search_id_composite_count": 1,
@@ -783,7 +818,13 @@ def stage(*, source_root: Path, archive: Path, r233_runtime_source: Path, wheel:
             "raw_search_id_global_uniqueness_required": False,
             "logical_frontier_leaf_count_per_frozen_model_batch": 1,
             "partial_frontier_batches_allowed": False,
-            "serial_one_lane_continuation_required": True,
+            "serial_one_lane_continuation_required": False,
+            "independent_exact_root_restart_per_rollout_required": True,
+            "one_new_leaf_or_value_boundary_maximum_per_rollout": True,
+            "rollout_search_id_chain_count_equals_rollout_count": True,
+            "bounded_release_and_search_end_per_rollout_required": True,
+            "minimum_completed_rollouts_for_mcts_action_authority": 2,
+            "maximum_rollouts_per_decision": 1000,
             "one_shared_logical_mcts_tree_required": True,
             "process_parallel_node_evaluation_included": False,
             "parallel_node_evaluation_requires_clean_serial_full_game_receipt": True,
@@ -811,11 +852,13 @@ def stage(*, source_root: Path, archive: Path, r233_runtime_source: Path, wheel:
             "r249_bo_process_lane_boundary_included": True,
             "r250_serial_process_lane_topology_included": True,
             "r252_internal_leaf_boundary_included": True,
+            "r253_restarting_serial_rollout_included": True,
+            "continuous_single_trajectory_action_authority_allowed": False,
             "overlays": overlay_hashes,
             "package_payload_tree_sha256": tree_sha(temporary),
             "training_eligible": False,
         }
-        (temporary / "r252_fleet_evaluation_manifest.json").write_text(
+        (temporary / "r253_fleet_evaluation_manifest.json").write_text(
             json.dumps(manifest, sort_keys=True, indent=2) + "\n"
         )
         os.replace(temporary, output)

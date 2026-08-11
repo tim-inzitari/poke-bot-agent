@@ -55,7 +55,7 @@ class FakeCore:
 def _tree(monkeypatch, outcomes):
     FakeCore.outcomes = list(outcomes)
     FakeCore.instances = []
-    monkeypatch.setattr(recovery, "PersistentAsyncEightWorkerMCTS", FakeCore)
+    monkeypatch.setattr(recovery, "R253RestartingSerialMCTS", FakeCore)
     attempt_flags = iter(isinstance(row, Exception) for row in outcomes)
     next_faults = [next(attempt_flags)]
 
