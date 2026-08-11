@@ -23,7 +23,7 @@ R225_PATH = ROOT / "state/alakazam-r222-shared-tree-eight-lane-kaggle-diagnostic
 R229_PATH = ROOT / "state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json"
 OFFICIAL_WHEEL_ENV = "POKEBOT_R236_OFFICIAL_WHEEL_PATH"
 R225_R246_SHA256 = "sha256:3225b07997bc58cc5e89239491533628cae654b48c092dec76ce56a6b8205eb3"
-R229_R253_SHA256 = "sha256:ac2430ffcc852f3110904168d37d0da521b6fb8b8b8d02b6a00ca759cb64d813"
+R229_R254_SHA256 = "sha256:7ba7860906c5a4322d78c565bc9c31de4c3d803995a28a2f6ed78f9add2cf4f1"
 
 OFFICIAL_WHEEL = {
     "package_version": "1.32.6",
@@ -323,21 +323,25 @@ def test_r244_search_id_rule_is_retained_by_r246_and_r252() -> None:
     ]
 
 
-def test_r253_restarting_serial_rollouts_preserve_r252_r236_and_r233() -> None:
-    """R253 restarts exact roots while retaining r252 boundaries and recovery."""
+def test_r254_abandons_full_mcts_and_preserves_r253_diagnostic_evidence() -> None:
+    """R254 stops full MCTS and gates a conservative selective proof search."""
 
     r229 = _json(R229_PATH)
     recovery = r229["r249_two_process_native_lane_recovery"]
     serial = r229["r250_serial_process_native_lane"]
     boundaries = r229["r252_internal_simulated_leaf_boundaries"]
     rollouts = r229["r253_restarting_serial_root_rollouts"]
+    abandonment = r229[
+        "r254_full_mcts_abandonment_and_selective_tactical_proof_search"
+    ]
     parallel = r229["post_serial_process_parallel_node_evaluation_investigation"]
     fleet = r229["fleet"]
     lifecycle = r229["r229_lifecycle_boundary"]
     safety = r229["safety"]
 
-    assert _sha256(R229_PATH) == R229_R253_SHA256
-    assert r229["owner_decision_revision"] == 253
+    assert _sha256(R229_PATH) == R229_R254_SHA256
+    assert r229["owner_decision_revision"] == 254
+    assert r229["owner_full_mcts_abandonment_revision"] == 254
     assert r229["owner_process_lane_recovery_revision"] == 249
     assert r229["owner_canonical_libcg_revision"] == 236
     assert r229["owner_handle_scoped_search_id_revision"] == 244
@@ -473,13 +477,34 @@ def test_r253_restarting_serial_rollouts_preserve_r252_r236_and_r233() -> None:
     ] is False
     assert fleet["host_local_result_then_small_json_receipt_return_required"]
 
-    assert parallel["status"] == "gated_not_yet_execution_authorized"
+    assert parallel["status"] == "owner_abandoned_with_full_mcts_under_revision_254"
     assert parallel["separately_versioned_design_required"]
     assert parallel["authoritative_parent_owned_logical_tree_coordination_required"]
     assert parallel["one_distinct_native_handle_per_worker_process_required"]
     assert parallel["concurrent_native_calls_within_one_worker_process_allowed"] is False
     assert parallel["current_package_preflight_game_fleet_or_action_authority"] is False
     assert parallel["may_change_kaggle_specific_r228_lifecycle"] is False
+
+    assert abandonment["r253_managed_run_disposition"] == (
+        "owner_abandoned_cleanly_stopped"
+    )
+    assert abandonment["completed_games"] == 45
+    assert abandonment["unplayed_games"] == 955
+    assert abandonment["observed_mcts_wins"] == 5
+    assert abandonment["observed_direct_policy_wins"] == 40
+    assert abandonment["observed_meaningful_changes"] == 388
+    assert abandonment["observed_searched_decisions"] == 2014
+    assert abandonment["incomplete_prefix_final_1000_game_efficacy_authority"] is False
+    assert abandonment["full_mcts_resume_refill_or_replacement_allowed"] is False
+    assert abandonment["process_parallel_full_mcts_follow_on_allowed"] is False
+    assert abandonment["frozen_r195_direct_policy_is_default_action"]
+    assert abandonment["learned_leaf_value_override_authority"] is False
+    assert abandonment["visit_or_prior_or_partial_tree_override_authority"] is False
+    assert abandonment["simulated_action_tokens_in_temporal_previous_action_history_required"]
+    assert abandonment["r253_missing_simulated_action_token_behavior_may_be_copied"] is False
+    assert abandonment[
+        "bo1000_kaggle_training_serving_selector_promotion_checkpoint_or_model_update_authority"
+    ] is False
 
     assert lifecycle[
         "pre_r234_search_policy_semantics_must_be_preserved_except_for_r252_internal_value_boundaries_and_content_verified_at_package_staging"

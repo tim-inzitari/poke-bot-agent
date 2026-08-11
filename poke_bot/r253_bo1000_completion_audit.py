@@ -49,6 +49,114 @@ def _canonical_sha(payload: object) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _file_receipts(paths: Iterable[Path], *, root: Path) -> list[dict[str, Any]]:
+    receipts: list[dict[str, Any]] = []
+    for path in sorted(paths):
+        if path.is_symlink() or not path.is_file():
+            raise R253CompletionAuditError(f"evidence path is not a regular file: {path}")
+        try:
+            relative = path.relative_to(root)
+        except ValueError as exc:
+            raise R253CompletionAuditError(
+                f"evidence path escapes the run root: {path}"
+            ) from exc
+        receipts.append({
+            "path": str(relative),
+            "bytes": path.stat().st_size,
+            "sha256": _sha(path),
+        })
+    return receipts
+
+
+def audit_attempt_evidence(
+    run_root: Path, events: Iterable[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Bind every dispatcher attempt and its exact optional watchdog log."""
+
+    root = Path(run_root).resolve()
+    attempt_paths = sorted((root / "attempts").glob("*.json"))
+    attempts: list[dict[str, Any]] = []
+    keys: set[tuple[str, int]] = set()
+    referenced_logs: set[Path] = set()
+    for path in attempt_paths:
+        receipt = _read_object(path)
+        game = receipt.get("game")
+        game_id = game.get("game_id") if isinstance(game, Mapping) else None
+        attempt = receipt.get("attempt")
+        disposition = receipt.get("disposition")
+        host = receipt.get("host")
+        if (
+            receipt.get("schema") != "poke_bot.r229_fleet_game_attempt/v1"
+            or not isinstance(game_id, str)
+            or not game_id
+            or isinstance(attempt, bool)
+            or not isinstance(attempt, int)
+            or attempt < 1
+            or not isinstance(host, str)
+            or not host
+            or disposition
+            not in {"complete", "not_admitted", "failed_attempt_requeued"}
+        ):
+            raise R253CompletionAuditError(f"malformed attempt receipt: {path}")
+        key = (game_id, attempt)
+        if key in keys:
+            raise R253CompletionAuditError("duplicate game/attempt identity")
+        keys.add(key)
+        log_path_raw = receipt.get("log_path")
+        if not isinstance(log_path_raw, str) or not log_path_raw:
+            raise R253CompletionAuditError("attempt receipt lacks its log path")
+        log_path = Path(log_path_raw).resolve()
+        try:
+            log_path.relative_to((root / "logs").resolve())
+        except ValueError as exc:
+            raise R253CompletionAuditError("attempt log escapes the run log root") from exc
+        recorded_log_sha = receipt.get("log_sha256")
+        if log_path.is_file():
+            if log_path.is_symlink() or recorded_log_sha != _sha(log_path):
+                raise R253CompletionAuditError("attempt log digest does not reproduce")
+            referenced_logs.add(log_path)
+        elif recorded_log_sha is not None:
+            raise R253CompletionAuditError("attempt names a missing hashed log")
+        attempts.append(receipt)
+
+    actual_logs = {
+        path.resolve() for path in (root / "logs").glob("*.log") if path.is_file()
+    }
+    if actual_logs != referenced_logs:
+        raise R253CompletionAuditError("attempt logs are missing or unreferenced")
+
+    event_rows = [dict(event) for event in events]
+    attempt_counter = Counter(
+        (row["host"], row["game"]["game_id"], row["disposition"])
+        for row in attempts
+    )
+    event_counter = Counter(
+        (
+            str(row.get("host", "")),
+            str(row.get("game_id", "")),
+            str(row.get("disposition", "")),
+        )
+        for row in event_rows
+    )
+    if attempt_counter != event_counter:
+        raise R253CompletionAuditError(
+            "attempt receipts and durable dispatcher events disagree"
+        )
+
+    attempt_files = _file_receipts(attempt_paths, root=root)
+    log_files = _file_receipts(actual_logs, root=root)
+    disposition_counts = Counter(row["disposition"] for row in attempts)
+    return {
+        "attempt_count": len(attempts),
+        "disposition_counts": dict(sorted(disposition_counts.items())),
+        "attempt_receipts_rollup_sha256": _canonical_sha(attempt_files),
+        "attempt_receipts": attempt_files,
+        "watchdog_log_count": len(log_files),
+        "watchdog_logs_rollup_sha256": _canonical_sha(log_files),
+        "watchdog_logs": log_files,
+    }
+
+
 def _distribution(values: Iterable[float]) -> dict[str, float | int | None]:
     clean = sorted(float(value) for value in values)
     if any(not math.isfinite(value) for value in clean):
@@ -242,14 +350,7 @@ def build_completion_audit(run_root: Path) -> dict[str, Any]:
             "dispatcher summary does not reproduce from the game receipts"
         )
 
-    game_receipts = [
-        {
-            "path": str(path.relative_to(root)),
-            "bytes": path.stat().st_size,
-            "sha256": _sha(path),
-        }
-        for path in paths
-    ]
+    game_receipts = _file_receipts(paths, root=root)
     events_path = root / "events.jsonl"
     events: list[dict[str, Any]] = []
     if events_path.is_file():
@@ -269,6 +370,12 @@ def build_completion_audit(run_root: Path) -> dict[str, Any]:
     event_host_counts = Counter(
         f"{event.get('host', 'missing')}:{event.get('disposition', 'missing')}"
         for event in events
+    )
+    attempt_evidence = audit_attempt_evidence(root, events)
+    supporting_receipts = _file_receipts(
+        list((root / "checkpoints").glob("*.json"))
+        + list((root / "receipts").glob("*.json")),
+        root=root,
     )
     quality = summarize_decision_quality(games)
     if (
@@ -295,6 +402,10 @@ def build_completion_audit(run_root: Path) -> dict[str, Any]:
         "events_sha256": _sha(events_path) if events_path.is_file() else None,
         "event_counts": dict(sorted(event_counts.items())),
         "event_counts_by_host": dict(sorted(event_host_counts.items())),
+        "attempt_evidence": attempt_evidence,
+        "supporting_receipt_count": len(supporting_receipts),
+        "supporting_receipts_rollup_sha256": _canonical_sha(supporting_receipts),
+        "supporting_receipts": supporting_receipts,
         "validated_summary": regenerated,
         "decision_quality": quality,
     }
@@ -364,6 +475,7 @@ def create_once(path: Path, data: bytes) -> None:
 
 __all__ = [
     "R253CompletionAuditError",
+    "audit_attempt_evidence",
     "build_completion_audit",
     "create_once",
     "render_markdown",

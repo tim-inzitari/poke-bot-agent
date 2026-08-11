@@ -1,6 +1,6 @@
 {
   "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229/v1",
-  "owner_decision_revision": 253,
+  "owner_decision_revision": 254,
   "originating_owner_decision_revision": 229,
   "owner_action_space_revision": 230,
   "owner_worker_isolation_revision": 231,
@@ -13,6 +13,7 @@
   "owner_serial_mcts_revision": 250,
   "owner_internal_leaf_boundary_revision": 252,
   "owner_restarting_serial_rollout_revision": 253,
+  "owner_full_mcts_abandonment_revision": 254,
   "r228_kaggle_viability_evidence": {
     "submission_id": 55416396,
     "status": "SubmissionStatus.ERROR",
@@ -20,9 +21,9 @@
     "usable_claim_passed": false,
     "failed_submission_must_be_preserved": true
   },
-  "recorded_at_utc": "2026-08-11T03:35:30Z",
-  "status": "authorized_for_r253_restarting_serial_rollout_implementation_tests_sealing_clean_full_game_preflight_and_mirrored_benchmark_parallel_node_evaluation_gated_on_serial_proof",
-  "objective": "complete a 500-pair 1000-game mirrored r228 MCTS versus standard r195 no-MCTS evaluation and determine whether MCTS strength and decision changes justify its throughput cost",
+  "recorded_at_utc": "2026-08-11T05:08:00Z",
+  "status": "r253_full_mcts_owner_abandoned_at_45_games_selective_tactical_proof_search_design_and_small_shadow_pilot_only",
+  "objective": "preserve the stopped r253 diagnostic evidence and develop a separately versioned conflict-triggered conservative deterministic tactical proof search with frozen r195 direct policy as default",
   "frozen_identity": {
     "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
     "r195_bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
@@ -279,8 +280,44 @@
     },
     "kaggle_runtime_package_preflight_or_submission_authority_changed": false
   },
+  "r254_full_mcts_abandonment_and_selective_tactical_proof_search": {
+    "r253_managed_run_disposition": "owner_abandoned_cleanly_stopped",
+    "completed_games": 45,
+    "unplayed_games": 955,
+    "observed_mcts_wins": 5,
+    "observed_direct_policy_wins": 40,
+    "observed_draws": 0,
+    "observed_meaningful_changes": 388,
+    "observed_searched_decisions": 2014,
+    "incomplete_prefix_final_1000_game_efficacy_authority": false,
+    "full_mcts_resume_refill_or_replacement_allowed": false,
+    "process_parallel_full_mcts_follow_on_allowed": false,
+    "owner_abandonment_receipt_sha256": "sha256:1f57dae3b209942c1f176f27ea61aa2c259fba13da5631b9a86033a7c2a10a52",
+    "owner_abandoned_prefix_sha256": "sha256:f371fe63518fa31ba0a517bc968ae491c72b3208607d6771f64ce0e28d74a866",
+    "next_direction": "separately_versioned_conflict_triggered_conservative_deterministic_tactical_proof_search",
+    "frozen_r195_direct_policy_is_default_action": true,
+    "trigger_inputs_required": [
+      "complete_action_top_probability",
+      "complete_action_top_one_top_two_probability_margin"
+    ],
+    "initial_override_authority": "exact_stock_simulator_proven_deterministic_terminal_win_this_turn_for_root_actor_only",
+    "learned_leaf_value_override_authority": false,
+    "visit_or_prior_or_partial_tree_override_authority": false,
+    "chance_unresolved_randomness_or_actor_change_expansion_allowed": false,
+    "deterministic_internal_fanout_over_64_expansion_allowed": false,
+    "simulated_action_tokens_in_temporal_previous_action_history_required": true,
+    "r253_missing_simulated_action_token_behavior_may_be_copied": false,
+    "currently_authorized_scope": [
+      "implementation",
+      "focused_tests",
+      "exact_package_preflight",
+      "small_training_ineligible_shadow_pilot"
+    ],
+    "fresh_typed_trigger_budget_and_pilot_configuration_required": true,
+    "bo1000_kaggle_training_serving_selector_promotion_checkpoint_or_model_update_authority": false
+  },
   "post_serial_process_parallel_node_evaluation_investigation": {
-    "status": "gated_not_yet_execution_authorized",
+    "status": "owner_abandoned_with_full_mcts_under_revision_254",
     "prerequisite": "completed_r253_bo1000_evidence_that_restarting_serial_mcts_changes_decisions_and_improves_results_enough_to_justify_throughput_cost",
     "separately_versioned_design_required": true,
     "authoritative_parent_owned_logical_tree_coordination_required": true,

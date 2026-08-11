@@ -6,6 +6,7 @@ import pytest
 
 from poke_bot.r253_bo1000_completion_audit import (
     R253CompletionAuditError,
+    audit_attempt_evidence,
     build_completion_audit,
     create_once,
     render_markdown,
@@ -65,6 +66,37 @@ def test_completion_audit_rejects_nonfinal_run(tmp_path):
     (tmp_path / "final-review.json").write_text(json.dumps({"status": "running"}))
     with pytest.raises(R253CompletionAuditError, match="not complete"):
         build_completion_audit(tmp_path)
+
+
+def test_attempt_evidence_binds_receipts_logs_and_events(tmp_path):
+    (tmp_path / "attempts").mkdir()
+    (tmp_path / "logs").mkdir()
+    log = tmp_path / "logs" / "g0.attempt-001.log"
+    log.write_text("healthy\n")
+    import hashlib
+
+    log_sha = "sha256:" + hashlib.sha256(log.read_bytes()).hexdigest()
+    attempt = {
+        "schema": "poke_bot.r229_fleet_game_attempt/v1",
+        "attempt": 1,
+        "host": "elmo",
+        "game": {"game_id": "g0"},
+        "log_path": str(log),
+        "log_sha256": log_sha,
+        "disposition": "complete",
+    }
+    (tmp_path / "attempts" / "g0.attempt-001.json").write_text(
+        json.dumps(attempt)
+    )
+    events = [{"host": "elmo", "game_id": "g0", "disposition": "complete"}]
+    result = audit_attempt_evidence(tmp_path, events)
+    assert result["attempt_count"] == 1
+    assert result["watchdog_log_count"] == 1
+    assert result["disposition_counts"] == {"complete": 1}
+
+    log.write_text("drifted\n")
+    with pytest.raises(R253CompletionAuditError, match="digest"):
+        audit_attempt_evidence(tmp_path, events)
 
 
 def test_create_once_is_immutable_and_review_binds_audit(tmp_path):
