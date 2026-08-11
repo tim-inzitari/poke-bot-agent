@@ -29,6 +29,8 @@ CANONICAL_NATIVE_LIBRARIES = {
     "macos_arm64": ("cg/libcg.dylib", "sha256:7a157f045d333f99d1996d49c12bdbdd148072a619af246385c7295518776e30", 1_245_544),
     "windows_x86_64": ("cg/cg.dll", "sha256:eae88634e26dc31d94150a4d8202fc9d32596b8c688ef67e14cb4088cd4d5771", 1_525_248),
 }
+HOST_LOCAL_EXECUTION_DATA_PLANE = "host_local_sealed_package"
+LAN_CONTROL_PLANE_ONLY = "claims_heartbeats_and_json_receipts_only"
 
 
 class R229FleetError(RuntimeError):
@@ -101,19 +103,35 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
     manifest = _read(path)
     if (
         manifest.get("schema")
-        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r244_package/v1"
-        or manifest.get("status") != "sealed_evaluation_only"
-        or manifest.get("owner_goal_revision") != 244
+        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r252_package/v1"
+        or manifest.get("status") != "sealed_serial_bounded_leaf_evaluation_only"
+        or manifest.get("owner_goal_revision") != 252
         or manifest.get("bo_lifecycle_revision") != 233
         or manifest.get("canonical_libcg_revision") != 236
-        or manifest.get("owner_two_lane_topology_revision") != 239
+        or manifest.get("superseded_two_lane_topology_revision") != 239
         or manifest.get("owner_handle_scoped_search_id_revision") != 244
-        or manifest.get("simulator_lane_count") != 2
-        or manifest.get("internal_agent_start_arena_count") != 2
-        or manifest.get("required_search_begin_call_count") != 2
-        or manifest.get("required_distinct_per_lane_handle_identity_count") != 2
-        or manifest.get("required_handle_scoped_search_id_chain_count") != 2
-        or manifest.get("required_distinct_handle_first_search_id_composite_count") != 2
+        or manifest.get("owner_process_lane_recovery_revision") != 249
+        or manifest.get("owner_serial_mcts_revision") != 250
+        or manifest.get("owner_internal_leaf_boundary_revision") != 252
+        or manifest.get("native_simulator_worker_process_count") != 1
+        or manifest.get("shared_tree_and_frozen_model_remain_in_parent") is not True
+        or manifest.get("native_search_calls_in_parent_worker_threads") is not False
+        or manifest.get("concurrent_libcg_search_calls_allowed") is not False
+        or manifest.get("complete_serial_retry_count_after_fault") != 1
+        or manifest.get("failed_partial_tree_reuse_allowed") is not False
+        or manifest.get("consumed_worker_error_clears_in_flight_before_drain") is not True
+        or manifest.get("cleanup_error_counts_as_terminal_lane_response") is not True
+        or manifest.get("received_step_resolves_in_flight_before_parent_leaf_evaluation") is not True
+        or manifest.get("coordinator_post_error_wait_is_bounded") is not True
+        or manifest.get("search_seconds_per_attempt") != 8.0
+        or manifest.get("exhausted_recovery_direct_fallback_is_degraded") is not True
+        or manifest.get("clean_full_game_preflight_max_exhausted_recovery_fallbacks") != 0
+        or manifest.get("simulator_lane_count") != 1
+        or manifest.get("internal_agent_start_arena_count") != 1
+        or manifest.get("required_search_begin_call_count") != 1
+        or manifest.get("required_handle_identity_count") != 1
+        or manifest.get("required_handle_scoped_search_id_chain_count") != 1
+        or manifest.get("required_handle_first_search_id_composite_count") != 1
         or manifest.get("handle_scoped_first_search_id_composite_state_array_field")
         != "handle_scoped_first_search_id_composite_states"
         or manifest.get(
@@ -123,13 +141,25 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
         or manifest.get("search_begin_identity_scope")
         != "arena_handle_plus_handle_local_search_id"
         or manifest.get("raw_search_id_global_uniqueness_required") is not False
-        or manifest.get("logical_frontier_leaf_count_per_frozen_model_batch") != 2
+        or manifest.get("logical_frontier_leaf_count_per_frozen_model_batch") != 1
         or manifest.get("partial_frontier_batches_allowed") is not False
-        or manifest.get("serial_one_lane_continuation_allowed") is not False
+        or manifest.get("serial_one_lane_continuation_required") is not True
         or manifest.get("one_shared_logical_mcts_tree_required") is not True
+        or manifest.get("process_parallel_node_evaluation_included") is not False
         or manifest.get("checkpoint_sha256") != CHECKPOINT
         or manifest.get("complete_ordered_action_ceiling") != 65536
+        or manifest.get("internal_ordered_action_expansion_ceiling") != 64
+        or manifest.get("every_explicit_chance_context_is_pre_random_value_boundary") is not True
+        or manifest.get("explicit_chance_probability_distribution_assumed") is not False
+        or manifest.get("deterministic_internal_fanout_over_64_is_value_only_boundary") is not True
+        or manifest.get("internal_boundary_representative_action_has_no_tree_authority") is not True
+        or manifest.get("internal_boundary_has_action_or_child_authority") is not False
+        or manifest.get("internal_value_boundary_telemetry_required") is not True
         or manifest.get("r234_kaggle_broker_or_queue_lifecycle_included") is not False
+        or manifest.get("kaggle_search_policy_changes_included") is not False
+        or manifest.get("r249_bo_process_lane_boundary_included") is not True
+        or manifest.get("r250_serial_process_lane_topology_included") is not True
+        or manifest.get("r252_internal_leaf_boundary_included") is not True
         or manifest.get("training_eligible") is not False
     ):
         raise R229FleetError("sealed package manifest violates the r229 identity")
@@ -151,9 +181,11 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
         "package_manifest_sha256": _sha(path),
         "package_payload_tree_sha256": payload_sha,
         "canonical_libcg_revision": 236,
-        "mcts_topology_revision": 239,
+        "mcts_topology_revision": 250,
         "search_id_identity_revision": 244,
-        "simulator_lane_count": 2,
+        "serial_mcts_revision": 250,
+        "internal_leaf_boundary_revision": 252,
+        "simulator_lane_count": 1,
         "canonical_libcg_wheel_sha256": CANONICAL_LIBCG_WHEEL,
         "canonical_native_libraries": expected_libraries,
     }
@@ -170,9 +202,11 @@ def _complete(path: Path, job: Mapping[str, Any]) -> bool:
         and row.get("game_index") == job["game_index"]
         and row.get("mcts_seat") == job["mcts_seat"]
         and row.get("canonical_libcg_revision") == 236
-        and row.get("mcts_topology_revision") == 239
+        and row.get("mcts_topology_revision") == 250
         and row.get("search_id_identity_revision") == 244
-        and row.get("simulator_lane_count") == 2
+        and row.get("serial_mcts_revision") == 250
+        and row.get("internal_leaf_boundary_revision") == 252
+        and row.get("simulator_lane_count") == 1
         and row.get("training_eligible") is False
     )
 
@@ -186,6 +220,51 @@ def _host_admitted(host: Mapping[str, Any]) -> tuple[bool, str]:
     if result.returncode != 0 or result.stdout.strip() != expected:
         return False, f"admission_refused:{result.returncode}:{result.stdout.strip()[:200]}"
     return True, "admitted"
+
+
+def _validate_host_local_execution(
+    config: Mapping[str, Any], hosts: Sequence[Mapping[str, Any]]
+) -> None:
+    """Fail closed unless games consume only pre-staged host-local payloads."""
+
+    if config.get("execution_data_plane") != HOST_LOCAL_EXECUTION_DATA_PLANE:
+        raise R229FleetError("fleet execution data plane must be host-local")
+    if config.get("lan_control_plane") != LAN_CONTROL_PLANE_ONLY:
+        raise R229FleetError("LAN must carry only claims, heartbeats, and JSON receipts")
+    if config.get("per_game_package_or_model_transfer_allowed") is not False:
+        raise R229FleetError("per-game package or model transfer must be disabled")
+    for host in hosts:
+        root = host.get("host_local_evaluation_root")
+        package = host.get("host_local_package_root")
+        command = host.get("command")
+        if (
+            not isinstance(root, str)
+            or not Path(root).is_absolute()
+            or not isinstance(package, str)
+            or not Path(package).is_absolute()
+            or not isinstance(command, list)
+            or any(not isinstance(item, str) for item in command)
+        ):
+            raise R229FleetError(
+                f"{host.get('id')} lacks an absolute host-local package binding"
+            )
+        if host.get("per_game_package_or_model_transfer_allowed") is not False:
+            raise R229FleetError(
+                f"{host.get('id')} permits per-game package or model transfer"
+            )
+        if any(item in {"scp", "rsync", "sftp", "curl", "wget"} for item in command):
+            raise R229FleetError(
+                f"{host.get('id')} command contains a payload-transfer program"
+            )
+        command_text = "\n".join(command)
+        container_package = host.get("container_local_package_root")
+        package_is_bound = root in command_text or package in command_text
+        if isinstance(container_package, str):
+            package_is_bound = package_is_bound and container_package in command_text
+        if not package_is_bound:
+            raise R229FleetError(
+                f"{host.get('id')} command does not bind its host-local package"
+            )
 
 
 def _run(host: Mapping[str, Any], job: Mapping[str, Any], output: Path, log: Path) -> dict[str, Any]:
@@ -279,6 +358,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     hosts = config.get("hosts")
     if not isinstance(hosts, list):
         raise R229FleetError("fleet config must contain a host list")
+    _validate_host_local_execution(config, hosts)
     roles = {row.get("role") for row in hosts if isinstance(row, Mapping)}
     ids = [row.get("id") for row in hosts if isinstance(row, Mapping)]
     if roles != {"elmo", "bert", "train_inzi"} or len(ids) != len(set(ids)):
@@ -301,7 +381,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "package_manifest_sha256", "package_payload_tree_sha256",
             "canonical_libcg_revision", "canonical_libcg_wheel_sha256",
             "canonical_native_libraries",
-            "mcts_topology_revision", "search_id_identity_revision", "simulator_lane_count",
+            "mcts_topology_revision", "search_id_identity_revision",
+            "serial_mcts_revision", "internal_leaf_boundary_revision",
+            "simulator_lane_count",
         ):
             if old.get(key) != run_identity.get(key):
                 raise R229FleetError(f"resume identity drifted: {key}")

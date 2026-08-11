@@ -28,18 +28,31 @@ def _package(monkeypatch, tmp_path: Path) -> Path:
             len(payload),
         )
     monkeypatch.setattr(game, "CANONICAL_NATIVE_LIBRARIES", libraries)
-    (package / "r244_fleet_evaluation_manifest.json").write_text(json.dumps({
-        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r244_package/v1",
-        "owner_goal_revision": 244,
+    (package / "r252_fleet_evaluation_manifest.json").write_text(json.dumps({
+        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r252_package/v1",
+        "status": "sealed_serial_bounded_leaf_evaluation_only",
+        "owner_goal_revision": 252,
         "canonical_libcg_revision": 236,
-        "owner_two_lane_topology_revision": 239,
+        "superseded_two_lane_topology_revision": 239,
         "owner_handle_scoped_search_id_revision": 244,
-        "simulator_lane_count": 2,
-        "internal_agent_start_arena_count": 2,
-        "required_search_begin_call_count": 2,
-        "required_distinct_per_lane_handle_identity_count": 2,
-        "required_handle_scoped_search_id_chain_count": 2,
-        "required_distinct_handle_first_search_id_composite_count": 2,
+        "owner_process_lane_recovery_revision": 249,
+        "owner_serial_mcts_revision": 250,
+        "owner_internal_leaf_boundary_revision": 252,
+        "native_simulator_worker_process_count": 1,
+        "shared_tree_and_frozen_model_remain_in_parent": True,
+        "native_search_calls_in_parent_worker_threads": False,
+        "concurrent_libcg_search_calls_allowed": False,
+        "complete_serial_retry_count_after_fault": 1,
+        "failed_partial_tree_reuse_allowed": False,
+        "search_seconds_per_attempt": 8.0,
+        "exhausted_recovery_direct_fallback_is_degraded": True,
+        "clean_full_game_preflight_max_exhausted_recovery_fallbacks": 0,
+        "simulator_lane_count": 1,
+        "internal_agent_start_arena_count": 1,
+        "required_search_begin_call_count": 1,
+        "required_handle_identity_count": 1,
+        "required_handle_scoped_search_id_chain_count": 1,
+        "required_handle_first_search_id_composite_count": 1,
         "handle_scoped_first_search_id_composite_state_array_field": (
             "handle_scoped_first_search_id_composite_states"
         ),
@@ -50,12 +63,25 @@ def _package(monkeypatch, tmp_path: Path) -> Path:
         ],
         "search_begin_identity_scope": "arena_handle_plus_handle_local_search_id",
         "raw_search_id_global_uniqueness_required": False,
-        "logical_frontier_leaf_count_per_frozen_model_batch": 2,
+        "logical_frontier_leaf_count_per_frozen_model_batch": 1,
         "partial_frontier_batches_allowed": False,
-        "serial_one_lane_continuation_allowed": False,
+        "serial_one_lane_continuation_required": True,
         "one_shared_logical_mcts_tree_required": True,
+        "process_parallel_node_evaluation_included": False,
+        "complete_ordered_action_ceiling": 65536,
+        "internal_ordered_action_expansion_ceiling": 64,
+        "every_explicit_chance_context_is_pre_random_value_boundary": True,
+        "explicit_chance_probability_distribution_assumed": False,
+        "deterministic_internal_fanout_over_64_is_value_only_boundary": True,
+        "internal_boundary_representative_action_has_no_tree_authority": True,
+        "internal_boundary_has_action_or_child_authority": False,
+        "internal_value_boundary_telemetry_required": True,
         "bo_lifecycle_revision": 233,
         "r234_kaggle_broker_or_queue_lifecycle_included": False,
+        "kaggle_search_policy_changes_included": False,
+        "r249_bo_process_lane_boundary_included": True,
+        "r250_serial_process_lane_topology_included": True,
+        "r252_internal_leaf_boundary_included": True,
         "canonical_native_libraries": {
             name: {"path": relative, "sha256": digest, "size_bytes": size}
             for name, (relative, digest, size) in libraries.items()
@@ -88,9 +114,9 @@ def test_game_preflight_rejects_extra_native_member(monkeypatch, tmp_path):
         game._verify_canonical_native_set(package)
 
 
-def test_game_preflight_rejects_eight_lane_manifest(monkeypatch, tmp_path):
+def test_game_preflight_rejects_nonserial_manifest(monkeypatch, tmp_path):
     package = _package(monkeypatch, tmp_path)
-    manifest = package / "r244_fleet_evaluation_manifest.json"
+    manifest = package / "r252_fleet_evaluation_manifest.json"
     payload = json.loads(manifest.read_text())
     payload["simulator_lane_count"] = 8
     manifest.write_text(json.dumps(payload))
@@ -98,48 +124,86 @@ def test_game_preflight_rejects_eight_lane_manifest(monkeypatch, tmp_path):
         game._verify_canonical_native_set(package)
 
 
-def _two_lane_receipt():
+def _serial_receipt():
     return {
         "mode": "shared_tree_mcts",
-        "requested_simulator_lane_count": 2,
-        "active_simulator_lane_count": 2,
-        "arena_count": 2,
-        "unique_handle_count": 2,
-        "per_lane_handle_identities": [1001, 1002],
-        "search_begin_calls": 2,
-        "search_release_calls": 2,
-        "search_end_calls": 2,
-        "max_simulator_calls_in_flight": 2,
-        "per_lane_depth": [1, 1],
-        "per_lane_search_id_chains": [[0], [0]],
+        "internal_value_boundary_count": 0,
+        "internal_value_boundary_reasons": {},
+        "max_internal_ordered_action_count": 64,
+        "internal_ordered_action_expansion_ceiling": 64,
+        "explicit_chance_probability_distribution_assumed": False,
+        "explicit_chance_always_stops_before_random_resolution": True,
+        "internal_boundary_has_action_or_child_authority": False,
+        "lane_process_recovery": {
+            "serial_lane_count": 1,
+            "attempt_count": 1,
+            "recovered_search": False,
+            "exhausted_direct_fallback": False,
+            "attempts": [{"attempt": 1, "status": "complete"}],
+        },
+        "requested_simulator_lane_count": 1,
+        "active_simulator_lane_count": 1,
+        "arena_count": 1,
+        "unique_handle_count": 1,
+        "per_lane_handle_identities": [1001],
+        "search_begin_calls": 1,
+        "search_release_calls": 1,
+        "search_end_calls": 1,
+        "max_simulator_calls_in_flight": 1,
+        "per_lane_depth": [1],
+        "per_lane_search_id_chains": [[0]],
         "handle_scoped_first_search_id_composite_states": [
             {"lane_id": 0, "handle_identity": 1001, "first_search_id": 0},
-            {"lane_id": 1, "handle_identity": 1002, "first_search_id": 0},
         ],
-        "microbatch_sizes": [2],
+        "microbatch_sizes": [1],
         "outstanding_virtual_loss": 0,
     }
 
 
-def test_decision_receipt_requires_two_distinct_lanes_and_full_batches():
-    game._validate_two_lane_receipts([_two_lane_receipt()])
-    bad = _two_lane_receipt()
-    bad["per_lane_handle_identities"] = [1001, 1001]
-    with pytest.raises(game.R229GameError, match="exact two-lane"):
-        game._validate_two_lane_receipts([bad])
-    bad = _two_lane_receipt()
-    bad["handle_scoped_first_search_id_composite_states"][1]["handle_identity"] = 1001
-    with pytest.raises(game.R229GameError, match="exact two-lane"):
-        game._validate_two_lane_receipts([bad])
-    bad = _two_lane_receipt()
+def test_decision_receipt_requires_exactly_one_serial_lane():
+    game._validate_serial_receipts([_serial_receipt()])
+    bad = _serial_receipt()
+    bad["per_lane_handle_identities"] = [1001, 1002]
+    with pytest.raises(game.R229GameError, match="exact serial"):
+        game._validate_serial_receipts([bad])
+    bad = _serial_receipt()
     bad["handle_scoped_first_search_id_composite_states"][0] = {
         "handle_identity": 1001,
         "lane_id": 0,
         "first_search_id": 0,
     }
-    with pytest.raises(game.R229GameError, match="exact two-lane"):
-        game._validate_two_lane_receipts([bad])
-    bad = _two_lane_receipt()
-    bad["microbatch_sizes"] = [1]
-    with pytest.raises(game.R229GameError, match="exact two-lane"):
-        game._validate_two_lane_receipts([bad])
+    with pytest.raises(game.R229GameError, match="exact serial"):
+        game._validate_serial_receipts([bad])
+    bad = _serial_receipt()
+    bad["microbatch_sizes"] = [2]
+    with pytest.raises(game.R229GameError, match="exact serial"):
+        game._validate_serial_receipts([bad])
+
+
+def test_exhausted_recovery_fallback_cannot_claim_mcts_change_credit():
+    row = {
+        "mode": "bounded_lane_recovery_exhausted_direct_fallback",
+        "mcts_action_authority": False,
+        "action_changed": False,
+        "internal_value_boundary_count": 0,
+        "internal_value_boundary_reasons": {},
+        "max_internal_ordered_action_count": 0,
+        "internal_ordered_action_expansion_ceiling": 64,
+        "explicit_chance_probability_distribution_assumed": False,
+        "explicit_chance_always_stops_before_random_resolution": True,
+        "internal_boundary_has_action_or_child_authority": False,
+        "lane_process_recovery": {
+            "serial_lane_count": 1,
+            "attempt_count": 2,
+            "recovered_search": False,
+            "exhausted_direct_fallback": True,
+            "attempts": [
+                {"attempt": 1, "status": "failed"},
+                {"attempt": 2, "status": "failed"},
+            ],
+        },
+    }
+    game._validate_serial_receipts([row])
+    row["action_changed"] = True
+    with pytest.raises(game.R229GameError, match="gained MCTS authority"):
+        game._validate_serial_receipts([row])

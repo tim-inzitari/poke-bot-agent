@@ -1,0 +1,102 @@
+{
+  "schema": "poke_bot.canonical_libcg_r236/v1",
+  "owner_decision_revision": 236,
+  "recorded_at_utc": "2026-08-10T23:29:00Z",
+  "status": "canonical_for_all_new_simulator_packages_and_preflights",
+  "owner_decision": "The official Kaggle Environments 1.32.6 CABT native-library set is the new canonical libcg. Every newly built r235 Kaggle diagnostic package and r229 BO1000 evaluation package must use this exact complete per-platform set. Old simulator binaries and their results remain immutable historical evidence, but old and new libcg bytes may never be mixed within a package, fleet run, replay regression, or evidence claim.",
+  "upstream_provenance": {
+    "repository": "https://github.com/Kaggle/kaggle-environments",
+    "package_index": "https://pypi.org/project/kaggle-environments/1.32.6/",
+    "package_version": "1.32.6",
+    "package_published_at_utc": "2026-08-07T17:20:19.634609Z",
+    "wheel_filename": "kaggle_environments-1.32.6-py3-none-any.whl",
+    "wheel_sha256": "sha256:e70a7d7765b16deb1fcfa00532eb5197f28bc9fbfa07a0eee150a17d67bd77ab",
+    "wheel_size_bytes": 60677343,
+    "native_library_update_commit": "03ab2cc235b719e5a3bd0d19e2d2c62c65a4c303",
+    "native_library_update_commit_date_utc": "2026-07-23T16:03:22Z",
+    "native_library_update_commit_message": "Cabt update library (#1356): Fixed a crash caused by a specific combination of cards.",
+    "online_master_checked_at_utc": "2026-08-10T23:26:00Z",
+    "online_master_commit": "bded87b0d7879078c726a93a4884d044f79c4eed",
+    "online_master_version": "1.32.6",
+    "online_master_linux_x86_64_sha256_matches_wheel": true
+  },
+  "canonical_native_libraries": {
+    "linux_x86_64": {
+      "wheel_member": "kaggle_environments/envs/cabt/cg/libcg.so",
+      "package_relative_path": "cg/libcg.so",
+      "sha256": "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7",
+      "size_bytes": 1342400,
+      "format": "ELF 64-bit LSB shared object x86-64"
+    },
+    "linux_aarch64": {
+      "wheel_member": "kaggle_environments/envs/cabt/cg/libcg-arm64.so",
+      "package_relative_path": "cg/libcg-arm64.so",
+      "sha256": "sha256:1670740b73fab46586fd25c0a1f96608ea75b1f39381d66a0b8d9486bea6d4a2",
+      "size_bytes": 1296464,
+      "format": "ELF 64-bit LSB shared object ARM aarch64"
+    },
+    "macos_arm64": {
+      "wheel_member": "kaggle_environments/envs/cabt/cg/libcg.dylib",
+      "package_relative_path": "cg/libcg.dylib",
+      "sha256": "sha256:7a157f045d333f99d1996d49c12bdbdd148072a619af246385c7295518776e30",
+      "size_bytes": 1245544,
+      "format": "Mach-O 64-bit dynamically linked shared library arm64"
+    },
+    "windows_x86_64": {
+      "wheel_member": "kaggle_environments/envs/cabt/cg/cg.dll",
+      "package_relative_path": "cg/cg.dll",
+      "sha256": "sha256:eae88634e26dc31d94150a4d8202fc9d32596b8c688ef67e14cb4088cd4d5771",
+      "size_bytes": 1525248,
+      "format": "PE32+ x86-64 DLL"
+    }
+  },
+  "required_native_exports": [
+    "AgentStart",
+    "BattleStart",
+    "SearchBegin",
+    "SearchStep",
+    "SearchRelease",
+    "SearchEnd"
+  ],
+  "scope": {
+    "r235_kaggle_replacement_must_overlay_and_bind_the_exact_linux_x86_64_binary": true,
+    "r229_cross_host_package_must_overlay_and_bind_the_complete_per_platform_set": true,
+    "r229_both_arms_must_use_the_same_canonical_library_identity": true,
+    "train_elmo_and_kaggle_linux_x86_64_must_use_linux_x86_64": true,
+    "bert_apple_silicon_must_use_macos_arm64": true,
+    "future_linux_arm64_and_windows_packages_must_use_the_bound_siblings": true,
+    "mixed_old_and_new_library_sets_allowed": false,
+    "frozen_r195_python_cg_wrapper_retained_while_only_four_canonical_native_members_are_overlaid": true,
+    "frozen_r195_model_checkpoint_deck_matchup_tree_and_policy_weights_are_unchanged": true
+  },
+  "r229_lifecycle_boundary": {
+    "revision_233_outer_one_game_process_watchdog_remains_authoritative": true,
+    "r234_kaggle_parent_broker_direct_fallback_may_be_imported_into_r229": false,
+    "r234_kaggle_queue_cleanup_lifecycle_may_be_imported_into_r229": false,
+    "revision_236_supersedes_r233_r234_and_r235_only_for_native_simulator_binary_identity": true
+  },
+  "historical_identity_preservation": {
+    "old_linux_x86_64_sha256": "sha256:ffd89bf923525a3e6feb5e6201e96a866c0f456895499ed5c4a566303caae67c",
+    "old_failed_submission_55416396_and_episode_91766923_remain_bound_to_old_linux_binary": true,
+    "old_r228_archive_sha256": "sha256:59531249f106d55d6606b186aee3d3a3e5ec8a3f0e9760c963e08cfd8b9d67d4",
+    "old_packages_receipts_results_and_contract_history_must_not_be_rewritten": true,
+    "new_results_may_be_compared_only_with_explicit_simulator_identity_disclosure": true
+  },
+  "required_preflight": {
+    "wheel_sha256_and_all_four_member_sha256_and_size_checks": true,
+    "platform_loader_and_required_export_checks": true,
+    "same_library_set_manifest_on_every_r229_host": true,
+    "same_linux_binary_in_r235_parent_and_mcts_child": true,
+    "saved_episode_91766923_regression_rerun_on_the_new_linux_binary": true,
+    "exact_package_full_game_rerun_on_the_new_linux_binary": true,
+    "no_prior_old_binary_receipt_may_satisfy_a_new_binary_gate": true
+  },
+  "authority": {
+    "canonical_source_and_offline_package_updates_authorized": true,
+    "r229_new_package_or_run_with_old_or_mixed_library_bytes_authorized": false,
+    "managed_training_or_evaluation_service_restart_authorized": false,
+    "training_or_gradient_updates_authorized": false,
+    "r235_single_kaggle_upload_authority_remains_conditional_on_all_revision_235_and_236_gates": true,
+    "additional_kaggle_upload_retry_copy_or_queue_authorized": false
+  }
+}

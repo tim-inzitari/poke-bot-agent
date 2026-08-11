@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import sys
 import tarfile
+import threading
+import time
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,6 +23,9 @@ def test_game_runner_and_watchdog_are_sealed_package_overlays():
     assert stage.OVERLAYS == {
         "run_r229_process_watchdog.py": "scripts/run_r229_process_watchdog.py",
         "run_r229_mirror_game.py": "scripts/run_r229_mirror_game.py",
+        "poke_bot/r249_process_search_lane.py": "poke_bot/r249_process_search_lane.py",
+        "poke_bot/r250_recovering_serial_tree.py": "poke_bot/r250_recovering_serial_tree.py",
+        "poke_bot/r252_search_leaf_boundary.py": "poke_bot/r252_search_leaf_boundary.py",
     }
 
 
@@ -130,7 +137,26 @@ def test_r233_runtime_source_is_checksum_pinned_and_actor_repaired(monkeypatch, 
 R228_ASYNC_EIGHT_WORKER_FULL_GAMEPLAY_SUCCESS
 poke_bot.r228_async_eight_worker_kaggle_viability/v1
 R228_ASYNC_EIGHT_WORKER_HARD_FAILURE''')
-    queue.write_bytes(b'''LANES = 8
+    queue.write_bytes(b'''"""Minimal persistent asynchronous eight-worker shared-tree search.
+
+This module is deliberately small.  Eight thread-affine simulator arenas keep
+their native search states alive while a coordinator repeatedly:
+
+1. reserves a legal edge from one shared tree;
+2. lets the owning simulator worker advance exactly one step;
+3. microbatches whichever frontier states are ready;
+4. backs those values into the same tree; and
+5. immediately queues the next edge for those lanes.
+
+It is a viability implementation, not a production-strength MCTS variant.
+"""
+LANES = 8
+class AsyncEightWorkerError(RuntimeError):
+    """The eight-worker search could not return a trustworthy decision."""
+class PersistentAsyncEightWorkerMCTS:
+    """Eight persistent simulator workers feeding one coordinator-owned tree."""
+            if command is None:
+                return
 exactly eight search-input rows are required
 decision deadline expired before eight arenas opened
 asynchronous eight-worker decision failed
@@ -143,9 +169,53 @@ asynchronous eight-worker decision failed
                 )
                 step_rows: list[_WorkerResult] = []
                 for row in ready:
+                    if row.error is not None or row.kind != "step" or row.search_id is None:
+                        raise AsyncEightWorkerError(
+                            f"lane {row.lane_id} SearchStep failed: {row.error or row.kind}"
+                        )
+                    if row.lane_id not in in_flight:
+                        raise AsyncEightWorkerError("received an untracked simulator result")
+                    step_rows.append(row)
+                packets = [self._make_packet(row.lane_id, row.observation) for row in step_rows]
+                leaves = tuple(self._evaluate_batch(packets))
+                if len(leaves) != len(step_rows):
+                    raise AsyncEightWorkerError("GPU evaluator returned a partial microbatch")
+                microbatches.append(len(leaves))
+                for row, leaf in zip(step_rows, leaves):
+                    leaf.validate()
+                    context, edge = in_flight.pop(row.lane_id)
+                    context.in_flight = False
                 if smoke_min_depth_per_lane is not None and all(
-                    len(context.action_path) >= int(smoke_min_depth_per_lane)''')
-    runtime.write_bytes(b'''SCHEMA = "poke_bot.r228_async_eight_worker_kaggle_viability/v1"
+                    len(context.action_path) >= int(smoke_min_depth_per_lane)
+            while len(close_rows) < LANES:
+                row = self._completions.get()
+                if row.kind == "close":
+                    close_rows[row.lane_id] = row
+                else:
+                    structural_error = structural_error or row.error or AsyncEightWorkerError(
+                        f"unexpected result during cleanup: {row.kind}"
+                    )''')
+    runtime.write_bytes(b'''"""Stock-libcg eight-worker shared-tree action authority for the r228 smoke.
+
+This is intentionally a small viability runtime.  One competition process owns
+one frozen model and one shared search tree per decision.  Eight persistent
+thread-affine ``AgentStart`` arenas advance independent simulator states and
+feed ready leaves to the same model-backed coordinator queue.
+"""
+from .r228_async_shared_tree_queue import (
+    AsyncEightWorkerError,
+    DecodedLeaf,
+    PersistentAsyncEightWorkerMCTS,
+)
+
+SCHEMA = "poke_bot.r228_async_eight_worker_kaggle_viability/v1"
+        from .r225_stock_native_lane import (
+            R225StockNativeSearchLane,
+            prewarm_stock_cg,
+        )
+        def arena_factory(lane_id: int) -> Any:
+            return R225StockNativeSearchLane(lane_id, lib=sim.lib, api_module=api)
+        self._search = PersistentAsyncEightWorkerMCTS(
 DECISION_PREFIX = "R228_ASYNC_EIGHT_WORKER_DECISION"
 STOCK_LIBRARY_SHA256 = {
     "libcg.so": "ffd89bf923525a3e6feb5e6201e96a866c0f456895499ed5c4a566303caae67c",
@@ -154,13 +224,51 @@ STOCK_LIBRARY_SHA256 = {
     "cg.dll": "9ea2b0a751029689bff3ddccb5f29a98edd46961dad264490ed121ef704fb500",
 }
 search_inputs=tuple(dict(search_inputs) for _ in range(8))
+        root_leaf = forward_leaf_batch(self.model, [root_packet])[0]
+        root_priors = tuple(float(value) for value in root_leaf.priors)
+        started = time.monotonic()
+        try:
+            receipt = self._search.run_decision(
                     "arena_count": receipt.arena_count,
                     "unique_handle_count": receipt.unique_handle_count,
                     "per_lane_depth": list(receipt.per_lane_depth),
                     "search_release_calls": receipt.search_release_calls,
             decoded[index] = DecodedLeaf(
                 state_key=_state_key(lane_id=frontier.lane_id, raw=frontier.raw),
-                value=float(leaf.value),''')
+                value=float(leaf.value),
+            combos = tuple(
+                tuple(int(item) for item in action)
+                for action in features.enumerate_action_combos(raw)
+            )
+            if not combos:
+                raise R228GameplayError("nonterminal simulator leaf has no legal actions")
+            boundary = _chance_boundary(raw)
+            packets.append(self._leaf_packet(raw, combos=combos))
+            pending.append((index, frontier, combos, boundary))
+            "history_previous_actions": list(self.policy.previous_action_history),
+        }
+        except AsyncEightWorkerError as exc:
+            # The core emits this exact post-cleanup failure only when the
+            # deadline produced zero backups.  Structural/native failures are
+            # deliberately not downgraded in this viability submission.
+            if "completed no backups" not in str(exc):
+                raise
+            selected = tuple(
+                int(item)
+                for item in self.policy._factorized_greedy_prepared(
+                    obs,
+                    board,
+                    target_source="r228_clean_deadline_fallback",
+                )
+            )
+            if selected not in legal:
+                raise R228GameplayError("clean-deadline frozen fallback was illegal")
+            receipt = None
+            mode = "clean_deadline_zero_backup_frozen_model_fallback"
+        finally:
+            self._decision = None
+            "action_changed": selected != direct_action,
+        }''')
     monkeypatch.setattr(stage, "R233_RUNTIME_COMPONENTS", {
         "main.py": stage.sha(source / "main.py"),
         "poke_bot/r228_async_shared_tree_queue.py": stage.sha(queue),
@@ -170,26 +278,41 @@ search_inputs=tuple(dict(search_inputs) for _ in range(8))
     repaired = (destination / "poke_bot/r228_kaggle_async_runtime.py").read_text()
     assert "d16244a3157fc55" in repaired
     assert 'actor = int(current.get("yourIndex", -1))' in repaired
-    assert "range(2)" in repaired
+    assert "range(1)" in repaired
     assert "per_lane_search_id_chains" in repaired
     assert "per_lane_handle_identities" in repaired
     assert "handle_scoped_first_search_id_composite_states" in repaired
     assert '"lane_id": lane_id' in repaired
     assert '"first_search_id": receipt.per_lane_search_id_chains[lane_id][0]' in repaired
     assert "requested_simulator_lane_count" in repaired
-    assert "LANES = 2" in (destination / "poke_bot/r228_async_shared_tree_queue.py").read_text()
-    assert "two-lane frontier batch was incomplete" in (
+    assert "R249ProcessSearchLane" in repaired
+    assert "R250RecoveringSerialTree" in repaired
+    assert "bounded_lane_recovery_exhausted_direct_fallback" in repaired
+    assert '"lane_process_recovery"' in repaired
+    assert "from .r252_search_leaf_boundary import classify_search_leaf" in repaired
+    assert '"internal_ordered_action_expansion_ceiling": 64' in repaired
+    assert '"internal_boundary_has_action_or_child_authority": False' in repaired
+    assert "LANES = 1" in (destination / "poke_bot/r228_async_shared_tree_queue.py").read_text()
+    assert "two-lane frontier batch was incomplete" not in (
         destination / "poke_bot/r228_async_shared_tree_queue.py"
     ).read_text()
-    assert "0 < len(in_flight) < LANES" in (
+    assert "close_owned_process" in (
         destination / "poke_bot/r228_async_shared_tree_queue.py"
     ).read_text()
-    assert "R239_TWO_LANE_FULL_GAMEPLAY_SUCCESS" in (destination / "main.py").read_text()
+    assert "second response that cannot exist" in (
+        destination / "poke_bot/r228_async_shared_tree_queue.py"
+    ).read_text()
+    assert "terminal cleanup response" in (
+        destination / "poke_bot/r228_async_shared_tree_queue.py"
+    ).read_text()
+    assert "R252_SERIAL_BOUNDED_FULL_GAMEPLAY_SUCCESS" in (
+        destination / "main.py"
+    ).read_text()
     assert hashes["main.py"] == stage.sha(destination / "main.py")
     assert hashes["main.py"] != stage.sha(source / "main.py")
 
 
-def test_exact_pre_r234_baseline_produces_canonical_r239_bytes(tmp_path: Path):
+def test_exact_pre_r234_baseline_produces_canonical_r252_bytes(tmp_path: Path):
     cache_root = Path("/Users/tsinzitari/.cache/pokebot/r229-r228-package")
     candidates = (
         cache_root / "package-ineligible-pre-r239-r228-59531249",
@@ -215,18 +338,121 @@ def test_exact_pre_r234_baseline_produces_canonical_r239_bytes(tmp_path: Path):
     ):
         pytest.skip("local cache does not contain the canonical pre-r234 bytes")
 
-    destination = tmp_path / "r239"
+    destination = tmp_path / "r252"
     destination.mkdir()
     hashes = stage.overlay_r233_runtime(source=source, destination=destination)
 
     assert hashes == {
-        "main.py": "sha256:64853dec77c8a0909bb6c395312b35facd2ab66d59bd15b047d2baa100e06254",
+        "main.py": "sha256:5f8bdf204c7dfd449b8d00b453b5777206d28f7276396264fc3917e38d68b498",
         "poke_bot/r228_async_shared_tree_queue.py": (
-            "sha256:b9ca02acbad08e65fffd77ee50b1428f94025329b0d2c6405b08d0af70d8f22b"
+            "sha256:aee55da9e40a7f9345f1c899a1019e3fa1fe71bfb3d71c6bf5d85ca44b87f516"
         ),
         "poke_bot/r228_kaggle_async_runtime.py": (
-            "sha256:cfbd348011760456ea8b65f4ffcd1af58be694ce6d766759e10c8a646ecb2263"
+            "sha256:aecd17e1c6abc40b3c62e1e098693711bd51220d67981c1b6a8c0cf7936c3a80"
         ),
     }
     for relative in hashes:
         compile((destination / relative).read_bytes(), relative, "exec")
+
+
+@pytest.mark.parametrize("fault_phase", ["step", "evaluate", "cleanup"])
+def test_exact_transformed_queue_contains_consumed_error_rows(
+    tmp_path: Path, fault_phase: str
+):
+    cache_root = Path("/Users/tsinzitari/.cache/pokebot/r229-r228-package")
+    candidates = (
+        cache_root / "package-ineligible-pre-r239-r228-59531249",
+        cache_root / "package",
+    )
+    source = next(
+        (
+            candidate
+            for candidate in candidates
+            if all(
+                (candidate / relative).is_file()
+                and stage.sha(candidate / relative) == expected
+                for relative, expected in stage.R233_RUNTIME_COMPONENTS.items()
+            )
+        ),
+        None,
+    )
+    if source is None:
+        pytest.skip("canonical pre-r234 cache is unavailable on this host")
+
+    destination = tmp_path / "r252"
+    destination.mkdir()
+    stage.overlay_r233_runtime(source=source, destination=destination)
+    queue_path = destination / "poke_bot/r228_async_shared_tree_queue.py"
+    module_name = f"r252_queue_fault_{fault_phase}"
+    module_spec = importlib.util.spec_from_file_location(module_name, queue_path)
+    assert module_spec and module_spec.loader
+    queue_module = importlib.util.module_from_spec(module_spec)
+    sys.modules[module_name] = queue_module
+    try:
+        module_spec.loader.exec_module(queue_module)
+    finally:
+        sys.modules.pop(module_name, None)
+
+    class FaultArena:
+        handle_identity = f"fault-{fault_phase}"
+
+        def search_begin(self, observation, search_inputs, *, manual_coin=True):
+            return SimpleNamespace(searchId=0, observation={"phase": "open"})
+
+        def search_step(self, search_id, action):
+            if fault_phase == "step":
+                raise RuntimeError("injected native step fault")
+            return SimpleNamespace(searchId=1, observation={"phase": "leaf"})
+
+        def search_release(self, search_id):
+            if fault_phase == "cleanup":
+                raise RuntimeError("injected native cleanup fault")
+
+        def search_end(self):
+            return None
+
+        def close(self):
+            return None
+
+    def evaluate(packets):
+        if fault_phase == "evaluate":
+            raise RuntimeError("injected leaf evaluate fault")
+        return (
+            queue_module.DecodedLeaf(
+                state_key="leaf",
+                value=0.0,
+                legal_actions=(),
+                priors=(),
+                boundary=True,
+                actor_seat=None,
+            ),
+        )
+
+    core = queue_module.PersistentAsyncEightWorkerMCTS(
+        arena_factory=lambda _lane_id: FaultArena(),
+        make_packet=lambda _lane_id, observation: observation,
+        evaluate_batch=evaluate,
+    )
+    outcome: dict[str, object] = {}
+
+    def invoke() -> None:
+        try:
+            core.run_decision(
+                root_observation={},
+                search_inputs=({},),
+                root_state_key="root",
+                root_actions=((0,), (1,)),
+                root_priors=(0.5, 0.5),
+                root_seat=0,
+                deadline_monotonic=time.monotonic() + 0.5,
+            )
+        except Exception as exc:  # noqa: BLE001 - capture fault-injection result
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=invoke, daemon=True)
+    worker.start()
+    worker.join(timeout=2.0)
+    assert not worker.is_alive(), f"{fault_phase} error left coordinator waiting forever"
+    assert isinstance(outcome.get("error"), queue_module.AsyncEightWorkerError)
+    assert fault_phase in str(outcome["error"]).lower()
+    core.close()

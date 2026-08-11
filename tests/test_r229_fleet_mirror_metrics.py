@@ -21,6 +21,24 @@ def _rows():
                     "actor_seat": mcts_seat,
                     "action_changed": index < 3,
                     "meaningful_choice_change": index < 2,
+                    "internal_value_boundary_count": int(index == 0),
+                    "internal_value_boundary_reasons": (
+                        {"explicit_chance_pre_random": 1} if index == 0 else {}
+                    ),
+                    "max_internal_ordered_action_count": 50,
+                    "internal_ordered_action_expansion_ceiling": 64,
+                    "explicit_chance_probability_distribution_assumed": False,
+                    "explicit_chance_always_stops_before_random_resolution": True,
+                    "internal_boundary_has_action_or_child_authority": False,
+                    "lane_process_recovery": {
+                        "serial_lane_count": 1,
+                        "attempt_count": 1,
+                        "recovered_search": False,
+                        "exhausted_direct_fallback": False,
+                        "attempts": [
+                            {"attempt": 1, "status": "complete", "new_lane_faults": []}
+                        ],
+                    },
                     **({
                         "search_elapsed_seconds": 1.0,
                         "completed_backups": 16,
@@ -34,7 +52,7 @@ def _rows():
                 "elapsed_seconds": 2.0,
                 "started_at_utc": "2026-08-10T20:00:00Z",
                 "completed_at_utc": "2026-08-10T20:00:02Z",
-                "decision_metrics": {"decisions_seen": 20, "mcts_seat_decisions_seen": 12, "direct_seat_decisions_seen": 8, "setup_decisions": 1, "mcts_eligible": 10, "searched": 8, "forced": 2, "fallback": 2, "action_changed": 3, "meaningful_choice_change": 2},
+                "decision_metrics": {"decisions_seen": 20, "mcts_seat_decisions_seen": 12, "direct_seat_decisions_seen": 8, "setup_decisions": 1, "mcts_eligible": 10, "searched": 8, "forced": 2, "fallback": 2, "recovered_searches": 0, "exhausted_recovery_direct_fallbacks": 0, "contained_native_lane_faults": 0, "internal_value_boundaries": 1, "decisions_with_internal_value_boundary": 1, "internal_explicit_chance_boundaries": 1, "internal_deterministic_fanout_boundaries": 0, "max_internal_ordered_action_count": 50, "action_changed": 3, "meaningful_choice_change": 2},
                 "decision_latency_seconds": {
                     "mcts_seat_all": [2.0] * 12,
                     "direct_r195_seat_all": [0.25] * 8,
@@ -56,6 +74,11 @@ def test_complete_summary_reports_decision_averages_changes_and_throughput():
     assert set(summary["throughput"]["by_host"]) == {"elmo", "bert", "train_inzi"}
     assert summary["decisions"]["influence_by_stage"]["SelectPokemon"]["decisions"] == 10000
     assert summary["search"]["mean_mcts_to_direct_decision_latency_ratio"] == 8.0
+    assert summary["process_lane_recovery"]["recovered_searches_total"] == 0
+    assert summary["internal_leaf_boundaries"]["total"] == 1000
+    assert summary["internal_leaf_boundaries"]["reasons"] == {
+        "explicit_chance_pre_random": 1000
+    }
 
 
 def test_duplicate_game_or_broken_influence_counts_fail_closed():
@@ -75,12 +98,38 @@ def test_clean_fallback_without_search_fields_is_counted_not_misparsed():
         "mode": "clean_deadline_zero_backup_frozen_model_fallback",
         "selection_context": "SelectPokemon", "actor_seat": 0,
         "action_changed": False,
+        "internal_value_boundary_count": 1,
+        "internal_value_boundary_reasons": {"explicit_chance_pre_random": 1},
+        "max_internal_ordered_action_count": 50,
+        "internal_ordered_action_expansion_ceiling": 64,
+        "explicit_chance_probability_distribution_assumed": False,
+        "explicit_chance_always_stops_before_random_resolution": True,
+        "internal_boundary_has_action_or_child_authority": False,
+        "lane_process_recovery": {
+            "serial_lane_count": 1,
+            "attempt_count": 1, "recovered_search": False,
+            "exhausted_direct_fallback": False,
+            "attempts": [{"attempt": 1, "status": "failed", "new_lane_faults": []}],
+        },
     }
     rows[0]["mcts_decisions"][8] = {
         "mode": "shared_tree_mcts", "search_elapsed_seconds": 1.0,
         "completed_backups": 16, "microbatch_sizes": [8, 8],
         "selection_context": "SelectPokemon", "actor_seat": 0,
         "action_changed": True, "meaningful_choice_change": True,
+        "internal_value_boundary_count": 0,
+        "internal_value_boundary_reasons": {},
+        "max_internal_ordered_action_count": 50,
+        "internal_ordered_action_expansion_ceiling": 64,
+        "explicit_chance_probability_distribution_assumed": False,
+        "explicit_chance_always_stops_before_random_resolution": True,
+        "internal_boundary_has_action_or_child_authority": False,
+        "lane_process_recovery": {
+            "serial_lane_count": 1,
+            "attempt_count": 1, "recovered_search": False,
+            "exhausted_direct_fallback": False,
+            "attempts": [{"attempt": 1, "status": "complete", "new_lane_faults": []}],
+        },
     }
     summary = summarize_games(rows)
     assert summary["search"]["latency_seconds"]["mean"] == 1.0

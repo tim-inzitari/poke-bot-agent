@@ -19,19 +19,35 @@ spec.loader.exec_module(runner)
 def _package_manifest(tmp_path: Path) -> Path:
     path = tmp_path / "package-manifest.json"
     path.write_text(json.dumps({
-        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r244_package/v1",
-        "status": "sealed_evaluation_only",
-        "owner_goal_revision": 244,
+        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r252_package/v1",
+        "status": "sealed_serial_bounded_leaf_evaluation_only",
+        "owner_goal_revision": 252,
         "bo_lifecycle_revision": 233,
         "canonical_libcg_revision": 236,
-        "owner_two_lane_topology_revision": 239,
+        "superseded_two_lane_topology_revision": 239,
         "owner_handle_scoped_search_id_revision": 244,
-        "simulator_lane_count": 2,
-        "internal_agent_start_arena_count": 2,
-        "required_search_begin_call_count": 2,
-        "required_distinct_per_lane_handle_identity_count": 2,
-        "required_handle_scoped_search_id_chain_count": 2,
-        "required_distinct_handle_first_search_id_composite_count": 2,
+        "owner_process_lane_recovery_revision": 249,
+        "owner_serial_mcts_revision": 250,
+        "owner_internal_leaf_boundary_revision": 252,
+        "native_simulator_worker_process_count": 1,
+        "shared_tree_and_frozen_model_remain_in_parent": True,
+        "native_search_calls_in_parent_worker_threads": False,
+        "concurrent_libcg_search_calls_allowed": False,
+        "complete_serial_retry_count_after_fault": 1,
+        "failed_partial_tree_reuse_allowed": False,
+        "consumed_worker_error_clears_in_flight_before_drain": True,
+        "cleanup_error_counts_as_terminal_lane_response": True,
+        "received_step_resolves_in_flight_before_parent_leaf_evaluation": True,
+        "coordinator_post_error_wait_is_bounded": True,
+        "search_seconds_per_attempt": 8.0,
+        "exhausted_recovery_direct_fallback_is_degraded": True,
+        "clean_full_game_preflight_max_exhausted_recovery_fallbacks": 0,
+        "simulator_lane_count": 1,
+        "internal_agent_start_arena_count": 1,
+        "required_search_begin_call_count": 1,
+        "required_handle_identity_count": 1,
+        "required_handle_scoped_search_id_chain_count": 1,
+        "required_handle_first_search_id_composite_count": 1,
         "handle_scoped_first_search_id_composite_state_array_field": (
             "handle_scoped_first_search_id_composite_states"
         ),
@@ -42,18 +58,30 @@ def _package_manifest(tmp_path: Path) -> Path:
         ],
         "search_begin_identity_scope": "arena_handle_plus_handle_local_search_id",
         "raw_search_id_global_uniqueness_required": False,
-        "logical_frontier_leaf_count_per_frozen_model_batch": 2,
+        "logical_frontier_leaf_count_per_frozen_model_batch": 1,
         "partial_frontier_batches_allowed": False,
-        "serial_one_lane_continuation_allowed": False,
+        "serial_one_lane_continuation_required": True,
         "one_shared_logical_mcts_tree_required": True,
+        "process_parallel_node_evaluation_included": False,
         "checkpoint_sha256": runner.CHECKPOINT,
         "complete_ordered_action_ceiling": 65536,
+        "internal_ordered_action_expansion_ceiling": 64,
+        "every_explicit_chance_context_is_pre_random_value_boundary": True,
+        "explicit_chance_probability_distribution_assumed": False,
+        "deterministic_internal_fanout_over_64_is_value_only_boundary": True,
+        "internal_boundary_representative_action_has_no_tree_authority": True,
+        "internal_boundary_has_action_or_child_authority": False,
+        "internal_value_boundary_telemetry_required": True,
         "canonical_libcg_wheel": {"sha256": runner.CANONICAL_LIBCG_WHEEL},
         "canonical_native_libraries": {
             name: {"path": path_name, "sha256": digest, "size_bytes": size}
             for name, (path_name, digest, size) in runner.CANONICAL_NATIVE_LIBRARIES.items()
         },
         "r234_kaggle_broker_or_queue_lifecycle_included": False,
+        "kaggle_search_policy_changes_included": False,
+        "r249_bo_process_lane_boundary_included": True,
+        "r250_serial_process_lane_topology_included": True,
+        "r252_internal_leaf_boundary_included": True,
         "package_payload_tree_sha256": "sha256:" + "a" * 64,
         "training_eligible": False,
     }))
@@ -86,8 +114,9 @@ def test_run_parses_remote_stdout_and_commits_exact_receipt(monkeypatch, tmp_pat
     receipt = {
         "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_game/v1",
         "status": "complete", **job, "canonical_libcg_revision": 236,
-        "mcts_topology_revision": 239, "search_id_identity_revision": 244,
-        "simulator_lane_count": 2,
+        "mcts_topology_revision": 250, "search_id_identity_revision": 244,
+        "serial_mcts_revision": 250, "internal_leaf_boundary_revision": 252,
+        "simulator_lane_count": 1,
         "training_eligible": False,
     }
     monkeypatch.setattr(
@@ -131,8 +160,9 @@ def test_one_worker_failure_is_receipted_requeued_and_does_not_abort(monkeypatch
         runner._atomic(output, {
             "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_game/v1",
             "status": "complete", **current, "canonical_libcg_revision": 236,
-            "mcts_topology_revision": 239, "search_id_identity_revision": 244,
-            "simulator_lane_count": 2,
+            "mcts_topology_revision": 250, "search_id_identity_revision": 244,
+            "serial_mcts_revision": 250, "internal_leaf_boundary_revision": 252,
+            "simulator_lane_count": 1,
             "training_eligible": False,
         })
         return {"disposition": "complete", "host": host["id"], "wall_seconds": 1.0}
@@ -141,10 +171,13 @@ def test_one_worker_failure_is_receipted_requeued_and_does_not_abort(monkeypatch
     config = tmp_path / "fleet.json"
     config.write_text(json.dumps({
         "package_manifest_path": str(_package_manifest(tmp_path)),
+        "execution_data_plane": runner.HOST_LOCAL_EXECUTION_DATA_PLANE,
+        "lan_control_plane": runner.LAN_CONTROL_PLANE_ONLY,
+        "per_game_package_or_model_transfer_allowed": False,
         "hosts": [
-        {"id": "elmo-slot", "role": "elmo", "slots": 1},
-        {"id": "bert-slot", "role": "bert", "slots": 0},
-        {"id": "train-slot", "role": "train_inzi", "slots": 0},
+        {"id": "elmo-slot", "role": "elmo", "slots": 1, "host_local_evaluation_root": "/eval/elmo", "host_local_package_root": "/eval/elmo/package", "per_game_package_or_model_transfer_allowed": False, "command": ["/eval/elmo/package/worker"]},
+        {"id": "bert-slot", "role": "bert", "slots": 0, "host_local_evaluation_root": "/eval/bert", "host_local_package_root": "/eval/bert/package", "per_game_package_or_model_transfer_allowed": False, "command": ["/eval/bert/package/worker"]},
+        {"id": "train-slot", "role": "train_inzi", "slots": 0, "host_local_evaluation_root": "/eval/train", "host_local_package_root": "/eval/train/package", "per_game_package_or_model_transfer_allowed": False, "command": ["/eval/train/package/worker"]},
     ]}))
     result = runner.run(SimpleNamespace(
         config=config, output_root=tmp_path / "out",
@@ -251,9 +284,11 @@ def test_package_identity_is_required_and_checksum_bound(tmp_path):
     assert identity["package_manifest_sha256"].startswith("sha256:")
     assert identity["package_payload_tree_sha256"] == "sha256:" + "a" * 64
     assert identity["canonical_libcg_revision"] == 236
-    assert identity["mcts_topology_revision"] == 239
+    assert identity["mcts_topology_revision"] == 250
     assert identity["search_id_identity_revision"] == 244
-    assert identity["simulator_lane_count"] == 2
+    assert identity["serial_mcts_revision"] == 250
+    assert identity["internal_leaf_boundary_revision"] == 252
+    assert identity["simulator_lane_count"] == 1
 
 
 def test_package_identity_rejects_mixed_libcg_manifest(tmp_path):
@@ -300,3 +335,28 @@ def test_fleet_config_uses_sealed_admission_script_for_every_host():
         any(item.endswith("/package/run_r229_mirror_game.py") for item in row["command"])
         for row in config["hosts"]
     )
+    runner._validate_host_local_execution(config, config["hosts"])
+    assert config["execution_data_plane"] == runner.HOST_LOCAL_EXECUTION_DATA_PLANE
+    assert config["lan_control_plane"] == runner.LAN_CONTROL_PLANE_ONLY
+    assert config["per_game_package_or_model_transfer_allowed"] is False
+    assert all(
+        row["per_game_package_or_model_transfer_allowed"] is False
+        for row in config["hosts"]
+    )
+
+
+def test_host_local_execution_rejects_payload_transfer_command():
+    config = {
+        "execution_data_plane": runner.HOST_LOCAL_EXECUTION_DATA_PLANE,
+        "lan_control_plane": runner.LAN_CONTROL_PLANE_ONLY,
+        "per_game_package_or_model_transfer_allowed": False,
+    }
+    host = {
+        "id": "bad",
+        "host_local_evaluation_root": "/eval/bad",
+        "host_local_package_root": "/eval/bad/package",
+        "per_game_package_or_model_transfer_allowed": False,
+        "command": ["rsync", "/eval/bad/package", "remote:"],
+    }
+    with pytest.raises(runner.R229FleetError, match="payload-transfer"):
+        runner._validate_host_local_execution(config, [host])

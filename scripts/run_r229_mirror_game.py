@@ -61,28 +61,41 @@ def _atomic(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, object]], dict[str, object]]:
-    manifest_path = stage / "r244_fleet_evaluation_manifest.json"
+    manifest_path = stage / "r252_fleet_evaluation_manifest.json"
     try:
         manifest = json.loads(manifest_path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
-        raise R229GameError("sealed package lacks a readable r239 manifest") from exc
+        raise R229GameError("sealed package lacks a readable r252 manifest") from exc
     expected_manifest_libraries = {
         name: {"path": relative, "sha256": digest, "size_bytes": size}
         for name, (relative, digest, size) in CANONICAL_NATIVE_LIBRARIES.items()
     }
     if (
         manifest.get("schema")
-        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r244_package/v1"
-        or manifest.get("owner_goal_revision") != 244
+        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r252_package/v1"
+        or manifest.get("status") != "sealed_serial_bounded_leaf_evaluation_only"
+        or manifest.get("owner_goal_revision") != 252
         or manifest.get("canonical_libcg_revision") != 236
-        or manifest.get("owner_two_lane_topology_revision") != 239
+        or manifest.get("superseded_two_lane_topology_revision") != 239
         or manifest.get("owner_handle_scoped_search_id_revision") != 244
-        or manifest.get("simulator_lane_count") != 2
-        or manifest.get("internal_agent_start_arena_count") != 2
-        or manifest.get("required_search_begin_call_count") != 2
-        or manifest.get("required_distinct_per_lane_handle_identity_count") != 2
-        or manifest.get("required_handle_scoped_search_id_chain_count") != 2
-        or manifest.get("required_distinct_handle_first_search_id_composite_count") != 2
+        or manifest.get("owner_process_lane_recovery_revision") != 249
+        or manifest.get("owner_serial_mcts_revision") != 250
+        or manifest.get("owner_internal_leaf_boundary_revision") != 252
+        or manifest.get("native_simulator_worker_process_count") != 1
+        or manifest.get("shared_tree_and_frozen_model_remain_in_parent") is not True
+        or manifest.get("native_search_calls_in_parent_worker_threads") is not False
+        or manifest.get("concurrent_libcg_search_calls_allowed") is not False
+        or manifest.get("complete_serial_retry_count_after_fault") != 1
+        or manifest.get("failed_partial_tree_reuse_allowed") is not False
+        or manifest.get("search_seconds_per_attempt") != 8.0
+        or manifest.get("exhausted_recovery_direct_fallback_is_degraded") is not True
+        or manifest.get("clean_full_game_preflight_max_exhausted_recovery_fallbacks") != 0
+        or manifest.get("simulator_lane_count") != 1
+        or manifest.get("internal_agent_start_arena_count") != 1
+        or manifest.get("required_search_begin_call_count") != 1
+        or manifest.get("required_handle_identity_count") != 1
+        or manifest.get("required_handle_scoped_search_id_chain_count") != 1
+        or manifest.get("required_handle_first_search_id_composite_count") != 1
         or manifest.get("handle_scoped_first_search_id_composite_state_array_field")
         != "handle_scoped_first_search_id_composite_states"
         or manifest.get(
@@ -92,15 +105,28 @@ def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, objec
         or manifest.get("search_begin_identity_scope")
         != "arena_handle_plus_handle_local_search_id"
         or manifest.get("raw_search_id_global_uniqueness_required") is not False
-        or manifest.get("logical_frontier_leaf_count_per_frozen_model_batch") != 2
+        or manifest.get("logical_frontier_leaf_count_per_frozen_model_batch") != 1
         or manifest.get("partial_frontier_batches_allowed") is not False
-        or manifest.get("serial_one_lane_continuation_allowed") is not False
+        or manifest.get("serial_one_lane_continuation_required") is not True
         or manifest.get("one_shared_logical_mcts_tree_required") is not True
+        or manifest.get("process_parallel_node_evaluation_included") is not False
+        or manifest.get("complete_ordered_action_ceiling") != 65536
+        or manifest.get("internal_ordered_action_expansion_ceiling") != 64
+        or manifest.get("every_explicit_chance_context_is_pre_random_value_boundary") is not True
+        or manifest.get("explicit_chance_probability_distribution_assumed") is not False
+        or manifest.get("deterministic_internal_fanout_over_64_is_value_only_boundary") is not True
+        or manifest.get("internal_boundary_representative_action_has_no_tree_authority") is not True
+        or manifest.get("internal_boundary_has_action_or_child_authority") is not False
+        or manifest.get("internal_value_boundary_telemetry_required") is not True
         or manifest.get("bo_lifecycle_revision") != 233
         or manifest.get("r234_kaggle_broker_or_queue_lifecycle_included") is not False
+        or manifest.get("kaggle_search_policy_changes_included") is not False
+        or manifest.get("r249_bo_process_lane_boundary_included") is not True
+        or manifest.get("r250_serial_process_lane_topology_included") is not True
+        or manifest.get("r252_internal_leaf_boundary_included") is not True
         or manifest.get("canonical_native_libraries") != expected_manifest_libraries
     ):
-        raise R229GameError("sealed r239 package manifest identity drifted")
+        raise R229GameError("sealed r252 package manifest identity drifted")
     cg_root = (stage / "cg").resolve(strict=True)
     expected_paths = {row[0] for row in CANONICAL_NATIVE_LIBRARIES.values()}
     observed_paths = {
@@ -144,8 +170,69 @@ def _load(stage: Path) -> Any:
     return module
 
 
-def _validate_two_lane_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
+def _validate_serial_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
     for row in receipts:
+        boundary_count = row.get("internal_value_boundary_count")
+        boundary_reasons = row.get("internal_value_boundary_reasons")
+        max_internal = row.get("max_internal_ordered_action_count")
+        if (
+            isinstance(boundary_count, bool)
+            or not isinstance(boundary_count, int)
+            or boundary_count < 0
+            or not isinstance(boundary_reasons, Mapping)
+            or any(
+                reason
+                not in {
+                    "explicit_chance_pre_random",
+                    "deterministic_internal_fanout_over_64",
+                }
+                or isinstance(count, bool)
+                or not isinstance(count, int)
+                or count < 0
+                for reason, count in boundary_reasons.items()
+            )
+            or sum(boundary_reasons.values()) != boundary_count
+            or isinstance(max_internal, bool)
+            or not isinstance(max_internal, int)
+            or max_internal < 0
+            or row.get("internal_ordered_action_expansion_ceiling") != 64
+            or row.get("explicit_chance_probability_distribution_assumed") is not False
+            or row.get("explicit_chance_always_stops_before_random_resolution") is not True
+            or row.get("internal_boundary_has_action_or_child_authority") is not False
+        ):
+            raise R229GameError("decision lacks exact r252 internal-boundary telemetry")
+        if (
+            boundary_reasons.get("deterministic_internal_fanout_over_64", 0) > 0
+            and max_internal <= 64
+        ):
+            raise R229GameError("oversized internal boundary did not exceed 64")
+        recovery = row.get("lane_process_recovery")
+        if not isinstance(recovery, Mapping):
+            raise R229GameError("decision lacks serial process-lane telemetry")
+        attempt_count = recovery.get("attempt_count")
+        if (
+            isinstance(attempt_count, bool)
+            or not isinstance(attempt_count, int)
+            or attempt_count not in (1, 2)
+            or not isinstance(recovery.get("attempts"), list)
+            or len(recovery["attempts"]) != attempt_count
+        ):
+            raise R229GameError("decision has malformed serial recovery attempts")
+        if recovery.get("serial_lane_count") != 1:
+            raise R229GameError("decision recovery telemetry is not serial")
+        exhausted = recovery.get("exhausted_direct_fallback") is True
+        if row.get("mode") == "bounded_lane_recovery_exhausted_direct_fallback":
+            if (
+                not exhausted
+                or attempt_count != 2
+                or row.get("mcts_action_authority") is not False
+                or row.get("action_changed") is not False
+                or row.get("meaningful_choice_change") not in (None, False)
+            ):
+                raise R229GameError("exhausted lane recovery gained MCTS authority")
+            continue
+        if exhausted:
+            raise R229GameError("non-degraded decision claims exhausted lane recovery")
         if row.get("mode") != "shared_tree_mcts":
             continue
         chains = row.get("per_lane_search_id_chains") or ()
@@ -168,12 +255,12 @@ def _validate_two_lane_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
         ]
         scoped_search_states = [
             (str(handles[index]), chains[index][0])
-            for index in range(2)
-        ] if len(valid_handles) == len(valid_chains) == 2 else []
+            for index in range(1)
+        ] if len(valid_handles) == len(valid_chains) == 1 else []
         valid_composite_states = (
             (
                 isinstance(composite_states, list)
-                and len(composite_states) == 2
+                and len(composite_states) == 1
                 and all(
                     isinstance(state, dict)
                     and list(state)
@@ -184,31 +271,31 @@ def _validate_two_lane_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
                     for lane_id, state in enumerate(composite_states)
                 )
             )
-            if len(valid_handles) == len(valid_chains) == 2
+            if len(valid_handles) == len(valid_chains) == 1
             else False
         )
         microbatches = row.get("microbatch_sizes") or ()
         if (
-            row.get("requested_simulator_lane_count") != 2
-            or row.get("active_simulator_lane_count") != 2
-            or row.get("arena_count") != 2
-            or row.get("unique_handle_count") != 2
-            or len(valid_handles) != 2
-            or len(set(map(str, valid_handles))) != 2
-            or row.get("search_begin_calls") != 2
-            or row.get("search_release_calls", 0) < 2
-            or row.get("search_end_calls") != 2
-            or row.get("max_simulator_calls_in_flight") != 2
-            or len(row.get("per_lane_depth") or ()) != 2
-            or len(chains) != 2
-            or len(valid_chains) != 2
-            or len(set(scoped_search_states)) != 2
+            row.get("requested_simulator_lane_count") != 1
+            or row.get("active_simulator_lane_count") != 1
+            or row.get("arena_count") != 1
+            or row.get("unique_handle_count") != 1
+            or len(valid_handles) != 1
+            or len(set(map(str, valid_handles))) != 1
+            or row.get("search_begin_calls") != 1
+            or row.get("search_release_calls", 0) < 1
+            or row.get("search_end_calls") != 1
+            or row.get("max_simulator_calls_in_flight") != 1
+            or len(row.get("per_lane_depth") or ()) != 1
+            or len(chains) != 1
+            or len(valid_chains) != 1
+            or len(set(scoped_search_states)) != 1
             or not valid_composite_states
             or not microbatches
-            or any(size != 2 for size in microbatches)
+            or any(size != 1 for size in microbatches)
             or row.get("outstanding_virtual_loss") != 0
         ):
-            raise R229GameError("searched decision lacks an exact two-lane receipt")
+            raise R229GameError("searched decision lacks an exact serial receipt")
 
 
 def _legal(obs: Mapping[str, Any], action: Sequence[int]) -> None:
@@ -236,8 +323,8 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
     module = _load(stage)
     from poke_bot.r228_async_shared_tree_queue import LANES
 
-    if LANES != 2:
-        raise R229GameError("r239 experimental arm is not exactly two lanes")
+    if LANES != 1:
+        raise R229GameError("r252 experimental arm is not exactly one serial lane")
     direct_module = module._direct()
     deck, model, _base_policy = direct_module._ensure_runtime()
     runtime = module._runtime()
@@ -299,13 +386,30 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
                 decisions_seen += 1
                 mcts_seen += 1
                 receipt_count_before = len(runtime.decision_receipts)
+                selection = obs.get("select") if isinstance(obs, Mapping) else None
+                options = selection.get("option") if isinstance(selection, Mapping) else None
+                option_count = len(options) if isinstance(options, list) else -1
+                print(
+                    "R229_GAME_MCTS_ENUM_BEGIN "
+                    f"step={steps + 1} option_count={option_count} "
+                    f"min_count={selection.get('minCount') if isinstance(selection, Mapping) else None} "
+                    f"max_count={selection.get('maxCount') if isinstance(selection, Mapping) else None}",
+                    flush=True,
+                )
                 try:
                     legal = features.enumerate_action_combos(obs)
                 except features.ActionSpaceTooLarge:
                     legal = None
                     oversized += 1
+                print(
+                    "R229_GAME_MCTS_ENUM_READY "
+                    f"step={steps + 1} legal_action_count="
+                    f"{len(legal) if legal is not None else 'oversized'}",
+                    flush=True,
+                )
                 if legal is not None and len(legal) <= 1:
                     forced += 1
+                print(f"R229_GAME_MCTS_AGENT_BEGIN step={steps + 1}", flush=True)
                 action = list(module.agent(obs))
                 decision_latency = time.monotonic() - decision_started
                 mcts_latencies.append(decision_latency)
@@ -348,9 +452,39 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
             raise R229GameError("MCTS receipt count does not match eligible branching decisions")
         if any(row.get("completed_backups", 0) < 1 and row.get("mode") == "shared_tree_mcts" for row in receipts):
             raise R229GameError("searched decision lacks a completed backup")
-        _validate_two_lane_receipts(receipts)
+        _validate_serial_receipts(receipts)
         changed = sum(bool(row.get("action_changed")) for row in receipts)
         meaningful = sum(bool(row.get("meaningful_choice_change")) for row in receipts)
+        recovered_searches = sum(
+            bool((row.get("lane_process_recovery") or {}).get("recovered_search"))
+            for row in receipts
+        )
+        exhausted_recovery_fallbacks = sum(
+            row.get("mode") == "bounded_lane_recovery_exhausted_direct_fallback"
+            for row in receipts
+        )
+        lane_faults = sum(
+            len(attempt.get("new_lane_faults") or ())
+            for row in receipts
+            for attempt in (row.get("lane_process_recovery") or {}).get("attempts", ())
+            if isinstance(attempt, Mapping)
+        )
+        internal_value_boundaries = sum(
+            int(row["internal_value_boundary_count"]) for row in receipts
+        )
+        decisions_with_internal_value_boundary = sum(
+            int(row["internal_value_boundary_count"] > 0) for row in receipts
+        )
+        internal_boundary_reasons: dict[str, int] = {}
+        for row in receipts:
+            for reason, count in row["internal_value_boundary_reasons"].items():
+                internal_boundary_reasons[reason] = (
+                    internal_boundary_reasons.get(reason, 0) + int(count)
+                )
+        max_internal_ordered_action_count = max(
+            (int(row["max_internal_ordered_action_count"]) for row in receipts),
+            default=0,
+        )
         elapsed = max(1e-9, time.monotonic() - started)
         completed_at_utc = _utc()
         return {
@@ -369,9 +503,12 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
             "matchup_tree_sha256": MATCHUP_TREE,
             "stock_library": dict(runtime.stock_library_receipt),
             "canonical_libcg_revision": 236,
-            "mcts_topology_revision": 239,
+            "mcts_topology_revision": 250,
             "search_id_identity_revision": 244,
-            "simulator_lane_count": 2,
+            "process_lane_recovery_revision": 249,
+            "serial_mcts_revision": 250,
+            "internal_leaf_boundary_revision": 252,
+            "simulator_lane_count": 1,
             "canonical_native_libraries": native_set,
             "elapsed_seconds": elapsed,
             "started_at_utc": started_at_utc,
@@ -387,6 +524,24 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
                 "forced": forced,
                 "oversized_direct_fallback": oversized,
                 "fallback": sum(row.get("mode") != "shared_tree_mcts" for row in receipts),
+                "recovered_searches": recovered_searches,
+                "exhausted_recovery_direct_fallbacks": exhausted_recovery_fallbacks,
+                "contained_native_lane_faults": lane_faults,
+                "internal_value_boundaries": internal_value_boundaries,
+                "decisions_with_internal_value_boundary": (
+                    decisions_with_internal_value_boundary
+                ),
+                "internal_explicit_chance_boundaries": internal_boundary_reasons.get(
+                    "explicit_chance_pre_random", 0
+                ),
+                "internal_deterministic_fanout_boundaries": (
+                    internal_boundary_reasons.get(
+                        "deterministic_internal_fanout_over_64", 0
+                    )
+                ),
+                "max_internal_ordered_action_count": (
+                    max_internal_ordered_action_count
+                ),
                 "action_changed": changed,
                 "meaningful_choice_change": meaningful,
             },
@@ -402,6 +557,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
                 }
                 for row in receipts
             ],
+            "lane_process_recovery_summary": dict(runtime._search.summary()),
             "training_eligible": False,
         }
     finally:

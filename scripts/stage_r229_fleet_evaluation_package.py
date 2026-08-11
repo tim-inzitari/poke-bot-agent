@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seal the r229 evaluator without importing the r234 Kaggle lifecycle."""
+"""Seal the r252 BO evaluator with serial MCTS and value-only leaf bounds."""
 
 from __future__ import annotations
 
@@ -56,6 +56,9 @@ CANONICAL_LIBRARIES = {
 OVERLAYS = {
     "run_r229_process_watchdog.py": "scripts/run_r229_process_watchdog.py",
     "run_r229_mirror_game.py": "scripts/run_r229_mirror_game.py",
+    "poke_bot/r249_process_search_lane.py": "poke_bot/r249_process_search_lane.py",
+    "poke_bot/r250_recovering_serial_tree.py": "poke_bot/r250_recovering_serial_tree.py",
+    "poke_bot/r252_search_leaf_boundary.py": "poke_bot/r252_search_leaf_boundary.py",
 }
 
 
@@ -101,9 +104,26 @@ def _replace_once(payload: bytes, old: bytes, new: bytes, *, label: str) -> byte
 
 
 def repair_r233_runtime_for_r229(path: Path) -> None:
-    """Apply only BO actor/lib identity and r239 two-lane repairs."""
+    """Apply BO identity, serial topology, and bounded process recovery."""
 
     payload = path.read_bytes()
+    payload = _replace_once(
+        payload,
+        b'''"""Stock-libcg eight-worker shared-tree action authority for the r228 smoke.
+
+This is intentionally a small viability runtime.  One competition process owns
+one frozen model and one shared search tree per decision.  Eight persistent
+thread-affine ``AgentStart`` arenas advance independent simulator states and
+feed ready leaves to the same model-backed coordinator queue.
+"""''',
+        b'''"""Serial process-owned stock-libcg MCTS for the r252 BO evaluation.
+
+One authoritative game process owns the frozen model and one logical tree.
+Exactly one thread-affine proxy talks to one child-owned ``AgentStart`` handle;
+the parent can bound and reap that child if a native Search call does not return.
+"""''',
+        label="serial runtime description",
+    )
     old_hashes = b'''STOCK_LIBRARY_SHA256 = {
     "libcg.so": "ffd89bf923525a3e6feb5e6201e96a866c0f456895499ed5c4a566303caae67c",
     "libcg.dylib": "77bb978a8129b094452679e0daf0da69593afda7331685f4642c0d4a94d39d82",
@@ -120,20 +140,20 @@ def repair_r233_runtime_for_r229(path: Path) -> None:
     payload = _replace_once(
         payload,
         b'SCHEMA = "poke_bot.r228_async_eight_worker_kaggle_viability/v1"',
-        b'SCHEMA = "poke_bot.r239_two_lane_fleet_mirror/v1"',
-        label="r239 runtime schema",
+        b'SCHEMA = "poke_bot.r252_serial_bounded_fleet_mirror/v1"',
+        label="r252 runtime schema",
     )
     payload = _replace_once(
         payload,
         b'DECISION_PREFIX = "R228_ASYNC_EIGHT_WORKER_DECISION"',
-        b'DECISION_PREFIX = "R239_TWO_LANE_MCTS_DECISION"',
-        label="r239 decision marker",
+        b'DECISION_PREFIX = "R252_SERIAL_BOUNDED_MCTS_DECISION"',
+        label="r252 decision marker",
     )
     payload = _replace_once(
         payload,
         b"search_inputs=tuple(dict(search_inputs) for _ in range(8))",
-        b"search_inputs=tuple(dict(search_inputs) for _ in range(2))",
-        label="two search inputs",
+        b"search_inputs=tuple(dict(search_inputs) for _ in range(1))",
+        label="one serial search input",
     )
     old_lane_receipt = b'''                    "per_lane_depth": list(receipt.per_lane_depth),
                     "search_release_calls": receipt.search_release_calls,'''
@@ -147,15 +167,15 @@ def repair_r233_runtime_for_r229(path: Path) -> None:
                             "handle_identity": receipt.per_lane_handle_identities[lane_id],
                             "first_search_id": receipt.per_lane_search_id_chains[lane_id][0],
                         }
-                        for lane_id in range(2)
+                        for lane_id in range(1)
                     ],
                     "search_release_calls": receipt.search_release_calls,'''
     payload = _replace_once(
-        payload, old_lane_receipt, new_lane_receipt, label="two-lane search ids"
+        payload, old_lane_receipt, new_lane_receipt, label="serial search id"
     )
     old_arena_receipt = b'''                    "arena_count": receipt.arena_count,
                     "unique_handle_count": receipt.unique_handle_count,'''
-    new_arena_receipt = b'''                    "requested_simulator_lane_count": 2,
+    new_arena_receipt = b'''                    "requested_simulator_lane_count": 1,
                     "active_simulator_lane_count": receipt.arena_count,
                     "arena_count": receipt.arena_count,
                     "unique_handle_count": receipt.unique_handle_count,
@@ -178,33 +198,271 @@ def repair_r233_runtime_for_r229(path: Path) -> None:
                 state_key=_state_key(lane_id=frontier.lane_id, raw=frontier.raw),
                 value=float(leaf.value),'''
     payload = _replace_once(payload, old_actor, new_actor, label="leaf actor seat")
+    payload = _replace_once(
+        payload,
+        b''')
+
+SCHEMA = "poke_bot.r252_serial_bounded_fleet_mirror/v1"''',
+        b''')
+from .r250_recovering_serial_tree import R250SerialRecoveryExhausted
+from .r252_search_leaf_boundary import classify_search_leaf
+
+SCHEMA = "poke_bot.r252_serial_bounded_fleet_mirror/v1"''',
+        label="module-global recovery and leaf-boundary imports",
+    )
+    payload = _replace_once(
+        payload,
+        b'''            combos = tuple(
+                tuple(int(item) for item in action)
+                for action in features.enumerate_action_combos(raw)
+            )
+            if not combos:
+                raise R228GameplayError("nonterminal simulator leaf has no legal actions")
+            boundary = _chance_boundary(raw)
+            packets.append(self._leaf_packet(raw, combos=combos))
+            pending.append((index, frontier, combos, boundary))''',
+        b'''            ordered_count = int(features.ordered_action_count(raw))
+            boundary_row = classify_search_leaf(
+                raw, ordered_action_count=ordered_count
+            )
+            boundary = bool(boundary_row.is_boundary)
+            if boundary:
+                representative = boundary_row.representative_action
+                if representative is None:
+                    raise R228GameplayError(
+                        "value-only simulator boundary has no representative"
+                    )
+                combos = (tuple(int(item) for item in representative),)
+                reason = str(boundary_row.reason)
+                context["internal_value_boundary_count"] += 1
+                reasons = context["internal_value_boundary_reasons"]
+                reasons[reason] = int(reasons.get(reason, 0)) + 1
+            else:
+                combos = tuple(
+                    tuple(int(item) for item in action)
+                    for action in features.enumerate_action_combos(raw)
+                )
+            context["max_internal_ordered_action_count"] = max(
+                int(context["max_internal_ordered_action_count"]), ordered_count
+            )
+            if not combos:
+                raise R228GameplayError("nonterminal simulator leaf has no legal actions")
+            packets.append(self._leaf_packet(raw, combos=combos))
+            pending.append((index, frontier, combos, boundary))''',
+        label="value-only chance and oversized internal leaf boundary",
+    )
+    payload = _replace_once(
+        payload,
+        b'''        root_leaf = forward_leaf_batch(self.model, [root_packet])[0]
+        root_priors = tuple(float(value) for value in root_leaf.priors)''',
+        b'''        print(
+            f"R252_SERIAL_ROOT_MODEL_BEGIN legal_action_count={len(legal)}",
+            flush=True,
+        )
+        root_leaf = forward_leaf_batch(self.model, [root_packet])[0]
+        root_priors = tuple(float(value) for value in root_leaf.priors)
+        print(
+            f"R252_SERIAL_ROOT_MODEL_READY legal_action_count={len(root_priors)}",
+            flush=True,
+        )''',
+        label="bounded-search root model phase markers",
+    )
+    old_lane_import = b'''        from .r225_stock_native_lane import (
+            R225StockNativeSearchLane,
+            prewarm_stock_cg,
+        )'''
+    new_lane_import = b'''        from .r225_stock_native_lane import prewarm_stock_cg
+        from .r249_process_search_lane import R249ProcessSearchLane
+        from .r250_recovering_serial_tree import (
+            R250RecoveringSerialTree,
+            R250SerialRecoveryExhausted,
+        )'''
+    payload = _replace_once(
+        payload, old_lane_import, new_lane_import, label="r250 serial process imports"
+    )
+    payload = _replace_once(
+        payload,
+        b'''        def arena_factory(lane_id: int) -> Any:
+            return R225StockNativeSearchLane(lane_id, lib=sim.lib, api_module=api)''',
+        b'''        def arena_factory(lane_id: int) -> Any:
+            return R249ProcessSearchLane(lane_id, stage=self.stage)''',
+        label="r250 serial process lane factory",
+    )
+    payload = _replace_once(
+        payload,
+        b"self._search = PersistentAsyncEightWorkerMCTS(",
+        b"self._search = R250RecoveringSerialTree(",
+        label="r250 recovering serial tree",
+    )
+    payload = _replace_once(
+        payload,
+        b'''            "history_previous_actions": list(self.policy.previous_action_history),
+        }''',
+        b'''            "history_previous_actions": list(self.policy.previous_action_history),
+            "internal_value_boundary_count": 0,
+            "internal_value_boundary_reasons": {},
+            "max_internal_ordered_action_count": 0,
+        }''',
+        label="internal leaf boundary decision counters",
+    )
+    payload = _replace_once(
+        payload,
+        b'''        started = time.monotonic()
+        try:
+            receipt = self._search.run_decision(''',
+        b'''        started = time.monotonic()
+        print("R252_SERIAL_SEARCH_BEGIN", flush=True)
+        try:
+            receipt = self._search.run_decision(''',
+        label="serial search phase marker",
+    )
+    old_failure = b'''        except AsyncEightWorkerError as exc:
+            # The core emits this exact post-cleanup failure only when the
+            # deadline produced zero backups.  Structural/native failures are
+            # deliberately not downgraded in this viability submission.
+            if "completed no backups" not in str(exc):
+                raise
+            selected = tuple(
+                int(item)
+                for item in self.policy._factorized_greedy_prepared(
+                    obs,
+                    board,
+                    target_source="r228_clean_deadline_fallback",
+                )
+            )
+            if selected not in legal:
+                raise R228GameplayError("clean-deadline frozen fallback was illegal")
+            receipt = None
+            mode = "clean_deadline_zero_backup_frozen_model_fallback"'''
+    new_failure = b'''        except AsyncEightWorkerError as exc:
+            if isinstance(exc, R250SerialRecoveryExhausted):
+                # Both complete serial attempts failed at a contained native
+                # boundary.  The root direct counterfactual was already
+                # computed from this exact frozen policy state.
+                selected = direct_action
+                receipt = None
+                mode = "bounded_lane_recovery_exhausted_direct_fallback"
+            else:
+                # Preserve the historical clean-deadline zero-backup behavior.
+                # Model/tree/identity failures remain hard failures.
+                if "completed no backups" not in str(exc):
+                    raise
+                selected = tuple(
+                    int(item)
+                    for item in self.policy._factorized_greedy_prepared(
+                        obs,
+                        board,
+                        target_source="r228_clean_deadline_fallback",
+                    )
+                )
+                if selected not in legal:
+                    raise R228GameplayError("clean-deadline frozen fallback was illegal")
+                receipt = None
+                mode = "clean_deadline_zero_backup_frozen_model_fallback"'''
+    payload = _replace_once(
+        payload, old_failure, new_failure, label="r250 bounded recovery fallback"
+    )
+    payload = _replace_once(
+        payload,
+        b'''        finally:
+            self._decision = None''',
+        b'''        finally:
+            active_context = self._decision or {}
+            search_boundary_metrics = {
+                "internal_value_boundary_count": int(
+                    active_context.get("internal_value_boundary_count", 0)
+                ),
+                "internal_value_boundary_reasons": dict(
+                    active_context.get("internal_value_boundary_reasons", {})
+                ),
+                "max_internal_ordered_action_count": int(
+                    active_context.get("max_internal_ordered_action_count", 0)
+                ),
+                "internal_ordered_action_expansion_ceiling": 64,
+                "explicit_chance_probability_distribution_assumed": False,
+                "explicit_chance_always_stops_before_random_resolution": True,
+                "internal_boundary_has_action_or_child_authority": False,
+            }
+            self._decision = None''',
+        label="internal value-boundary metrics survive decision cleanup",
+    )
+    payload = _replace_once(
+        payload,
+        b'''            "action_changed": selected != direct_action,
+        }''',
+        b'''            "action_changed": selected != direct_action,
+            "lane_process_recovery": dict(self._search.last_decision_recovery),
+            **search_boundary_metrics,
+        }''',
+        label="r250 decision recovery telemetry",
+    )
     path.write_bytes(payload)
 
 
-def repair_r233_queue_for_r239(path: Path) -> None:
-    """Set exactly two lanes without importing the r234 cleanup lifecycle."""
+def repair_r233_queue_for_r250_serial(path: Path) -> None:
+    """Set one lane and contain consumed worker errors without a second wait."""
 
     payload = path.read_bytes()
+    payload = _replace_once(
+        payload,
+        b'''"""Minimal persistent asynchronous eight-worker shared-tree search.
+
+This module is deliberately small.  Eight thread-affine simulator arenas keep
+their native search states alive while a coordinator repeatedly:
+
+1. reserves a legal edge from one shared tree;
+2. lets the owning simulator worker advance exactly one step;
+3. microbatches whichever frontier states are ready;
+4. backs those values into the same tree; and
+5. immediately queues the next edge for those lanes.
+
+It is a viability implementation, not a production-strength MCTS variant.
+"""''',
+        b'''"""Minimal persistent serial shared-tree search for r252.
+
+One thread-affine proxy keeps one process-owned native search state alive while
+the coordinator repeatedly reserves an edge, advances one simulator step,
+evaluates the single frontier leaf, backs it into one logical tree, and queues
+the next edge.  The legacy class names remain package-compatibility details.
+"""''',
+        label="serial queue description",
+    )
     replacements = (
-        (b"LANES = 8", b"LANES = 2", "lane count"),
+        (b"LANES = 8", b"LANES = 1", "serial lane count"),
         (
             b'exactly eight search-input rows are required',
-            b'exactly two search-input rows are required',
-            "search input contract",
+            b'exactly one search-input row is required',
+            "serial search input contract",
         ),
         (
             b'decision deadline expired before eight arenas opened',
-            b'decision deadline expired before two arenas opened',
-            "arena-open contract",
+            b'decision deadline expired before one arena opened',
+            "serial arena-open contract",
         ),
         (
             b'asynchronous eight-worker decision failed',
-            b'asynchronous two-lane decision failed',
-            "failure marker",
+            b'asynchronous serial-process decision failed',
+            "serial failure marker",
         ),
     )
     for old, new, label in replacements:
         payload = _replace_once(payload, old, new, label=label)
+    payload = _replace_once(
+        payload,
+        b'''class AsyncEightWorkerError(RuntimeError):
+    """The eight-worker search could not return a trustworthy decision."""''',
+        b'''class AsyncEightWorkerError(RuntimeError):
+    """The serial search could not return a trustworthy decision."""''',
+        label="serial error description",
+    )
+    payload = _replace_once(
+        payload,
+        b'''class PersistentAsyncEightWorkerMCTS:
+    """Eight persistent simulator workers feeding one coordinator-owned tree."""''',
+        b'''class PersistentAsyncEightWorkerMCTS:
+    """One persistent process-owned simulator lane feeding one logical tree."""''',
+        label="serial coordinator description",
+    )
     payload = _replace_once(
         payload,
         b'''    unique_handle_count: int
@@ -212,7 +470,7 @@ def repair_r233_queue_for_r239(path: Path) -> None:
         b'''    unique_handle_count: int
     per_lane_handle_identities: tuple[int | str, ...]
     search_begin_calls: int''',
-        label="handle-scoped search identity receipt",
+        label="handle-scoped serial search identity receipt",
     )
     payload = _replace_once(
         payload,
@@ -223,74 +481,143 @@ def repair_r233_queue_for_r239(path: Path) -> None:
                 worker.handle_identity for worker in self._workers
             ),
             search_begin_calls=LANES,''',
-        label="per-lane handle identities",
+        label="serial handle identity",
     )
-    old_coalesce = b'''                coalesce_until = min(
-                    float(deadline_monotonic), time.monotonic() + self._coalesce_seconds
-                )'''
-    new_coalesce = b'''                # r239 requires one complete two-frontier batch per round.
-                coalesce_until = float(deadline_monotonic)'''
     payload = _replace_once(
-        payload, old_coalesce, new_coalesce, label="complete two-frontier wait"
+        payload,
+        b'''            if command is None:
+                return''',
+        b'''            if command is None:
+                close_owned_process = getattr(self._arena, "close", None)
+                if callable(close_owned_process):
+                    close_owned_process()
+                return''',
+        label="bounded serial process-lane shutdown",
     )
-    old_rows = b'''                step_rows: list[_WorkerResult] = []
-                for row in ready:'''
-    new_rows = b'''                if len(ready) != LANES:
-                    # Remove already-consumed completions from the drain set,
-                    # release their reservations, and fail without partial-lane
-                    # evaluation or action authority.
-                    for row in ready:
-                        if row.lane_id in in_flight:
-                            context, edge = in_flight.pop(row.lane_id)
-                            context.in_flight = False
-                            if edge.virtual_loss > 0:
-                                edge.virtual_loss -= 1
-                    raise AsyncEightWorkerError(
-                        "two-lane frontier batch was incomplete before deadline"
-                    )
-                step_rows: list[_WorkerResult] = []
-                for row in ready:'''
     payload = _replace_once(
-        payload, old_rows, new_rows, label="no partial two-lane batch"
+        payload,
+        b'''                for row in ready:
+                    if row.error is not None or row.kind != "step" or row.search_id is None:
+                        raise AsyncEightWorkerError(
+                            f"lane {row.lane_id} SearchStep failed: {row.error or row.kind}"
+                        )
+                    if row.lane_id not in in_flight:
+                        raise AsyncEightWorkerError("received an untracked simulator result")
+                    step_rows.append(row)''',
+        b'''                for row in ready:
+                    if row.error is not None or row.kind != "step" or row.search_id is None:
+                        # This row is the one and only completion for the
+                        # issued command.  Remove its reservation before the
+                        # finally-block drains genuinely outstanding work;
+                        # otherwise the coordinator waits forever for a
+                        # second response that cannot exist.
+                        tracked = in_flight.pop(row.lane_id, None)
+                        if tracked is not None:
+                            _context, failed_edge = tracked
+                            _context.in_flight = False
+                            if failed_edge.virtual_loss > 0:
+                                failed_edge.virtual_loss -= 1
+                        raise AsyncEightWorkerError(
+                            f"lane {row.lane_id} SearchStep failed: {row.error or row.kind}"
+                        )
+                    if row.lane_id not in in_flight:
+                        raise AsyncEightWorkerError("received an untracked simulator result")
+                    step_rows.append(row)''',
+        label="consumed serial worker error clears in-flight reservation",
     )
-    old_smoke = b'''                if smoke_min_depth_per_lane is not None and all(
-                    len(context.action_path) >= int(smoke_min_depth_per_lane)'''
-    new_smoke = b'''                if 0 < len(in_flight) < LANES:
-                    # One lane reached a branch boundary.  Drain the other
-                    # lane without evaluating a one-lane batch; earlier full
-                    # two-lane backups remain the only MCTS authority.
-                    break
-                if smoke_min_depth_per_lane is not None and all(
-                    len(context.action_path) >= int(smoke_min_depth_per_lane)'''
     payload = _replace_once(
-        payload, old_smoke, new_smoke, label="no serial lane continuation"
+        payload,
+        b'''            while len(close_rows) < LANES:
+                row = self._completions.get()
+                if row.kind == "close":
+                    close_rows[row.lane_id] = row
+                else:
+                    structural_error = structural_error or row.error or AsyncEightWorkerError(
+                        f"unexpected result during cleanup: {row.kind}"
+                    )''',
+        b'''            while len(close_rows) < LANES:
+                row = self._completions.get()
+                # An error is still the terminal cleanup response for this
+                # lane.  Count it, preserve it as structural evidence, and
+                # finish boundedly instead of waiting for a nonexistent
+                # additional close row.
+                close_rows[row.lane_id] = row
+                if row.kind != "close" or row.error is not None:
+                    structural_error = structural_error or row.error or AsyncEightWorkerError(
+                        f"unexpected result during cleanup: {row.kind}"
+                    )''',
+        label="serial cleanup error is terminal lane response",
+    )
+    payload = _replace_once(
+        payload,
+        b'''                    step_rows.append(row)
+                packets = [self._make_packet(row.lane_id, row.observation) for row in step_rows]
+                leaves = tuple(self._evaluate_batch(packets))
+                if len(leaves) != len(step_rows):
+                    raise AsyncEightWorkerError("GPU evaluator returned a partial microbatch")
+                microbatches.append(len(leaves))
+                for row, leaf in zip(step_rows, leaves):
+                    leaf.validate()
+                    context, edge = in_flight.pop(row.lane_id)
+                    context.in_flight = False''',
+        b'''                    step_rows.append(row)
+                # Every row above is already the terminal response to its
+                # issued native command.  Resolve those reservations before
+                # packet construction/model evaluation, both of which may
+                # raise.  The final drain then waits only for commands whose
+                # worker response has not actually arrived.
+                resolved_rows: list[tuple[_WorkerResult, _LaneContext, _Edge]] = []
+                for row in step_rows:
+                    context, edge = in_flight.pop(row.lane_id)
+                    context.in_flight = False
+                    resolved_rows.append((row, context, edge))
+                try:
+                    packets = [
+                        self._make_packet(row.lane_id, row.observation)
+                        for row, _context, _edge in resolved_rows
+                    ]
+                    leaves = tuple(self._evaluate_batch(packets))
+                    if len(leaves) != len(resolved_rows):
+                        raise AsyncEightWorkerError(
+                            "GPU evaluator returned a partial microbatch"
+                        )
+                    for leaf in leaves:
+                        leaf.validate()
+                except Exception:
+                    for _row, _context, failed_edge in resolved_rows:
+                        if failed_edge.virtual_loss > 0:
+                            failed_edge.virtual_loss -= 1
+                    raise
+                microbatches.append(len(leaves))
+                for (row, context, edge), leaf in zip(resolved_rows, leaves):''',
+        label="received serial steps resolve before parent leaf evaluation",
     )
     path.write_bytes(payload)
 
 
-def repair_r233_main_for_r239(path: Path) -> None:
-    """Remove misleading eight-lane markers from the pre-r234 entrypoint."""
+def repair_r233_main_for_r250_serial(path: Path) -> None:
+    """Bind serial markers into the pre-r234 entrypoint."""
 
     payload = path.read_bytes()
     replacements = (
         (
             b"r228 asynchronous eight-worker viability smoke",
-            b"r239 asynchronous two-lane fleet mirror",
+            b"r252 serial bounded-choice fleet mirror",
             "entrypoint description",
         ),
         (
             b"R228_ASYNC_EIGHT_WORKER_FULL_GAMEPLAY_SUCCESS",
-            b"R239_TWO_LANE_FULL_GAMEPLAY_SUCCESS",
+            b"R252_SERIAL_BOUNDED_FULL_GAMEPLAY_SUCCESS",
             "full-game marker",
         ),
         (
             b"poke_bot.r228_async_eight_worker_kaggle_viability/v1",
-            b"poke_bot.r239_two_lane_fleet_mirror/v1",
+            b"poke_bot.r252_serial_bounded_fleet_mirror/v1",
             "full-game schema",
         ),
         (
             b"R228_ASYNC_EIGHT_WORKER_HARD_FAILURE",
-            b"R239_TWO_LANE_HARD_FAILURE",
+            b"R252_SERIAL_BOUNDED_HARD_FAILURE",
             "hard-failure marker",
         ),
     )
@@ -309,8 +636,10 @@ def overlay_r233_runtime(*, source: Path, destination: Path) -> dict[str, str]:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, target)
         hashes[relative] = expected
-    repair_r233_main_for_r239(destination / "main.py")
-    repair_r233_queue_for_r239(destination / "poke_bot/r228_async_shared_tree_queue.py")
+    repair_r233_main_for_r250_serial(destination / "main.py")
+    repair_r233_queue_for_r250_serial(
+        destination / "poke_bot/r228_async_shared_tree_queue.py"
+    )
     repair_r233_runtime_for_r229(destination / "poke_bot/r228_kaggle_async_runtime.py")
     hashes["main.py"] = sha(destination / "main.py")
     hashes["poke_bot/r228_async_shared_tree_queue.py"] = sha(
@@ -413,19 +742,35 @@ def stage(*, source_root: Path, archive: Path, r233_runtime_source: Path, wheel:
             overlay_hashes[destination] = sha(temporary / destination)
         native_libraries = overlay_canonical_native_set(wheel=wheel, destination=temporary)
         manifest = {
-            "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r244_package/v1",
-            "status": "sealed_evaluation_only",
-            "owner_goal_revision": 244,
+            "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r252_package/v1",
+            "status": "sealed_serial_bounded_leaf_evaluation_only",
+            "owner_goal_revision": 252,
             "bo_lifecycle_revision": 233,
             "canonical_libcg_revision": 236,
-            "owner_two_lane_topology_revision": 239,
+            "superseded_two_lane_topology_revision": 239,
             "owner_handle_scoped_search_id_revision": 244,
-            "simulator_lane_count": 2,
-            "internal_agent_start_arena_count": 2,
-            "required_search_begin_call_count": 2,
-            "required_distinct_per_lane_handle_identity_count": 2,
-            "required_handle_scoped_search_id_chain_count": 2,
-            "required_distinct_handle_first_search_id_composite_count": 2,
+            "owner_process_lane_recovery_revision": 249,
+            "owner_serial_mcts_revision": 250,
+            "owner_internal_leaf_boundary_revision": 252,
+            "native_simulator_worker_process_count": 1,
+            "shared_tree_and_frozen_model_remain_in_parent": True,
+            "native_search_calls_in_parent_worker_threads": False,
+            "concurrent_libcg_search_calls_allowed": False,
+            "complete_serial_retry_count_after_fault": 1,
+            "failed_partial_tree_reuse_allowed": False,
+            "consumed_worker_error_clears_in_flight_before_drain": True,
+            "cleanup_error_counts_as_terminal_lane_response": True,
+            "received_step_resolves_in_flight_before_parent_leaf_evaluation": True,
+            "coordinator_post_error_wait_is_bounded": True,
+            "search_seconds_per_attempt": 8.0,
+            "exhausted_recovery_direct_fallback_is_degraded": True,
+            "clean_full_game_preflight_max_exhausted_recovery_fallbacks": 0,
+            "simulator_lane_count": 1,
+            "internal_agent_start_arena_count": 1,
+            "required_search_begin_call_count": 1,
+            "required_handle_identity_count": 1,
+            "required_handle_scoped_search_id_chain_count": 1,
+            "required_handle_first_search_id_composite_count": 1,
             "handle_scoped_first_search_id_composite_state_array_field": (
                 "handle_scoped_first_search_id_composite_states"
             ),
@@ -436,14 +781,23 @@ def stage(*, source_root: Path, archive: Path, r233_runtime_source: Path, wheel:
             ],
             "search_begin_identity_scope": "arena_handle_plus_handle_local_search_id",
             "raw_search_id_global_uniqueness_required": False,
-            "logical_frontier_leaf_count_per_frozen_model_batch": 2,
+            "logical_frontier_leaf_count_per_frozen_model_batch": 1,
             "partial_frontier_batches_allowed": False,
-            "serial_one_lane_continuation_allowed": False,
+            "serial_one_lane_continuation_required": True,
             "one_shared_logical_mcts_tree_required": True,
+            "process_parallel_node_evaluation_included": False,
+            "parallel_node_evaluation_requires_clean_serial_full_game_receipt": True,
             "base_r228_archive_sha256": R228_ARCHIVE,
             "checkpoint_sha256": MODEL,
             "matchup_tree_sha256": TREE,
             "complete_ordered_action_ceiling": 65536,
+            "internal_ordered_action_expansion_ceiling": 64,
+            "every_explicit_chance_context_is_pre_random_value_boundary": True,
+            "explicit_chance_probability_distribution_assumed": False,
+            "deterministic_internal_fanout_over_64_is_value_only_boundary": True,
+            "internal_boundary_representative_action_has_no_tree_authority": True,
+            "internal_boundary_has_action_or_child_authority": False,
+            "internal_value_boundary_telemetry_required": True,
             "kaggle_environments_version": "1.32.6",
             "canonical_libcg_wheel": {
                 "filename": WHEEL_FILENAME,
@@ -453,12 +807,15 @@ def stage(*, source_root: Path, archive: Path, r233_runtime_source: Path, wheel:
             },
             "canonical_native_libraries": native_libraries,
             "r234_kaggle_broker_or_queue_lifecycle_included": False,
-            "pre_r234_bo_lifecycle_baseline_required": True,
+            "kaggle_search_policy_changes_included": False,
+            "r249_bo_process_lane_boundary_included": True,
+            "r250_serial_process_lane_topology_included": True,
+            "r252_internal_leaf_boundary_included": True,
             "overlays": overlay_hashes,
             "package_payload_tree_sha256": tree_sha(temporary),
             "training_eligible": False,
         }
-        (temporary / "r244_fleet_evaluation_manifest.json").write_text(
+        (temporary / "r252_fleet_evaluation_manifest.json").write_text(
             json.dumps(manifest, sort_keys=True, indent=2) + "\n"
         )
         os.replace(temporary, output)
