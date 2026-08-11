@@ -115,6 +115,10 @@ R228_ASYNC_EIGHT_WORKER_HARD_FAILURE''')
 exactly eight search-input rows are required
 decision deadline expired before eight arenas opened
 asynchronous eight-worker decision failed
+    unique_handle_count: int
+    search_begin_calls: int
+            unique_handle_count=len({worker.handle_identity for worker in self._workers}),
+            search_begin_calls=LANES,
                 coalesce_until = min(
                     float(deadline_monotonic), time.monotonic() + self._coalesce_seconds
                 )
@@ -149,6 +153,7 @@ search_inputs=tuple(dict(search_inputs) for _ in range(8))
     assert 'actor = int(current.get("yourIndex", -1))' in repaired
     assert "range(2)" in repaired
     assert "per_lane_search_id_chains" in repaired
+    assert "per_lane_handle_identities" in repaired
     assert "requested_simulator_lane_count" in repaired
     assert "LANES = 2" in (destination / "poke_bot/r228_async_shared_tree_queue.py").read_text()
     assert "two-lane frontier batch was incomplete" in (
@@ -163,7 +168,23 @@ search_inputs=tuple(dict(search_inputs) for _ in range(8))
 
 
 def test_exact_pre_r234_baseline_produces_canonical_r239_bytes(tmp_path: Path):
-    source = Path("/Users/tsinzitari/.cache/pokebot/r229-r228-package/package")
+    cache_root = Path("/Users/tsinzitari/.cache/pokebot/r229-r228-package")
+    candidates = (
+        cache_root / "package-ineligible-pre-r239-r228-59531249",
+        cache_root / "package",
+    )
+    source = next(
+        (
+            candidate
+            for candidate in candidates
+            if all((candidate / relative).is_file() for relative in stage.R233_RUNTIME_COMPONENTS)
+            and all(
+                stage.sha(candidate / relative) == expected
+                for relative, expected in stage.R233_RUNTIME_COMPONENTS.items()
+            )
+        ),
+        candidates[0],
+    )
     if not all((source / relative).is_file() for relative in stage.R233_RUNTIME_COMPONENTS):
         pytest.skip("canonical pre-r234 cache is unavailable on this host")
     if any(
@@ -179,10 +200,10 @@ def test_exact_pre_r234_baseline_produces_canonical_r239_bytes(tmp_path: Path):
     assert hashes == {
         "main.py": "sha256:64853dec77c8a0909bb6c395312b35facd2ab66d59bd15b047d2baa100e06254",
         "poke_bot/r228_async_shared_tree_queue.py": (
-            "sha256:33edf975c57dd2f94a2d30b2f7650314579f9710344323369202ec6d8529d1f5"
+            "sha256:b9ca02acbad08e65fffd77ee50b1428f94025329b0d2c6405b08d0af70d8f22b"
         ),
         "poke_bot/r228_kaggle_async_runtime.py": (
-            "sha256:0cbc41c3d1cc8f3c0c267e69f83c0db1d54da4f28833f69626dd727bb23240d3"
+            "sha256:cfbd348011760456ea8b65f4ffcd1af58be694ce6d766759e10c8a646ecb2263"
         ),
     }
     for relative in hashes:

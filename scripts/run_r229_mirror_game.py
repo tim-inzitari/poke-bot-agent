@@ -79,6 +79,9 @@ def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, objec
         or manifest.get("simulator_lane_count") != 2
         or manifest.get("internal_agent_start_arena_count") != 2
         or manifest.get("distinct_search_begin_id_count") != 2
+        or manifest.get("search_begin_identity_scope")
+        != "arena_handle_plus_handle_local_search_id"
+        or manifest.get("raw_search_id_global_uniqueness_required") is not False
         or manifest.get("logical_frontier_leaf_count_per_frozen_model_batch") != 2
         or manifest.get("partial_frontier_batches_allowed") is not False
         or manifest.get("serial_one_lane_continuation_allowed") is not False
@@ -136,27 +139,40 @@ def _validate_two_lane_receipts(receipts: Sequence[Mapping[str, Any]]) -> None:
         if row.get("mode") != "shared_tree_mcts":
             continue
         chains = row.get("per_lane_search_id_chains") or ()
-        first_search_ids = [
-            chain[0]
+        handles = row.get("per_lane_handle_identities") or ()
+        valid_chains = [
+            chain
             for chain in chains
             if isinstance(chain, list)
             and chain
             and isinstance(chain[0], int)
             and not isinstance(chain[0], bool)
         ]
+        valid_handles = [
+            handle
+            for handle in handles
+            if isinstance(handle, (int, str)) and not isinstance(handle, bool)
+        ]
+        scoped_search_states = [
+            (str(handles[index]), chains[index][0])
+            for index in range(2)
+        ] if len(valid_handles) == len(valid_chains) == 2 else []
         microbatches = row.get("microbatch_sizes") or ()
         if (
             row.get("requested_simulator_lane_count") != 2
             or row.get("active_simulator_lane_count") != 2
             or row.get("arena_count") != 2
             or row.get("unique_handle_count") != 2
+            or len(valid_handles) != 2
+            or len(set(map(str, valid_handles))) != 2
             or row.get("search_begin_calls") != 2
             or row.get("search_release_calls", 0) < 2
             or row.get("search_end_calls") != 2
             or row.get("max_simulator_calls_in_flight") != 2
             or len(row.get("per_lane_depth") or ()) != 2
             or len(chains) != 2
-            or len(set(first_search_ids)) != 2
+            or len(valid_chains) != 2
+            or len(set(scoped_search_states)) != 2
             or not microbatches
             or any(size != 2 for size in microbatches)
             or row.get("outstanding_virtual_loss") != 0

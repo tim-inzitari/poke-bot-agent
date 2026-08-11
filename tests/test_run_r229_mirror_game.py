@@ -36,6 +36,8 @@ def _package(monkeypatch, tmp_path: Path) -> Path:
         "simulator_lane_count": 2,
         "internal_agent_start_arena_count": 2,
         "distinct_search_begin_id_count": 2,
+        "search_begin_identity_scope": "arena_handle_plus_handle_local_search_id",
+        "raw_search_id_global_uniqueness_required": False,
         "logical_frontier_leaf_count_per_frozen_model_batch": 2,
         "partial_frontier_batches_allowed": False,
         "serial_one_lane_continuation_allowed": False,
@@ -91,12 +93,13 @@ def _two_lane_receipt():
         "active_simulator_lane_count": 2,
         "arena_count": 2,
         "unique_handle_count": 2,
+        "per_lane_handle_identities": [1001, 1002],
         "search_begin_calls": 2,
         "search_release_calls": 2,
         "search_end_calls": 2,
         "max_simulator_calls_in_flight": 2,
         "per_lane_depth": [1, 1],
-        "per_lane_search_id_chains": [[101], [202]],
+        "per_lane_search_id_chains": [[0], [0]],
         "microbatch_sizes": [2],
         "outstanding_virtual_loss": 0,
     }
@@ -105,7 +108,7 @@ def _two_lane_receipt():
 def test_decision_receipt_requires_two_distinct_lanes_and_full_batches():
     game._validate_two_lane_receipts([_two_lane_receipt()])
     bad = _two_lane_receipt()
-    bad["per_lane_search_id_chains"] = [[101], [101]]
+    bad["per_lane_handle_identities"] = [1001, 1001]
     with pytest.raises(game.R229GameError, match="exact two-lane"):
         game._validate_two_lane_receipts([bad])
     bad = _two_lane_receipt()

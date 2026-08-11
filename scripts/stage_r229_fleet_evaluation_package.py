@@ -149,7 +149,10 @@ def repair_r233_runtime_for_r229(path: Path) -> None:
     new_arena_receipt = b'''                    "requested_simulator_lane_count": 2,
                     "active_simulator_lane_count": receipt.arena_count,
                     "arena_count": receipt.arena_count,
-                    "unique_handle_count": receipt.unique_handle_count,'''
+                    "unique_handle_count": receipt.unique_handle_count,
+                    "per_lane_handle_identities": list(
+                        receipt.per_lane_handle_identities
+                    ),'''
     payload = _replace_once(
         payload, old_arena_receipt, new_arena_receipt, label="requested active lanes"
     )
@@ -193,6 +196,26 @@ def repair_r233_queue_for_r239(path: Path) -> None:
     )
     for old, new, label in replacements:
         payload = _replace_once(payload, old, new, label=label)
+    payload = _replace_once(
+        payload,
+        b'''    unique_handle_count: int
+    search_begin_calls: int''',
+        b'''    unique_handle_count: int
+    per_lane_handle_identities: tuple[int | str, ...]
+    search_begin_calls: int''',
+        label="handle-scoped search identity receipt",
+    )
+    payload = _replace_once(
+        payload,
+        b'''            unique_handle_count=len({worker.handle_identity for worker in self._workers}),
+            search_begin_calls=LANES,''',
+        b'''            unique_handle_count=len({worker.handle_identity for worker in self._workers}),
+            per_lane_handle_identities=tuple(
+                worker.handle_identity for worker in self._workers
+            ),
+            search_begin_calls=LANES,''',
+        label="per-lane handle identities",
+    )
     old_coalesce = b'''                coalesce_until = min(
                     float(deadline_monotonic), time.monotonic() + self._coalesce_seconds
                 )'''
@@ -390,6 +413,8 @@ def stage(*, source_root: Path, archive: Path, r233_runtime_source: Path, wheel:
             "simulator_lane_count": 2,
             "internal_agent_start_arena_count": 2,
             "distinct_search_begin_id_count": 2,
+            "search_begin_identity_scope": "arena_handle_plus_handle_local_search_id",
+            "raw_search_id_global_uniqueness_required": False,
             "logical_frontier_leaf_count_per_frozen_model_batch": 2,
             "partial_frontier_batches_allowed": False,
             "serial_one_lane_continuation_allowed": False,

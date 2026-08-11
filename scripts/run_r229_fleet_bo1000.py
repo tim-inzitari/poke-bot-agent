@@ -110,6 +110,9 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
         or manifest.get("simulator_lane_count") != 2
         or manifest.get("internal_agent_start_arena_count") != 2
         or manifest.get("distinct_search_begin_id_count") != 2
+        or manifest.get("search_begin_identity_scope")
+        != "arena_handle_plus_handle_local_search_id"
+        or manifest.get("raw_search_id_global_uniqueness_required") is not False
         or manifest.get("logical_frontier_leaf_count_per_frozen_model_batch") != 2
         or manifest.get("partial_frontier_batches_allowed") is not False
         or manifest.get("serial_one_lane_continuation_allowed") is not False
