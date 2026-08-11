@@ -61,7 +61,7 @@ def _atomic(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, object]], dict[str, object]]:
-    manifest_path = stage / "r239_fleet_evaluation_manifest.json"
+    manifest_path = stage / "r244_fleet_evaluation_manifest.json"
     try:
         manifest = json.loads(manifest_path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
@@ -72,13 +72,17 @@ def _verify_canonical_native_set(stage: Path) -> tuple[dict[str, dict[str, objec
     }
     if (
         manifest.get("schema")
-        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r239_package/v1"
-        or manifest.get("owner_goal_revision") != 239
+        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r244_package/v1"
+        or manifest.get("owner_goal_revision") != 244
         or manifest.get("canonical_libcg_revision") != 236
         or manifest.get("owner_two_lane_topology_revision") != 239
+        or manifest.get("owner_handle_scoped_search_id_revision") != 244
         or manifest.get("simulator_lane_count") != 2
         or manifest.get("internal_agent_start_arena_count") != 2
-        or manifest.get("distinct_search_begin_id_count") != 2
+        or manifest.get("required_search_begin_call_count") != 2
+        or manifest.get("required_distinct_per_lane_handle_identity_count") != 2
+        or manifest.get("required_handle_scoped_search_id_chain_count") != 2
+        or manifest.get("required_distinct_handle_first_search_id_composite_count") != 2
         or manifest.get("search_begin_identity_scope")
         != "arena_handle_plus_handle_local_search_id"
         or manifest.get("raw_search_id_global_uniqueness_required") is not False
@@ -298,6 +302,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
             _legal(obs, action)
             observation = cg_env.battle_select(action)
             steps += 1
+            print(f"R229_GAME_PROGRESS step={steps}", flush=True)
         if not cg_env.is_finished(observation):
             raise R229GameError("game exceeded the atomic-step ceiling")
         receipts = [dict(row) for row in runtime.decision_receipts]
@@ -327,6 +332,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
             "stock_library": dict(runtime.stock_library_receipt),
             "canonical_libcg_revision": 236,
             "mcts_topology_revision": 239,
+            "search_id_identity_revision": 244,
             "simulator_lane_count": 2,
             "canonical_native_libraries": native_set,
             "elapsed_seconds": elapsed,
@@ -378,6 +384,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-steps", type=int, default=10000)
     args = parser.parse_args(argv)
+    print(
+        f"R229_GAME_START pair={args.pair_index} game={args.game_index} "
+        f"mcts_seat={args.mcts_seat}",
+        flush=True,
+    )
     try:
         result = run_game(stage=args.stage.resolve(), pair_index=args.pair_index, game_index=args.game_index, mcts_seat=args.mcts_seat, host=args.host, max_steps=args.max_steps)
     except Exception as exc:

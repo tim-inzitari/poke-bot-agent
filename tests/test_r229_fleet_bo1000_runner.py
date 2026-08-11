@@ -19,15 +19,19 @@ spec.loader.exec_module(runner)
 def _package_manifest(tmp_path: Path) -> Path:
     path = tmp_path / "package-manifest.json"
     path.write_text(json.dumps({
-        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r239_package/v1",
+        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r244_package/v1",
         "status": "sealed_evaluation_only",
-        "owner_goal_revision": 239,
+        "owner_goal_revision": 244,
         "bo_lifecycle_revision": 233,
         "canonical_libcg_revision": 236,
         "owner_two_lane_topology_revision": 239,
+        "owner_handle_scoped_search_id_revision": 244,
         "simulator_lane_count": 2,
         "internal_agent_start_arena_count": 2,
-        "distinct_search_begin_id_count": 2,
+        "required_search_begin_call_count": 2,
+        "required_distinct_per_lane_handle_identity_count": 2,
+        "required_handle_scoped_search_id_chain_count": 2,
+        "required_distinct_handle_first_search_id_composite_count": 2,
         "search_begin_identity_scope": "arena_handle_plus_handle_local_search_id",
         "raw_search_id_global_uniqueness_required": False,
         "logical_frontier_leaf_count_per_frozen_model_batch": 2,
@@ -74,7 +78,8 @@ def test_run_parses_remote_stdout_and_commits_exact_receipt(monkeypatch, tmp_pat
     receipt = {
         "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_game/v1",
         "status": "complete", **job, "canonical_libcg_revision": 236,
-        "mcts_topology_revision": 239, "simulator_lane_count": 2,
+        "mcts_topology_revision": 239, "search_id_identity_revision": 244,
+        "simulator_lane_count": 2,
         "training_eligible": False,
     }
     monkeypatch.setattr(
@@ -118,7 +123,8 @@ def test_one_worker_failure_is_receipted_requeued_and_does_not_abort(monkeypatch
         runner._atomic(output, {
             "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_game/v1",
             "status": "complete", **current, "canonical_libcg_revision": 236,
-            "mcts_topology_revision": 239, "simulator_lane_count": 2,
+            "mcts_topology_revision": 239, "search_id_identity_revision": 244,
+            "simulator_lane_count": 2,
             "training_eligible": False,
         })
         return {"disposition": "complete", "host": host["id"], "wall_seconds": 1.0}
@@ -164,6 +170,26 @@ def test_process_watchdog_bounds_only_its_spawned_child():
     )
     assert result.returncode == 124
     assert "R229_GAME_WATCHDOG_TIMEOUT" in result.stdout
+
+
+def test_process_watchdog_stops_an_owned_child_after_no_progress():
+    watchdog = Path(__file__).parents[1] / "scripts/run_r229_process_watchdog.py"
+    result = subprocess.run(
+        [
+            sys.executable, str(watchdog), "--timeout-seconds", "2",
+            "--idle-timeout-seconds", "0.05", "--grace-seconds", "0.05", "--",
+            sys.executable, "-c",
+            "import time; print('owned-progress', flush=True); time.sleep(60)",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=2,
+        check=False,
+    )
+    assert result.returncode == 124
+    assert "owned-progress" in result.stdout
+    assert "R229_GAME_WATCHDOG_IDLE_TIMEOUT seconds=0.05" in result.stdout
 
 
 def test_failed_remote_child_runs_only_configured_exact_cleanup(monkeypatch, tmp_path):
@@ -218,6 +244,7 @@ def test_package_identity_is_required_and_checksum_bound(tmp_path):
     assert identity["package_payload_tree_sha256"] == "sha256:" + "a" * 64
     assert identity["canonical_libcg_revision"] == 236
     assert identity["mcts_topology_revision"] == 239
+    assert identity["search_id_identity_revision"] == 244
     assert identity["simulator_lane_count"] == 2
 
 
@@ -245,4 +272,10 @@ def test_fleet_config_uses_sealed_admission_script_for_every_host():
     assert all(
         "PYTHONPATH=/home/inzi/poke-bot-agent" in row["admission_command"]
         for row in endpoint_rows
+    )
+    assert all("--idle-timeout-seconds" in row["command"] for row in config["hosts"])
+    assert all("300" in row["command"] for row in config["hosts"])
+    assert all(
+        any(item.endswith("/run_r229_process_watchdog.py") for item in row["command"])
+        for row in config["hosts"]
     )

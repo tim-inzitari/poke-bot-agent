@@ -101,15 +101,19 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
     manifest = _read(path)
     if (
         manifest.get("schema")
-        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r239_package/v1"
+        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r244_package/v1"
         or manifest.get("status") != "sealed_evaluation_only"
-        or manifest.get("owner_goal_revision") != 239
+        or manifest.get("owner_goal_revision") != 244
         or manifest.get("bo_lifecycle_revision") != 233
         or manifest.get("canonical_libcg_revision") != 236
         or manifest.get("owner_two_lane_topology_revision") != 239
+        or manifest.get("owner_handle_scoped_search_id_revision") != 244
         or manifest.get("simulator_lane_count") != 2
         or manifest.get("internal_agent_start_arena_count") != 2
-        or manifest.get("distinct_search_begin_id_count") != 2
+        or manifest.get("required_search_begin_call_count") != 2
+        or manifest.get("required_distinct_per_lane_handle_identity_count") != 2
+        or manifest.get("required_handle_scoped_search_id_chain_count") != 2
+        or manifest.get("required_distinct_handle_first_search_id_composite_count") != 2
         or manifest.get("search_begin_identity_scope")
         != "arena_handle_plus_handle_local_search_id"
         or manifest.get("raw_search_id_global_uniqueness_required") is not False
@@ -142,6 +146,7 @@ def _package_identity(config: Mapping[str, Any]) -> dict[str, Any]:
         "package_payload_tree_sha256": payload_sha,
         "canonical_libcg_revision": 236,
         "mcts_topology_revision": 239,
+        "search_id_identity_revision": 244,
         "simulator_lane_count": 2,
         "canonical_libcg_wheel_sha256": CANONICAL_LIBCG_WHEEL,
         "canonical_native_libraries": expected_libraries,
@@ -160,6 +165,7 @@ def _complete(path: Path, job: Mapping[str, Any]) -> bool:
         and row.get("mcts_seat") == job["mcts_seat"]
         and row.get("canonical_libcg_revision") == 236
         and row.get("mcts_topology_revision") == 239
+        and row.get("search_id_identity_revision") == 244
         and row.get("simulator_lane_count") == 2
         and row.get("training_eligible") is False
     )
@@ -289,7 +295,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "package_manifest_sha256", "package_payload_tree_sha256",
             "canonical_libcg_revision", "canonical_libcg_wheel_sha256",
             "canonical_native_libraries",
-            "mcts_topology_revision", "simulator_lane_count",
+            "mcts_topology_revision", "search_id_identity_revision", "simulator_lane_count",
         ):
             if old.get(key) != run_identity.get(key):
                 raise R229FleetError(f"resume identity drifted: {key}")

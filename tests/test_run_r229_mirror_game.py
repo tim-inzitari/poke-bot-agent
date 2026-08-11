@@ -28,14 +28,18 @@ def _package(monkeypatch, tmp_path: Path) -> Path:
             len(payload),
         )
     monkeypatch.setattr(game, "CANONICAL_NATIVE_LIBRARIES", libraries)
-    (package / "r239_fleet_evaluation_manifest.json").write_text(json.dumps({
-        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r239_package/v1",
-        "owner_goal_revision": 239,
+    (package / "r244_fleet_evaluation_manifest.json").write_text(json.dumps({
+        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r244_package/v1",
+        "owner_goal_revision": 244,
         "canonical_libcg_revision": 236,
         "owner_two_lane_topology_revision": 239,
+        "owner_handle_scoped_search_id_revision": 244,
         "simulator_lane_count": 2,
         "internal_agent_start_arena_count": 2,
-        "distinct_search_begin_id_count": 2,
+        "required_search_begin_call_count": 2,
+        "required_distinct_per_lane_handle_identity_count": 2,
+        "required_handle_scoped_search_id_chain_count": 2,
+        "required_distinct_handle_first_search_id_composite_count": 2,
         "search_begin_identity_scope": "arena_handle_plus_handle_local_search_id",
         "raw_search_id_global_uniqueness_required": False,
         "logical_frontier_leaf_count_per_frozen_model_batch": 2,
@@ -78,7 +82,7 @@ def test_game_preflight_rejects_extra_native_member(monkeypatch, tmp_path):
 
 def test_game_preflight_rejects_eight_lane_manifest(monkeypatch, tmp_path):
     package = _package(monkeypatch, tmp_path)
-    manifest = package / "r239_fleet_evaluation_manifest.json"
+    manifest = package / "r244_fleet_evaluation_manifest.json"
     payload = json.loads(manifest.read_text())
     payload["simulator_lane_count"] = 8
     manifest.write_text(json.dumps(payload))
