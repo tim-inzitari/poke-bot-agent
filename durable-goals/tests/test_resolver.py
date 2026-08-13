@@ -8,9 +8,14 @@ from pathlib import Path
 
 from durable_goals.errors import IntegrityError, ResolutionError, ValidationError
 from durable_goals.io import sha256_file
+from durable_goals.io import load_json
 from durable_goals.pointers import apply_operations
 from durable_goals.resolve import resolve_gateway
-from durable_goals.validate import validate_activations, validate_amendments
+from durable_goals.validate import (
+    validate_activations,
+    validate_amendments,
+    validate_contract,
+)
 
 
 EXAMPLE = Path(__file__).parents[1] / "examples" / "model-refresh"
@@ -71,7 +76,7 @@ class ResolverTests(unittest.TestCase):
             "recorded_at": "2026-08-12T18:00:00Z",
             "authority": "owner",
             "operations": [{"op": "set", "path": "/objective", "value": "new"}],
-            "activation_mode": "boundary",
+            "activation_mode": "manual",
         }
         amendments = [
             {
@@ -161,6 +166,35 @@ class ResolverTests(unittest.TestCase):
             self.assertEqual(
                 sha256_file(EXAMPLE / reference["path"]), reference["sha256"]
             )
+
+    def test_unknown_contract_fields_fail_closed(self) -> None:
+        contract = json.loads((EXAMPLE / "contract.json").read_text())
+        contract["unknown"] = True
+        with self.assertRaisesRegex(ValidationError, "unknown fields"):
+            validate_contract(contract, goal_id="example-model-refresh")
+
+    def test_negative_and_leading_zero_array_indices_are_rejected(self) -> None:
+        for pointer in ("/items/-1", "/items/01"):
+            with self.subTest(pointer=pointer):
+                with self.assertRaisesRegex(ResolutionError, "index"):
+                    apply_operations(
+                        {"items": [1, 2]},
+                        [{"op": "remove", "path": pointer}],
+                    )
+
+    def test_invalid_pointer_escape_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValidationError, "RFC 6901 escape"):
+            apply_operations(
+                {"items": {}},
+                [{"op": "set", "path": "/items/~2bad", "value": True}],
+            )
+
+    def test_duplicate_json_keys_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "duplicate.json"
+            path.write_text('{"revision": 1, "revision": 2}\n')
+            with self.assertRaisesRegex(ValidationError, "duplicate JSON object key"):
+                load_json(path)
 
 
 if __name__ == "__main__":

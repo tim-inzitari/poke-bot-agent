@@ -81,6 +81,112 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result, 2)
         self.assertIn("must be valid JSON", errors.getvalue())
 
+    def test_workflow_cli_emits_next_prompt_without_assignment(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result, first = self.invoke(
+                "init",
+                str(root / "goal"),
+                "--goal-id",
+                "goal",
+                "--objective",
+                "Do the goal.",
+            )
+            self.assertEqual(result, 0)
+            workflow = root / "workflow.json"
+            result, _ = self.invoke(
+                "workflow",
+                "init",
+                str(workflow),
+                "--workflow-id",
+                "flow",
+            )
+            self.assertEqual(result, 0)
+            result, _ = self.invoke(
+                "workflow",
+                "add-goal",
+                str(workflow),
+                first["gateway"],
+                "--node-id",
+                "goal",
+            )
+            self.assertEqual(result, 0)
+            result, payload = self.invoke("workflow", "next", str(workflow))
+            self.assertEqual(result, 0)
+            self.assertEqual(payload["prompts"][0]["node_id"], "goal")
+            self.assertNotIn("model", json.dumps(payload).lower())
+            self.assertNotIn("assignee", json.dumps(payload).lower())
+
+    def test_evidence_add_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result, initialized = self.invoke(
+                "init",
+                str(root / "goal"),
+                "--goal-id",
+                "goal",
+                "--objective",
+                "Collect evidence.",
+            )
+            self.assertEqual(result, 0)
+            receipt = root / "receipt.json"
+            receipt.write_text('{"passed": true}\n')
+            result, payload = self.invoke(
+                "evidence",
+                "add",
+                initialized["gateway"],
+                "check",
+                str(receipt),
+            )
+            self.assertEqual(result, 0)
+            self.assertEqual(payload["evidence_ids"], ["check"])
+
+    def test_workflow_claim_cli_excludes_claimed_goal(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, initialized = self.invoke(
+                "init",
+                str(root / "goal"),
+                "--goal-id",
+                "goal",
+                "--objective",
+                "Claim this goal.",
+            )
+            workflow = root / "workflow.json"
+            self.invoke(
+                "workflow",
+                "init",
+                str(workflow),
+                "--workflow-id",
+                "flow",
+            )
+            self.invoke(
+                "workflow",
+                "add-goal",
+                str(workflow),
+                initialized["gateway"],
+                "--node-id",
+                "goal",
+            )
+            result, payload = self.invoke(
+                "workflow",
+                "claim",
+                str(workflow),
+                "--claimant",
+                "thread-a",
+            )
+            self.assertEqual(result, 0)
+            self.assertEqual(payload["claim"]["node_id"], "goal")
+            result, payload = self.invoke(
+                "workflow",
+                "claim",
+                str(workflow),
+                "--claimant",
+                "thread-b",
+            )
+            self.assertEqual(result, 0)
+            self.assertIsNone(payload["claim"])
+
 
 if __name__ == "__main__":
     unittest.main()

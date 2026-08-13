@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://durable-goals.dev/schemas/contract.schema.json",
   "title": "Durable Goals Contract v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema", "goal_id", "revision", "objective", "invariants", "completion"],
   "properties": {
     "schema": {"const": "durable-goals.contract/v1"},
@@ -13,6 +13,7 @@
       "type": "array",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["id", "statement"],
         "properties": {
           "id": {"type": "string", "minLength": 1},
@@ -25,6 +26,7 @@
       "type": "array",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["goal_id", "owns"],
         "properties": {
           "goal_id": {"type": "string", "minLength": 1},
@@ -36,11 +38,16 @@
       "type": "array",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["id", "goal_id", "goal_gateway", "after"],
         "properties": {
           "id": {"type": "string", "minLength": 1},
           "goal_id": {"type": "string", "minLength": 1},
-          "goal_gateway": {"type": "string", "minLength": 1},
+          "goal_gateway": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?![A-Za-z]:[\\\\/]).+"
+          },
           "after": {"const": "completion"}
         }
       }
@@ -51,32 +58,46 @@
       "oneOf": [
         {
           "type": "object",
+          "additionalProperties": false,
           "required": ["literal"],
           "properties": {"literal": {"type": "boolean"}}
         },
         {
           "type": "object",
+          "additionalProperties": false,
           "required": ["all"],
           "properties": {"all": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/predicate"}}}
         },
         {
           "type": "object",
+          "additionalProperties": false,
           "required": ["any"],
           "properties": {"any": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/predicate"}}}
         },
         {
           "type": "object",
+          "additionalProperties": false,
           "required": ["not"],
           "properties": {"not": {"$ref": "#/$defs/predicate"}}
         },
         {
           "type": "object",
+          "additionalProperties": false,
           "required": ["evidence", "field"],
           "properties": {
             "evidence": {"type": "string", "minLength": 1},
             "field": {"type": "string", "pattern": "^(/.*)?$"},
-            "equals": {}, "gte": {}, "lte": {}, "exists": {"type": "boolean"}
-          }
+            "equals": {},
+            "gte": {"type": "number"},
+            "lte": {"type": "number"},
+            "exists": {"type": "boolean"}
+          },
+          "oneOf": [
+            {"required": ["equals"]},
+            {"required": ["gte"]},
+            {"required": ["lte"]},
+            {"required": ["exists"]}
+          ]
         }
       ]
     }

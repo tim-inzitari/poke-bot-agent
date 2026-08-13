@@ -78,6 +78,17 @@ def resolve_gateway(gateway_path: str | Path) -> Resolution:
     }
     index = validate_evidence_index(load_json(evidence_index_path), goal_id=goal_id)
     evidence = _load_evidence(root, index)
+    evidence_checksums = {item["id"]: item["sha256"] for item in index["entries"]}
+    for activation in activations:
+        for reference in activation.get("evidence", []):
+            observed = evidence_checksums.get(reference["id"])
+            if observed != reference["sha256"]:
+                from .errors import IntegrityError
+
+                raise IntegrityError(
+                    f"activation revision {activation['amendment_revision']} evidence "
+                    f"binding is stale or unknown: {reference['id']}"
+                )
 
     desired = deepcopy(base_contract)
     active = deepcopy(base_contract)
@@ -95,6 +106,7 @@ def resolve_gateway(gateway_path: str | Path) -> Resolution:
                 {
                     "revision": amendment["revision"],
                     "mode": amendment["activation_mode"],
+                    "condition": amendment.get("activation_condition"),
                     "reason": amendment.get("reason"),
                 }
             )

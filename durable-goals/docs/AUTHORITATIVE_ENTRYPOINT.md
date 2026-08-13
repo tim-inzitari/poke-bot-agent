@@ -25,9 +25,14 @@ Typed records are optimized for deterministic verification:
 - `evidence-index.json` binds factual evidence.
 - `STATUS.json`, when present, is only a regenerable projection.
 
-Contracts may also declare `after: completion` transitions to another
-authoritative `GOAL.md`. Only verified completion of the active source contract
-makes such a successor ready; desired-but-pending transitions do not.
+For more than one goal, `workflow.json` owns the DAG. It names goal gateways and
+dependency edges; the resolver rejects cycles and reports a node ready only
+after every predecessor's active completion predicate is satisfied. The
+workflow emits prompts but never assigns or launches a model.
+
+Contracts may also declare a small local `after: completion` transition for
+compatibility. Use the workflow DAG for fan-in, graph validation, and prompt
+looping.
 
 An agent can operate by reading these files. The `dgoal` command is a verifier,
 not a prerequisite for understanding the goal.

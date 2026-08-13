@@ -14,7 +14,30 @@ def _tokens(pointer: str) -> list[str]:
         return []
     if not isinstance(pointer, str) or not pointer.startswith("/"):
         raise ValidationError(f"expected an RFC 6901 JSON pointer, got {pointer!r}")
-    return [token.replace("~1", "/").replace("~0", "~") for token in pointer[1:].split("/")]
+    tokens: list[str] = []
+    for raw in pointer[1:].split("/"):
+        index = 0
+        while index < len(raw):
+            if raw[index] == "~":
+                if index + 1 >= len(raw) or raw[index + 1] not in {"0", "1"}:
+                    raise ValidationError(
+                        f"invalid RFC 6901 escape in JSON pointer: {pointer!r}"
+                    )
+                index += 2
+            else:
+                index += 1
+        tokens.append(raw.replace("~1", "/").replace("~0", "~"))
+    return tokens
+
+
+def _array_index(token: str, *, pointer: str, allow_end: bool = False) -> int:
+    if token == "-" and allow_end:
+        return -1
+    if not token or not token.isascii() or not token.isdigit():
+        raise ResolutionError(f"list amendment index is invalid: {pointer}")
+    if len(token) > 1 and token.startswith("0"):
+        raise ResolutionError(f"list amendment index has a leading zero: {pointer}")
+    return int(token)
 
 
 def get_pointer(document: Any, pointer: str, default: Any = _MISSING) -> Any:
@@ -22,7 +45,8 @@ def get_pointer(document: Any, pointer: str, default: Any = _MISSING) -> Any:
     for token in _tokens(pointer):
         try:
             if isinstance(current, list):
-                current = current[int(token)]
+                index = _array_index(token, pointer=pointer)
+                current = current[index]
             else:
                 current = current[token]
         except (KeyError, IndexError, TypeError, ValueError):
@@ -56,8 +80,8 @@ def apply_operations(document: dict[str, Any], operations: list[dict[str, Any]])
         for token in tokens[:-1]:
             if isinstance(parent, list):
                 try:
-                    parent = parent[int(token)]
-                except (IndexError, TypeError, ValueError) as exc:
+                    parent = parent[_array_index(token, pointer=pointer)]
+                except (IndexError, TypeError, ValueError, ResolutionError) as exc:
                     raise ResolutionError(f"amendment parent does not resolve: {pointer}") from exc
             else:
                 if token not in parent or not isinstance(parent[token], (dict, list)):
@@ -66,12 +90,9 @@ def apply_operations(document: dict[str, Any], operations: list[dict[str, Any]])
 
         final = tokens[-1]
         if isinstance(parent, list):
-            try:
-                index = int(final)
-            except ValueError as exc:
-                raise ResolutionError(f"list amendment index is invalid: {pointer}") from exc
+            index = _array_index(final, pointer=pointer, allow_end=op == "set")
             if op == "set":
-                if index == len(parent):
+                if index == -1 or index == len(parent):
                     parent.append(deepcopy(operation.get("value")))
                 elif 0 <= index < len(parent):
                     parent[index] = deepcopy(operation.get("value"))

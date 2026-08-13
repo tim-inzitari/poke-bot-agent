@@ -19,6 +19,7 @@ current action.
 - Activation ledger: `activations.jsonl`
 - Evidence index: `evidence-index.json`
 - Generated status projection: `STATUS.json`
+- Optional multi-goal prompt DAG: repository `workflow.json`
 
 ## Source precedence
 
@@ -40,3 +41,7 @@ Report an unresolved contradiction instead of guessing.
 3. Keep it pending until its declared activation condition is met.
 4. Append an activation record; never rewrite the amendment.
 5. Regenerate status from the resolved contract and evidence.
+
+When this goal is a workflow node, only treat it as eligible when
+`dgoal workflow next workflow.json` emits it. The workflow never assigns or
+launches a model; the surrounding harness owns prompt execution.

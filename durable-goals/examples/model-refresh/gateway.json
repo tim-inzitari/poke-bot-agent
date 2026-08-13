@@ -8,7 +8,7 @@
   },
   "amendments": {
     "path": "amendments.jsonl",
-    "sha256": "sha256:e12a12bc8eda9034bd137cb32e23bce61cabf82874a629984e110b5ec407421f"
+    "sha256": "sha256:3963053179af0b425246b9596b912279aa11328fad749b355f0f2d11e7b0d069"
   },
   "activations": {
     "path": "activations.jsonl",

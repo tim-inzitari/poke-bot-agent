@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Durable Goals Workflow v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "workflow_id", "revision", "nodes", "edges"],
+  "properties": {
+    "schema": {"const": "durable-goals.workflow/v1"},
+    "workflow_id": {"$ref": "#/$defs/id"},
+    "revision": {"type": "integer", "minimum": 1},
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "goal_id", "gateway"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "goal_id": {"type": "string", "minLength": 1},
+          "gateway": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?![A-Za-z]:[\\\\/]).+"
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "from", "to"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "from": {"$ref": "#/$defs/id"},
+          "to": {"$ref": "#/$defs/id"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    }
+  }
+}

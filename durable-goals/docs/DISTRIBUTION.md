@@ -12,9 +12,9 @@ inside a C++ application with no Python runtime. It would not make goal files
 more portable.
 
 Another implementation can conform by resolving the same schemas and producing
-the same active contract, desired contract, and derived status. A future
-conformance corpus should make implementations in TypeScript, Rust, Go, or C++
-straightforward.
+the same active contract, desired contract, workflow node states, topological
+order, and next prompts. A future conformance corpus should make implementations
+in TypeScript, Rust, Go, or C++ straightforward.
 
 ## Sharing layers
 
@@ -43,6 +43,7 @@ durable-goals repository
 ├── Python wheel                 # verifier and safe writer
 ├── schemas/                     # language-neutral protocol
 ├── templates/GOAL.md            # authoritative entry point
+├── workflow.json                # optional prompt-loop DAG
 ├── .agents/skills/              # prompt-driven update workflow
 └── examples/                    # conformance examples
 ```

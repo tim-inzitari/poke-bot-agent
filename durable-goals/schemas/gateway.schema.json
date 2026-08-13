@@ -1,6 +1,5 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://durable-goals.dev/schemas/gateway.schema.json",
   "title": "Durable Goals Gateway v1",
   "type": "object",
   "additionalProperties": false,
@@ -17,7 +16,13 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["path"],
-      "properties": {"path": {"type": "string", "minLength": 1}}
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z]:[\\\\/]).+"
+        }
+      }
     }
   },
   "$defs": {
@@ -26,7 +31,11 @@
       "additionalProperties": false,
       "required": ["path", "sha256"],
       "properties": {
-        "path": {"type": "string", "minLength": 1},
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z]:[\\\\/]).+"
+        },
         "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
       }
     }

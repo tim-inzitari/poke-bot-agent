@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+import re
 from typing import Any
 
 from .errors import ValidationError
@@ -11,6 +13,21 @@ CONTRACT_SCHEMA = "durable-goals.contract/v1"
 AMENDMENT_SCHEMA = "durable-goals.amendment/v1"
 ACTIVATION_SCHEMA = "durable-goals.activation/v1"
 EVIDENCE_INDEX_SCHEMA = "durable-goals.evidence-index/v1"
+def _only_keys(value: dict[str, Any], allowed: set[str], label: str) -> None:
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise ValidationError(f"{label} contains unknown fields: {', '.join(unknown)}")
+
+
+def _timestamp(value: Any, label: str) -> str:
+    result = _nonempty_string(value, label)
+    try:
+        parsed = datetime.fromisoformat(result.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValidationError(f"{label} must be an RFC 3339 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise ValidationError(f"{label} must include a UTC offset")
+    return result
 
 
 def _mapping(value: Any, label: str) -> dict[str, Any]:
@@ -31,22 +48,59 @@ def _positive_int(value: Any, label: str) -> int:
     return value
 
 
+def _portable_path(value: Any, label: str) -> str:
+    result = _nonempty_string(value, label)
+    if result.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:[\\/]", result):
+        raise ValidationError(f"{label} must be a portable relative path")
+    return result
+
+
 def validate_gateway(value: Any) -> dict[str, Any]:
     gateway = _mapping(value, "gateway")
+    _only_keys(
+        gateway,
+        {
+            "schema",
+            "goal_id",
+            "current_revision",
+            "contract",
+            "amendments",
+            "activations",
+            "evidence_index",
+            "status",
+        },
+        "gateway",
+    )
     if gateway.get("schema") != GATEWAY_SCHEMA:
         raise ValidationError(f"gateway.schema must equal {GATEWAY_SCHEMA}")
     _nonempty_string(gateway.get("goal_id"), "gateway.goal_id")
     _positive_int(gateway.get("current_revision"), "gateway.current_revision")
     for key in ("contract", "amendments", "activations", "evidence_index"):
-        _mapping(gateway.get(key), f"gateway.{key}")
+        reference = _mapping(gateway.get(key), f"gateway.{key}")
+        _only_keys(reference, {"path", "sha256"}, f"gateway.{key}")
     if "status" in gateway:
         status = _mapping(gateway["status"], "gateway.status")
-        _nonempty_string(status.get("path"), "gateway.status.path")
+        _only_keys(status, {"path"}, "gateway.status")
+        _portable_path(status.get("path"), "gateway.status.path")
     return gateway
 
 
 def validate_contract(value: Any, *, goal_id: str) -> dict[str, Any]:
     contract = _mapping(value, "contract")
+    _only_keys(
+        contract,
+        {
+            "schema",
+            "goal_id",
+            "revision",
+            "objective",
+            "invariants",
+            "completion",
+            "delegations",
+            "transitions",
+        },
+        "contract",
+    )
     if contract.get("schema") != CONTRACT_SCHEMA:
         raise ValidationError(f"contract.schema must equal {CONTRACT_SCHEMA}")
     if contract.get("goal_id") != goal_id:
@@ -59,6 +113,7 @@ def validate_contract(value: Any, *, goal_id: str) -> dict[str, Any]:
     seen: set[str] = set()
     for index, invariant in enumerate(invariants):
         item = _mapping(invariant, f"contract.invariants[{index}]")
+        _only_keys(item, {"id", "statement"}, f"contract.invariants[{index}]")
         invariant_id = _nonempty_string(item.get("id"), f"contract.invariants[{index}].id")
         _nonempty_string(item.get("statement"), f"contract.invariants[{index}].statement")
         if invariant_id in seen:
@@ -70,6 +125,7 @@ def validate_contract(value: Any, *, goal_id: str) -> dict[str, Any]:
         raise ValidationError("contract.delegations must be an array")
     for index, delegation in enumerate(delegations):
         item = _mapping(delegation, f"contract.delegations[{index}]")
+        _only_keys(item, {"goal_id", "owns"}, f"contract.delegations[{index}]")
         _nonempty_string(item.get("goal_id"), f"contract.delegations[{index}].goal_id")
         owns = item.get("owns")
         if not isinstance(owns, list) or not owns or not all(isinstance(x, str) and x for x in owns):
@@ -80,6 +136,11 @@ def validate_contract(value: Any, *, goal_id: str) -> dict[str, Any]:
     transition_ids: set[str] = set()
     for index, transition in enumerate(transitions):
         item = _mapping(transition, f"contract.transitions[{index}]")
+        _only_keys(
+            item,
+            {"id", "goal_id", "goal_gateway", "after"},
+            f"contract.transitions[{index}]",
+        )
         transition_id = _nonempty_string(
             item.get("id"), f"contract.transitions[{index}].id"
         )
@@ -89,7 +150,7 @@ def validate_contract(value: Any, *, goal_id: str) -> dict[str, Any]:
         _nonempty_string(
             item.get("goal_id"), f"contract.transitions[{index}].goal_id"
         )
-        _nonempty_string(
+        _portable_path(
             item.get("goal_gateway"),
             f"contract.transitions[{index}].goal_gateway",
         )
@@ -109,25 +170,38 @@ def validate_predicate(value: Any, label: str) -> None:
         raise ValidationError(f"{label} must contain exactly one predicate operator")
     kind = keys[0]
     if kind == "literal":
+        _only_keys(predicate, {"literal"}, label)
         if not isinstance(predicate["literal"], bool):
             raise ValidationError(f"{label}.literal must be a boolean")
     elif kind in {"all", "any"}:
+        _only_keys(predicate, {kind}, label)
         children = predicate[kind]
         if not isinstance(children, list) or not children:
             raise ValidationError(f"{label}.{kind} must be a non-empty array")
         for index, child in enumerate(children):
             validate_predicate(child, f"{label}.{kind}[{index}]")
     elif kind == "not":
+        _only_keys(predicate, {"not"}, label)
         validate_predicate(predicate[kind], f"{label}.not")
     else:
         evidence_id = _nonempty_string(predicate["evidence"], f"{label}.evidence")
         del evidence_id
-        field = predicate.get("field", "")
+        if "field" not in predicate:
+            raise ValidationError(f"{label}.field is required")
+        field = predicate["field"]
         if not isinstance(field, str) or (field and not field.startswith("/")):
             raise ValidationError(f"{label}.field must be an RFC 6901 JSON pointer")
         comparators = [key for key in ("equals", "gte", "lte", "exists") if key in predicate]
         if len(comparators) != 1:
             raise ValidationError(f"{label} must contain exactly one comparator")
+        comparator = comparators[0]
+        _only_keys(predicate, {"evidence", "field", comparator}, label)
+        if comparator == "exists" and not isinstance(predicate[comparator], bool):
+            raise ValidationError(f"{label}.exists must be a boolean")
+        if comparator in {"gte", "lte"}:
+            expected = predicate[comparator]
+            if isinstance(expected, bool) or not isinstance(expected, (int, float)):
+                raise ValidationError(f"{label}.{comparator} must be a number")
 
 
 def validate_amendments(
@@ -137,6 +211,21 @@ def validate_amendments(
     expected_revision = base_revision + 1
     for index, value in enumerate(values):
         amendment = _mapping(value, f"amendments[{index}]")
+        _only_keys(
+            amendment,
+            {
+                "schema",
+                "goal_id",
+                "revision",
+                "recorded_at",
+                "authority",
+                "reason",
+                "activation_mode",
+                "activation_condition",
+                "operations",
+            },
+            f"amendments[{index}]",
+        )
         if amendment.get("schema") != AMENDMENT_SCHEMA:
             raise ValidationError(f"amendments[{index}].schema must equal {AMENDMENT_SCHEMA}")
         if amendment.get("goal_id") != goal_id:
@@ -147,13 +236,18 @@ def validate_amendments(
                 f"amendment revisions must be contiguous: expected {expected_revision}, got {revision}"
             )
         expected_revision += 1
-        _nonempty_string(amendment.get("recorded_at"), f"amendments[{index}].recorded_at")
+        _timestamp(amendment.get("recorded_at"), f"amendments[{index}].recorded_at")
         _nonempty_string(amendment.get("authority"), f"amendments[{index}].authority")
         operations = amendment.get("operations")
         if not isinstance(operations, list) or not operations:
             raise ValidationError(f"amendments[{index}].operations must be non-empty")
         for op_index, operation in enumerate(operations):
             item = _mapping(operation, f"amendments[{index}].operations[{op_index}]")
+            _only_keys(
+                item,
+                {"op", "path", "value", "expect"},
+                f"amendments[{index}].operations[{op_index}]",
+            )
             if item.get("op") not in {"set", "remove"}:
                 raise ValidationError("amendment op must be set or remove")
             path = item.get("path")
@@ -161,10 +255,28 @@ def validate_amendments(
                 raise ValidationError("amendment operation path must be a JSON pointer")
             if path in {"/schema", "/goal_id", "/revision"}:
                 raise ValidationError(f"amendments may not modify identity field {path}")
-        _nonempty_string(
+            if item["op"] == "set" and "value" not in item:
+                raise ValidationError("set amendment operation requires value")
+            if item["op"] == "remove" and "value" in item:
+                raise ValidationError("remove amendment operation may not contain value")
+        activation_mode = _nonempty_string(
             amendment.get("activation_mode"),
             f"amendments[{index}].activation_mode",
         )
+        if activation_mode not in {"manual", "immediate", "next_safe_boundary"}:
+            raise ValidationError(
+                f"amendments[{index}].activation_mode must be manual, immediate, "
+                "or next_safe_boundary"
+            )
+        if "activation_condition" in amendment:
+            validate_predicate(
+                amendment["activation_condition"],
+                f"amendments[{index}].activation_condition",
+            )
+        if activation_mode == "next_safe_boundary" and "activation_condition" not in amendment:
+            raise ValidationError(
+                f"amendments[{index}] next_safe_boundary requires activation_condition"
+            )
         result.append(amendment)
     observed_revision = result[-1]["revision"] if result else base_revision
     if observed_revision != current_revision:
@@ -182,6 +294,17 @@ def validate_activations(
     observed: list[int] = []
     for index, value in enumerate(values):
         activation = _mapping(value, f"activations[{index}]")
+        _only_keys(
+            activation,
+            {
+                "schema",
+                "goal_id",
+                "amendment_revision",
+                "activated_at",
+                "evidence",
+            },
+            f"activations[{index}]",
+        )
         if activation.get("schema") != ACTIVATION_SCHEMA:
             raise ValidationError(f"activations[{index}].schema must equal {ACTIVATION_SCHEMA}")
         if activation.get("goal_id") != goal_id:
@@ -191,13 +314,32 @@ def validate_activations(
             f"activations[{index}].amendment_revision",
         )
         observed.append(revision)
-        _nonempty_string(
+        _timestamp(
             activation.get("activated_at"), f"activations[{index}].activated_at"
         )
-        if "evidence_id" in activation:
-            _nonempty_string(
-                activation["evidence_id"], f"activations[{index}].evidence_id"
+        evidence = activation.get("evidence", [])
+        if not isinstance(evidence, list):
+            raise ValidationError(f"activations[{index}].evidence must be an array")
+        evidence_ids: set[str] = set()
+        for evidence_index, reference in enumerate(evidence):
+            item = _mapping(
+                reference, f"activations[{index}].evidence[{evidence_index}]"
             )
+            _only_keys(
+                item,
+                {"id", "sha256"},
+                f"activations[{index}].evidence[{evidence_index}]",
+            )
+            evidence_id = _nonempty_string(
+                item.get("id"), f"activations[{index}].evidence[{evidence_index}].id"
+            )
+            if evidence_id in evidence_ids:
+                raise ValidationError(f"duplicate activation evidence id: {evidence_id}")
+            evidence_ids.add(evidence_id)
+            if not is_sha256(item.get("sha256")):
+                raise ValidationError(
+                    f"activations[{index}].evidence[{evidence_index}].sha256 is invalid"
+                )
         result.append(activation)
     if observed != expected_prefix:
         raise ValidationError(
@@ -209,6 +351,7 @@ def validate_activations(
 
 def validate_evidence_index(value: Any, *, goal_id: str) -> dict[str, Any]:
     index = _mapping(value, "evidence_index")
+    _only_keys(index, {"schema", "goal_id", "entries"}, "evidence_index")
     if index.get("schema") != EVIDENCE_INDEX_SCHEMA:
         raise ValidationError(f"evidence_index.schema must equal {EVIDENCE_INDEX_SCHEMA}")
     if index.get("goal_id") != goal_id:
@@ -219,12 +362,27 @@ def validate_evidence_index(value: Any, *, goal_id: str) -> dict[str, Any]:
     seen: set[str] = set()
     for entry_index, entry in enumerate(entries):
         item = _mapping(entry, f"evidence_index.entries[{entry_index}]")
+        _only_keys(
+            item,
+            {"id", "path", "sha256", "contract_revision", "recorded_at"},
+            f"evidence_index.entries[{entry_index}]",
+        )
         evidence_id = _nonempty_string(item.get("id"), f"evidence_index.entries[{entry_index}].id")
         if evidence_id in seen:
             raise ValidationError(f"duplicate evidence id: {evidence_id}")
         seen.add(evidence_id)
-        _nonempty_string(item.get("path"), f"evidence_index.entries[{entry_index}].path")
+        _portable_path(item.get("path"), f"evidence_index.entries[{entry_index}].path")
         checksum = item.get("sha256")
         if not is_sha256(checksum):
             raise ValidationError(f"evidence {evidence_id} lacks a sha256 checksum")
+        if "contract_revision" in item:
+            _positive_int(
+                item["contract_revision"],
+                f"evidence_index.entries[{entry_index}].contract_revision",
+            )
+        if "recorded_at" in item:
+            _timestamp(
+                item["recorded_at"],
+                f"evidence_index.entries[{entry_index}].recorded_at",
+            )
     return index

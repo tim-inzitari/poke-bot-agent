@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://durable-goals.dev/schemas/amendment.schema.json",
   "title": "Durable Goals Amendment v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema", "goal_id", "revision", "recorded_at", "authority", "operations", "activation_mode"],
   "properties": {
     "schema": {"const": "durable-goals.amendment/v1"},
@@ -11,20 +11,35 @@
     "recorded_at": {"type": "string", "format": "date-time"},
     "authority": {"type": "string", "minLength": 1},
     "reason": {"type": "string"},
-    "activation_mode": {"type": "string", "minLength": 1},
+    "activation_mode": {"enum": ["manual", "immediate", "next_safe_boundary"]},
+    "activation_condition": {"$ref": "contract.schema.json#/$defs/predicate"},
     "operations": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["op", "path"],
         "properties": {
           "op": {"enum": ["set", "remove"]},
-          "path": {"type": "string", "pattern": "^/.+"},
+          "path": {"type": "string", "pattern": "^/"},
           "value": {},
           "expect": {}
-        }
+        },
+        "oneOf": [
+          {"properties": {"op": {"const": "set"}}, "required": ["value"]},
+          {
+            "properties": {"op": {"const": "remove"}},
+            "not": {"required": ["value"]}
+          }
+        ]
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"activation_mode": {"const": "next_safe_boundary"}}},
+      "then": {"required": ["activation_condition"]}
+    }
+  ]
 }

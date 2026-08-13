@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .errors import ResolutionError, ValidationError
+from .evidence import evaluate_predicate, require_evidence_ids
 from .io import (
-    canonical_json,
     load_json,
     load_jsonl,
     resolve_local_path,
@@ -22,7 +22,12 @@ from .io import (
 )
 from .pointers import apply_operations
 from .resolve import Resolution, resolve_gateway
-from .validate import validate_activations, validate_amendments, validate_contract
+from .validate import (
+    validate_activations,
+    validate_amendments,
+    validate_contract,
+    validate_evidence_index,
+)
 
 try:  # POSIX and Windows both get a standard-library advisory lock.
     import fcntl
@@ -35,49 +40,106 @@ def _sha256_bytes(payload: bytes) -> str:
     return f"sha256:{hashlib.sha256(payload).hexdigest()}"
 
 
-def _atomic_write(path: Path, payload: bytes) -> None:
+def _assert_safe_write_path(root: Path, path: Path) -> None:
+    root = root.resolve()
+    absolute = path.absolute()
+    if not absolute.is_relative_to(root):
+        raise ResolutionError(f"write target escapes the goal package: {path}")
+    current = root
+    for part in absolute.relative_to(root).parts:
+        current = current / part
+        if current.exists() or current.is_symlink():
+            if current.is_symlink():
+                raise ResolutionError(f"write target traverses a symbolic link: {current}")
+            if not current.resolve().is_relative_to(root):
+                raise ResolutionError(f"write target escapes the goal package: {current}")
+
+
+def _fsync_directory(path: Path) -> None:
+    try:
+        descriptor = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        pass
+    finally:
+        os.close(descriptor)
+
+
+def _atomic_write(root: Path, path: Path, payload: bytes) -> None:
+    _assert_safe_write_path(root, path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    _assert_safe_write_path(root, path)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary = Path(temporary_name)
     try:
+        os.chmod(temporary, 0o644)
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
+        _fsync_directory(path.parent)
     finally:
         if temporary.exists():
             temporary.unlink()
 
 
-def _write_immutable(path: Path, payload: bytes) -> None:
+def _write_immutable(root: Path, path: Path, payload: bytes) -> None:
+    _assert_safe_write_path(root, path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-    except FileExistsError:
+    _assert_safe_write_path(root, path)
+    if path.exists():
         if path.read_bytes() != payload:
             raise ResolutionError(f"immutable history path already has other content: {path}")
         return
-    with os.fdopen(descriptor, "wb") as handle:
-        handle.write(payload)
-        handle.flush()
-        os.fsync(handle.fileno())
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        os.chmod(temporary, 0o644)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            _assert_safe_write_path(root, path)
+            if path.read_bytes() != payload:
+                raise ResolutionError(
+                    f"immutable history path already has other content: {path}"
+                )
+        _fsync_directory(path.parent)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 @contextmanager
-def _goal_write_lock(root: Path) -> Iterator[None]:
+def _goal_write_lock(root: Path, *, wait: bool = False) -> Iterator[None]:
+    root = root.resolve()
     lock_path = root / ".dgoal" / "write.lock"
+    _assert_safe_write_path(root, lock_path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
+    _assert_safe_write_path(root, lock_path)
     with lock_path.open("a+b") as handle:
         if handle.tell() == 0:
             handle.write(b"\0")
             handle.flush()
         try:
             if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                operation = fcntl.LOCK_EX
+                if not wait:
+                    operation |= fcntl.LOCK_NB
+                fcntl.flock(handle.fileno(), operation)
             else:  # pragma: no cover - exercised on Windows
                 handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                mode = msvcrt.LK_LOCK if wait else msvcrt.LK_NBLCK
+                msvcrt.locking(handle.fileno(), mode, 1)
         except (BlockingIOError, OSError) as exc:
             raise ResolutionError("another durable-goal writer holds the package lock") from exc
         try:
@@ -103,13 +165,38 @@ def _commit_history(
     checksum = _sha256_bytes(payload)
     relative = Path(".dgoal") / "history" / f"{kind}-r{revision:06d}-{checksum[7:19]}.jsonl"
     history_path = root / relative
-    _write_immutable(history_path, payload)
+    _write_immutable(root, history_path, payload)
     updated_gateway = deepcopy(gateway)
     updated_gateway[kind] = {"path": relative.as_posix(), "sha256": checksum}
     if kind == "amendments":
         updated_gateway["current_revision"] = revision
     gateway_payload = (json.dumps(updated_gateway, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    _atomic_write(gateway_path, gateway_payload)
+    _atomic_write(root, gateway_path, gateway_payload)
+
+
+def _commit_json_reference(
+    *,
+    root: Path,
+    gateway_path: Path,
+    gateway: dict[str, Any],
+    key: str,
+    revision: int,
+    value: dict[str, Any],
+) -> None:
+    payload = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    checksum = _sha256_bytes(payload)
+    relative = (
+        Path(".dgoal")
+        / "history"
+        / f"{key}-r{revision:06d}-{checksum[7:19]}.json"
+    )
+    _write_immutable(root, root / relative, payload)
+    updated_gateway = deepcopy(gateway)
+    updated_gateway[key] = {"path": relative.as_posix(), "sha256": checksum}
+    gateway_payload = (
+        json.dumps(updated_gateway, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    _atomic_write(root, gateway_path, gateway_payload)
 
 
 def record_amendment(
@@ -117,7 +204,8 @@ def record_amendment(
     *,
     operations: list[dict[str, Any]],
     reason: str,
-    activation_mode: str = "next_safe_boundary",
+    activation_mode: str = "manual",
+    activation_condition: dict[str, Any] | None = None,
     authority: str = "owner",
     recorded_at: str | None = None,
 ) -> Resolution:
@@ -148,6 +236,8 @@ def record_amendment(
             "activation_mode": activation_mode,
             "operations": operations,
         }
+        if activation_condition is not None:
+            amendment["activation_condition"] = activation_condition
         candidate_amendments = [*amendments, amendment]
         base_revision = resolution.desired_contract["revision"] - len(amendments)
         validate_amendments(
@@ -172,6 +262,7 @@ def activate_amendment(
     amendment_revision: int,
     *,
     evidence_id: str | None = None,
+    evidence_ids: list[str] | None = None,
     activated_at: str | None = None,
 ) -> Resolution:
     path = Path(gateway_path).resolve()
@@ -186,8 +277,28 @@ def activate_amendment(
                 f"only the next pending amendment may activate: expected {expected}, "
                 f"got {amendment_revision}"
             )
-        if evidence_id is not None and evidence_id not in resolution.evidence:
-            raise ResolutionError(f"activation evidence is not declared: {evidence_id}")
+        pending = resolution.pending_activations[0]
+        condition = pending.get("condition")
+        if pending["mode"] == "next_safe_boundary":
+            if condition is None:
+                raise ResolutionError("next_safe_boundary activation lacks a condition")
+            result = evaluate_predicate(condition, resolution.evidence)
+            if not result.satisfied:
+                raise ResolutionError(
+                    "activation condition is not satisfied: "
+                    + json.dumps(result.explanation, sort_keys=True)
+                )
+
+        selected_evidence = set(evidence_ids or [])
+        if evidence_id is not None:
+            selected_evidence.add(evidence_id)
+        if condition is not None:
+            selected_evidence.update(require_evidence_ids(condition))
+        undeclared = sorted(selected_evidence - set(resolution.evidence))
+        if undeclared:
+            raise ResolutionError(
+                "activation evidence is not declared: " + ", ".join(undeclared)
+            )
 
         gateway = load_json(path)
         amendments_path = verify_reference(
@@ -198,6 +309,13 @@ def activate_amendment(
         )
         amendment_revisions = [item["revision"] for item in load_jsonl(amendments_path)]
         activations = load_jsonl(activations_path)
+        evidence_index_path = verify_reference(
+            root, gateway["evidence_index"], label="gateway.evidence_index"
+        )
+        evidence_index = load_json(evidence_index_path)
+        evidence_checksums = {
+            item["id"]: item["sha256"] for item in evidence_index["entries"]
+        }
         activation: dict[str, Any] = {
             "schema": "durable-goals.activation/v1",
             "goal_id": resolution.goal_id,
@@ -205,8 +323,11 @@ def activate_amendment(
             "activated_at": activated_at
             or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
-        if evidence_id is not None:
-            activation["evidence_id"] = evidence_id
+        if selected_evidence:
+            activation["evidence"] = [
+                {"id": item, "sha256": evidence_checksums[item]}
+                for item in sorted(selected_evidence)
+            ]
         candidate_activations = [*activations, activation]
         validate_activations(
             candidate_activations,
@@ -238,8 +359,74 @@ def materialize_status(gateway_path: str | Path) -> Path:
         payload = (json.dumps(resolution.status, indent=2, sort_keys=True) + "\n").encode(
             "utf-8"
         )
-        _atomic_write(status_path, payload)
+        _atomic_write(root, status_path, payload)
         return status_path
+
+
+def record_evidence(
+    gateway_path: str | Path,
+    evidence_id: str,
+    source_path: str | Path,
+    *,
+    contract_revision: int | None = None,
+    recorded_at: str | None = None,
+) -> Resolution:
+    if re.fullmatch(r"[a-z0-9][a-z0-9._-]*", evidence_id) is None:
+        raise ValidationError(
+            "evidence_id must contain lowercase letters, digits, dots, underscores, "
+            "or hyphens"
+        )
+    path = Path(gateway_path).resolve()
+    root = path.parent
+    source = Path(source_path).resolve()
+    load_json(source)
+    payload = source.read_bytes()
+    checksum = _sha256_bytes(payload)
+    with _goal_write_lock(root):
+        resolution = resolve_gateway(path)
+        gateway = load_json(path)
+        index_path = verify_reference(
+            root, gateway["evidence_index"], label="gateway.evidence_index"
+        )
+        index = validate_evidence_index(load_json(index_path), goal_id=resolution.goal_id)
+        if any(item["id"] == evidence_id for item in index["entries"]):
+            raise ResolutionError(f"evidence id already exists: {evidence_id}")
+        revision = (
+            resolution.active_revision
+            if contract_revision is None
+            else contract_revision
+        )
+        if revision < 1 or revision > resolution.current_revision:
+            raise ValidationError(
+                f"contract_revision must be between 1 and {resolution.current_revision}"
+            )
+        relative = (
+            Path(".dgoal")
+            / "evidence"
+            / f"{evidence_id}-{checksum[7:19]}.json"
+        )
+        _write_immutable(root, root / relative, payload)
+        updated_index = deepcopy(index)
+        updated_index["entries"].append(
+            {
+                "id": evidence_id,
+                "path": relative.as_posix(),
+                "sha256": checksum,
+                "contract_revision": revision,
+                "recorded_at": recorded_at
+                or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            }
+        )
+        validate_evidence_index(updated_index, goal_id=resolution.goal_id)
+        _commit_json_reference(
+            root=root,
+            gateway_path=path,
+            gateway=gateway,
+            key="evidence_index",
+            revision=resolution.current_revision,
+            value=updated_index,
+        )
+        return resolve_gateway(path)
 
 
 def initialize_goal_package(
@@ -324,6 +511,7 @@ required for the current action.
 - Gateway-selected activation ledger
 - Evidence index: `evidence-index.json`
 - Generated status: `STATUS.json` (non-authoritative)
+- Optional multi-goal prompt DAG: repository `workflow.json`
 
 ## Source precedence
 
@@ -334,17 +522,21 @@ required for the current action.
 5. Generated status and conversation summaries are projections only.
 
 Stop and report contradictions rather than guessing.
+
+When this goal is a workflow node, act on it only when `dgoal workflow next`
+emits it. The workflow never assigns or launches a model.
 """.encode("utf-8")
 
-    _atomic_write(root / "contract.json", contract_payload)
-    _atomic_write(root / "amendments.jsonl", amendments_payload)
-    _atomic_write(root / "activations.jsonl", activations_payload)
-    _atomic_write(root / "evidence-index.json", evidence_payload)
+    _atomic_write(root, root / "contract.json", contract_payload)
+    _atomic_write(root, root / "amendments.jsonl", amendments_payload)
+    _atomic_write(root, root / "activations.jsonl", activations_payload)
+    _atomic_write(root, root / "evidence-index.json", evidence_payload)
     _atomic_write(
+        root,
         root / "gateway.json",
         (json.dumps(gateway, indent=2, sort_keys=True) + "\n").encode("utf-8"),
     )
-    _atomic_write(root / "GOAL.md", goal_markdown)
+    _atomic_write(root, root / "GOAL.md", goal_markdown)
     materialize_status(root / "gateway.json")
     return root / "gateway.json"
 
@@ -386,5 +578,5 @@ def chain_goal(
             }
         ],
         reason=reason,
-        activation_mode="on_current_goal_completion",
+        activation_mode="manual",
     )

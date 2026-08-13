@@ -12,10 +12,11 @@ The universal harness interface is intentionally just one convention:
 `GOAL.md` names the typed sources and precedence rules. Harnesses do not need a
 plugin or vendor-specific adapter.
 
-This project deliberately does **not** execute jobs. Schedulers, service
-managers, agent loops, and deployment systems consume a resolved goal through
-the Python API or CLI. Keeping execution outside the protocol makes the goal
-package useful with local scripts, systemd, Kubernetes, or a future controller.
+This project deliberately does **not** execute jobs or choose models. It is a
+prompt-loop protocol: the DAG reports which authoritative goal prompt is next;
+an existing harness sends that prompt and later records evidence. Keeping
+execution outside the protocol makes it useful with local scripts, systemd,
+Kubernetes, Codex, Claude Code, Hermes, Prime Agent, or Cortex Code.
 
 ## Protocol records
 
@@ -48,22 +49,57 @@ dgoal status examples/model-refresh/gateway.json
 dgoal resolve examples/model-refresh/gateway.json
 ```
 
-Create and chain goals without starting any workload:
+Create a two-goal workflow without starting any workload:
 
 ```bash
 dgoal init goals/next \
   --goal-id next \
   --objective "Perform the next bounded objective."
 
-dgoal chain goals/current/gateway.json goals/next/gateway.json \
-  --transition-id then-next \
-  --reason "Owner ordered next after current completion"
+dgoal workflow init workflow.json --workflow-id release
+dgoal workflow add-goal workflow.json goals/current/gateway.json \
+  --node-id current
+dgoal workflow add-goal workflow.json goals/next/gateway.json \
+  --node-id next
+dgoal workflow depend workflow.json current next --edge-id current-next
+dgoal workflow validate workflow.json
+dgoal workflow status workflow.json
+dgoal workflow next workflow.json
+dgoal workflow claim workflow.json --claimant thread-1
 ```
 
-The successor becomes eligible only after the transition is active and the
-active source contract's completion predicate is satisfied. Readiness is
-reported under `status.ready_transitions`; execution remains outside this
-project.
+The DAG rejects cycles and supports fan-in: a node is `ready` only when every
+predecessor is complete. `workflow next` emits one deterministic prompt;
+`--all` emits every currently ready prompt. It never launches or assigns an
+agent, subagent, human, harness, or model.
+
+Independent branches can run concurrently. Each agent thread calls
+`workflow claim --claimant <thread-id>`; the atomic claim lock hands concurrent
+threads different ready, unclaimed goals. A claim is temporary coordination,
+not assignment. Release abandoned work with:
+
+```bash
+dgoal workflow release workflow.json next --claimant thread-1
+```
+
+Claims do not expire implicitly. A thread that stops without completing its
+goal must release its claim explicitly so work is never silently duplicated.
+
+Record immutable JSON evidence and gate activation on it:
+
+```bash
+dgoal evidence add goals/current/gateway.json safe-boundary receipt.json
+dgoal amend goals/current/gateway.json \
+  --set /objective '"Continue with the new objective."' \
+  --expect /objective '"Current objective."' \
+  --reason "Owner changed the objective" \
+  --activation-mode next_safe_boundary \
+  --when '{"evidence":"safe-boundary","field":"/safe","equals":true}'
+dgoal activate goals/current/gateway.json 2
+```
+
+The activation fails closed until the predicate is satisfied, then binds the
+exact evidence checksums into the activation record.
 
 Without installing it:
 
@@ -91,7 +127,19 @@ threshold is `0.85`, while its active threshold remains `0.90`.
 5. Amendment preconditions fail closed when the prior value has drifted.
 6. Completion is evaluated from declared evidence, never from status prose.
 7. Generated status is explicitly marked `authoritative: false`.
-8. References are relative and may not escape the goal package.
+8. Gateway and evidence references are relative and may not escape the goal
+   package.
+9. Workflow nodes are validated goal packages and dependency edges must form a
+   directed acyclic graph.
+10. Concurrent claims serialize briefly and never return the same ready goal.
+11. Internal writes reject symbolic-link traversal and publish through
+    fsynced immutable history plus atomic pointer replacement.
+
+SHA-256 provides integrity and content identity, not author authentication.
+Version 0.1 assumes the repository and CLI invocation are inside an existing
+trusted owner boundary. The free-form `authority` label is descriptive; use
+signed commits or another authenticated transport when writers are not equally
+trusted.
 
 ## Completion predicates
 
@@ -112,12 +160,13 @@ pointers.
 
 ## Current scope
 
-Version `0.1` resolves and validates JSON goal packages. It intentionally omits
-execution, network access, mutable databases, arbitrary code in contracts, and
-automatic amendment activation. Likely next protocol work includes signed
-authority records, delegation resolution, supersession records, status-file
-materialization, and a conformance corpus for implementations in other
-languages.
+Version `0.1` resolves and safely updates JSON goal packages, records immutable
+evidence, enforces evidence-gated activation, derives status, validates workflow
+DAGs, and emits eligible prompts. It intentionally omits execution, model or
+worker assignment, network access, mutable databases, arbitrary contract code,
+and automatic dispatch. Likely next protocol work includes signed authority
+records, delegation resolution, supersession records, and a language-neutral
+conformance corpus.
 
 ## Moving to a separate repository
 
@@ -143,3 +192,5 @@ The single standard skill is exposed to Codex, Claude Code, Hermes Agent,
 Prime Agent, and Snowflake Cortex Code without maintaining divergent
 instruction copies; see
 [`docs/SKILL_COMPATIBILITY.md`](docs/SKILL_COMPATIBILITY.md).
+
+See [`docs/CLI.md`](docs/CLI.md) for the complete command surface.
