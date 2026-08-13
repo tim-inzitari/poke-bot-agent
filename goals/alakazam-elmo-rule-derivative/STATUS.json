@@ -1,14 +1,14 @@
 {
   "schema": "poke_bot.alakazam_elmo_rule_derivative_execution_status/v1",
   "goal_id": "alakazam-elmo-rule-derivative",
-  "goal_revision": 7,
-  "recorded_at_utc": "2026-08-13T02:24:41Z",
+  "goal_revision": 8,
+  "recorded_at_utc": "2026-08-13T03:56:58Z",
   "projection_role": "receipt_backed_execution_status_only_not_authority",
   "authority": {
     "human_goal_gateway": "goals/alakazam-elmo-rule-derivative/GOAL.md",
-    "human_goal_gateway_sha256": "sha256:d275696bb8322c1741463d63b4506d9b04f1252c3c6cdbe7559c999b55b83da7",
+    "human_goal_gateway_sha256": "sha256:3e710a6f474e096e2562c8a42d6c886e78009baf622c9fd6cb68901657c7ced4",
     "sole_typed_canonical_source": "goals/alakazam-elmo-rule-derivative/contract.json",
-    "sole_typed_canonical_source_sha256": "sha256:98e39d771569bdf778885848fc61732275c89c517e057a34bd3006144c23bdd1",
+    "sole_typed_canonical_source_sha256": "sha256:b522af1617f02a49522302947f1a4841ef24db7213f0e2ea8abeaba1332fb2cc",
     "this_projection_may_authorize_or_activate_work": false
   },
   "current_phase": {
@@ -19,15 +19,17 @@
     "window_end_utc": "2026-08-11",
     "utc_partition_count": 30,
     "live_observation": {
-      "observed_at_utc": "2026-08-13T02:24:41Z",
+      "observed_at_utc": "2026-08-13T03:53:06Z",
       "worker_process_count": 54,
-      "output_root_basename": "fast-refeature-elmo-second-half-split-r309 + first-half-nvme-r309",
-      "observed_output_bytes": 0,
+      "output_root_basename": "fast-refeature-elmo-second-half-resume-r309 + first-half-nvme-option128-r309",
+      "observed_output_bytes": 85454836967,
       "execution_split": {
         "elmo_first_half": {"workers": 0, "running": false, "pid": 1973900, "stopped_at_utc": "2026-08-13T00:34:30Z", "stop_reason": "owner_authorized_duplicate_retirement_after_inzi_first_half_overtook_it", "day_partition": "even_manifest_indices", "ram_spool_reclaimed": true, "ram_spool_bytes": 0, "output_root": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-first-half-retry-r309", "prior_failed_root_preserved": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-half-r309", "eligible_for_combined_manifest": false},
         "elmo_second_half_legacy": {"workers": 0, "running": false, "pid": 1832369, "stopped_at_utc": "2026-08-13T01:51:30Z", "stop_reason": "closed_lanes_and_partial_lanes_checksum_preserved_then_replaced_by_split_accelerator", "day_partition": "odd_manifest_indices", "ram_spool_reclaimed": true, "recovery_root": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/recovery/elmo-second-half-legacy-1832369-r309", "recovery_bytes": 29798278693, "closed_lane_count": 13, "partial_lane_count": 2, "closed_file_manifest_sha256": "sha256:3b91eb72dd6efb7afd0f0a9c345f40b4f850f3196183a0b3ea1b8854bcc4e063", "closed_content_manifest_sha256": "sha256:3a45b171e37d383ecdc2d5e4dd31a3c1f2e39dd36bb270a418e05e5e91d7e6e5", "partial_file_manifest_sha256": "sha256:93ba53a2dd4eebbf0237d9f43c6a44d8b6ad86b7466e9309d910b44c7aad0aa5", "partial_content_manifest_sha256": "sha256:13a802aba64177b692487f919688ac369060afb07af68ba4dfe70d600b834399"},
-        "elmo_second_half_accelerator": {"workers": 22, "running": true, "pid": 2236982, "day_partition": "odd_manifest_indices_with_128_inner_episode_lanes", "private_spool_storage": "bounded_tmpfs_active_lane_backing_then_zfs_closed_lane_spill", "active_ram_spool_root": "/dev/shm/alakazam-refeature-2236982-1", "active_ram_spool_backing_root": "/dev/shm/alakazam-refeature-2236982-1-hidden", "active_ram_spool_bytes": 18646498168, "active_ram_spool_cap_bytes": 12884901888, "cap_accounting_excludes_atomic_symlinked_active_lane_backing": true, "closed_spool_root": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/closed-spools-elmo-second-half-split-r309", "output_root": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-second-half-split-r309"},
-        "inzi_first_half_accelerator": {"workers": 32, "running": true, "pid": 330777, "supervisor_pid": 330773, "day_partition": "even_manifest_indices_with_inner_day_episode_sharding", "private_spool_storage": "local_nvme_ext4", "private_spool_root": "/home/inzi/alakazam-r309-work/nvme-spools-r309/alakazam-refeature-330777-0", "private_spool_bytes": 65560345563, "local_raw_archive_root": "/home/inzi/alakazam-r309-work/raw-first-half", "output_root": "/home/inzi/alakazam-r309-work/first-half-nvme-r309", "runner_source_sha256": "sha256:7bb4ba34d2cec0596e982240cd6666f530628434ef85a8c37316d9e6d9d86f10", "adapter_source_sha256": "sha256:7b223a40e9ba86e7cd21d7cc0edbe1d5ed58e2ae47b8412f98b9cf5e1622f688", "available_nvme_bytes_at_start": 285152522240, "authoritative_if_complete_and_receipt_valid": true},
+        "elmo_second_half_superseded_split": {"workers": 0, "running": false, "pid": 2236982, "stopped_at_utc": "2026-08-13T02:29:30Z", "stop_reason": "obsolete_collision_spool_field_detected_before_parent_merge", "verified_completed_lane_count": 7, "verified_completed_lanes": [0, 6, 7, 9, 16, 18, 19], "completed_lane_recovery_root": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/recovery/elmo-second-half-split-2236982-r309/completed", "completed_lane_manifest_sha256": "sha256:e5e258a5d6ea79a416611ab18a2dc1ccf5d606cf2e81adb56213a06e10ba709b", "completed_lane_content_manifest_sha256": "sha256:7c81174973e1dc170077e6f0b1fe38b085e680660e9a0064993e31f881f7974f", "partial_lane_index_preserved": true},
+        "elmo_second_half_accelerator": {"workers": 22, "running": true, "pid": 2332383, "day_partition": "odd_manifest_indices_with_128_inner_episode_lanes", "private_spool_storage": "bounded_tmpfs_then_zfs_closed_lane_spill", "active_ram_spool_root": "/dev/shm/alakazam-refeature-2332383-1", "active_ram_spool_bytes": 34978769563, "active_ram_spool_cap_bytes": 60129542144, "active_ram_spool_cap_adjustment": "live_exact_process_cap_raised_from_20_gib_to_56_gib_with_verified_pylong_update_to_preserve_in_progress_lanes", "active_ram_spool_cap_adjustment_evidence": "/tmp/alakazam-refeature-2332383-cap-adjustment", "tmpfs_available_bytes_after_adjustment": 33240403968, "closed_spool_root": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/closed-spools-elmo-second-half-resume-r309", "closed_spool_bytes": 4685375063, "precompleted_lanes_imported": [0, 6, 7, 9, 16, 18, 19], "runner_source_sha256": "sha256:92f38c67c4b5b50a44bfa8ff0a0ffb506ac0c7b2d6800624d668b8a9365c659d", "output_root": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-second-half-resume-r309"},
+        "inzi_first_half_accelerator": {"workers": 32, "running": true, "pid": 537993, "supervisor_pid": 537991, "day_partition": "even_manifest_indices_with_inner_day_episode_sharding", "private_spool_storage": "local_nvme_ext4", "private_spool_root": "/home/inzi/alakazam-r309-work/nvme-spools-r309/alakazam-refeature-537993-0", "private_spool_bytes": 45790692341, "private_spool_file_count": 2048, "aggregate_worker_cpu_percent": 2767.2, "available_nvme_bytes": 283041722368, "local_raw_archive_root": "/home/inzi/alakazam-r309-work/raw-first-half", "output_root": "/home/inzi/alakazam-r309-work/first-half-nvme-option128-r309", "runner_source_sha256": "sha256:7bb4ba34d2cec0596e982240cd6666f530628434ef85a8c37316d9e6d9d86f10", "adapter_source_sha256": "sha256:4903b4af8d465879ced68f915c8ed211827ee10b40b9621e767ad40b375a31d0", "available_nvme_bytes_at_start": 285152522240, "authoritative_if_complete_and_receipt_valid": true},
+        "inzi_first_half_superseded_option60_run": {"workers": 0, "running": false, "pid": 330777, "supervisor_pid": 330773, "stopped_at_utc": "2026-08-13T03:25:02Z", "stop_reason": "legal_66_option_selection_exceeded_stale_60_row_adapter_guard", "output_root": "/home/inzi/alakazam-r309-work/first-half-nvme-r309", "eligible_for_combined_manifest": false},
         "inzi_abandoned_due_to_host_unavailability": {"workers": 32, "output_root": "/home/inzi/alakazam-fast-refeature-half-r309", "eligible_for_combined_manifest": false}
       },
       "row_scope": "acting_seat_setup_deck_contains_literal_card_id_743",
@@ -42,6 +44,18 @@
     "completion_claimed": false
   },
   "artifact_status": {
+    "revision_8_one_gib_shard_limit_migration": {
+      "state": "validator_implemented_and_tests_passed_pending_final_revision_7_run_receipts",
+      "path": "poke_bot/alakazam_rule_derivative_shard_limit_rev8.py",
+      "sha256": "sha256:aec2faa58c62f168b1b53114e0fda620ab885288f70118f2422eff0245ffc630"
+    },
+    "revision_8_finalized_shard_transfer": {
+      "state": "plan_and_receipt_path_implemented_and_tests_passed_pending_finalized_elmo_shards",
+      "path": "poke_bot/alakazam_rule_derivative_transfer_rev8.py",
+      "sha256": "sha256:83658e54cf0462c580900341e52d261d56261bfc7b4e3e2dacd834ce78cc0679",
+      "elmo_private_partials_transferable": false,
+      "inzi_local_shards_round_trip_required": false
+    },
     "revision_7_predecessor_compatibility": {
       "state": "implemented_and_focused_tests_passed",
       "path": "poke_bot/alakazam_rule_derivative_predecessor_compat_rev7.py",
@@ -80,7 +94,14 @@
     "validated_at_utc": "2026-08-12T21:25:40Z",
     "does_not_complete_or_authorize_census": true
   },
-  "next_receipt_backed_transition": "wait_for_both_elmo_halves_to_finalize_then_seal_the_combined_30_day_manifest_before_bootstrap",
+  "revision_8_last_local_validation": {
+    "command_scope": "one_gib_shard_limit_migration_and_finalized_shard_transfer_receipt_paths",
+    "result": "passed",
+    "tests_passed": 8,
+    "validated_at_utc": "2026-08-13T03:56:58Z",
+    "does_not_complete_or_authorize_refeaturization": true
+  },
+  "next_receipt_backed_transition": "wait_for_elmo_second_half_and_inzi_first_half_to_finalize_then_validate_revision_8_inflight_acceptance_and_seal_the_combined_30_day_refeaturized_manifest_before_bootstrap",
   "production_separation": {
     "r274_owner_source": "state/alakazam-new-list-direct-policy-r241.json",
     "r274_remains_separately_owned_until_clean_handoff_receipts": true,

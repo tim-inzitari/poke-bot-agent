@@ -2,11 +2,11 @@
 
 Schema: `poke_bot.goal_gateway/v1`
 
-Revision: `7`
+Revision: `8`
 
 Root handoff revision: `303-TRAINING`
 
-Status: `authoritative_for_staged_elmo_to_inzi_training_handoff`
+Status: `authoritative_for_staged_elmo_to_inzi_training_handoff_with_one_gib_final_shards`
 
 This is the stable goal entry point for the isolated Alakazam public-rule
 representation and auxiliary-head experiment. It is a separate goal from the
@@ -16,6 +16,10 @@ Kaggle queue entry, and then derivative self-play across the verified available
 fleet. It grants no immediate service/runtime change and no serving-selector or
 production deployment authority. Revision 6 clarifies corpus row scope only;
 it does not change the revision-5 lifecycle or authorize an immediate action.
+Revision 7 changes only the composite warm-start parent. Revision 8 supersedes
+the old 96-MiB publication/transfer-object limit with a binary 1-GiB limit and
+accepts the already-running revision-7 re-featurization outputs without restart
+or recomputation when their final immutable objects validate.
 
 The sole typed canonical source for this experiment is
 `goals/alakazam-elmo-rule-derivative/contract.json`. Implementation configs,
@@ -64,6 +68,8 @@ fleet activation; they do not duplicate representation or target semantics.
 Revision 6 is an explicit owner clarification recorded on 2026-08-12 without
 a new attachment; the two attachment identities above remain provenance, not
 the source of this narrower row-eligibility rule.
+Revision 8 is the owner's explicit 2026-08-13 shard-size correction and has no
+new attachment; it changes neither corpus rows nor model semantics.
 
 ## Dedicated decision ledger
 
@@ -76,6 +82,7 @@ the source of this narrower row-eligibility rule.
 | 5 | 2026-08-12 | After Elmo implementation/schema freeze, exact 30-day re-featurization/census, branch adjudication, and verified shard staging, supersede the current Inzi r274 training lineage at one clean receipt-backed boundary. Let current healthy r274 work seal first; fully pause only its trainer and r274 submission-boundary services, preserve the shared Kaggle queue service and all immutable rollback artifacts, make staged shards training-eligible atomically, and bootstrap/train the derivative on Inzi's `cuda:1` RTX PRO 5000 Blackwell from the exact sealed r274 parent with Card2Vec/backbone/existing heads/Fusion/OwnDeck/Matchup Adapters frozen. After validation, build and durably queue one checksum-exact `first_if_allowed` Kaggle package on the exact new list; then begin derivative self-play across the fully inventoried/checksum-matched available fleet without waiting for score. No runtime/service change occurs while recording this revision; no serving selector is authorized. |
 | 6 | 2026-08-12 | Scan every episode in the exact 30-day raw audit, but materialize re-featurized feature/target/checklist rows and training/validation/evaluation rows only for a decision's acting seat when that same seat's recorded setup deck contains card ID 743. Literal membership is the complete predicate: an exact pilot-list match is not required and there is no tech-inclusion exception. Exclude decisions made by a non-qualifying opponent seat even when the other seat qualifies; include each seat independently when both qualify. Preserve the acting setup-deck canonical multiset digest on every included row and in list-variant strata. Accept unchanged revision-5 raw manifests, frozen schema bytes, and correctly scoped outputs through a checksum-bound revision-6 migration receipt; do not recompute solely because the goal/contract revision changed. No runtime/service action is authorized. |
 | 7 | 2026-08-12 | Warm-start the derivative bootstrap from immutable r195 for every exact-name/shape-compatible legacy backbone and policy tensor because r195 is the strongest Alakazam weight parent. Fill architecture additions absent from r195—newer auxiliary heads, Fusion/OwnDeck additions, and matchup adapters—from the exact clean-boundary r274 checkpoint. Initialize only the genuinely new rule-residual/repaired-head parameters separately. Require a per-tensor source map, reject ambiguous overlaps or shape drift, keep every inherited tensor frozen during initial bootstrap, and preserve both checkpoints unchanged. r274 remains the same-architecture evaluation baseline and rollback source; r195 is now the primary compatible-weight warm-start source rather than only a benchmark. Accept unchanged revision-6 corpus/schema/census artifacts without recomputation. No immediate runtime/service action is authorized. |
+| 8 | 2026-08-13 | Supersede revision 4's 96-MiB final shard and transfer-object limit with at most one binary GiB (1,073,741,824 bytes). Preserve deterministic routing, content addressing, schema/SHA/size validation, create-only publication, and the prohibition on transferring private partials. Let the active revision-7 Elmo/Inzi re-featurization runs finish without restart or recomputation; accept their immutable final objects through a checksum-bound revision-8 migration receipt. Inzi-local results remain on Inzi, while finalized Elmo objects may transfer create-only to the new revision-8 quarantine root. This changes no row scope, model, training, service, selector, or activation authority. |
 
 ## Authority and ground truth
 
@@ -100,7 +107,7 @@ the source of this narrower row-eligibility rule.
 
 - Until revision 6's complete readiness, corpus-scope migration, and activation
   receipts exist,
-  revision 4's exact quarantined create-only shard transfer remains the only
+  revision 8's exact one-GiB quarantined create-only shard transfer remains the only
   permitted Inzi action. Staged shards may not be loaded or used early. This
   metadata update itself performs no Inzi file, runtime, worker, service,
   checkpoint, queue, submission, or collection action.
@@ -157,20 +164,20 @@ the source of this narrower row-eligibility rule.
 No derivative branch may receive nonzero activation and no candidate training
 or BO250 may begin until the exact 30-day corpus and full census validate.
 
-## Revision 4 create-only transfer staging
+## Revision 4 create-only transfer staging (historical size superseded by revision 8)
 
 As soon as one re-featurization/census shard is complete and immutable, is no
-larger than 96 MiB (100,663,296 bytes), and passes its individual schema,
+larger than one binary GiB (1,073,741,824 bytes), and passes its individual schema,
 SHA-256, and exact-size validation, it may transfer in parallel with the
 remaining Elmo pass. The destination is the quarantined, non-runtime,
 create-only Inzi directory
-`/home/inzi/poke-bot-agent/outputs/quarantine/alakazam-elmo-rule-derivative/g4-refeaturized-census-shards`.
+`/home/inzi/poke-bot-agent/outputs/quarantine/alakazam-elmo-rule-derivative/g8-one-gib-refeaturized-census-shards`.
 
-Each object uses its complete lowercase SHA-256 in its filename, binds the
+Revision 8 supersedes only the historical 96-MiB size threshold below. Each
+object uses its complete lowercase SHA-256 in its filename, binds the
 frozen feature/target/checklist-provenance schema digests and validated 30-day
 raw-manifest SHA-256, and is published immutably. Transfer uses at most four
-parallel lanes; every individual object remains under the approximately
-100-MB gateway through the stricter 96-MiB limit. A remote object is complete
+parallel lanes; every individual object is at most one binary GiB. A remote object is complete
 only after post-transfer SHA-256 and exact-size verification.
 
 The copy path is resumable and idempotent: a byte-exact verified destination is
@@ -180,7 +187,11 @@ content is refused without overwrite, delete, rename, or replacement. After
 all source shards complete, a final receipt proves source/remote manifest,
 object-count, filename, SHA-256, and size parity.
 
-This grants only directory creation and create-only transfer/staging authority.
+The revision-8 destination is
+`/home/inzi/poke-bot-agent/outputs/quarantine/alakazam-elmo-rule-derivative/g8-one-gib-refeaturized-census-shards`.
+Private `.partial` files and worker spools are never transferable. Inzi-local
+finalized objects remain on Inzi and enter the same checksum inventory without
+an unnecessary round trip. This grants only directory creation and create-only transfer/staging authority.
 The Inzi artifacts remain quarantined and training-ineligible. No Inzi load,
 decode, import, mmap, cache warm, training, collection, selector, runtime,
 worker, service, checkpoint, package, submission, propagation, or activation

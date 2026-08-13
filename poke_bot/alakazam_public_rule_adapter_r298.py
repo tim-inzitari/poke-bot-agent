@@ -110,7 +110,11 @@ DEFAULT_CONFIG_PATH = (
 # one feature bucket.
 MAX_NUMBER_VALUE = 64
 MAX_SELECTION_COUNT = 60
-MAX_OPTION_COUNT = 60
+# A legal selection menu can contain more than one row per deck card (for
+# example, distinct action bindings), so its bounded row count is not the
+# 60-card deck-size limit.  Keep a conservative fixed bound for representation
+# safety while accepting observed simulator menus such as 66 rows.
+MAX_OPTION_COUNT = 128
 MAX_SLOT_INDEX = 63
 MAX_HP_VALUE = 4096
 MAX_BENCH_MAXIMUM = 16

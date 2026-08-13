@@ -1,7 +1,7 @@
 # Pokémon RL Goal Gateway
 
 Schema: `poke_bot.goal_gateway/v1`  
-Revision: `309`
+Revision: `310`
 
 Status: `authoritative`
 
@@ -1760,12 +1760,12 @@ recording revision 303. The dedicated derivative semantics and closed receipt
 inventories remain solely canonical in
 `goals/alakazam-elmo-rule-derivative/contract.json`; the production handoff is
 owned by `state/alakazam-new-list-direct-policy-r241.json`.
-The current dedicated revision-6 gateway is
+The current dedicated revision-8 gateway is
 `goals/alakazam-elmo-rule-derivative/GOAL.md`
-(`sha256:d275696bb8322c1741463d63b4506d9b04f1252c3c6cdbe7559c999b55b83da7`)
+(`sha256:3e710a6f474e096e2562c8a42d6c886e78009baf622c9fd6cb68901657c7ced4`)
 and its sole typed contract is
 `goals/alakazam-elmo-rule-derivative/contract.json`
-(`sha256:98e39d771569bdf778885848fc61732275c89c517e057a34bd3006144c23bdd1`).
+(`sha256:b522af1617f02a49522302947f1a4841ef24db7213f0e2ea8abeaba1332fb2cc`).
 
 Under revision 304-TRAINING, the owner terminates this root task's r274
 production cycle after the currently active iteration 1 update. Finish
@@ -3868,6 +3868,7 @@ or workflow has changed:
 | 307-TRAINING | 2026-08-12 | For the terminal r274 iteration 1, finish the active ordinary optimizer and one Matchup Adapter continuation epoch, skip formal holdout and research-control evaluation, then commit, submit to Kaggle, and stop before iteration 2. | This exact iteration receives an owner evaluation waiver and may not be called a measured pass. Preserve earlier evidence, do not interrupt or recollect, keep RTP/search/MCTS off, require the accepted submission-ID receipt, and leave future defaults and the separate derivative goal unchanged. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
 | 308-TRACKING | 2026-08-12 | Route `/goal` tracking for the Alakazam Elmo rule derivative through its dedicated human gateway, sole typed contract, and concise receipt-backed execution-status projection, while preserving the root/r241 ownership of the separate r274 terminal lineage and production handoff. | Active immediately as a metadata-only routing change. It changes no derivative semantics, runtime, service, selector, checkpoint, corpus, training, staging, queue, or submission authority. |
 | 309-KAGGLE | 2026-08-12 | Submit one additional checksum-exact copy of immutable r195 NO-RTP submission `55378392` with exact label `r195 iter 21 261d367e131e NO RTP`. | Activated immediately without changing archive bytes, training, or runtime. Fresh one-shot authorization was consumed before upload; Kaggle submission `55468965` was accepted for evaluation at `2026-08-12T23:38:18Z`. Typed source: `state/alakazam-r195-no-rtp-additional-copy-r309.json`. |
+| 310-TRACKING | 2026-08-13 | Record the derivative owner's one-GiB final content-addressed shard and transfer-object limit in the dedicated revision-8 goal/contract. | Pointer-only root reconciliation. The active revision-7 Elmo/Inzi re-featurization runs continue without restart or recomputation and remain predecessor evidence; private partials remain ineligible. This changes no r274, service, selector, training, submission, or activation authority. |
 
 ## Non-regression invariants
 

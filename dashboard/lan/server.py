@@ -360,13 +360,13 @@ class SnapshotCache:
             return {"host": host, "reachable": False, "error": str(exc)}
 
     def _derivative_progress(self) -> dict[str, Any]:
-        def probe_command(pid: int, index: int, workers: int, root: str, *, spool_parent: str = "/dev/shm", sudo: bool = False) -> str:
+        def probe_command(pid: int, index: int, workers: int, root: str, *, spool_parent: str = "/dev/shm", completed_spool_root: str = "", sudo: bool = False) -> str:
             prefix = "sudo -n " if sudo else ""
-            return prefix + f"python3 -c 'import glob,json,os; p=\"{spool_parent}/alakazam-refeature-{pid}-{index}\"; root=\"{root}\"; running=os.path.isdir(p) and os.path.isdir(\"/proc/{pid}\"); print(json.dumps({{\"workers\":{workers} if running else 0,\"running\":running,\"spool_bytes\":sum(os.path.getsize(f) for f in glob.glob(p+\"/**/*\",recursive=True) if os.path.isfile(f)),\"spool_root\":p,\"complete\":os.path.isfile(root+\"/COMPLETE.json\"),\"output_root\":root}}))'"
+            return prefix + f"python3 -c 'import glob,json,os; p=\"{spool_parent}/alakazam-refeature-{pid}-{index}\"; c=\"{completed_spool_root}\"; root=\"{root}\"; running=os.path.isdir(p) and os.path.isdir(\"/proc/{pid}\"); active=sum(os.path.getsize(f) for f in glob.glob(p+\"/**/*\",recursive=True) if os.path.isfile(f)); closed=sum(os.path.getsize(f) for f in glob.glob(c+\"/**/*\",recursive=True) if os.path.isfile(f)) if c else 0; print(json.dumps({{\"workers\":{workers} if running else 0,\"running\":running,\"spool_bytes\":active+closed,\"active_spool_bytes\":active,\"closed_spool_bytes\":closed,\"spool_root\":p,\"complete\":os.path.isfile(root+\"/COMPLETE.json\"),\"output_root\":root}}))'"
         probes = {
             "elmo_first": ("admin@192.168.1.143", probe_command(1973900, 0, 15, "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-first-half-retry-r309")),
-            "elmo_second": ("admin@192.168.1.143", probe_command(2236982, 1, 22, "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-second-half-split-r309")),
-            "inzi_first": ("inzi@192.168.1.151", probe_command(330777, 0, 32, "/home/inzi/alakazam-r309-work/first-half-nvme-r309", spool_parent="/home/inzi/alakazam-r309-work/nvme-spools-r309", sudo=True)),
+            "elmo_second": ("admin@192.168.1.143", probe_command(2332383, 1, 22, "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-second-half-resume-r309", completed_spool_root="/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/closed-spools-elmo-second-half-resume-r309/alakazam-refeature-2332383-1")),
+            "inzi_first": ("inzi@192.168.1.151", probe_command(537993, 0, 32, "/home/inzi/alakazam-r309-work/first-half-nvme-option128-r309", spool_parent="/home/inzi/alakazam-r309-work/nvme-spools-r309", sudo=True)),
         }
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
             futures = {name: pool.submit(self._derivative_host_progress, *spec) for name, spec in probes.items()}

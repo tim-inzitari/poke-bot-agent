@@ -21,12 +21,12 @@
     "delegated_goal_gateways": {
       "alakazam_elmo_rule_derivative": {
         "authoritative_goal_gateway": "goals/alakazam-elmo-rule-derivative/GOAL.md",
-        "authoritative_goal_gateway_sha256": "sha256:d275696bb8322c1741463d63b4506d9b04f1252c3c6cdbe7559c999b55b83da7",
+        "authoritative_goal_gateway_sha256": "sha256:3e710a6f474e096e2562c8a42d6c886e78009baf622c9fd6cb68901657c7ced4",
         "sole_typed_canonical_source": "goals/alakazam-elmo-rule-derivative/contract.json",
-        "sole_typed_canonical_source_sha256": "sha256:98e39d771569bdf778885848fc61732275c89c517e057a34bd3006144c23bdd1",
+        "sole_typed_canonical_source_sha256": "sha256:b522af1617f02a49522302947f1a4841ef24db7213f0e2ea8abeaba1332fb2cc",
         "execution_status_projection": "goals/alakazam-elmo-rule-derivative/STATUS.json",
-        "execution_status_projection_sha256": "sha256:79ab11092b34253254590162c1343565dbfd25cd4717104f01764d5a85929ec8",
-        "goal_revision": 7,
+        "execution_status_projection_sha256": "sha256:0313eb6729d5360401eafc24631e5c93ca40346576e7bbd77a89c9738ae7c2ce",
+        "goal_revision": 8,
         "root_handoff_revision": 303
       }
     }
@@ -34,15 +34,15 @@
   "current_owner_overrides": {
     "alakazam_elmo_rule_derivative": {
       "goal_id": "alakazam-elmo-rule-derivative",
-      "goal_revision": 7,
+      "goal_revision": 8,
       "root_handoff_revision": 303,
-      "status_summary": "phase_a_exact_30_day_collision_census_in_progress_unsealed",
+      "status_summary": "phase_d_distributed_card_743_refeaturization_in_progress_unsealed_revision_8_one_gib",
       "authoritative_goal_gateway": "goals/alakazam-elmo-rule-derivative/GOAL.md",
-      "authoritative_goal_gateway_sha256": "sha256:d275696bb8322c1741463d63b4506d9b04f1252c3c6cdbe7559c999b55b83da7",
+      "authoritative_goal_gateway_sha256": "sha256:3e710a6f474e096e2562c8a42d6c886e78009baf622c9fd6cb68901657c7ced4",
       "sole_typed_canonical_source": "goals/alakazam-elmo-rule-derivative/contract.json",
-      "sole_typed_canonical_source_sha256": "sha256:98e39d771569bdf778885848fc61732275c89c517e057a34bd3006144c23bdd1",
+      "sole_typed_canonical_source_sha256": "sha256:b522af1617f02a49522302947f1a4841ef24db7213f0e2ea8abeaba1332fb2cc",
       "execution_status_projection": "goals/alakazam-elmo-rule-derivative/STATUS.json",
-      "execution_status_projection_sha256": "sha256:79ab11092b34253254590162c1343565dbfd25cd4717104f01764d5a85929ec8",
+      "execution_status_projection_sha256": "sha256:0313eb6729d5360401eafc24631e5c93ca40346576e7bbd77a89c9738ae7c2ce",
       "semantic_authority": "dedicated_goal_contract_only",
       "production_handoff_owner": "state/alakazam-new-list-direct-policy-r241.json",
       "immediate_runtime_or_service_change": false,
@@ -54,7 +54,7 @@
       "latest_owner_clarification_revision": 308,
       "status": "immutable_owner_intent_external_activation_overlay_required",
       "typed_source": "state/alakazam-new-list-direct-policy-r241.json",
-      "typed_source_sha256": "sha256:48a3018b6b8430dcb981afc5f1b4315901a53181b9c4cf5b89ac6f5123b76a0d",
+      "typed_source_sha256": "sha256:5678e02afaf4978bb327843889ddc355a09369128103be4a048a7eafc1acf156",
       "specialist_id": "alakazam",
       "parent_checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
       "parent_checkpoint_file_identity": {

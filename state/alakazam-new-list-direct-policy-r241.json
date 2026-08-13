@@ -779,11 +779,11 @@
     "schema": "poke_bot.alakazam_elmo_rule_derivative_handoff/v1",
     "status": "dedicated_semantics_reference_with_production_handoff_owned_by_revision_303",
     "authoritative_goal_gateway": "goals/alakazam-elmo-rule-derivative/GOAL.md",
-    "authoritative_goal_gateway_sha256": "sha256:d275696bb8322c1741463d63b4506d9b04f1252c3c6cdbe7559c999b55b83da7",
+    "authoritative_goal_gateway_sha256": "sha256:3e710a6f474e096e2562c8a42d6c886e78009baf622c9fd6cb68901657c7ced4",
     "sole_typed_canonical_source": "goals/alakazam-elmo-rule-derivative/contract.json",
-    "sole_typed_canonical_source_sha256": "sha256:98e39d771569bdf778885848fc61732275c89c517e057a34bd3006144c23bdd1",
+    "sole_typed_canonical_source_sha256": "sha256:b522af1617f02a49522302947f1a4841ef24db7213f0e2ea8abeaba1332fb2cc",
     "execution_status_projection": "goals/alakazam-elmo-rule-derivative/STATUS.json",
-    "execution_status_projection_sha256": "sha256:79ab11092b34253254590162c1343565dbfd25cd4717104f01764d5a85929ec8",
+    "execution_status_projection_sha256": "sha256:0313eb6729d5360401eafc24631e5c93ca40346576e7bbd77a89c9738ae7c2ce",
     "execution_status_projection_is_authoritative": false,
     "current_source_attachment": {
       "path": "/Users/tsinzitari/.codex/attachments/8100a736-c437-41f2-b559-97f78d2e2f78/pasted-text.txt",
@@ -808,7 +808,7 @@
     "production_training_handoff": {
       "schema": "poke_bot.alakazam_rule_derivative_production_handoff/v1",
       "owner_revision": 303,
-      "dedicated_goal_revision": 7,
+      "dedicated_goal_revision": 8,
       "status": "authorized_for_future_clean_receipt_backed_boundary_no_action_now",
       "predecessor_lineage": "alakazam-new-list-direct-policy-r274",
       "successor_lineage": "alakazam-rule-derivative-g5",

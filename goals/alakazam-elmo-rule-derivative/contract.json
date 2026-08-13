@@ -1,10 +1,10 @@
 {
   "schema": "poke_bot.alakazam_elmo_rule_derivative_goal/v1",
   "goal_id": "alakazam-elmo-rule-derivative",
-  "goal_revision": 7,
+  "goal_revision": 8,
   "root_handoff_revision": 303,
-  "recorded_at_utc": "2026-08-12T20:04:30Z",
-  "status": "authorized_staged_elmo_to_inzi_blackwell_training_handoff_with_revision_6_acting_seat_corpus_scope_no_immediate_runtime_change",
+  "recorded_at_utc": "2026-08-13T03:45:00Z",
+  "status": "authorized_staged_elmo_to_inzi_blackwell_training_handoff_with_revision_8_one_gib_content_addressed_shards_no_immediate_runtime_change",
   "authority": {
     "authoritative_goal_gateway": "goals/alakazam-elmo-rule-derivative/GOAL.md",
     "sole_typed_canonical_source": "goals/alakazam-elmo-rule-derivative/contract.json",
@@ -22,6 +22,7 @@
     "future_checksum_exact_single_use_kaggle_queue_authority_after_validated_bootstrap": true,
     "revision_6_changes_corpus_row_scope_only": true,
     "revision_7_changes_bootstrap_parent_composition_only": true,
+    "revision_8_changes_final_shard_and_transfer_object_limit_only": true,
     "immediate_runtime_service_preemption_training_submission_or_self_play_authority": false
   },
   "source_attachment": {
@@ -203,6 +204,66 @@
     "revision_6_corpus_schema_census_and_migration_artifacts_reusable_without_recompute": true,
     "immediate_runtime_or_service_authority": false
   },
+  "revision_8_one_gib_content_addressed_shards": {
+    "owner_goal_revision": 8,
+    "predecessor_goal_revision": 7,
+    "predecessor_gateway_sha256": "sha256:d275696bb8322c1741463d63b4506d9b04f1252c3c6cdbe7559c999b55b83da7",
+    "predecessor_contract_sha256": "sha256:98e39d771569bdf778885848fc61732275c89c517e057a34bd3006144c23bdd1",
+    "semantic_delta": "supersede_the_historical_96_mib_final_shard_and_transfer_object_limit_with_one_gib_without_changing_record_routing_or_corpus_semantics",
+    "maximum_final_content_addressed_shard_bytes": 1073741824,
+    "maximum_transfer_object_bytes": 1073741824,
+    "maximum_size_is_binary_one_gib": true,
+    "applies_to": [
+      "final_refeaturized_feature_shards",
+      "final_collision_census_shards",
+      "create_only_elmo_to_inzi_transfer_objects"
+    ],
+    "logical_routing_and_deterministic_parent_merge_unchanged": true,
+    "private_partial_or_worker_spool_transfer_allowed": false,
+    "only_finalized_immutable_content_addressed_objects_transferable": true,
+    "in_flight_revision_7_runs_may_complete_without_restart": true,
+    "revision_7_raw_manifest_freeze_parity_census_and_refeaturization_evidence_reusable_when_checksum_and_scope_validate": true,
+    "revision_7_outputs_may_be_retagged_or_mutated_in_place": false,
+    "restart_recompute_or_refeaturization_due_only_to_revision_8": false,
+    "inzi_local_finalized_objects_remain_on_inzi_and_require_local_inventory_not_round_trip_transfer": true,
+    "elmo_finalized_objects_transfer_create_only_to_inzi_after_individual_sha_size_and_schema_validation": true,
+    "training_or_runtime_authority_before_existing_handoff_activation_receipt": false,
+    "receipt_schemas": {
+      "per_shard_transfer": "poke_bot.alakazam_elmo_refeaturization_shard_transfer_receipt/v2",
+      "final_source_remote_parity": "poke_bot.alakazam_elmo_refeaturization_transfer_parity_receipt/v2",
+      "revision_7_inflight_acceptance": "poke_bot.alakazam_rule_derivative_revision_8_shard_limit_migration_receipt/v1"
+    },
+    "revision_7_inflight_acceptance_receipt_required_fields": [
+      "schema",
+      "goal_contract_path",
+      "goal_contract_sha256",
+      "goal_revision",
+      "predecessor_gateway_sha256",
+      "predecessor_contract_sha256",
+      "validated_30_day_raw_manifest_sha256",
+      "revision_7_run_receipt_sha256s",
+      "logical_routing_unchanged",
+      "all_final_objects_content_addressed",
+      "all_final_objects_complete_and_immutable",
+      "all_final_objects_maximum_size_bytes",
+      "all_final_objects_at_or_below_one_gib",
+      "private_partials_transferred",
+      "restart_or_recompute_due_only_to_revision_8",
+      "migration_validation_passed",
+      "sealed_at_utc"
+    ],
+    "fixed_receipt_values": {
+      "goal_revision": 8,
+      "logical_routing_unchanged": true,
+      "all_final_objects_complete_and_immutable": true,
+      "all_final_objects_maximum_size_bytes": 1073741824,
+      "all_final_objects_at_or_below_one_gib": true,
+      "private_partials_transferred": false,
+      "restart_or_recompute_due_only_to_revision_8": false,
+      "migration_validation_passed": true
+    },
+    "immediate_runtime_service_training_submission_or_activation_authority": false
+  },
   "objective": "Build and validate the Alakazam public-rule derivative on Elmo, then at one clean receipt-backed boundary supersede the active Inzi r274 training lineage with frozen-parent Blackwell bootstrap/training, queue one checksum-exact first_if_allowed Kaggle submission after bootstrap validation, and only after the durable queue receipt begin derivative self-play across the checksum-proven available hardware fleet; perform no runtime or service change while recording this contract.",
   "desired_results": [
     "measured_collision_and_rules_coverage_report_over_raw_elmo_episodes",
@@ -222,7 +283,7 @@
     "refeaturized_rows_follow_revision_6_acting_seat_card_743_scope": true,
     "broad_recollection_default": false,
     "broad_recollection_allowed_only_if_raw_audit_proves_required_evidence_absent": true,
-    "inzi_changes_before_receipt_backed_handoff_except_revision_4_quarantined_create_only_shard_staging": false,
+    "inzi_changes_before_receipt_backed_handoff_except_revision_8_quarantined_create_only_shard_staging": false,
     "inzi_restarts_workers_collection_checkpoint_or_runtime_changes_while_recording_revision_5": false,
     "production_serving_selector_activation": false,
     "parent_checkpoints_and_current_feature_artifacts_immutable": true
@@ -364,16 +425,17 @@
   "create_only_inzi_transfer_staging": {
     "historical_transfer_contract_owner_goal_revision": 4,
     "training_eligibility_supersession_owner_goal_revision": 6,
+    "shard_size_supersession_owner_goal_revision": 8,
     "authority_before_handoff": "transfer_and_quarantined_byte_staging_only",
     "source_host": "elmo",
     "destination_host": "inzi",
-    "destination_directory": "/home/inzi/poke-bot-agent/outputs/quarantine/alakazam-elmo-rule-derivative/g4-refeaturized-census-shards",
+    "destination_directory": "/home/inzi/poke-bot-agent/outputs/quarantine/alakazam-elmo-rule-derivative/g8-one-gib-refeaturized-census-shards",
     "destination_role": "quarantined_non_runtime_create_only_staging",
     "destination_directory_creation_allowed": true,
     "destination_must_be_real_directory_not_symlink": true,
     "receipt_schemas": {
-      "per_shard": "poke_bot.alakazam_elmo_refeaturization_shard_transfer_receipt/v1",
-      "final_parity": "poke_bot.alakazam_elmo_refeaturization_transfer_parity_receipt/v1",
+      "per_shard": "poke_bot.alakazam_elmo_refeaturization_shard_transfer_receipt/v2",
+      "final_parity": "poke_bot.alakazam_elmo_refeaturization_transfer_parity_receipt/v2",
       "per_shard_filename_pattern": "sha256-<64_lowercase_object_hex>.transfer-receipt.json",
       "final_parity_filename": "transfer-parity-receipt.json"
     },
@@ -381,8 +443,8 @@
     "shard_eligibility": {
       "complete": true,
       "immutable": true,
-      "maximum_size_mib": 96,
-      "maximum_size_bytes": 100663296,
+      "maximum_size_mib": 1024,
+      "maximum_size_bytes": 1073741824,
       "individual_schema_validation_required": true,
       "individual_sha256_validation_required": true,
       "individual_exact_size_validation_required": true,
@@ -398,8 +460,8 @@
     "transport": {
       "parallel_lanes_maximum": 4,
       "parallel_lanes_minimum": 1,
-      "per_object_gateway_limit_approximate_mb": 100,
-      "strict_per_object_limit_is_96_mib": true,
+      "per_object_gateway_limit_bytes": 1073741824,
+      "strict_per_object_limit_is_one_gib": true,
       "resumable": true,
       "idempotent": true,
       "partial_object_name_is_private_and_not_eligible": true,
@@ -444,8 +506,10 @@
         "conflict_refused",
         "inzi_loading_or_execution_authority"
       ],
-      "goal_revision_value": 4,
-      "historical_goal_contract_sha256_value": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+      "goal_revision_value": 8,
+      "goal_contract_sha256_value": "exact_revision_8_contract_file_sha256_at_receipt_creation",
+      "predecessor_goal_revision_value": 7,
+      "predecessor_goal_contract_sha256_value": "sha256:98e39d771569bdf778885848fc61732275c89c517e057a34bd3006144c23bdd1",
       "inzi_loading_or_execution_authority_value": false,
       "receipt_must_be_checksum_bound": true
     },
@@ -471,8 +535,10 @@
         "source_remote_parity_passed",
         "inzi_loading_or_execution_authority"
       ],
-      "goal_revision_value": 4,
-      "historical_goal_contract_sha256_value": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+      "goal_revision_value": 8,
+      "goal_contract_sha256_value": "exact_revision_8_contract_file_sha256_at_receipt_creation",
+      "predecessor_goal_revision_value": 7,
+      "predecessor_goal_contract_sha256_value": "sha256:98e39d771569bdf778885848fc61732275c89c517e057a34bd3006144c23bdd1",
       "source_remote_parity_required": true,
       "source_remote_parity_passed_value": true,
       "inzi_loading_or_execution_authority_value": false,
@@ -512,7 +578,7 @@
     "owner_goal_revision": 5,
     "status": "authorized_for_future_clean_boundary_no_runtime_change_now",
     "trusted_roots": {
-      "staged_corpus_root": "/home/inzi/poke-bot-agent/outputs/quarantine/alakazam-elmo-rule-derivative/g4-refeaturized-census-shards",
+      "staged_corpus_root": "/home/inzi/poke-bot-agent/outputs/quarantine/alakazam-elmo-rule-derivative/g8-one-gib-refeaturized-census-shards",
       "run_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5",
       "checkpoint_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5/checkpoints",
       "receipt_root": "/home/inzi/poke-bot-agent/outputs/receipts/alakazam-rule-derivative-g5",
