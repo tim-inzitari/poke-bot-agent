@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update Durable Goal"
+  short_description: "Safely record and activate durable goal changes"
+  default_prompt: "Use $update-durable-goal to record this owner decision in the authoritative goal package."

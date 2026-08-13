@@ -1,0 +1,32 @@
+{
+  "schema": "durable-goals.contract/v1",
+  "goal_id": "example-model-refresh",
+  "revision": 1,
+  "objective": "Promote a validated model without losing provenance.",
+  "invariants": [
+    {
+      "id": "immutable-evidence",
+      "statement": "Completion must be supported by checksum-verified evidence."
+    },
+    {
+      "id": "explicit-activation",
+      "statement": "Recorded owner intent does not silently change activated reality."
+    }
+  ],
+  "completion": {
+    "all": [
+      {
+        "evidence": "evaluation",
+        "field": "/metrics/accuracy",
+        "gte": 0.9
+      },
+      {
+        "evidence": "release",
+        "field": "/activated",
+        "equals": true
+      }
+    ]
+  },
+  "delegations": [],
+  "transitions": []
+}

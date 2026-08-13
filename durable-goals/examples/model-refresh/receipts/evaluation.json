@@ -1,0 +1,7 @@
+{
+  "schema": "example.evaluation-receipt/v1",
+  "metrics": {
+    "accuracy": 0.87
+  },
+  "completed_at": "2026-08-12T17:30:00Z"
+}

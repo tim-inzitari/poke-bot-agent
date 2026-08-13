@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://durable-goals.dev/schemas/activation.schema.json",
+  "title": "Durable Goals Activation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "goal_id", "amendment_revision", "activated_at"],
+  "properties": {
+    "schema": {"const": "durable-goals.activation/v1"},
+    "goal_id": {"type": "string", "minLength": 1},
+    "amendment_revision": {"type": "integer", "minimum": 2},
+    "activated_at": {"type": "string", "format": "date-time"},
+    "evidence_id": {"type": "string", "minLength": 1}
+  }
+}

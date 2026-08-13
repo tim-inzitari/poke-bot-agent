@@ -1,0 +1,18 @@
+{
+  "schema": "durable-goals.evidence-index/v1",
+  "goal_id": "example-model-refresh",
+  "entries": [
+    {
+      "id": "evaluation",
+      "path": "receipts/evaluation.json",
+      "sha256": "sha256:9224cf5b9f829d09b61379c77f0ffba0b12fad7a1304bef669f102ee845d6c6f",
+      "contract_revision": 1
+    },
+    {
+      "id": "release",
+      "path": "receipts/release.json",
+      "sha256": "sha256:d495ad01dd8d430fed64f6ab0e4de313884b796f076718c3c68b5d08f3b61620",
+      "contract_revision": 1
+    }
+  ]
+}

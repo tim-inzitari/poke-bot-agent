@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://durable-goals.dev/schemas/evidence-index.schema.json",
+  "title": "Durable Goals Evidence Index v1",
+  "type": "object",
+  "required": ["schema", "goal_id", "entries"],
+  "properties": {
+    "schema": {"const": "durable-goals.evidence-index/v1"},
+    "goal_id": {"type": "string", "minLength": 1},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "path", "sha256"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "contract_revision": {"type": "integer", "minimum": 1}
+        }
+      }
+    }
+  }
+}

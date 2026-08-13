@@ -1,0 +1,24 @@
+{
+  "schema": "durable-goals.gateway/v1",
+  "goal_id": "example-model-refresh",
+  "current_revision": 2,
+  "contract": {
+    "path": "contract.json",
+    "sha256": "sha256:c0ad6499425bf33d669efb9b148034b5806165382d1a75a088bd6be4ddfa5626"
+  },
+  "amendments": {
+    "path": "amendments.jsonl",
+    "sha256": "sha256:e12a12bc8eda9034bd137cb32e23bce61cabf82874a629984e110b5ec407421f"
+  },
+  "activations": {
+    "path": "activations.jsonl",
+    "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "evidence_index": {
+    "path": "evidence-index.json",
+    "sha256": "sha256:f369fb00c640367ad1df943e92e552de3235330ae9837ddf964107d90b1d1217"
+  },
+  "status": {
+    "path": "STATUS.json"
+  }
+}
