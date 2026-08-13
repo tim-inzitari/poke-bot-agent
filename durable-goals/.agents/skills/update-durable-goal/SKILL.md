@@ -1,7 +1,7 @@
 ---
 name: update-durable-goal
 description: Safely create, update, activate, and chain durable-goals packages when the owner changes an objective, invariant, completion condition, delegation, authority rule, activation state, or says one goal should follow another. Use for prompts such as "update the goal," "record this decision," "after this goal do X," "change the authoritative goal," "activate revision N," or "refresh goal status." Do not use for ordinary implementation progress that supplies no owner goal change.
-license: Apache-2.0
+license: MIT
 metadata:
   durable-goals-version: "0.1"
 ---
