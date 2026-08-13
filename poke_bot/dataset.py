@@ -130,6 +130,15 @@ class DecisionSample:
     own_deck_supervision_stage_indices: dict[str, tuple[int, ...]] = field(
         default_factory=dict
     )
+    #: Target-only r263 shadow-planner labels aligned to one exact complete
+    #: legal-action stage.  Search receipts and proposals are never model
+    #: inputs; only the masked four-output target rows are retained here.
+    tactical_sequence_supervision: Optional[dict[str, Any]] = None
+    tactical_sequence_supervision_stage_index: int = -1
+    #: Exact sidecar action-menu digests used only to bridge legacy compact
+    #: shards whose integer action combos were deliberately omitted.  These
+    #: are provenance, never model inputs.
+    sidecar_action_combos_fingerprints: tuple[str, ...] = ()
     #: Immutable public-observation provenance.  This is not featurized or
     #: supplied to the model; it is the fourth canonical r259 join-key field.
     observation_fingerprint: Optional[str] = None
@@ -707,6 +716,7 @@ def _sidecar_visible_tutor_stage_indices(
     supervision: Mapping[str, Any],
     *,
     option_features: Sequence[Sequence[Sequence[float]]],
+    legacy_compact_action_chain: bool = False,
 ) -> tuple[int, ...]:
     """Attach tutor facts only to selected, non-STOP exposed-card stages."""
 
@@ -745,6 +755,17 @@ def _sidecar_visible_tutor_stage_indices(
         if card_id is None or serial is None:
             raise OwnDeckSidecarJoinError("sidecar tutor card identity is invalid")
         selected_pairs.add((card_id, serial))
+    if (
+        legacy_compact_action_chain
+        and len(stages_for_tutor) > len(raw_ids)
+    ):
+        # Compact autoregressive shards repeat the same completed action's
+        # menu-aligned ledger facts at each token prefix.  Once the selected
+        # prefix chain has been proven against the immutable action token,
+        # supervise only the final N completed exposed-card choices.  This
+        # preserves the sidecar's factual selected-card cardinality instead
+        # of treating tokenizer prefixes as additional tutor selections.
+        stages_for_tutor = stages_for_tutor[-len(raw_ids) :]
     if len(selected_pairs) != len(raw_ids) or len(stages_for_tutor) != len(raw_ids):
         raise OwnDeckSidecarJoinError(
             "sidecar tutor labels do not match selected exposed-card stages"
@@ -758,12 +779,16 @@ def _validate_sidecar_row(
     sequence: GameSequence,
     decision: DecisionSample,
     expected_source_manifest_sha256: str,
+    allow_legacy_board_abi: bool = False,
 ) -> tuple[
     OwnDeckLedgerSnapshot,
     dict[str, Any],
     tuple[tuple[tuple[float, ...], ...], ...],
     dict[str, tuple[int, ...]],
+    tuple[int, ...],
     bool,
+    bool,
+    tuple[str, ...],
 ]:
     """Validate one row without mutating the in-memory feature shard."""
 
@@ -810,15 +835,69 @@ def _validate_sidecar_row(
         raise OwnDeckSidecarJoinError("feature shard deck cannot bind a ledger") from exc
     if snapshot.deck_fingerprint != local_deck_fingerprint:
         raise OwnDeckSidecarJoinError("sidecar row deck fingerprint mismatches shard")
-    if row.get("board_feature_fingerprint") != _sparse_board_feature_fingerprint(
+    board_parity = row.get("board_feature_fingerprint") == _sparse_board_feature_fingerprint(
         decision.board
-    ):
+    )
+    if not board_parity and not allow_legacy_board_abi:
         raise OwnDeckSidecarJoinError("sidecar row board fingerprint mismatches shard")
 
     raw_stages = row.get("policy_stage_option_features")
     if not isinstance(raw_stages, list) or len(raw_stages) != len(decision.policy_stages):
         raise OwnDeckSidecarJoinError("sidecar policy-stage count mismatches shard")
+
+    def _selected_word(stage: PolicyStage, selected: int) -> tuple[tuple[int, float], ...] | None:
+        action_token = decision.action_token
+        option_count = int(stage.options.num_words)
+        if (
+            action_token is None
+            or int(action_token.num_words) != 1
+            or option_count <= 0
+            or int(stage.options.pos) != int(action_token.pos) * option_count
+            or not 0 <= selected < option_count
+        ):
+            return None
+        start = int(stage.options.offset[selected])
+        end = (
+            int(stage.options.offset[selected + 1])
+            if selected + 1 < option_count
+            else len(stage.options.index)
+        )
+        base = selected * int(action_token.pos)
+        return tuple(
+            (int(stage.options.index[pos]) - base, float(stage.options.value[pos]))
+            for pos in range(start, end)
+        )
+
+    def _selected_chain_matches_action_token() -> bool:
+        action_token = decision.action_token
+        if action_token is None or int(action_token.num_words) != 1:
+            return False
+        action_word = tuple(
+            (int(index), float(value))
+            for index, value in zip(action_token.index, action_token.value, strict=True)
+        )
+        selected_words: list[tuple[tuple[int, float], ...]] = []
+        for stage in decision.policy_stages:
+            selected_word = _selected_word(stage, int(stage.target_index))
+            if (
+                selected_word is None
+                or not selected_word
+                or len(selected_word) > len(action_word)
+                or selected_word != action_word[: len(selected_word)]
+            ):
+                return False
+            selected_words.append(selected_word)
+        return bool(selected_words) and selected_words[-1] == action_word
+
+    compact_decision_action_parity = False
+    if allow_legacy_board_abi and all(
+        not stage.action_combos for stage in decision.policy_stages
+    ):
+        compact_decision_action_parity = _selected_chain_matches_action_token()
+    projected_selected_index = False
     option_features: list[tuple[tuple[float, ...], ...]] = []
+    selected_indices: list[int] = []
+    action_combos_fingerprints: list[str] = []
     for index, (raw_stage, stage) in enumerate(
         zip(raw_stages, decision.policy_stages, strict=True)
     ):
@@ -826,21 +905,62 @@ def _validate_sidecar_row(
             raw_stage.get("stage_index")
         ) != index:
             raise OwnDeckSidecarJoinError("sidecar policy-stage order mismatches shard")
-        combos = _canonical_action_combos(stage.action_combos)
+        legacy_compact_stage = bool(
+            allow_legacy_board_abi and not stage.action_combos
+        )
+        combos = (
+            None
+            if legacy_compact_stage
+            else _canonical_action_combos(stage.action_combos)
+        )
         selected_index = _exact_nonnegative_int(raw_stage.get("selected_index"))
         if (
             selected_index is None
-            or selected_index != int(stage.target_index)
-            or raw_stage.get("candidate_count") != len(combos)
-            or raw_stage.get("action_combos_fingerprint")
-            != _action_combos_fingerprint(combos)
+            or (
+                selected_index != int(stage.target_index)
+                and not (
+                    legacy_compact_stage and compact_decision_action_parity
+                )
+            )
+            or raw_stage.get("candidate_count")
+            != (int(stage.options.num_words) if combos is None else len(combos))
+            or (
+                combos is not None
+                and raw_stage.get("action_combos_fingerprint")
+                != _action_combos_fingerprint(combos)
+            )
         ):
             raise OwnDeckSidecarJoinError(
-                "sidecar policy candidate order mismatches shard"
+                "sidecar policy candidate order mismatches shard "
+                f"(episode={sequence.episode_id}, seat={sequence.seat}, "
+                f"env_step={decision.env_step}, stage={index}, "
+                f"sidecar_selected={selected_index}, "
+                f"shard_selected={int(stage.target_index)}, "
+                f"sidecar_candidates={raw_stage.get('candidate_count')}, "
+                f"shard_candidates={int(stage.options.num_words)}, "
+                f"compact={legacy_compact_stage}, "
+                f"stages={len(decision.policy_stages)}, "
+                f"final_action_parity={compact_decision_action_parity}, "
+                f"stage_pos={int(stage.options.pos)}, "
+                f"action_pos={int(decision.action_token.pos) if decision.action_token is not None else None})"
+            )
+        action_combos_fingerprint = raw_stage.get("action_combos_fingerprint")
+        if not _is_sha256(action_combos_fingerprint):
+            raise OwnDeckSidecarJoinError(
+                "sidecar policy action-combo fingerprint is invalid"
+            )
+        effective_selected_index = int(selected_index)
+        if legacy_compact_stage and compact_decision_action_parity:
+            effective_selected_index = int(stage.target_index)
+            projected_selected_index = (
+                projected_selected_index
+                or effective_selected_index != int(selected_index)
             )
         rows = _validated_sidecar_option_features(
             raw_stage.get("ledger_option_features"),
-            candidate_count=len(combos),
+            candidate_count=(
+                int(stage.options.num_words) if combos is None else len(combos)
+            ),
         )
         existing = stage.ledger_option_features
         if existing is not None and tuple(existing) != rows:
@@ -848,6 +968,8 @@ def _validate_sidecar_row(
                 "raw/sidecar ledger option feature parity failed"
             )
         option_features.append(rows)
+        selected_indices.append(effective_selected_index)
+        action_combos_fingerprints.append(str(action_combos_fingerprint))
 
     supervision = _sidecar_supervision_labels(row.get("supervision"))
     existing_supervision = decision.own_deck_supervision
@@ -879,6 +1001,7 @@ def _validate_sidecar_row(
         decision.policy_stages,
         supervision,
         option_features=option_features,
+        legacy_compact_action_chain=compact_decision_action_parity,
     )
     if tutor_indices:
         stage_indices["visible_tutor_completion"] = tutor_indices
@@ -902,7 +1025,10 @@ def _validate_sidecar_row(
         supervision,
         tuple(option_features),
         stage_indices,
+        tuple(selected_indices),
         raw_parity,
+        projected_selected_index,
+        tuple(action_combos_fingerprints),
     )
 
 
@@ -914,6 +1040,7 @@ def attach_own_deck_sidecar(
     sidecar_rows: Optional[Iterable[Mapping[str, Any]]] = None,
     output_root: Optional[Union[str, Path]] = None,
     test_only_sidecar_rows: bool = False,
+    allow_legacy_board_abi: bool = False,
     verified_sidecar_index: Optional[object] = None,
 ) -> dict[str, Any]:
     """Attach one immutable r259 side store to already-featurized sequences.
@@ -1040,7 +1167,10 @@ def attach_own_deck_sidecar(
             dict[str, Any],
             tuple[tuple[tuple[float, ...], ...], ...],
             dict[str, tuple[int, ...]],
+            tuple[int, ...],
             bool,
+            bool,
+            tuple[str, ...],
         ]
     ] = []
     for key, (sequence, decision) in expected.items():
@@ -1049,13 +1179,17 @@ def attach_own_deck_sidecar(
             supervision,
             option_features,
             stage_indices,
+            selected_indices,
             raw_parity,
+            projected_selected_index,
+            action_combos_fingerprints,
         ) = (
             _validate_sidecar_row(
                 sidecar[key],
                 sequence=sequence,
                 decision=decision,
                 expected_source_manifest_sha256=expected_source_manifest_sha256,
+                allow_legacy_board_abi=allow_legacy_board_abi,
             )
         )
         pending.append(
@@ -1066,7 +1200,10 @@ def attach_own_deck_sidecar(
                 supervision,
                 option_features,
                 stage_indices,
+                selected_indices,
                 raw_parity,
+                projected_selected_index,
+                action_combos_fingerprints,
             )
         )
 
@@ -1092,10 +1229,15 @@ def attach_own_deck_sidecar(
         "observation_fingerprint_parity_count": len(pending),
         "canonical_record_key_coverage": True,
         "raw_reconstruction_parity_count": sum(
-            int(raw_parity) for *_, raw_parity in pending
+            int(row[-3]) for row in pending
         ),
+        "legacy_compact_selected_index_projection_count": sum(
+            int(row[-2]) for row in pending
+        ),
+        "sidecar_action_menu_digest_count": sum(len(row[-1]) for row in pending),
         "one_to_one_coverage": True,
         "active_r241_training_eligible": False,
+        "legacy_board_abi_compatibility": bool(allow_legacy_board_abi),
     }
     for sequence in sequences:
         target_provenance = dict(sequence.target_provenance or {})
@@ -1108,17 +1250,25 @@ def attach_own_deck_sidecar(
         supervision,
         option_features,
         stage_indices,
+        selected_indices,
         _raw_parity,
+        _projected_selected_index,
+        action_combos_fingerprints,
     ) in pending:
         decision.ledger_snapshot = snapshot
         decision.own_deck_supervision = supervision
         decision.own_deck_supervision_stage_indices = stage_indices
-        for stage, rows in zip(
+        decision.sidecar_action_combos_fingerprints = action_combos_fingerprints
+        for stage, rows, selected_index in zip(
             decision.policy_stages,
             option_features,
+            selected_indices,
             strict=True,
         ):
+            stage.target_index = int(selected_index)
             stage.ledger_option_features = rows
+        if selected_indices:
+            decision.action_combo_index = int(selected_indices[0])
     return provenance
 
 
@@ -1412,6 +1562,7 @@ def featurize_step(
     verify_info_set: bool = True,
     ledger_snapshot: Optional[OwnDeckLedgerSnapshot] = None,
     own_deck_supervision: Optional[dict[str, Any]] = None,
+    tactical_sequence_supervision: Optional[dict[str, Any]] = None,
 ) -> DecisionSample:
     """Build board/option tokens for one JSONL step dict."""
     obs = _actor_visible_observation(step, verify_info_set=verify_info_set)
@@ -1513,6 +1664,18 @@ def featurize_step(
         )
         if tutor_indices:
             supervision_stage_indices["visible_tutor_completion"] = tutor_indices
+    tactical_stage_index = -1
+    if isinstance(tactical_sequence_supervision, Mapping):
+        rows = tactical_sequence_supervision.get("rows")
+        if (
+            len(policy_stages) != 1
+            or not isinstance(rows, list)
+            or len(rows) != len(policy_stages[0].action_combos)
+        ):
+            raise ValueError(
+                "tactical supervision requires exact one-stage legal alignment"
+            )
+        tactical_stage_index = 0
     return DecisionSample(
         board=board,
         options=option_sv,
@@ -1530,6 +1693,12 @@ def featurize_step(
             else None
         ),
         own_deck_supervision_stage_indices=supervision_stage_indices,
+        tactical_sequence_supervision=(
+            dict(tactical_sequence_supervision)
+            if isinstance(tactical_sequence_supervision, Mapping)
+            else None
+        ),
+        tactical_sequence_supervision_stage_index=tactical_stage_index,
         observation_fingerprint=observation_fingerprint,
     )
 
@@ -1723,6 +1892,13 @@ def convert_record(
                         None
                         if own_deck_supervision is None
                         else own_deck_supervision[index]
+                    ),
+                    tactical_sequence_supervision=(
+                        dict(step.get("tactical_sequence_supervision"))
+                        if isinstance(
+                            step.get("tactical_sequence_supervision"), Mapping
+                        )
+                        else None
                     ),
                 )
             )

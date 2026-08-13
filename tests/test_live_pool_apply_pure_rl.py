@@ -82,6 +82,15 @@ def test_leaf_cuda_devices_stripes_both_gpus() -> None:
     binds = [sticky_leaf_server_index(s, devices, gpu0_client_frac=0.38) for s in range(96)]
     g0_clients = sum(1 for b in binds if devices[b] == 0)
     assert 30 <= g0_clients <= 45
+    # Four-env packing uses only eight simulator processes for 32 concurrent
+    # games.  Early slots must still exercise both GPUs (the old contiguous
+    # threshold routed all eight to GPU0).
+    early_binds = [
+        sticky_leaf_server_index(s, devices, gpu0_client_frac=0.38)
+        for s in range(8)
+    ]
+    assert 2 <= sum(1 for b in early_binds if devices[b] == 0) <= 4
+    assert set(devices[b] for b in early_binds) == {0, 1}
     # Least-queue prefers an empty GPU0 server over a busy GPU1.
 
     class _Q:

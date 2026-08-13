@@ -40,7 +40,6 @@ def activate(
 ) -> dict:
     raw = source.read_bytes()
     payload = json.loads(raw)
-    PublicMatchupDecisionTree(payload, digest=_digest(raw))
     if payload.get("runtime_enabled") is not False:
         raise ValueError("source tree must be an inactive validation artifact")
     checkpoint_raw = checkpoint.read_bytes()
@@ -49,6 +48,14 @@ def activate(
     extra = dict(saved.get("extra") or {})
     dormant = dict(extra.get("dormant_matchup_adapter_bank") or {})
     adapter_config = dict(extra.get("matchup_adapter_config") or {})
+    slot_registry = adapter_config.get("slot_registry")
+    PublicMatchupDecisionTree(
+        payload,
+        digest=_digest(raw),
+        slot_registry=(
+            dict(slot_registry) if isinstance(slot_registry, dict) else None
+        ),
+    )
     tree_targets = tuple(str(value) for value in payload.get("targets") or ())
     route_contract = resolve_matchup_adapter_route_contract(adapter_config)
     if tree_targets != route_contract.target_ids:
@@ -118,6 +125,7 @@ def activate(
         "unknown_route_exact_bypass": True,
         "one_route_per_decision": True,
         **route_contract.runtime_binding(),
+        "slot_registry": slot_registry,
         "oracle_or_package_identity_forbidden": True,
         "zero_materialized_adapters_allowed": zero_materialized,
     }
@@ -134,7 +142,13 @@ def activate(
         os.link(temporary, output)
     finally:
         Path(temporary).unlink(missing_ok=True)
-    PublicMatchupDecisionTree.from_path(output, require_runtime_enabled=True)
+    PublicMatchupDecisionTree.from_path(
+        output,
+        require_runtime_enabled=True,
+        slot_registry=(
+            dict(slot_registry) if isinstance(slot_registry, dict) else None
+        ),
+    )
     return {
         "output": str(output),
         "digest": _digest(encoded),

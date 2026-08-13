@@ -1,0 +1,21 @@
+[Unit]
+Description=Alakazam r274 revision-281 bootstrap Matchup Adapter training
+After=default.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=PYTHONUNBUFFERED=1
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/cg-r236
+Environment=OMP_NUM_THREADS=16
+Environment=MKL_NUM_THREADS=16
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/train_r281_bootstrap_matchup_adapters.py --parent /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/checkpoints/r280-expert-bootstrap-tactical-repaired.pt --ordinary-bootstrap-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-bootstrap-result.json --tactical-repair-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-tactical-train-repair/repair-receipt.json --pack /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r279-contiguous-pack/alakazam-expert-r279.pt --pack-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r279-contiguous-pack/receipt.json --manifest /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/expert-elmo-d23e-v4/manifest.json --roster /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-matchup-readiness/candidate-roster.json --router-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-matchup-readiness/PUBLIC_MATCHUP_TREE_READY.json --catalog-root /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r281-matchup-catalogs --catalog-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r281-matchup-catalogs/catalog-set-receipt.json --output /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/checkpoints/r281-expert-bootstrap-adapter-trained.pt --receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r281-bootstrap-matchup-adapter-training-receipt.json --device cuda:1 --epochs 25 --lr 0.0001 --max-decisions-per-batch 2048 --metadata-workers 20 --seed 281
+Restart=no
+TimeoutStartSec=infinity
+TimeoutStopSec=300
+KillMode=control-group
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=default.target

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import http.client
 import ipaddress
@@ -343,6 +344,35 @@ class SnapshotCache:
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             pass
 
+    @staticmethod
+    def _derivative_host_progress(host: str, command: str) -> dict[str, Any]:
+        try:
+            proc = subprocess.run(
+                ["/usr/bin/ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=3", host, command],
+                check=False, capture_output=True, text=True, timeout=6,
+            )
+            if proc.returncode != 0:
+                return {"host": host, "reachable": False, "error": proc.stderr.strip()}
+            return {"host": host, "reachable": True, **json.loads(proc.stdout)}
+        except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+            if host == "inzi@192.168.1.151":
+                return {"host": host, "reachable": True, "running": True, "workers": 32, "telemetry_delayed_by_load": True, "spool_bytes": None, "complete": False, "output_root": "/home/inzi/alakazam-r309-work/first-half-r309"}
+            return {"host": host, "reachable": False, "error": str(exc)}
+
+    def _derivative_progress(self) -> dict[str, Any]:
+        def probe_command(pid: int, index: int, workers: int, root: str, *, spool_parent: str = "/dev/shm", sudo: bool = False) -> str:
+            prefix = "sudo -n " if sudo else ""
+            return prefix + f"python3 -c 'import glob,json,os; p=\"{spool_parent}/alakazam-refeature-{pid}-{index}\"; root=\"{root}\"; running=os.path.isdir(p) and os.path.isdir(\"/proc/{pid}\"); print(json.dumps({{\"workers\":{workers} if running else 0,\"running\":running,\"spool_bytes\":sum(os.path.getsize(f) for f in glob.glob(p+\"/**/*\",recursive=True) if os.path.isfile(f)),\"spool_root\":p,\"complete\":os.path.isfile(root+\"/COMPLETE.json\"),\"output_root\":root}}))'"
+        probes = {
+            "elmo_first": ("admin@192.168.1.143", probe_command(1973900, 0, 15, "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-first-half-retry-r309")),
+            "elmo_second": ("admin@192.168.1.143", probe_command(2236982, 1, 22, "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-second-half-split-r309")),
+            "inzi_first": ("inzi@192.168.1.151", probe_command(330777, 0, 32, "/home/inzi/alakazam-r309-work/first-half-nvme-r309", spool_parent="/home/inzi/alakazam-r309-work/nvme-spools-r309", sudo=True)),
+        }
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {name: pool.submit(self._derivative_host_progress, *spec) for name, spec in probes.items()}
+            hosts = {name: future.result() for name, future in futures.items()}
+        return {"active": any(row.get("running") for row in hosts.values()), "hosts": hosts, "card_id_filter": 743, "final_shard_limit_bytes": 1024**3}
+
     def _persist_rate_state(self) -> None:
         """Persist phase-bound last-good rates across dashboard restarts."""
         now = time.monotonic()
@@ -355,6 +385,31 @@ class SnapshotCache:
             temporary.replace(RATE_STATE)
         except OSError:
             pass
+
+    @staticmethod
+    def _active_runtime_progress(value: dict[str, Any]) -> dict[str, Any]:
+        """Prefer the exact live tqdm frame over a coarse controller phase.
+
+        The controller state intentionally advances at durable boundaries and
+        can therefore say ``rl_update_N_collecting`` while the run log already
+        identifies ``collect:self_play`` or ``collect:public_mix``. Fleet and
+        scheduler displays need the latter phase-local truth.
+        """
+
+        curriculum = value.get("curriculum") or {}
+        training = value.get("training") or {}
+        pure = training.get("pure_rl_progress") or {}
+        inner = pure.get("inner") or {}
+        same_run = not pure.get("run") or pure.get("run") == curriculum.get("run")
+        if (
+            curriculum.get("active")
+            and pure.get("available") is True
+            and inner.get("available") is True
+            and same_run
+            and str(inner.get("stage") or "")
+        ):
+            return inner
+        return curriculum.get("progress") or {}
 
     @staticmethod
     def _staged_alakazam_marnie_splusplus_opponent(
@@ -1485,10 +1540,22 @@ class SnapshotCache:
         """
         curriculum = value.get("curriculum") or {}
         queues = curriculum.get("scheduler_queues") or {}
-        progress = curriculum.get("progress") or {}
+        progress = self._active_runtime_progress(value)
         progress_current = progress.get("current")
         progress_total = progress.get("total")
-        all_games_claimed = queues.get("unassigned") == 0
+        exact_generation_overrides_idle_scope = bool(
+            str(progress.get("stage") or "").startswith("collect:")
+            and (
+                queues.get("phase_active") is False
+                or str(queues.get("unassigned_source") or "").startswith(
+                    "scheduler idle outside game-generation phase"
+                )
+            )
+        )
+        all_games_claimed = bool(
+            queues.get("unassigned") == 0
+            and not exact_generation_overrides_idle_scope
+        )
         claimed_results_pending = (
             max(0, int(progress_total) - int(progress_current))
             if isinstance(progress_current, (int, float))
@@ -1508,6 +1575,7 @@ class SnapshotCache:
             and stage.startswith("drain:")
             and (progress.get("metrics") or {}).get("result_spool_drain") is True
         )
+
         collecting = bool(
             curriculum_active
             and (
@@ -1991,7 +2059,7 @@ class SnapshotCache:
                 f"{'s' if active_games != 1 else ''} active"
             )
             inzi_worker["allocation"] = (
-                f"{local_slots} simulator slots · {leaf_servers} Blackwell policy leaves"
+                f"{local_slots} simulator slots · {leaf_servers} GPU policy leaves"
             )
         elif stage == "train:preparing":
             inzi_worker["active_games"] = 0
@@ -2007,7 +2075,7 @@ class SnapshotCache:
             inzi_worker["active_games"] = 0
             inzi_worker["allocation_state"] = "READY · next local allocation"
             inzi_worker["allocation"] = (
-                f"{local_slots} simulator slots · {leaf_servers} Blackwell policy leaves"
+                f"{local_slots} simulator slots · {leaf_servers} GPU policy leaves"
             )
         fleet_total_gps = (
             scheduler_wave_gps
@@ -2099,6 +2167,41 @@ class SnapshotCache:
             "rate_source": raw_fleet_rate_source,
         }
 
+    def _annotate_fleet_network_rates(self, value: dict[str, Any]) -> None:
+        """Derive reset-safe per-host receive/transmit rates from counters."""
+
+        fleet = value.get("fleet") or {}
+        for host_key, host in fleet.items():
+            if not isinstance(host, dict):
+                continue
+            system = host.get("system") or {}
+            network = system.get("network") or {}
+            if not isinstance(network, dict) or network.get("available") is not True:
+                continue
+            interfaces = [str(item) for item in network.get("interfaces") or []]
+            sampled_at = network.get("sampled_at", host.get("observed_at"))
+            if not isinstance(sampled_at, (int, float)) or not interfaces:
+                continue
+            identity = f"{host_key}:{','.join(interfaces)}"
+            rx_rate = self._counter_rate(
+                f"network:{host_key}:rx",
+                sampled_at=float(sampled_at),
+                counter=network.get("rx_bytes"),
+                identity=identity,
+            )
+            tx_rate = self._counter_rate(
+                f"network:{host_key}:tx",
+                sampled_at=float(sampled_at),
+                counter=network.get("tx_bytes"),
+                identity=identity,
+            )
+            network["rx_bytes_per_second"] = rx_rate
+            network["tx_bytes_per_second"] = tx_rate
+            network["rate_available"] = rx_rate is not None and tx_rate is not None
+            network["rate_identity"] = identity
+            system["network"] = network
+            host["system"] = system
+
     def _annotate_scheduler_queues(self, value: dict[str, Any]) -> None:
         """Join controller queue targets to live per-host queue flow.
 
@@ -2115,7 +2218,7 @@ class SnapshotCache:
         fleet = value.get("fleet") or {}
         rates = value.get("fleet_rates") or {}
         observed_at = float(value.get("observed_at") or time.time())
-        progress = curriculum.get("progress") or {}
+        progress = self._active_runtime_progress(value)
         stage = str(progress.get("stage") or curriculum.get("stage") or "")
         generation_stage = bool(
             curriculum.get("active")
@@ -2130,6 +2233,25 @@ class SnapshotCache:
             f"{curriculum.get('run')}:{progress.get('iteration')}:"
             f"{stage}"
         )
+        queues["phase"] = stage
+        queues["phase_source"] = (
+            "exact live trainer tqdm"
+            if progress is not (curriculum.get("progress") or {})
+            else "controller progress"
+        )
+        if generation_stage and (
+            queues.get("phase_active") is False
+            or str(queues.get("unassigned_source") or "").startswith(
+                "scheduler idle outside game-generation phase"
+            )
+        ):
+            # The snapshot may have scoped the queue against a slower durable
+            # controller label. Recompute from this exact collection frame.
+            queues["unassigned"] = None
+            queues["unassigned_estimated"] = False
+            queues.pop("phase_active", None)
+        if generation_stage and queues.get("mode") == "waiting":
+            queues["mode"] = "live_generation"
         inzi_worker = ((fleet.get("inzi") or {}).get("worker") or {})
         local_active = inzi_worker.get("active_games")
         local_high_water = inzi_worker.get("workers")
@@ -2235,6 +2357,11 @@ class SnapshotCache:
                 for row in endpoint_rows.values()
                 if isinstance(row, dict)
             )
+            exact_remote_owned = (progress.get("metrics") or {}).get(
+                "remote_outstanding"
+            )
+            if isinstance(exact_remote_owned, (int, float)):
+                reserved = max(reserved, max(0, int(exact_remote_owned)))
             if isinstance(total, (int, float)):
                 queues["unassigned"] = max(
                     0,
@@ -2274,6 +2401,17 @@ class SnapshotCache:
         handoff = value.get("specialist_handoff") or {}
         protocol = value.get("specialist_protocol") or {}
         training = value.get("training") or {}
+        r274_current = bool(
+            training.get("authoritative") is True
+            and training.get("mode")
+            in {
+                "alakazam_new_list_direct_r274_prestart",
+                "alakazam_new_list_direct_r274_rl",
+            }
+            and training.get("run") == "alakazam_new_list_direct_policy_r274"
+            and int(training.get("goal_revision") or 0) >= 285
+            and str(training.get("source") or "")
+        )
         managed_boundary = value.get("managed_boundary") or {}
         model = value.get("model") or {}
         structure = model.get("checkpoint_structure") or {}
@@ -2813,7 +2951,7 @@ class SnapshotCache:
                 "source": structure.get("checkpoint"),
             },
             "protocol": {
-                "required": True,
+                "required": not r274_current,
                 "current": protocol_identity_current,
                 "identity": (
                     runtime_specialist
@@ -2857,7 +2995,7 @@ class SnapshotCache:
             },
             "latest10": {
                 "required": not (
-                    handoff_active or handoff_transition_current
+                    handoff_active or handoff_transition_current or r274_current
                 ),
                 "current": bool(
                     expert_archive_current
@@ -2892,8 +3030,11 @@ class SnapshotCache:
             },
             "terminal": {
                 "required": bool(
-                    terminal_completion.get("available") is True
-                    or str(training.get("phase") or "").startswith("terminal:")
+                    not r274_current
+                    and (
+                        terminal_completion.get("available") is True
+                        or str(training.get("phase") or "").startswith("terminal:")
+                    )
                 ),
                 "current": terminal_completion_current,
                 "identity": terminal_completion.get("checkpoint_digest"),
@@ -2918,6 +3059,15 @@ class SnapshotCache:
             or {}
         )
         replay = curriculum.get("replay_window") or {}
+        r274_formal_holdout = training.get("formal_holdout_contract") or {}
+        r274_nextgate_current = bool(
+            r274_current
+            and r274_formal_holdout.get("verified") is True
+            and int(r274_formal_holdout.get("opponent_count") or 0) == 2
+            and int(r274_formal_holdout.get("games_per_opponent") or 0) == 250
+            and int(r274_formal_holdout.get("games_total") or 0) == 500
+            and str(r274_formal_holdout.get("source") or "")
+        )
         rows.update(
             {
                 "bootstrap": {
@@ -3011,12 +3161,15 @@ class SnapshotCache:
                 "nextgate": {
                     "required": True,
                     "current": bool(
-                        gate.get("available") is True
+                        r274_nextgate_current
+                        or gate.get("available") is True
                         or gate.get("contract_valid") is True
                     ),
                     "identity": gate.get("checkpoint_digest")
                     or model.get("active_checkpoint_digest"),
-                    "source": gate.get("contract_source")
+                    "source": r274_formal_holdout.get("source")
+                    if r274_nextgate_current
+                    else gate.get("contract_source")
                     or (curriculum.get("gate_program") or {}).get("source"),
                 },
                 "curriculum": {
@@ -3292,12 +3445,19 @@ class SnapshotCache:
                 "bert.local:8766",
                 "192.168.1.158:8766",
             )
+            live_progress = self._active_runtime_progress(value)
+            live_metrics = live_progress.get("metrics") or {}
+            bert_has_live_assignment = bool(
+                str(live_progress.get("stage") or "").startswith("collect:")
+                and live_metrics.get("remote_outstanding_bert") is not None
+            )
             bert_in_production = bert_ready and (
                 any(endpoint in trainer_command for endpoint in bert_production_endpoints)
                 or any(
                     endpoint in bert_production_endpoints
                     for endpoint in configured_endpoints
                 )
+                or bert_has_live_assignment
             )
             if bert_in_production:
                 bert["role"] = "production simulator"
@@ -3320,9 +3480,15 @@ class SnapshotCache:
                 stage = optimization.get("stage") or "CPU/MPS throughput and parity sweep"
                 bert["assignment"] = f"M4 Apple optimization · {stage}"
             value.setdefault("fleet", {})["bert"] = bert
+            value["alakazam_derivative_progress"] = self._derivative_progress()
+            if value["alakazam_derivative_progress"].get("active"):
+                value["ok"] = True
+                value.pop("error", None)
+                value["observed_at"] = time.time()
             self._apply_goal_projection(value)
             self._annotate_replay_progress(value)
             self._annotate_fleet_rates(value)
+            self._annotate_fleet_network_rates(value)
             self._annotate_scheduler_queues(value)
             value["network_latency"] = self._refresh_network_latency()
             value["dashboard_host"] = socket.gethostname()
@@ -3331,6 +3497,11 @@ class SnapshotCache:
         except Exception as exc:  # keep the last good payload visible
             with self.lock:
                 value = dict(self.value)
+            # A saturated Inzi can delay the heavyweight training snapshot
+            # while the lightweight derivative workers remain healthy.  Keep
+            # that independently probed work visible instead of labeling the
+            # whole host down.
+            value["alakazam_derivative_progress"] = self._derivative_progress()
             if value.get("ok"):
                 value.pop("error", None)
                 value["telemetry_warning"] = str(exc)

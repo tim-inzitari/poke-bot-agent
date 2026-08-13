@@ -32,6 +32,7 @@ from . import archetypes, deck_guides, features
 from .dataset import (
     DATASET_CACHE_SCHEMA_VERSION,
     GameSequence,
+    convert_record,
     featurize_step,
 )
 from .feature_shards import (
@@ -380,8 +381,20 @@ def _attach_strategy_labels(steps: list[dict[str, Any]], horizon: int = 8) -> No
 
 
 def _record_to_temporal_sequence(
-    record: dict[str, Any], *, max_context: int
+    record: dict[str, Any], *, max_context: int, own_deck_ledger_enabled: bool = False
 ) -> tuple[GameSequence, dict[str, int]]:
+    if own_deck_ledger_enabled:
+        sequence, reason, details = convert_record(
+            record,
+            max_context=max_context,
+            verify_info_set=True,
+            own_deck_ledger_enabled=True,
+        )
+        if sequence is None:
+            raise VisualTraceError(
+                f"own-deck training featurization rejected validated trace: {reason}"
+            )
+        return sequence, {key: int(value) for key, value in details.items()}
     raw_steps = list(record.get("steps") or [])
     if not raw_steps:
         raise VisualTraceError("validated expert record has no decisions")
@@ -734,6 +747,7 @@ def _materialize_member_job(
     max_context: int,
     required_archetype: str,
     guide_id: Optional[str],
+    own_deck_ledger_enabled: bool = False,
 ) -> dict[str, Any]:
     classifier = _WORKER_CLASSIFIER
     if classifier is None:
@@ -757,7 +771,9 @@ def _materialize_member_job(
         with _guide_targets_enabled(guide_id):
             for record in result.records:
                 sequence, details = _record_to_temporal_sequence(
-                    record, max_context=max_context
+                    record,
+                    max_context=max_context,
+                    own_deck_ledger_enabled=own_deck_ledger_enabled,
                 )
                 details_total.update(details)
                 compact_temporal_expert_sequence(sequence)
@@ -978,6 +994,7 @@ def materialize_day(
     min_records: int = 1,
     required_archetype: str = REQUIRED_ARCHETYPE,
     current_deck_guide: Optional[str] = "alakazam",
+    own_deck_ledger_enabled: bool = False,
 ) -> dict[str, Any]:
     """Build one immutable, checksummed, bounded-memory feature shard."""
     archive_path = Path(archive_path).resolve()
@@ -1098,6 +1115,7 @@ def materialize_day(
         "max_context": int(max_context),
         "guide_id": guide_id,
         "guide_version": guide_version,
+        "own_deck_ledger_enabled": bool(own_deck_ledger_enabled),
         "target_consumer_contract": TARGET_CONSUMER_CONTRACT,
         "expanded_strategic_targets": {
             "schema": EXPANDED_STRATEGIC_SCHEMA,
@@ -1177,6 +1195,7 @@ def materialize_day(
                             max_context,
                             requested,
                             guide_id,
+                            own_deck_ledger_enabled,
                         ),
                         stream,
                     )
@@ -1202,6 +1221,7 @@ def materialize_day(
                                 max_context,
                                 requested,
                                 guide_id,
+                                own_deck_ledger_enabled,
                             )
                         )
                         next_member += 1

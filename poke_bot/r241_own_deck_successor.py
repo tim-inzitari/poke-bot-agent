@@ -23,20 +23,20 @@ from .own_deck_successor import receipt_digest, seal_receipt
 
 
 R260_OWNER_REVISION = 260
-# Revision 262 changes placement and transport semantics while preserving the
-# r260 architecture/migration import itself.  Keep those two assertions
-# distinct: treating the latest clarification as the head-import revision
-# would either reject the canonical owner file or accidentally rewrite the
-# imported architecture provenance.
-R260_OWNER_CONTRACT_REVISION = 262
+# Revision 281 is the current owner-contract envelope. Revision 262 still owns
+# placement and transport semantics, while revision 260 still owns the imported
+# head architecture. Keep all three assertions distinct so later training and
+# adapter clarifications cannot silently rewrite either older sub-contract.
+R260_OWNER_CONTRACT_REVISION = 281
+R260_TRAINING_PLACEMENT_REVISION = 262
 R260_OWNER_CONTRACT_PATH = Path("state/alakazam-new-list-direct-policy-r241.json")
 R260_OWNER_CONTRACT_SHA256 = (
-    "sha256:57cbc0ac7ca7ee3791f7257899a16f6f0642749effa218323368e35940cdc202"
+    "sha256:075a09eabcb40deda16ce80876f3bc986bb777e6a16a3e0da5fc1c14db45c74b"
 )
 R260_MIGRATION_SCHEMA = "poke_bot.r241_own_deck_successor_migration/v1"
 R260_SIDECAR_BINDING_SCHEMA = "poke_bot.r241_own_deck_sidecar_binding/v1"
 R260_SOURCE_CLOSURE_SCHEMA = "poke_bot.r241_own_deck_successor_source_closure/v1"
-R260_INZI_DATASET_BINDING_SCHEMA = "poke_bot.r241_own_deck_inzi_dataset_binding/v1"
+R260_INZI_DATASET_BINDING_SCHEMA = "poke_bot.r241_own_deck_inzi_dataset_binding/v2"
 R260_CANARY_ACTIVATION_SCHEMA = "poke_bot.r241_own_deck_canary_activation/v1"
 R260_MIGRATION_KIND = "pre_start_zero_safe_import"
 
@@ -292,6 +292,7 @@ def load_r260_owner_contract(
     path: Path | str = R260_OWNER_CONTRACT_PATH,
     *,
     expected_sha256: str | None = R260_OWNER_CONTRACT_SHA256,
+    expected_clarification_revision: int | None = R260_OWNER_CONTRACT_REVISION,
 ) -> R260OwnerContract:
     """Load the sole canonical r260 authority, optionally test-injected by SHA."""
 
@@ -307,11 +308,13 @@ def load_r260_owner_contract(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise R241OwnDeckSuccessorError("r260 owner contract is invalid JSON") from exc
     top = _mapping(value, label="r260 owner contract")
-    if (
-        int(top.get("latest_owner_clarification_revision", -1))
-        != R260_OWNER_CONTRACT_REVISION
+    observed_revision = int(top.get("latest_owner_clarification_revision", -1))
+    if expected_clarification_revision is not None and (
+        observed_revision != expected_clarification_revision
     ):
         raise R241OwnDeckSuccessorError("r260 owner revision is not canonical")
+    if expected_clarification_revision is None and observed_revision < R260_OWNER_REVISION:
+        raise R241OwnDeckSuccessorError("historical r260 owner predates the head import")
     imported = _mapping(top.get("own_deck_head_structure_import"), label="head import")
     if int(imported.get("owner_revision", -1)) != R260_OWNER_REVISION:
         raise R241OwnDeckSuccessorError("r260 head import revision changed")
@@ -321,10 +324,12 @@ def load_r260_owner_contract(
         "option_feature_dim": 8,
         "visible_tutor_completion_output_dim": 7,
         "terminal_conversion_output_dim": 6,
+        "tactical_sequence_outcome_output_dim": 4,
         "typed_option_route_width": 16,
         "typed_option_route_aggregate_delta_cap": 1.0,
         "visible_tutor_completion_loss_weight": 0.025,
         "terminal_conversion_loss_weight": 0.025,
+        "tactical_sequence_outcome_loss_weight": 0.025,
     }
     for key, expected in exact_architecture.items():
         if architecture.get(key) != expected:
@@ -361,7 +366,8 @@ def load_r260_owner_contract(
     }:
         raise R241OwnDeckSuccessorError("r260 training placement key shape changed")
     if (
-        int(placement.get("owner_revision", -1)) != R260_OWNER_CONTRACT_REVISION
+        int(placement.get("owner_revision", -1))
+        != R260_TRAINING_PLACEMENT_REVISION
         or placement.get("sole_managed_training_host") != "inzi"
         or placement.get("elmo_role")
         != "read_only_source_preprocessing_and_bounded_disposable_parity_only"
@@ -694,7 +700,8 @@ def validate_r260_inzi_dataset_binding(
         "schema", "status", "binding_sha256", "owner_contract_sha256",
         "source_manifest_sha256", "source_window_receipt_sha256",
         "sidecar_binding_sha256", "sidecar_binding_file_sha256", "sidecar_binding", "transport_kind",
-        "elmo_joined_dataset_sha256", "inzi_joined_dataset_sha256",
+        "source_join_identity_kind", "source_joined_dataset_sha256",
+        "inzi_joined_dataset_sha256",
         "join_receipt_sha256", "schema_receipt_sha256", "count_receipt_sha256",
         "digest_receipt_sha256", "causal_local_remote_parity_receipt_sha256",
         "transport_receipt_sha256", "day_count", "validated_episode_count",
@@ -727,12 +734,22 @@ def validate_r260_inzi_dataset_binding(
     )
     if sidecar_file["sha256"] != binding["sidecar_binding_file_sha256"]:
         raise R241OwnDeckSuccessorError("r260 Inzi dataset sidecar aggregate FileIdentity drifted")
-    if binding.get("transport_kind") not in {"create_only_copy", "bounded_remote_staging"}:
+    if binding.get("transport_kind") not in {
+        "create_only_copy", "bounded_remote_staging", "local_post_transfer_build"
+    }:
         raise R241OwnDeckSuccessorError("r260 Inzi dataset transport kind is not approved")
-    if binding.get("elmo_joined_dataset_sha256") != binding.get("inzi_joined_dataset_sha256"):
-        raise R241OwnDeckSuccessorError("r260 Inzi joined dataset differs from Elmo")
+    identity_kind = binding.get("source_join_identity_kind")
+    expected_kind = (
+        "inzi_deterministic_join_of_elmo_receipted_daily_bytes"
+        if binding.get("transport_kind") == "local_post_transfer_build"
+        else "elmo_materialized_joined_dataset"
+    )
+    if identity_kind != expected_kind:
+        raise R241OwnDeckSuccessorError("r260 Inzi source join identity kind drifted")
+    if binding.get("source_joined_dataset_sha256") != binding.get("inzi_joined_dataset_sha256"):
+        raise R241OwnDeckSuccessorError("r260 Inzi joined dataset differs from source identity")
     for key in (
-        "elmo_joined_dataset_sha256",
+        "source_joined_dataset_sha256",
         "inzi_joined_dataset_sha256",
         "join_receipt_sha256",
         "schema_receipt_sha256",

@@ -53,6 +53,84 @@ def test_candidate_gate_precedes_publish_and_next_collect() -> None:
     assert "WARN remote reload" not in candidate_window
 
 
+def test_promotion_retries_only_exact_invalid_game_identities(monkeypatch) -> None:
+    mod = _load_train_pure_rl()
+    calls: list[dict[str, object]] = []
+
+    class FakeWorkerPool:
+        def __init__(self, *, num_workers: int) -> None:
+            self.num_workers = int(num_workers)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def imap_unordered(self, _fn, jobs):
+            wave = list(jobs)
+            calls.append(
+                {
+                    "workers": self.num_workers,
+                    "seeds": [int(job["seed"]) for job in wave],
+                }
+            )
+            first_wave = len(calls) == 1
+            for job in reversed(wave):
+                failed = first_wave and int(job["seed"]) == 102
+                yield {
+                    "seed": int(job["seed"]),
+                    "candidate_seat": int(job["candidate_seat"]),
+                    "cluster_id": int(job["cluster_id"]),
+                    "valid": not failed,
+                    "winner": (
+                        2 if failed else int(job["candidate_seat"])
+                    ),
+                    "error": "transient worker load failure" if failed else None,
+                }
+
+    monkeypatch.setattr("poke_bot.worker_pool.WorkerPool", FakeWorkerPool)
+    monkeypatch.setattr(
+        "poke_bot.remote_sim_jobs.remote_promotion_job", lambda job: job
+    )
+    candidate = SimpleNamespace(path="candidate.pt", digest="sha256:candidate")
+    incumbent = SimpleNamespace(path="incumbent.pt", digest="sha256:incumbent")
+    candidate.as_dict = lambda: {
+        "path": candidate.path,
+        "digest": candidate.digest,
+    }
+    incumbent.as_dict = lambda: {
+        "path": incumbent.path,
+        "digest": incumbent.digest,
+    }
+
+    report, rows = mod._promotion_eval(
+        candidate=candidate,
+        incumbent=incumbent,
+        decks=[("alakazam", list(range(60)))],
+        n_games=4,
+        n_workers=4,
+        threshold=0.0,
+        confidence=0.90,
+        bootstrap_resamples=100,
+        seed=100,
+        game_timeout_s=600,
+        model_generation=1,
+    )
+
+    assert calls == [
+        {"workers": 4, "seeds": [100, 101, 102, 103]},
+        {"workers": 1, "seeds": [102]},
+    ]
+    assert [row["seed"] for row in rows] == [100, 101, 102, 103]
+    assert all(row["valid"] for row in rows)
+    assert report["passed"] is True
+    recovery = report["transport_recovery"]
+    assert recovery["valid_games_retried"] == 0
+    assert recovery["waves"][0]["recovered_games"] == 1
+    assert recovery["waves"][0]["remaining_invalid_games"] == 0
+
+
 def test_failed_promotion_restores_runtime_compatible_behavior_identity() -> None:
     """Temporary evaluation must not roll back to a pre-adapter champion."""
     src = Path(__file__).resolve().parents[1] / "scripts" / "train_pure_rl.py"

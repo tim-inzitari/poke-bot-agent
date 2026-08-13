@@ -1521,9 +1521,12 @@ def build_submission_bundle(
     python: Path,
     archetype: str,
     matchup_tree: Path | None = None,
+    matchup_roster: Path | None = None,
+    cg_root: Path | None = None,
     turn_order_preference: str = "first_if_allowed",
     rtp_mode: str = "default_off",
     rtp_promotion_receipt: Path | None = None,
+    direct_no_search_assets: bool = False,
 ) -> dict[str, Any]:
     from poke_bot import checkpoint as checkpoint_mod
 
@@ -1582,8 +1585,21 @@ def build_submission_bundle(
             "POKEBOT_ALLOW_ORACLE_DECK": "0",
             "POKEBOT_SUBMISSION_TURN_ORDER": turn_order_preference,
             "POKEBOT_SUBMISSION_RTP_MODE": rtp_mode,
+            "POKEBOT_SUBMISSION_DIRECT_NO_SEARCH_ASSETS": (
+                "1" if direct_no_search_assets else "0"
+            ),
         }
     )
+    if matchup_roster is not None:
+        matchup_roster = Path(matchup_roster).expanduser().resolve()
+        if not matchup_roster.is_file():
+            raise RuntimeError("submission matchup roster does not exist")
+        env["POKEBOT_SUBMISSION_MATCHUP_ROSTER"] = str(matchup_roster)
+    if cg_root is not None:
+        cg_root = Path(cg_root).expanduser().resolve()
+        if not cg_root.is_dir() or not (cg_root / "libcg.so").is_file():
+            raise RuntimeError("submission cg root lacks libcg.so")
+        env["POKEBOT_SUBMISSION_CG_ROOT"] = str(cg_root)
     # Never allow an ambient launcher value to arm a different package mode.
     # The resolver below re-adds only mode-authorized RTP inputs.
     for name in _RTP_SUBMISSION_ENV_KEYS:
@@ -1680,8 +1696,20 @@ def build_submission_bundle(
         deck_bytes = member_bytes("deck.csv")
         member_bytes("main.py")
         member_bytes("cg/api.py")
-        search_config_bytes = member_bytes("search_config.json")
-        belief_decks_bytes = member_bytes("belief_decks.json")
+        search_config_bytes = (
+            None
+            if direct_no_search_assets
+            else member_bytes("search_config.json")
+        )
+        belief_decks_bytes = (
+            None
+            if direct_no_search_assets
+            else member_bytes("belief_decks.json")
+        )
+        if direct_no_search_assets and (
+            "search_config.json" in members or "belief_decks.json" in members
+        ):
+            raise RuntimeError("direct-policy bundle contains forbidden search assets")
         packaged_tree_bytes = (
             member_bytes("matchup_tree.json")
             if matchup_tree is not None
@@ -1931,13 +1959,17 @@ def build_submission_bundle(
             != _RTP_R197_REQUIRED_NEURAL_PASSES
         ):
             raise RuntimeError("submission bundle failed its recursive RTP contract")
-    try:
-        search_config = json.loads(search_config_bytes)
-        belief_decks = json.loads(belief_decks_bytes)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("submission belief-MCTS assets are invalid JSON") from exc
-    deck_hypotheses = belief_decks.get("deck_lists") or []
-    if (
+    search_config: dict[str, Any] = {}
+    belief_decks: dict[str, Any] = {}
+    deck_hypotheses: list[Any] = []
+    if not direct_no_search_assets:
+        try:
+            search_config = json.loads(search_config_bytes or b"")
+            belief_decks = json.loads(belief_decks_bytes or b"")
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("submission belief-MCTS assets are invalid JSON") from exc
+        deck_hypotheses = belief_decks.get("deck_lists") or []
+    if not direct_no_search_assets and (
         search_config.get("schema")
         != "poke_bot.submission_search_config/v1"
         or search_config.get("enabled") is not False
@@ -1978,10 +2010,14 @@ def build_submission_bundle(
     ):
         raise RuntimeError("submission belief-MCTS contract changed")
     search_config_digest = (
-        "sha256:" + hashlib.sha256(search_config_bytes).hexdigest()
+        None
+        if search_config_bytes is None
+        else "sha256:" + hashlib.sha256(search_config_bytes).hexdigest()
     )
     belief_decks_digest = (
-        "sha256:" + hashlib.sha256(belief_decks_bytes).hexdigest()
+        None
+        if belief_decks_bytes is None
+        else "sha256:" + hashlib.sha256(belief_decks_bytes).hexdigest()
     )
     if matchup_tree is not None:
         packaged_tree_digest = (
@@ -2013,6 +2049,7 @@ def build_submission_bundle(
             "belief_decks_sha256": belief_decks_digest,
             "belief_deck_count": len(deck_hypotheses),
             "belief_mcts_default": False,
+            "search_assets_packaged": not direct_no_search_assets,
             "main_present": True,
             "vendored_cg_present": True,
             "rtp_enabled": (
@@ -2068,10 +2105,13 @@ def _copy_submission_slot(bundle: dict[str, Any], root: Path, slot: int) -> dict
             bundle["contents"]["matchup_tree_sha256"]
         ),
         "search_config_sha256": str(
-            bundle["contents"]["search_config_sha256"]
+            bundle["contents"]["search_config_sha256"] or ""
         ),
         "belief_decks_sha256": str(
-            bundle["contents"]["belief_decks_sha256"]
+            bundle["contents"]["belief_decks_sha256"] or ""
+        ),
+        "search_assets_packaged": bool(
+            bundle["contents"].get("search_assets_packaged", True)
         ),
     }
 
@@ -2093,6 +2133,10 @@ def queue_submission_copies(
         raise RuntimeError("submission queue requires exact ordered copy slots")
     checkpoint_digest = str(gate_plan.get("checkpoint_digest") or "")
     gate_id = str(gate_plan.get("gate_id") or "")
+    owner_decision_source = str(
+        gate_plan.get("owner_decision_source")
+        or "GOAL.md#/decision-ledger/revision-18"
+    )
     label_suffix = str(gate_plan.get("label_suffix") or "").strip()
     iteration = int(gate_plan.get("iteration", -1))
     if (
@@ -2133,6 +2177,16 @@ def queue_submission_copies(
             turn_order_preference = str(
                 copy.get("turn_order_preference") or "first_if_allowed"
             )
+            search_assets_packaged = bool(
+                copy.get("search_assets_packaged", True)
+            )
+            search_assets_valid = (
+                str(copy.get("search_config_sha256") or "").startswith("sha256:")
+                and str(copy.get("belief_decks_sha256") or "").startswith("sha256:")
+                if search_assets_packaged
+                else copy.get("search_config_sha256") in {None, ""}
+                and copy.get("belief_decks_sha256") in {None, ""}
+            )
             if (
                 str(copy.get("specialist_id") or "") != specialist_id
                 or turn_order_preference
@@ -2148,12 +2202,7 @@ def queue_submission_copies(
                 or not str(copy.get("matchup_tree_sha256") or "").startswith(
                     "sha256:"
                 )
-                or not str(copy.get("search_config_sha256") or "").startswith(
-                    "sha256:"
-                )
-                or not str(copy.get("belief_decks_sha256") or "").startswith(
-                    "sha256:"
-                )
+                or not search_assets_valid
             ):
                 raise RuntimeError(
                     "submission copy is not bound to the requested specialist, "
@@ -2199,6 +2248,7 @@ def queue_submission_copies(
                 "belief_decks_checksum": str(
                     copy["belief_decks_sha256"]
                 ),
+                "search_assets_packaged": search_assets_packaged,
                 "gate_id": gate_id,
                 "iteration": iteration,
                 "queued_at": queued_at,
@@ -2228,6 +2278,7 @@ def queue_submission_copies(
                     "matchup_tree_checksum",
                     "search_config_checksum",
                     "belief_decks_checksum",
+                    "search_assets_packaged",
                     "gate_id",
                     "iteration",
                     "competition",
@@ -2251,7 +2302,7 @@ def queue_submission_copies(
                 "automatic_one_shot_authorization_on_training_complete": True,
                 "one_shot_authorization_uses": 1,
                 "standing_owner_decision_source": (
-                    "GOAL.md#/decision-ledger/revision-18"
+                    owner_decision_source
                 ),
                 "queue_order": "oldest_first",
                 "retry_while_quota_exhausted": False,

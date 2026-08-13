@@ -129,7 +129,13 @@ class PublicMatchupDecisionTree:
     append-only adapter bank.  ``unknown`` remains a separate abstention class.
     """
 
-    def __init__(self, payload: Mapping[str, Any], *, digest: str) -> None:
+    def __init__(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        digest: str,
+        slot_registry: Mapping[str, Any] | None = None,
+    ) -> None:
         from .matchup_adapter_routes import (
             MatchupAdapterRouteContract,
             require_runtime_route_binding,
@@ -171,14 +177,16 @@ class PublicMatchupDecisionTree:
             from .matchup_adapters_v6 import (
                 ADAPTER_CHECKPOINT_FORMAT as V6_ADAPTER_CHECKPOINT_FORMAT,
             )
-            from .matchup_adapters_v6 import (
-                SLOT_CAPACITY,
-                load_slot_registry,
-                registry_digest,
-                slot_map,
-            )
+            from .matchup_adapters_v6 import SLOT_CAPACITY, registry_digest, slot_map
+            from .matchup_adapters_v6 import load_slot_registry, load_slot_registry_dict
 
-            v6_registry = load_slot_registry()
+            embedded_registry = runtime.get("slot_registry")
+            if slot_registry is not None:
+                v6_registry = load_slot_registry_dict(slot_registry)
+            elif isinstance(embedded_registry, Mapping):
+                v6_registry = load_slot_registry_dict(embedded_registry)
+            else:
+                v6_registry = load_slot_registry()
             v6_targets = tuple(v6_registry["active_expert_ids"])
             if targets != v6_targets[: len(targets)]:
                 raise ValueError(
@@ -286,12 +294,17 @@ class PublicMatchupDecisionTree:
         path: str | Path,
         *,
         require_runtime_enabled: bool = True,
+        slot_registry: Mapping[str, Any] | None = None,
     ) -> "PublicMatchupDecisionTree":
         raw = Path(path).read_bytes()
         payload = json.loads(raw)
         if not isinstance(payload, Mapping):
             raise ValueError("public tree artifact root must be an object")
-        result = cls(payload, digest="sha256:" + hashlib.sha256(raw).hexdigest())
+        result = cls(
+            payload,
+            digest="sha256:" + hashlib.sha256(raw).hexdigest(),
+            slot_registry=slot_registry,
+        )
         if require_runtime_enabled and not result.runtime_enabled:
             raise ValueError("public tree has not passed its runtime activation gate")
         return result

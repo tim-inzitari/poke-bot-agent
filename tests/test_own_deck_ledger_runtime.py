@@ -551,6 +551,71 @@ def test_local_successor_model_and_policy_ledger_must_bind_together() -> None:
     assert policy.own_deck_ledger is not None
 
 
+def test_public_worker_forwards_controller_ledger_capability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Leaf-only public play must not silently construct a neutral policy."""
+    from poke_bot import baselines_runtime, batched_infer
+    from scripts import train_round_robin
+
+    seen: dict[str, object] = {}
+
+    class _Policy:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+            self.targets = []
+            self.fail_closed_count = 0
+
+        def reset_game(self):
+            return None
+
+        def matchup_adapter_shadow_snapshot(self):
+            return None
+
+    monkeypatch.setattr(agent_module, "PolicyAgent", _Policy)
+    monkeypatch.setattr(
+        agent_module,
+        "play_game",
+        lambda *_args, **_kwargs: {"winner": 0, "steps": 1},
+    )
+    monkeypatch.setattr(agent_module, "install_quiet_stdout", lambda *_args: None)
+    monkeypatch.setattr(
+        batched_infer,
+        "remote_leaf_backend_from_worker",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        baselines_runtime,
+        "resolve_baseline_spec_payload",
+        lambda spec, **_kwargs: spec,
+    )
+    monkeypatch.setattr(
+        baselines_runtime,
+        "load_baseline_agent",
+        lambda _spec: (lambda _obs: [], [1] * 60),
+    )
+    train_round_robin._WORKER_STATE.clear()
+
+    result = train_round_robin._worker_play(
+        {
+            "job_index": 0,
+            "spec": {"id": "public-probe"},
+            "our_seat": 0,
+            "our_deck": [1] * 60,
+            "seed": 7,
+            "mcts_sims": 0,
+            "device": "cpu",
+            "agent_mode": "policy",
+            "training_eligible": False,
+            "own_deck_ledger_enabled": True,
+        }
+    )
+
+    assert result["error"] is None
+    assert seen["model"] is None
+    assert seen["own_deck_ledger_enabled"] is True
+
+
 def test_mixed_successor_and_legacy_batch_keeps_per_row_neutral_inputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

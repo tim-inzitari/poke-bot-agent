@@ -683,6 +683,13 @@ def _worker_play(job: dict) -> dict:
             device=torch.device("cpu") if leaf_backend is not None else None,
             leaf_backend=leaf_backend,
             strict_runtime=True,
+            # GPU-leaf workers intentionally hold ``model=None`` and cannot
+            # infer successor capability from the checkpoint.  The controller
+            # stamps this immutable job flag, so ordinary public collection
+            # must bind the same match-local ledger used by self-play.
+            own_deck_ledger_enabled=bool(
+                job.get("own_deck_ledger_enabled", False)
+            ),
         )
         agent.reset_game()
 

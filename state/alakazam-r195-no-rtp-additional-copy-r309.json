@@ -1,0 +1,42 @@
+{
+  "schema": "poke_bot.alakazam_r195_no_rtp_additional_copy_r309/v1",
+  "owner_decision_revision": 309,
+  "status": "submitted_pending_evaluation",
+  "owner_intent": "submit another exact copy of submission 55378392 with the requested r195 iteration-21 NO-RTP label",
+  "competition": "pokemon-tcg-ai-battle",
+  "turn_order_preference": "first_if_allowed",
+  "label": "r195 iter 21 261d367e131e NO RTP",
+  "source": {
+    "submission_id": 55378392,
+    "bundle_path": "/home/inzi/poke-bot-agent/outputs/submissions/alakazam-terminal-expert-bootstrap-r195-runtime-comparison/copy-1/submission.tar.gz",
+    "bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "iteration": 21,
+    "runtime_profile": "NO RTP",
+    "typed_source": "state/alakazam-terminal-expert-bootstrap-no-rtp-submit-r195.json"
+  },
+  "invariants": {
+    "archive_members_changed": false,
+    "deck_changed": false,
+    "checkpoint_or_model_changed": false,
+    "runtime_or_matchup_adapter_changed": false,
+    "rtp_enabled": false,
+    "search_enabled": false,
+    "selector_or_training_service_changed": false,
+    "source_submission_mutated_or_replaced": false
+  },
+  "submission": {
+    "copies": 1,
+    "queue_policy": "immediate_queue_then_upload_at_first_quota_and_four_hour_spacing_eligible_time",
+    "fresh_one_shot_authorization_required": true,
+    "do_not_claim_submitted_without_upload_receipt": true,
+    "queue_receipt": "/home/inzi/poke-bot-agent/outputs/state/alakazam-r195-no-rtp-additional-copy-r309.queue.json",
+    "authorization_nonce": "alakazam-iter21-copy3-automatic-20260812T233804941625Z",
+    "authorization_consumed_receipt": "/home/inzi/.local/state/pokebot/kaggle-submission-attempts/20260812T233805.040336Z-alakazam-iter21-copy3-automatic-20260812T233804941625Z.authorization-consumed.json",
+    "upload_attempt_receipt": "/home/inzi/.local/state/pokebot/kaggle-submission-attempts/20260812T233818.967063Z-alakazam-iter21-copy3-automatic-20260812T233804941625Z.json",
+    "upload_returncode": 0,
+    "submission_id": 55468965,
+    "submitted_at_utc": "2026-08-12T23:38:18.070000Z",
+    "status": "PENDING"
+  }
+}

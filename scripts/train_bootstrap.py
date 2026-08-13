@@ -432,7 +432,10 @@ def main(argv: list[str] | None = None) -> int:
         archetype_id=args.archetype,
         train_cfg=cfg,
         resume=args.resume,
-        model_cfg=model_cfg,
+        # A weights-only hot start owns its serialized architecture.  Passing
+        # today's profile here would reject historical pure-RL champions whose
+        # layer geometry is intentionally preserved for bootstrap.
+        model_cfg=None if args.init_checkpoint else model_cfg,
         init_checkpoint=args.init_checkpoint,
         checkpoint_extra=checkpoint_extra or None,
         device_resident=bool(args.device_resident),

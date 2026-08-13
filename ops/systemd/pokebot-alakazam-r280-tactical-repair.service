@@ -1,0 +1,35 @@
+[Unit]
+Description=Alakazam r280 train-only tactical bootstrap repair
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/cg-r236
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/repair_r280_tactical_bootstrap.py \
+  --parent /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/checkpoints/r280-expert-bootstrap-epoch-25.pt \
+  --feature-shard /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/expert-elmo-d23e-v4/all-recognized-2026-08-08.alakazam.features \
+  --feature-sha256 sha256:8bbea3b92408f83351b93d1bb0f7c4a5bd2ccdf5e3dc98a345c978d216e7fc49 \
+  --overlay /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-tactical-train-repair/tactical-overlay-aug08-inzi.json \
+  --records-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-tactical-train-repair/r280-tactical-train-records-2026-08-08.jsonl.gz.receipt.json \
+  --sidecar-binding /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r274-sidecar-binding.json \
+  --sidecar-index /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/r260-own-deck-training-dataset/r274-sidecar-index.sqlite3 \
+  --output /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/checkpoints/r280-expert-bootstrap-tactical-repaired.pt \
+  --receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-tactical-train-repair/repair-receipt.json \
+  --device cuda:1 \
+  --epochs 25 \
+  --learning-rate 0.0001 \
+  --max-decisions-per-batch 2048 \
+  --card-vocab 1268 \
+  --train-day 2026-08-08
+TimeoutStartSec=infinity
+TimeoutStopSec=300
+KillMode=control-group
+MemoryHigh=48G
+MemoryMax=64G
+LimitNOFILE=65536
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/logs/tactical-repair.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/logs/tactical-repair.log

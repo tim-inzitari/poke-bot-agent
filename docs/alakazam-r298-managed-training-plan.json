@@ -1,0 +1,185 @@
+{
+  "schema": "poke_bot.alakazam_r298_managed_training_plan/v1",
+  "status": "proposal_non_authoritative_not_runtime_active",
+  "purpose": "Portable handoff for a future managed driver covering expert bootstrap, evaluation, self-play, and eventual Elmo+Bert+Inzi utilization.",
+  "canonical_experiment": {
+    "goal_path": "goals/alakazam-elmo-rule-derivative/GOAL.md",
+    "goal_revision": 4,
+    "goal_sha256": "sha256:2af67560510ca7ffd9fe0bc6ff37cdbbd74f5a78d6c5237091bb527d49ce4ed8",
+    "contract_path": "goals/alakazam-elmo-rule-derivative/contract.json",
+    "contract_sha256": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+    "this_plan_is_subordinate_and_grants_no_authority": true
+  },
+  "model_plan": {
+    "baseline": "exact receipt-bound unchanged r241/r274",
+    "operational_reference": "immutable r195 in its native configuration",
+    "card2vec": "preserve bit-identically; frozen and unchanged",
+    "new_path": "additive structured public-rule residual plus repaired auxiliary heads",
+    "expected_dimensions": {
+      "d_model": 96,
+      "belief_card_vocab": 1268,
+      "route_width": 64
+    },
+    "estimated_new_trainable_parameters": {
+      "structured_rule_residual": 8066,
+      "auxiliary_heads_and_policy_route": 262959,
+      "total": 271025,
+      "approximate_increase_over_10750146_parameter_reference_percent": 2.52
+    },
+    "frozen_during_initial_derivative_training": [
+      "backbone",
+      "existing_heads",
+      "Fusion",
+      "OwnDeck routes",
+      "matchup adapters",
+      "Card2Vec"
+    ]
+  },
+  "data": {
+    "required_window_start_utc": "2026-07-13",
+    "required_window_end_utc": "2026-08-11",
+    "required_distinct_contiguous_utc_partitions": 30,
+    "twenty_day_or_subset_fallback_allowed": false,
+    "requirements": [
+      "validated and deduplicated raw manifest",
+      "frozen feature/target/checklist-provenance schema",
+      "complete collision census",
+      "source/day/group-disjoint train, validation, and evaluation manifests"
+    ]
+  },
+  "managed_stages": [
+    {
+      "id": "S0",
+      "name": "schema_and_zero_bypass_freeze",
+      "work": "Validate structured catalog provenance, schemas, information-set metamorphic tests, and bit-identical layer-off behavior.",
+      "exit_gate": "All schema identities and zero-bypass receipts pass; unsupported branches remain exact-zero."
+    },
+    {
+      "id": "S1",
+      "name": "thirty_day_refeaturization_and_census",
+      "work": "Validate, deduplicate, and re-featurize all 30 partitions while producing coverage and collision census outputs.",
+      "parallel_safe_work": "As each immutable shard reaches at most 96 MiB and passes SHA/schema/size checks, stage it create-only to the authorized quarantined Inzi directory using at most four lanes.",
+      "exit_gate": "Complete raw-manifest, census, shard, resource-peak, and source/remote parity receipts."
+    },
+    {
+      "id": "S2",
+      "name": "frozen_backbone_expert_bootstrap",
+      "work": "Train only the new structured adapter, repaired auxiliary heads, and census-supported eligible gates.",
+      "epoch_policy": {
+        "initial_epochs": 2,
+        "normal_expected_range": [2, 4],
+        "hard_maximum_epochs": 5,
+        "early_stopping_patience_epochs": 1,
+        "twenty_full_epochs_planned": false
+      },
+      "warm_start": "Reuse compatible existing-head tensors or predictions where shape and semantics match exactly; record every mapping and leave unmatched outputs neutral.",
+      "exit_gate": "Held-out source/day/group-disjoint metrics improve without hidden-information leakage, severe rule regression, or baseline-off parity failure."
+    },
+    {
+      "id": "S3",
+      "name": "pre_self_play_paired_evaluation",
+      "work": "Run receipt-bound seed-matched, seat-swapped comparisons against unchanged r241/r274 and immutable r195; keep the r195-new-list comparison explicitly labeled as a deck-shift confound.",
+      "exit_gate": "No severe rule-error regression; acceptable action-disagreement and checklist-channel evidence; candidate receipt complete."
+    },
+    {
+      "id": "S4",
+      "name": "short_frozen_backbone_self_play",
+      "work": "Run 1 to 3 managed self-play iterations with the backbone and existing learned paths still frozen. Train the new path at a low learning rate and retain rollback checkpoints per iteration.",
+      "initial_iteration_count": 1,
+      "maximum_before_mandatory_review": 3,
+      "exit_gate": "Paired evaluation improves game outcome without increased deck-outs, severe mechanics errors, prize-race regressions, or unstable residual magnitude."
+    },
+    {
+      "id": "S5",
+      "name": "optional_limited_unfreeze",
+      "work": "Only after explicit owner approval, consider unfreezing a narrowly selected late policy/fusion component; never default to full-model RL.",
+      "exit_gate": "A new receipt-backed owner decision names the exact tensors, learning rates, rollback point, and evaluation gate."
+    }
+  ],
+  "hardware_topology": {
+    "eventual_target": "Use Elmo, Bert, and Inzi concurrently under one receipt-backed managed scheduler.",
+    "current_authority": {
+      "Elmo": "May perform isolated implementation validation, corpus work, training, and evaluation under the canonical experiment contract.",
+      "Inzi": "May only receive validated create-only shards in the quarantined staging directory; it may not load, train, evaluate, or execute them under the current contract.",
+      "Bert": "No compute authority is granted by the current experiment contract."
+    },
+    "future_promoted_roles": {
+      "Elmo": [
+        "primary 30-day corpus materialization",
+        "expert bootstrap coordinator",
+        "GPU training and candidate checkpoint production"
+      ],
+      "Bert": [
+        "independent held-out evaluation",
+        "seed-disjoint self-play workers",
+        "metamorphic and engine-backed regression lanes"
+      ],
+      "Inzi": [
+        "managed self-play collection workers",
+        "distributed evaluation lanes",
+        "future training only after a separate explicit production-goal authorization"
+      ]
+    },
+    "promotion_requirement": "Before Bert or Inzi executes experiment bytes, the authoritative goal must be revised explicitly and a scheduler receipt must bind host roles, package/checkpoint/schema hashes, seeds, resource limits, and rollback behavior.",
+    "resource_policy": {
+      "use_all_available_cpu_and_gpu_eventually": true,
+      "elmo_experiment_ram_hard_ceiling_gib": 96,
+      "one_memory_heavy_phase_at_a_time": true,
+      "existing_truenas_zfs_l2arc_may_cache_normally": true,
+      "zfs_arc_l2arc_reconfiguration_allowed": false,
+      "per_job_resource_peak_receipts_required": true
+    }
+  },
+  "wall_time_and_transfer_policy": {
+    "begin_safe_transfer_when_each_shard_is_final": true,
+    "wait_for_entire_corpus_before_transfer": false,
+    "content_addressed_full_sha256_names": true,
+    "maximum_shard_size_mib": 96,
+    "maximum_parallel_transfer_lanes": 4,
+    "skip_verified_exact_remote_match": true,
+    "resume_private_partial_then_publish_create_only": true,
+    "overwrite_or_replace_conflict": false,
+    "final_source_remote_parity_receipt_required": true,
+    "reason": "Overlap safe transfer with continuing Elmo materialization and avoid redundant copies through immutable content addressing."
+  },
+  "evaluation": {
+    "bo250_per_comparison": {
+      "pairs": 125,
+      "games": 250,
+      "seed_matched": true,
+      "seat_swapped": true
+    },
+    "required_comparisons": [
+      "candidate vs unchanged r241/r274 on the exact same new list",
+      "candidate vs immutable r195 in r195 native operational configuration",
+      "exploratory r195 weights with new list, labeled deck-shift confound"
+    ],
+    "required_metrics": [
+      "paired confidence intervals",
+      "win/loss/draw counts",
+      "prize efficiency",
+      "deck-outs",
+      "action disagreements",
+      "severe rule-error rate",
+      "per-channel checklist coverage",
+      "residual responsible for each changed action"
+    ]
+  },
+  "stop_and_rollback_conditions": [
+    "hidden or privileged information changes a pre-transition policy result",
+    "layer-off logits or legal choices differ from the frozen baseline",
+    "non-finite loss, logits, residuals, or parameters",
+    "severe simulator-rule error rate increases",
+    "validation worsens for the configured patience interval",
+    "resource ceiling or scheduler role boundary is exceeded",
+    "artifact, checkpoint, schema, seed, or host-role receipt mismatch"
+  ],
+  "activation": {
+    "starts_jobs": false,
+    "changes_managed_services": false,
+    "authorizes_inzi_compute": false,
+    "authorizes_bert_compute": false,
+    "authorizes_production_or_submission": false,
+    "next_action_for_main_driver": "Adopt this proposal into the authoritative managed-system goal through an explicit owner revision before scheduling Bert/Inzi compute."
+  }
+}

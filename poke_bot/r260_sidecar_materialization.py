@@ -58,7 +58,10 @@ R260_PARITY_RECEIPT_SCHEMA = (
 R260_TRANSPORT_RECEIPT_SCHEMA = "poke_bot.r260_own_deck_inzi_transport_receipt/v1"
 
 R260_AGGREGATE_BINDING_SCHEMA = "poke_bot.r241_own_deck_sidecar_binding/v1"
-R260_INZI_BINDING_SCHEMA = "poke_bot.r241_own_deck_inzi_dataset_binding/v1"
+R260_INZI_BINDING_SCHEMA = "poke_bot.r241_own_deck_inzi_dataset_binding/v2"
+R274_LOCAL_POST_TRANSFER_ATTESTATION_SCHEMA = (
+    "poke_bot.r274_own_deck_local_post_transfer_attestation/v1"
+)
 
 EVIDENCE_DIRECTORY_NAME = "r260-sidecar-evidence-v1"
 SOURCE_MANIFEST_COPY_NAME = "source-manifest.json"
@@ -76,6 +79,10 @@ COMPLETION_RECEIPT_NAME = "completion.json"
 AGGREGATE_BINDING_NAME = "r260-sidecar-binding.json"
 TRANSPORT_RECEIPT_NAME = "transport.json"
 INZI_BINDING_NAME = "r260-inzi-dataset-binding.json"
+R274_LOCAL_POST_TRANSFER_ATTESTATION_NAME = "r274-local-post-transfer-attestation.json"
+R262_LEGACY_OWNER_CONTRACT_SHA256 = (
+    "sha256:57cbc0ac7ca7ee3791f7257899a16f6f0642749effa218323368e35940cdc202"
+)
 
 RECORD_KEY_FIELDS = (
     "episode_id",
@@ -442,10 +449,13 @@ def materialize_r260_sidecar(
         ),
         label="r260 digest receipt",
     )
-    for directory in (joined_dir, receipts_dir):
-        _seal_directory(directory)
-    # The evidence root intentionally remains writable until Inzi has added its
-    # create-only parity/completion/binding receipts.  Existing files are 0444.
+    _seal_directory(joined_dir)
+    if receipt_identity_root is None:
+        _seal_directory(receipts_dir)
+    # An Inzi staging materialization keeps the receipt directory writable
+    # until its create-only transport, parity, and completion receipts exist.
+    # The individual immutable join/schema/count/digest files are already
+    # 0444, and finalization seals the completed directory.
     return MaterializationResult(
         audit=audit,
         evidence_root=root,
@@ -634,8 +644,8 @@ def attest_r260_existing_inzi_transport(
     """
 
     contract = _owner_contract(owner_contract)
-    expected_elmo = _regular_directory(
-        expected_elmo_sidecar_root, label="expected Elmo sidecar root"
+    expected_elmo = _expected_elmo_sidecar_path(
+        expected_elmo_sidecar_root, contract, require_directory=False
     )
     local_root = _regular_directory(elmo_sidecar_root, label="Elmo sidecar root")
     if local_root != expected_elmo:
@@ -1045,6 +1055,178 @@ def promote_r260_inzi_staging_root(
     return _regular_directory(final_text, label="atomically promoted Inzi final root")
 
 
+def attest_r274_local_post_transfer(
+    *,
+    inzi_staging_root: Path | str,
+    source_manifest: Path | str,
+    source_window_receipt: Path | str,
+    legacy_receipts_root: Path | str,
+    expected_elmo_sidecar_root: Path | str,
+    owner_contract: _OwnerContract | None = None,
+) -> tuple[FileIdentity, FileIdentity]:
+    """Rehash the sealed r262 transfer and authorize only local completion.
+
+    The legacy per-day receipts remain immutable historical evidence bound to
+    the r262 owner envelope.  This function validates their semantic digests,
+    exact source/destination identities, and the current Inzi bytes before it
+    emits a new r274 attestation and the canonical complete-prefix receipt.
+    Dot-prefixed interrupted-transfer remnants are deliberately ignored.
+    """
+
+    contract = _owner_contract(owner_contract)
+    staging = _regular_directory(inzi_staging_root, label="r274 Inzi staging root")
+    _require_staging_inzi_root(staging, contract)
+    expected_elmo = _expected_elmo_sidecar_path(
+        expected_elmo_sidecar_root, contract, require_directory=False
+    )
+    audit = audit_r260_sidecar(
+        sidecar_root=staging,
+        source_manifest=source_manifest,
+        source_window_receipt=source_window_receipt,
+        expected_sidecar_root=staging,
+        owner_contract=contract,
+    )
+    receipt_root = _regular_directory(
+        legacy_receipts_root, label="r274 legacy per-day receipt root"
+    )
+    _require_descendant(receipt_root, staging, label="r274 legacy receipt root")
+    receipt_identities: dict[str, dict[str, object]] = {}
+    for artifact in audit.daily:
+        path = receipt_root / f"{artifact.day}.json"
+        info = _regular_file(path, label=f"r274 legacy receipt {artifact.day}")
+        if info.stat().st_mode & 0o222:
+            raise R260SidecarMaterializationError("r274 legacy receipt is writable")
+        payload = _read_json_object(info, label=f"r274 legacy receipt {artifact.day}")
+        if (
+            payload.get("schema") != "poke_bot.r260_own_deck_prefix_transport_receipt/v1"
+            or payload.get("status") != "staged_non_eligible"
+            or payload.get("day") != artifact.day
+            or payload.get("owner_revision") != 262
+            or payload.get("owner_contract_sha256") != R262_LEGACY_OWNER_CONTRACT_SHA256
+            or payload.get("staging_root") != str(staging)
+            or payload.get("canonical_inzi_training_root") != str(contract.inzi_training_root)
+            or payload.get("canonical_root_exists") is not False
+            or payload.get("joined_dataset_created") is not False
+            or payload.get("final_binding_created") is not False
+            or payload.get("staging_training_eligible") is not False
+            or payload.get("receipt_sha256")
+            != semantic_digest(payload, field="receipt_sha256")
+        ):
+            raise R260SidecarMaterializationError(
+                f"r274 legacy receipt {artifact.day} identity drifted"
+            )
+        source_files = _mapping(
+            payload.get("source_files"), label=f"r274 source files {artifact.day}"
+        )
+        destination_files = _mapping(
+            payload.get("destination_files"),
+            label=f"r274 destination files {artifact.day}",
+        )
+        expected_source_meta = FileIdentity(
+            expected_elmo / "daily" / artifact.day / rollout_store.DAILY_META_NAME,
+            artifact.meta.sha256,
+            artifact.meta.size_bytes,
+        )
+        expected_source_shard = FileIdentity(
+            expected_elmo / "daily" / artifact.day / rollout_store.DAILY_SHARD_NAME,
+            artifact.shard.sha256,
+            artifact.shard.size_bytes,
+        )
+        if (
+            source_files.get("meta") != expected_source_meta.as_dict()
+            or source_files.get("shard") != expected_source_shard.as_dict()
+            or destination_files.get("meta") != artifact.meta.as_dict()
+            or destination_files.get("shard") != artifact.shard.as_dict()
+            or payload.get("source_meta_self_sha256")
+            != payload.get("destination_meta_self_sha256")
+        ):
+            raise R260SidecarMaterializationError(
+                f"r274 legacy receipt {artifact.day} file identity drifted"
+            )
+        validation = _mapping(
+            payload.get("validation"), label=f"r274 validation {artifact.day}"
+        )
+        required_validation = {
+            "atomic_create_only_promotion",
+            "byte_identical_to_elmo",
+            "destination_meta_self_digest_valid",
+            "destination_shard_declared_sha256_and_size_valid",
+            "source_and_destination_regular_non_symlink",
+            "source_meta_self_digest_valid",
+            "source_shard_declared_sha256_and_size_valid",
+        }
+        if set(validation) != required_validation or any(
+            validation[key] is not True for key in required_validation
+        ):
+            raise R260SidecarMaterializationError(
+                f"r274 legacy receipt {artifact.day} validation drifted"
+            )
+        receipt_identities[artifact.day] = file_identity(
+            info, label=f"r274 legacy receipt {artifact.day}"
+        ).as_dict()
+
+    prefix_dir = staging / "r260-prefix-receipts"
+    if prefix_dir.exists() or prefix_dir.is_symlink():
+        raise R260SidecarMaterializationError("r274 prefix evidence already exists")
+    prefix_dir = _new_directory(prefix_dir, label="r274 prefix evidence root")
+    attestation_payload = _seal(
+        {
+            "schema": R274_LOCAL_POST_TRANSFER_ATTESTATION_SCHEMA,
+            "status": "passed",
+            "owner_revision": 274,
+            "owner_contract_sha256": contract.sha256,
+            "transfer_owner_revision": 262,
+            "transfer_owner_contract_sha256": R262_LEGACY_OWNER_CONTRACT_SHA256,
+            "source_elmo_sidecar_root": str(expected_elmo),
+            "inzi_staging_root": str(staging),
+            "inzi_final_root": str(contract.inzi_training_root),
+            "source_manifest_sha256": contract.source_manifest_sha256,
+            "source_window_receipt_sha256": contract.source_window_receipt_sha256,
+            "days": list(expected_days()),
+            "legacy_per_day_transfer_receipts": receipt_identities,
+            "daily_meta_inzi": audit.daily_meta_identities,
+            "daily_shards_inzi": audit.daily_shard_identities,
+            "every_daily_file_rehashed": True,
+            "source_and_destination_byte_identity_proven_by_legacy_receipts": True,
+            "dot_prefixed_remnants_eligible": False,
+            "large_payload_retransfer_required": False,
+            "joined_dataset_created": False,
+            "training_eligible": False,
+        },
+        field="receipt_sha256",
+    )
+    attestation = _write_json_create_only(
+        prefix_dir / R274_LOCAL_POST_TRANSFER_ATTESTATION_NAME,
+        attestation_payload,
+        label="r274 local post-transfer attestation",
+    )
+    prefix_payload = _seal(
+        {
+            "schema": R260_SIDECAR_MATERIALIZATION_SCHEMA,
+            "status": "complete_staging_not_training_eligible",
+            "owner_contract_sha256": contract.sha256,
+            "source_manifest_sha256": contract.source_manifest_sha256,
+            "source_window_receipt_sha256": contract.source_window_receipt_sha256,
+            "source_elmo_sidecar_root": str(expected_elmo),
+            "inzi_staging_root": str(staging),
+            "committed_days": list(expected_days()),
+            "day_count": 20,
+            "daily_meta": audit.daily_meta_identities,
+            "daily_shards": audit.daily_shard_identities,
+            "local_post_transfer_attestation": attestation.as_dict(),
+            "r260_training_eligible": False,
+        },
+        field="receipt_sha256",
+    )
+    prefix = _write_json_create_only(
+        prefix_dir / "prefix-20-of-20.json",
+        prefix_payload,
+        label="r274 complete Inzi prefix receipt",
+    )
+    _seal_directory(prefix_dir)
+    return attestation, prefix
+
+
 def _verify_staged_day(directory: Path, expected: DailyArtifact) -> None:
     target = _regular_directory(directory, label=f"Inzi staged day {expected.day}")
     members = {child.name for child in target.iterdir()}
@@ -1056,6 +1238,167 @@ def _verify_staged_day(directory: Path, expected: DailyArtifact) -> None:
         raise R260SidecarMaterializationError("Inzi staged metadata identity drifted")
     if shard.sha256 != expected.shard.sha256 or shard.size_bytes != expected.shard.size_bytes:
         raise R260SidecarMaterializationError("Inzi staged shard identity drifted")
+
+
+def write_r274_local_post_transfer_receipt(
+    *,
+    inzi_sidecar_root: Path | str,
+    inzi_evidence_root: Path | str,
+    local_post_transfer_attestation: Path | str,
+    owner_contract: _OwnerContract | None = None,
+    receipt_identity_root: Path | str | None = None,
+) -> FileIdentity:
+    """Bind an Inzi-local deterministic join to the sealed Elmo daily bytes."""
+
+    contract = _owner_contract(owner_contract)
+    root = _regular_directory(inzi_sidecar_root, label="r274 Inzi sidecar root")
+    evidence = _regular_directory(inzi_evidence_root, label="r274 Inzi evidence root")
+    materialized = _materialization_from_existing(
+        sidecar_root=root, evidence_root=evidence, owner_contract=contract
+    )
+    logical_root = _receipt_identity_root(
+        physical_root=root, receipt_identity_root=receipt_identity_root
+    )
+    attestation = _read_receipt(
+        local_post_transfer_attestation,
+        R274_LOCAL_POST_TRANSFER_ATTESTATION_SCHEMA,
+    )
+    if (
+        attestation.payload.get("owner_revision") != 274
+        or attestation.payload.get("owner_contract_sha256") != contract.sha256
+        or attestation.payload.get("source_and_destination_byte_identity_proven_by_legacy_receipts")
+        is not True
+        or attestation.payload.get("every_daily_file_rehashed") is not True
+        or attestation.payload.get("large_payload_retransfer_required") is not False
+    ):
+        raise R260SidecarMaterializationError("r274 local attestation drifted")
+    payload = _seal(
+        {
+            "schema": R260_TRANSPORT_RECEIPT_SCHEMA,
+            "status": "passed",
+            "owner_contract_sha256": contract.sha256,
+            "transport_kind": "local_post_transfer_build",
+            "source_elmo_sidecar_root": str(contract.side_store_root),
+            "inzi_sidecar_root": str(logical_root),
+            "local_post_transfer_attestation": _project_identity(
+                file_identity(attestation.path, label="r274 local post-transfer attestation"),
+                physical_root=root,
+                logical_root=logical_root,
+            ).as_dict(),
+            "inzi_joined_dataset": _project_identity(
+                materialized.joined_dataset,
+                physical_root=root,
+                logical_root=logical_root,
+            ).as_dict(),
+            "inzi_joined_manifest": _project_identity(
+                materialized.joined_manifest,
+                physical_root=root,
+                logical_root=logical_root,
+            ).as_dict(),
+            "daily_meta_inzi": _project_daily_identities(
+                materialized.audit.daily_meta_identities,
+                physical_root=root,
+                logical_root=logical_root,
+            ),
+            "daily_shard_inzi": _project_daily_identities(
+                materialized.audit.daily_shard_identities,
+                physical_root=root,
+                logical_root=logical_root,
+            ),
+            "source_manifest_sha256": contract.source_manifest_sha256,
+            "source_window_receipt_sha256": contract.source_window_receipt_sha256,
+            "joined_dataset_deterministically_built_on_inzi": True,
+            "daily_payload_retransmitted": False,
+        },
+        field="receipt_sha256",
+    )
+    return _write_json_create_only(
+        evidence / RECEIPTS_DIRECTORY_NAME / TRANSPORT_RECEIPT_NAME,
+        payload,
+        label="r274 Inzi local post-transfer receipt",
+    )
+
+
+def attest_r274_local_rebuild_parity(
+    *,
+    inzi_sidecar_root: Path | str,
+    inzi_evidence_root: Path | str,
+    owner_contract: _OwnerContract | None = None,
+    sample_limit: int = DEFAULT_CAUSAL_PARITY_SAMPLES,
+    receipt_identity_root: Path | str | None = None,
+) -> FileIdentity:
+    """Independently rebuild the join on Inzi and compare bytes and samples."""
+
+    contract = _owner_contract(owner_contract)
+    root = _regular_directory(inzi_sidecar_root, label="r274 Inzi sidecar root")
+    evidence = _regular_directory(inzi_evidence_root, label="r274 Inzi evidence root")
+    materialized = _materialization_from_existing(
+        sidecar_root=root, evidence_root=evidence, owner_contract=contract
+    )
+    logical_root = _receipt_identity_root(
+        physical_root=root, receipt_identity_root=receipt_identity_root
+    )
+    if not 1 <= sample_limit <= MAX_CAUSAL_PARITY_SAMPLES:
+        raise R260SidecarMaterializationError("r274 parity sample limit is invalid")
+    temporary: Path | None = None
+    try:
+        descriptor, name = tempfile.mkstemp(
+            prefix=".r274-independent-join.", suffix=".jsonl.gz", dir=evidence
+        )
+        os.close(descriptor)
+        temporary = Path(name)
+        temporary.unlink()
+        rebuilt, rebuilt_count, rebuilt_rows, rebuilt_keys = _write_deterministic_joined_dataset(
+            materialized.audit, temporary
+        )
+        if (
+            rebuilt.sha256 != materialized.joined_dataset.sha256
+            or rebuilt.size_bytes != materialized.joined_dataset.size_bytes
+            or rebuilt_count != materialized.row_count
+            or rebuilt_rows != materialized.joined_rows_sha256
+            or rebuilt_keys != materialized.joined_keys_sha256
+        ):
+            raise R260SidecarMaterializationError("r274 independent local rebuild drifted")
+        indices = _sample_indices(materialized.row_count, sample_limit)
+        first = _causal_sample_projection(materialized.joined_dataset.path, indices)
+        second = _causal_sample_projection(rebuilt.path, indices)
+        if first != second:
+            raise R260SidecarMaterializationError("r274 local causal projection drifted")
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+    payload = _seal(
+        {
+            "schema": R260_PARITY_RECEIPT_SCHEMA,
+            "status": "passed",
+            "owner_contract_sha256": contract.sha256,
+            "source_manifest_sha256": contract.source_manifest_sha256,
+            "source_window_receipt_sha256": contract.source_window_receipt_sha256,
+            "record_key": list(RECORD_KEY_FIELDS),
+            "parity_kind": "inzi_independent_local_rebuild_against_sealed_daily_transfer",
+            "inzi_joined_dataset": _project_identity(
+                materialized.joined_dataset,
+                physical_root=root,
+                logical_root=logical_root,
+            ).as_dict(),
+            "joined_dataset_byte_identical": True,
+            "daily_meta_byte_identical": True,
+            "daily_shard_byte_identical": True,
+            "sample_limit": sample_limit,
+            "sample_count": len(indices),
+            "sample_indices": list(indices),
+            "sample_key_sha256": sha256_bytes(canonical_json_bytes(first)),
+            "local_causal_projection_sha256": sha256_bytes(canonical_json_bytes(first)),
+            "remote_causal_projection_sha256": sha256_bytes(canonical_json_bytes(second)),
+            "active_r241_training_eligible": False,
+        },
+        field="receipt_sha256",
+    )
+    return _write_json_create_only(
+        evidence / RECEIPTS_DIRECTORY_NAME / PARITY_RECEIPT_NAME,
+        payload,
+        label="r274 independent local rebuild parity receipt",
+    )
 
 
 def attest_r260_causal_local_remote_parity(
@@ -1178,8 +1521,8 @@ def finalize_r260_inzi_sidecar(
     """
 
     contract = _owner_contract(owner_contract)
-    expected_elmo = _regular_directory(
-        expected_elmo_sidecar_root, label="expected Elmo sidecar root"
+    expected_elmo = _expected_elmo_sidecar_path(
+        expected_elmo_sidecar_root, contract, require_directory=False
     )
     root_text = Path(inzi_sidecar_root).expanduser()
     _reject_elmo_destination(root_text, expected_elmo)
@@ -1389,8 +1732,8 @@ def verify_r260_inzi_sidecar_completion(
     """
 
     contract = _owner_contract(owner_contract)
-    expected_elmo = _regular_directory(
-        expected_elmo_sidecar_root, label="expected Elmo sidecar root"
+    expected_elmo = _expected_elmo_sidecar_path(
+        expected_elmo_sidecar_root, contract, require_directory=False
     )
     root_text = Path(inzi_sidecar_root).expanduser()
     _reject_elmo_destination(root_text, expected_elmo)
@@ -1497,11 +1840,17 @@ def bind_r260_inzi_dataset(
     joined = file_identity(
         completion.joined_dataset.path, label="r260 Inzi joined dataset"
     )
-    source_joined = _identity_from_mapping(
-        transport.payload.get("source_joined_dataset"), label="r260 source joined dataset"
-    )
-    if source_joined.sha256 != joined.sha256 or source_joined.size_bytes != joined.size_bytes:
-        raise R260SidecarMaterializationError("r260 Inzi dataset is not byte-identical to Elmo")
+    transport_kind = str(transport.payload.get("transport_kind") or "")
+    if transport_kind == "local_post_transfer_build":
+        source_joined = joined
+        source_join_identity_kind = "inzi_deterministic_join_of_elmo_receipted_daily_bytes"
+    else:
+        source_joined = _identity_from_mapping(
+            transport.payload.get("source_joined_dataset"), label="r260 source joined dataset"
+        )
+        source_join_identity_kind = "elmo_materialized_joined_dataset"
+        if source_joined.sha256 != joined.sha256 or source_joined.size_bytes != joined.size_bytes:
+            raise R260SidecarMaterializationError("r260 Inzi dataset is not byte-identical to Elmo")
     receipts_dir = evidence / RECEIPTS_DIRECTORY_NAME
     joined_receipt = _read_receipt(receipts_dir / JOIN_RECEIPT_NAME, R260_JOIN_RECEIPT_SCHEMA)
     schema_receipt = _read_receipt(receipts_dir / SCHEMA_RECEIPT_NAME, R260_SCHEMA_RECEIPT_SCHEMA)
@@ -1523,8 +1872,9 @@ def bind_r260_inzi_dataset(
         "source_window_receipt_sha256": contract.source_window_receipt_sha256,
         "sidecar_binding_sha256": aggregate_semantic,
         "sidecar_binding": aggregate_file.as_dict(),
-        "transport_kind": "create_only_copy",
-        "elmo_joined_dataset_sha256": source_joined.sha256,
+        "transport_kind": transport_kind,
+        "source_join_identity_kind": source_join_identity_kind,
+        "source_joined_dataset_sha256": source_joined.sha256,
         "inzi_joined_dataset_sha256": joined.sha256,
         "join_receipt_sha256": _receipt_semantic_sha(joined_receipt),
         "schema_receipt_sha256": _receipt_semantic_sha(schema_receipt),
@@ -2263,7 +2613,14 @@ def _validate_materialization_receipts(
         R260_COUNT_RECEIPT_SCHEMA,
         R260_DIGEST_RECEIPT_SCHEMA,
     )
-    for identity, schema in zip(receipts, expected, strict=True):
+    if len(receipts) != len(expected):
+        raise R260SidecarMaterializationError(
+            "materialization receipt inventory length changed"
+        )
+    # Inzi's managed training interpreter is Python 3.9, where ``zip`` does
+    # not yet accept ``strict=``.  The explicit cardinality guard above keeps
+    # the same fail-closed semantics across host interpreter versions.
+    for identity, schema in zip(receipts, expected):
         payload = _read_receipt(identity.path, schema).payload
         if (
             payload.get("owner_contract_sha256") != contract.sha256
@@ -2380,7 +2737,7 @@ def _validate_transport_receipt(
     """Validate transport proof against the local Inzi tree by raw content."""
 
     payload = receipt.payload
-    required = {
+    common_required = {
         "schema",
         "status",
         "receipt_sha256",
@@ -2388,23 +2745,76 @@ def _validate_transport_receipt(
         "transport_kind",
         "source_elmo_sidecar_root",
         "inzi_sidecar_root",
-        "source_joined_dataset",
         "inzi_joined_dataset",
-        "joined_dataset_byte_identical",
-        "source_joined_manifest",
         "inzi_joined_manifest",
-        "daily_meta_source",
         "daily_meta_inzi",
-        "daily_shard_source",
         "daily_shard_inzi",
         "source_manifest_sha256",
         "source_window_receipt_sha256",
+    }
+    transport_kind = payload.get("transport_kind")
+    if transport_kind == "local_post_transfer_build":
+        required = common_required | {
+            "local_post_transfer_attestation",
+            "joined_dataset_deterministically_built_on_inzi",
+            "daily_payload_retransmitted",
+        }
+        if set(payload) != required:
+            raise R260SidecarMaterializationError("r274 transport receipt key shape drifted")
+        attestation = file_identity(
+            materialized.audit.sidecar_root
+            / "r260-prefix-receipts"
+            / R274_LOCAL_POST_TRANSFER_ATTESTATION_NAME,
+            label="r274 local post-transfer attestation",
+        )
+        if (
+            payload.get("owner_contract_sha256") != contract.sha256
+            or payload.get("source_elmo_sidecar_root") != str(contract.side_store_root)
+            or payload.get("source_manifest_sha256") != contract.source_manifest_sha256
+            or payload.get("source_window_receipt_sha256")
+            != contract.source_window_receipt_sha256
+            or payload.get("joined_dataset_deterministically_built_on_inzi") is not True
+            or payload.get("daily_payload_retransmitted") is not False
+            or not _content_identity_matches(
+                payload.get("inzi_joined_dataset"),
+                materialized.joined_dataset,
+                label="r274 transport Inzi joined dataset",
+            )
+            or not _content_identity_matches(
+                payload.get("inzi_joined_manifest"),
+                materialized.joined_manifest,
+                label="r274 transport Inzi joined manifest",
+            )
+            or not _content_identity_map_matches(
+                payload.get("daily_meta_inzi"),
+                materialized.audit.daily_meta_identities,
+                label="r274 transport Inzi daily metadata",
+            )
+            or not _content_identity_map_matches(
+                payload.get("daily_shard_inzi"),
+                materialized.audit.daily_shard_identities,
+                label="r274 transport Inzi daily shards",
+            )
+            or not _content_identity_matches(
+                payload.get("local_post_transfer_attestation"),
+                attestation,
+                label="r274 local post-transfer attestation",
+            )
+        ):
+            raise R260SidecarMaterializationError("r274 local transport receipt drifted")
+        return
+    required = common_required | {
+        "source_joined_dataset",
+        "joined_dataset_byte_identical",
+        "source_joined_manifest",
+        "daily_meta_source",
+        "daily_shard_source",
     }
     if set(payload) != required:
         raise R260SidecarMaterializationError("r260 transport receipt key shape drifted")
     if (
         payload.get("owner_contract_sha256") != contract.sha256
-        or payload.get("transport_kind") != "create_only_copy"
+        or transport_kind != "create_only_copy"
         or payload.get("source_elmo_sidecar_root") != str(contract.side_store_root)
         or not isinstance(payload.get("inzi_sidecar_root"), str)
         or not str(payload.get("inzi_sidecar_root") or "")
@@ -2946,8 +3356,11 @@ __all__ = [
     "R260_INZI_BINDING_SCHEMA",
     "R260_JOINED_ROW_SCHEMA",
     "R260_PARITY_RECEIPT_SCHEMA",
+    "R274_LOCAL_POST_TRANSFER_ATTESTATION_SCHEMA",
     "TransportResult",
     "attest_r260_causal_local_remote_parity",
+    "attest_r274_local_post_transfer",
+    "attest_r274_local_rebuild_parity",
     "audit_r260_sidecar",
     "audit_r260_sidecar_prefix",
     "bind_r260_inzi_dataset",
@@ -2961,4 +3374,5 @@ __all__ = [
     "sha256_bytes",
     "transport_r260_sidecar_to_inzi",
     "stage_r260_sidecar_prefix_to_inzi",
+    "write_r274_local_post_transfer_receipt",
 ]

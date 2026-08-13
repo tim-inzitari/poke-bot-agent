@@ -207,6 +207,9 @@ def test_r241_curriculum_trio_is_checksum_linked_and_directional_only() -> None:
 
 def test_r241_readiness_canary_is_nonflat_only_for_the_exact_deck() -> None:
     me = _player(hand=[guide.BATTLE_CAGE])
+    # Battle Cage matters against Froslass only for a public Bench Ability;
+    # a bare Abra must not become a generic early-Stadium label.
+    me["bench"][0]["id"] = guide.KADABRA
     opponent = _player(active_id=guide.FROSLASS)
     observation = {
         "current": {

@@ -1,0 +1,74 @@
+[Unit]
+Description=Alakazam r274 exact 20-update direct-policy RL loop
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=POKEBOT_OUTPUTS_DIR=/home/inzi/poke-bot-agent/outputs
+Environment=POKEBOT_BASELINES_DIR=/home/inzi/poke-bot-agent-deployments/r241-baseline-payloads/alakazam-new-list-direct-r241-baselines-056e776f6dd617fc
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/cg-r236
+Environment=POKEBOT_R241_DIRECT_POLICY_ONLY=1
+Environment=POKEBOT_OWN_DECK_LEDGER_RUNTIME=1
+Environment=POKEBOT_R241_DIRECT_POLICY_ADAPTER_RECEIPT=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/marnie-h10-direct-policy-adapter-r251-v8.json
+Environment=POKEBOT_USE_RECURSIVE_TURN_PLANNER=0
+Environment=POKEBOT_SEARCH_MODE=policy
+Environment=POKEBOT_SUBMISSION_SEARCH_DISABLE=1
+Environment=POKEBOT_SPECIALIST_DECK_PATH=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1/decks/archetype-samples/alakazam-new-list-direct-r241.csv
+Environment=POKEBOT_SPECIALIST_DECK_SHA256=sha256:d834c66c5a3629dd79c8533a04fde770a22ca8590ac55c9868440121b6df5fba
+Environment=POKEBOT_SPECIALIST_DECK_MULTISET_SHA256=sha256:a42e047c45c419a599a31f2e20a6209d324558082f27e12091ade8918376d182
+Environment=POKEBOT_CURRENT_DECK_GUIDE=alakazam
+Environment=POKEBOT_CURRENT_DECK_GUIDE_TARGETS=1
+Environment=POKEBOT_CURRENT_DECK_GUIDE_VERSION=powerful-hand-new-list-r241-v1
+Environment=POKEBOT_ACTIVE_SPECIALIST=alakazam
+Environment=POKEBOT_MATCHUP_ADAPTER_RUNTIME=1
+Environment=POKEBOT_PUBLIC_MATCHUP_TREE_PATH=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/submissions/bootstrap-r281-v3/matchup-tree-runtime-active.json
+Environment=PURE_RL_SELF_PLAY_FRAC=0.12493899463152758
+Environment=PURE_RL_PUBLIC_MIX_LOCAL_ONLY=0
+Environment=SIM_WORKERS=32
+Environment=FEATURE_WORKERS=32
+Environment=TORCH_THREADS=32
+Environment=OMP_NUM_THREADS=16
+Environment=MKL_NUM_THREADS=16
+Environment=POKEBOT_SELF_PLAY_REFILL_CAPACITY_FRAC=0
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_r274_rl_after_handoff.py \
+  --runtime-root /home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1 \
+  --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python \
+  --handoff-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r281-tactical-route-activation.json \
+  --initial-learner /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/checkpoints/r281-bootstrap-tactical-route-active.pt \
+  --base-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_terminal_expert_bootstrap_no_rtp_r195/checkpoints/expert_before_iter_00021.pt \
+  --preservation-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/peak-r195-preservation-v6.json \
+  --migration-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r195-r274-zero-safe-migration-v2.json \
+  --canary-activation-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r274-canary-activation-receipt.json \
+  --sidecar-binding /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r274-sidecar-binding.json \
+  --inzi-dataset-binding /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r274-inzi-dataset-binding.json \
+  --tactical-overlay /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/expert-tactical-overlay-inzi-v3-compact.json \
+  --r195-research-baseline-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-r195-55378392-research-baseline.json \
+  --contiguous-expert-pack /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r279-contiguous-pack/alakazam-expert-r279.pt \
+  --contiguous-expert-pack-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r279-contiguous-pack/receipt.json \
+  --active-gate-contract /home/inzi/poke-bot-agent-deployments/final-format-alakazam-marnie-splusplus-r192/runtime/final_format_alakazam_gate_r192_marnie_splusplus.json \
+  --formal-holdout-contract /home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1/state/alakazam-r274-r195-marnie-holdout-r284.json \
+  --r284-iteration-boundary-receipt /home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1/state/alakazam-r274-iteration1-boundary-r284.json \
+  --frozen-specialist-registry /home/inzi/poke-bot-agent-deployments/final-format-alakazam-marnie-splusplus-r192/ops/frozen_specialist_registry_alakazam_r192_marnie_splusplus.json \
+  --research-control-registry /home/inzi/poke-bot-agent/outputs/state/research_control_registry_snapshots/registry_v000001_910eddc734e3fb2c.json \
+  --expert-manifest /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/expert-elmo-d23e-v4/manifest.json \
+  --guide-curriculum /home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1/state/alakazam-new-list-direct-r241-strategic-curriculum.json \
+  --guide-head-roles /home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1/state/alakazam-new-list-direct-r241-strategic-head-roles.json \
+  --guide-validation /home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1/state/alakazam-new-list-direct-r241-strategic-curriculum-validation.json \
+  --submission-boundary-dir /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-rl-submission-boundaries \
+  --poll-seconds 60
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=300
+KillMode=control-group
+Nice=0
+LimitNOFILE=1048576
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/logs/rl.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/logs/rl.log
+
+[Install]
+WantedBy=default.target

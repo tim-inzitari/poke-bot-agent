@@ -1,0 +1,63 @@
+{
+  "schema": "poke_bot.alakazam_r195_new_list_no_retrain_r278/v1",
+  "owner_decision_revision": 278,
+  "status": "submitted_pending_evaluation",
+  "owner_intent": "raw resubmit of r195 with the new Alakazam list for Kaggle testing, labeled not retrained otherwise",
+  "competition": "pokemon-tcg-ai-battle",
+  "turn_order_preference": "first_if_allowed",
+  "label": "r195 NO RTP raw resubmit, new Alakazam list, not retrained otherwise",
+  "copies": 1,
+  "source": {
+    "submission_id": 55378392,
+    "runtime": "NO RTP",
+    "bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "typed_source": "state/alakazam-terminal-expert-bootstrap-no-rtp-submit-r195.json"
+  },
+  "deck": {
+    "id": "alakazam-new-list-direct-r241",
+    "path": "decks/archetype-samples/alakazam-new-list-direct-r241.csv",
+    "file_sha256": "sha256:d834c66c5a3629dd79c8533a04fde770a22ca8590ac55c9868440121b6df5fba",
+    "ordered_cards_sha256": "sha256:e61c0a4ffcfeb730808ac561f39c1efa9de5f80aec577d3be82f3fc790b7dab2",
+    "card_count": 60
+  },
+  "invariants": {
+    "only_archive_member_content_allowed_to_change": "deck.csv",
+    "training_or_retraining_performed": false,
+    "checkpoint_or_model_changed": false,
+    "runtime_or_matchup_adapter_changed": false,
+    "rtp_enabled": false,
+    "search_enabled": false,
+    "selector_registration_or_promotion_changed": false,
+    "active_training_interrupted": false,
+    "revision_274_training_or_submission_obligations_changed": false
+  },
+  "derived_bundle": {
+    "path": "/home/inzi/poke-bot-agent/outputs/submissions/alakazam-r195-new-list-no-retrain-r278/submission.tar.gz",
+    "sha256": "sha256:e5f89d16afcd68c20a69b85a134138adaf5cf514658224b740e829141a7cca27",
+    "bytes": 117202195,
+    "member_count": 222,
+    "changed_member_contents_from_source": [
+      "deck.csv"
+    ],
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "runtime_profile": "NO RTP",
+    "turn_order_attestation": "/home/inzi/poke-bot-agent/outputs/submissions/alakazam-r195-new-list-no-retrain-r278/submission.tar.gz.go-first-verified.json",
+    "build_receipt": "/home/inzi/poke-bot-agent/outputs/submissions/alakazam-r195-new-list-no-retrain-r278/build-receipt.json"
+  },
+  "authorization": {
+    "nonce": "alakazam-r195-new-list-no-retrain-r278-20260811T162728468795Z",
+    "remaining_uses": 0,
+    "consumed_before_upload": true,
+    "consumed_receipt": "/home/inzi/.local/state/pokebot/kaggle-submission-attempts/20260811T162818.418375Z-alakazam-r195-new-list-no-retrain-r278-20260811T162728468795Z.authorization-consumed.json",
+    "attempt_receipt": "/home/inzi/.local/state/pokebot/kaggle-submission-attempts/20260811T163019.073398Z-alakazam-r195-new-list-no-retrain-r278-20260811T162728468795Z.json",
+    "guard_returncode": 0
+  },
+  "submission": {
+    "id": 55437592,
+    "submitted_at_utc": "2026-08-11T16:30:18Z",
+    "status": "PENDING",
+    "public_score": null,
+    "private_score": null
+  }
+}

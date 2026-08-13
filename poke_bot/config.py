@@ -396,6 +396,12 @@ class ModelConfig:
     terminal_conversion_head_enabled: bool = _env_bool(
         "TERMINAL_CONVERSION_HEAD_ENABLED", False
     )
+    #: Revision-263 learned public-state hint distilled from the bounded
+    #: shadow tactical sequencer.  The search planner remains shadow-only;
+    #: only this masked four-output head can enter the direct-policy route.
+    tactical_sequence_outcome_head_enabled: bool = _env_bool(
+        "TACTICAL_SEQUENCE_OUTCOME_HEAD_ENABLED", False
+    )
     #: Separate bounded policy routes for the two successor-only heads.  A
     #: physical head can train while its route is off; serving needs the
     #: corresponding receipt-gated runtime switch as well.  They intentionally
@@ -411,6 +417,15 @@ class ModelConfig:
     )
     terminal_conversion_route_runtime_enabled: bool = _env_bool(
         "TERMINAL_CONVERSION_ROUTE_RUNTIME_ENABLED", False
+    )
+    tactical_sequence_outcome_route_enabled: bool = _env_bool(
+        "TACTICAL_SEQUENCE_OUTCOME_ROUTE_ENABLED", False
+    )
+    tactical_sequence_outcome_route_present: bool = _env_bool(
+        "TACTICAL_SEQUENCE_OUTCOME_ROUTE_PRESENT", False
+    )
+    tactical_sequence_outcome_route_runtime_enabled: bool = _env_bool(
+        "TACTICAL_SEQUENCE_OUTCOME_ROUTE_RUNTIME_ENABLED", False
     )
     #: Revision-114 single-pass neural challenger. Architecture presence and
     #: action authority are independent so a migrated checkpoint is an exact

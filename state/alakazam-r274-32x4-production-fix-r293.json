@@ -1,0 +1,39 @@
+{
+  "schema": "poke_bot.alakazam_r274_dual_gpu_router_fix/v1",
+  "status": "managed_restart_authorized_and_partial_collection_sealed",
+  "recorded_at_utc": "2026-08-12T17:36:00Z",
+  "service": "pokebot-alakazam-r274-rl.service",
+  "iteration": 1,
+  "previous_design_fingerprint": "sha256:db993fb3e632249ed06489b8981d2b4364668fb10476c95d1707e733448c6e19",
+  "current_design_fingerprint": "sha256:9bcca2d9b72f54c3d3762379e72b32bd07f1c32f55c9c53b7bb17000614257d1",
+  "behavior_checkpoint_digest": "sha256:645f8e6a0bc5e0cb98695e5a65151f38eef2e5011ca63f3ea4eded42cf4a11a2",
+  "diagnosis": {
+    "declared_contract": "32 simulator processes x 4 LibcgMultiEnv environments",
+    "prior_runtime": "8 simulator processes x 4 environments",
+    "prior_measured_gps_after_dual_gpu_balance": 0.45,
+    "cause": "simulator worker count was divided by multi_env_per_worker"
+  },
+  "repair": {
+    "simulator_processes": 32,
+    "multi_env_per_process": 4,
+    "concurrent_environments": 128,
+    "gpu0_client_fraction": 0.2,
+    "remote_workers": 0,
+    "rtp_search_mcts_unchanged_off": true,
+    "hardware_source_sha256": "sha256:2dcce451cbc286bbad633c81b1edb2df0a386c2dac5a779b62dbb94f09081412",
+    "multi_env_source_sha256": "sha256:16acd40f59327eee7db55a0694e1542ac6cbaa0ea5ef60d1c5fc8ca9ec5ee6da",
+    "trainer_source_sha256": "sha256:bed92e5834bfeb43e1324046d48e22e85fbf7f12c5cc809e7727695ee850eccb"
+  },
+  "partial_resume": {
+    "sidecar": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r293-iter1-32x4-partial-resume.json",
+    "sidecar_sha256": "sha256:e6b992a973f3a3b97b780d819ec2e07fca2cac674325394d6fbdb03a256c590b",
+    "shard_sha256": "sha256:7f91da461b0f3f680b52f776b1e0b84ff9588c10bc7791e2c508a5739fbfc6b1",
+    "retained_source_games": 3854,
+    "retained_self_play_source_games": 256,
+    "retained_public_source_games": 3598,
+    "trajectory_records": 3854,
+    "decisions": 260218,
+    "collect_only_missing_job_identities": true
+  },
+  "completed_self_play_deleted": false
+}

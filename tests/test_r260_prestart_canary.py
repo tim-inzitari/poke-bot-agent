@@ -50,6 +50,8 @@ class _ToyCanaryModel(torch.nn.Module):
         self.own_deck_ledger_option_adapter = torch.nn.Linear(2, 2)
         self.visible_tutor_completion_head = torch.nn.Linear(2, 2)
         self.terminal_conversion_head = torch.nn.Linear(2, 2)
+        self.tactical_sequence_outcome_head = torch.nn.Linear(2, 2)
+        self.tactical_sequence_outcome_route = torch.nn.Linear(2, 2)
         self.visible_tutor_completion_route = torch.nn.Linear(2, 2)
         self.terminal_conversion_route = torch.nn.Linear(2, 2)
         self.inherited_route = torch.nn.Linear(2, 2)
@@ -61,6 +63,8 @@ class _ToyCanaryModel(torch.nn.Module):
             self.own_deck_ledger_option_adapter(sample),
             self.visible_tutor_completion_head(sample),
             self.terminal_conversion_head(sample),
+            self.tactical_sequence_outcome_head(sample),
+            self.tactical_sequence_outcome_route(sample),
             self.visible_tutor_completion_route(sample),
             self.terminal_conversion_route(sample),
             self.inherited_route(sample),
@@ -100,8 +104,10 @@ def _child_checkpoint(tmp_path: Path) -> tuple[_ToyCanaryModel, Path]:
                 "own_deck_ledger_enabled": True,
                 "visible_tutor_completion_head_enabled": True,
                 "terminal_conversion_head_enabled": True,
+                "tactical_sequence_outcome_head_enabled": True,
                 "visible_tutor_completion_route_enabled": True,
                 "terminal_conversion_route_enabled": True,
+                "tactical_sequence_outcome_route_enabled": False,
                 **{field: False for field in RUNTIME_GATE_FIELDS},
             },
             "extra": {},
@@ -132,6 +138,7 @@ def _migration_receipt(contract: R260OwnerContract, child: Path) -> dict[str, ob
                 "own_deck_ledger_runtime_enabled": False,
                 "visible_tutor_completion_route_runtime_enabled": False,
                 "terminal_conversion_route_runtime_enabled": False,
+                "tactical_sequence_outcome_route_runtime_enabled": False,
                 "selector_change_authorized": False,
                 "serving_eligible": False,
             },
@@ -208,7 +215,7 @@ def _inzi_binding(
     joined.chmod(0o444)
     joined_identity = file_identity(joined, immutable=True)
     value: dict[str, object] = {
-        "schema": "poke_bot.r241_own_deck_inzi_dataset_binding/v1",
+        "schema": "poke_bot.r241_own_deck_inzi_dataset_binding/v2",
         "status": "complete_transport_ready",
         "owner_contract_sha256": contract.sha256,
         "source_manifest_sha256": contract.source_manifest_sha256,
@@ -219,7 +226,8 @@ def _inzi_binding(
         "sidecar_binding_file_sha256": _sha("2"),
         "sidecar_binding": _identity("/receipts/aggregate.json", "2"),
         "transport_kind": "create_only_copy",
-        "elmo_joined_dataset_sha256": joined_identity["sha256"],
+        "source_join_identity_kind": "elmo_materialized_joined_dataset",
+        "source_joined_dataset_sha256": joined_identity["sha256"],
         "inzi_joined_dataset_sha256": joined_identity["sha256"],
         "join_receipt_sha256": _sha("4"),
         "schema_receipt_sha256": _sha("5"),

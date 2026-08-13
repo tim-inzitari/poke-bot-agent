@@ -1,0 +1,95 @@
+{
+  "schema": "poke_bot.alakazam_elmo_rule_derivative_execution_status/v1",
+  "goal_id": "alakazam-elmo-rule-derivative",
+  "goal_revision": 7,
+  "recorded_at_utc": "2026-08-13T02:24:41Z",
+  "projection_role": "receipt_backed_execution_status_only_not_authority",
+  "authority": {
+    "human_goal_gateway": "goals/alakazam-elmo-rule-derivative/GOAL.md",
+    "human_goal_gateway_sha256": "sha256:d275696bb8322c1741463d63b4506d9b04f1252c3c6cdbe7559c999b55b83da7",
+    "sole_typed_canonical_source": "goals/alakazam-elmo-rule-derivative/contract.json",
+    "sole_typed_canonical_source_sha256": "sha256:98e39d771569bdf778885848fc61732275c89c517e057a34bd3006144c23bdd1",
+    "this_projection_may_authorize_or_activate_work": false
+  },
+  "current_phase": {
+    "id": "phase_d_distributed_card_743_refeaturization",
+    "state": "in_progress_unsealed",
+    "host": "elmo_and_inzi",
+    "window_start_utc": "2026-07-13",
+    "window_end_utc": "2026-08-11",
+    "utc_partition_count": 30,
+    "live_observation": {
+      "observed_at_utc": "2026-08-13T02:24:41Z",
+      "worker_process_count": 54,
+      "output_root_basename": "fast-refeature-elmo-second-half-split-r309 + first-half-nvme-r309",
+      "observed_output_bytes": 0,
+      "execution_split": {
+        "elmo_first_half": {"workers": 0, "running": false, "pid": 1973900, "stopped_at_utc": "2026-08-13T00:34:30Z", "stop_reason": "owner_authorized_duplicate_retirement_after_inzi_first_half_overtook_it", "day_partition": "even_manifest_indices", "ram_spool_reclaimed": true, "ram_spool_bytes": 0, "output_root": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-first-half-retry-r309", "prior_failed_root_preserved": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-half-r309", "eligible_for_combined_manifest": false},
+        "elmo_second_half_legacy": {"workers": 0, "running": false, "pid": 1832369, "stopped_at_utc": "2026-08-13T01:51:30Z", "stop_reason": "closed_lanes_and_partial_lanes_checksum_preserved_then_replaced_by_split_accelerator", "day_partition": "odd_manifest_indices", "ram_spool_reclaimed": true, "recovery_root": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/recovery/elmo-second-half-legacy-1832369-r309", "recovery_bytes": 29798278693, "closed_lane_count": 13, "partial_lane_count": 2, "closed_file_manifest_sha256": "sha256:3b91eb72dd6efb7afd0f0a9c345f40b4f850f3196183a0b3ea1b8854bcc4e063", "closed_content_manifest_sha256": "sha256:3a45b171e37d383ecdc2d5e4dd31a3c1f2e39dd36bb270a418e05e5e91d7e6e5", "partial_file_manifest_sha256": "sha256:93ba53a2dd4eebbf0237d9f43c6a44d8b6ad86b7466e9309d910b44c7aad0aa5", "partial_content_manifest_sha256": "sha256:13a802aba64177b692487f919688ac369060afb07af68ba4dfe70d600b834399"},
+        "elmo_second_half_accelerator": {"workers": 22, "running": true, "pid": 2236982, "day_partition": "odd_manifest_indices_with_128_inner_episode_lanes", "private_spool_storage": "bounded_tmpfs_active_lane_backing_then_zfs_closed_lane_spill", "active_ram_spool_root": "/dev/shm/alakazam-refeature-2236982-1", "active_ram_spool_backing_root": "/dev/shm/alakazam-refeature-2236982-1-hidden", "active_ram_spool_bytes": 18646498168, "active_ram_spool_cap_bytes": 12884901888, "cap_accounting_excludes_atomic_symlinked_active_lane_backing": true, "closed_spool_root": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/closed-spools-elmo-second-half-split-r309", "output_root": "/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-elmo-rule-derivative-g1/fast-refeature-elmo-second-half-split-r309"},
+        "inzi_first_half_accelerator": {"workers": 32, "running": true, "pid": 330777, "supervisor_pid": 330773, "day_partition": "even_manifest_indices_with_inner_day_episode_sharding", "private_spool_storage": "local_nvme_ext4", "private_spool_root": "/home/inzi/alakazam-r309-work/nvme-spools-r309/alakazam-refeature-330777-0", "private_spool_bytes": 65560345563, "local_raw_archive_root": "/home/inzi/alakazam-r309-work/raw-first-half", "output_root": "/home/inzi/alakazam-r309-work/first-half-nvme-r309", "runner_source_sha256": "sha256:7bb4ba34d2cec0596e982240cd6666f530628434ef85a8c37316d9e6d9d86f10", "adapter_source_sha256": "sha256:7b223a40e9ba86e7cd21d7cc0edbe1d5ed58e2ae47b8412f98b9cf5e1622f688", "available_nvme_bytes_at_start": 285152522240, "authoritative_if_complete_and_receipt_valid": true},
+        "inzi_abandoned_due_to_host_unavailability": {"workers": 32, "output_root": "/home/inzi/alakazam-fast-refeature-half-r309", "eligible_for_combined_manifest": false}
+      },
+      "row_scope": "acting_seat_setup_deck_contains_literal_card_id_743",
+      "private_spool_location": "elmo_bounded_/dev/shm_with_closed_lane_zfs_spill_and_inzi_local_nvme_ext4",
+      "final_shard_limit_bytes": 1073741824,
+      "finalized_feature_shard_count": 0,
+      "finalized_feature_shard_bytes": 0,
+      "inzi_transfer_receipt_count": 0,
+      "role": "progress_observation_only_not_completion_evidence"
+    },
+    "completion_receipt": null,
+    "completion_claimed": false
+  },
+  "artifact_status": {
+    "revision_7_predecessor_compatibility": {
+      "state": "implemented_and_focused_tests_passed",
+      "path": "poke_bot/alakazam_rule_derivative_predecessor_compat_rev7.py",
+      "sha256": "sha256:bcc89546acdd9ab2f5e971ed5f37dc3ac467f0e72c8c54ed584e8ad79aa98296"
+    },
+    "revision_6_scope_migration_receipt": {
+      "state": "pending_census_completion",
+      "path": null,
+      "sha256": null
+    },
+    "refeaturized_corpus_manifest": {
+      "state": "pending",
+      "path": null,
+      "sha256": null
+    },
+    "source_remote_shard_parity_receipt": {
+      "state": "pending",
+      "path": null,
+      "sha256": null
+    },
+    "candidate_checkpoint_and_validation_receipt": {
+      "state": "blocked_by_corpus_census_and_handoff_gates",
+      "path": null,
+      "sha256": null
+    },
+    "bo250_report": {
+      "state": "blocked_by_candidate_and_corpus_gates",
+      "path": null,
+      "sha256": null
+    }
+  },
+  "last_local_validation": {
+    "command_scope": "rev7_predecessor_compatibility_and_collision_census",
+    "result": "passed",
+    "tests_passed": 39,
+    "validated_at_utc": "2026-08-12T21:25:40Z",
+    "does_not_complete_or_authorize_census": true
+  },
+  "next_receipt_backed_transition": "wait_for_both_elmo_halves_to_finalize_then_seal_the_combined_30_day_manifest_before_bootstrap",
+  "production_separation": {
+    "r274_owner_source": "state/alakazam-new-list-direct-policy-r241.json",
+    "r274_remains_separately_owned_until_clean_handoff_receipts": true,
+    "immediate_runtime_or_service_change": false,
+    "production_serving_selector_authority": false
+  },
+  "projection_rules": {
+    "completed_state_requires_immutable_receipt_path_and_sha256": true,
+    "missing_receipt_is_pending_or_blocked_never_complete": true,
+    "runtime_selector_or_managed_service_state_overrides_this_projection_for_execution_facts": true
+  }
+}

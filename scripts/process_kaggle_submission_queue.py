@@ -231,6 +231,13 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
             entry.get("turn_order_preference") or "first_if_allowed"
         ),
     }
+    search_assets_packaged = bool(entry.get("search_assets_packaged", True))
+    expected_search_assets = (
+        expected["search_config"].startswith("sha256:")
+        and expected["belief_decks"].startswith("sha256:")
+        if search_assets_packaged
+        else expected["search_config"] == "" and expected["belief_decks"] == ""
+    )
     if (
         not file_path.is_file()
         or sha256(file_path) != expected["bundle"]
@@ -243,10 +250,9 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
                 expected["deck_cards"],
                 expected["representatives"],
                 expected["matchup_tree"],
-                expected["search_config"],
-                expected["belief_decks"],
             )
         )
+        or not expected_search_assets
     ):
         raise RuntimeError("queued submission identity is incomplete")
     with tarfile.open(file_path, "r:gz") as archive:
@@ -268,8 +274,16 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
         member_bytes("main.py")
         member_bytes("cg/api.py")
         matchup_tree_bytes = member_bytes("matchup_tree.json")
-        search_config_bytes = member_bytes("search_config.json")
-        belief_decks_bytes = member_bytes("belief_decks.json")
+        search_config_bytes = (
+            member_bytes("search_config.json") if search_assets_packaged else None
+        )
+        belief_decks_bytes = (
+            member_bytes("belief_decks.json") if search_assets_packaged else None
+        )
+        if not search_assets_packaged and (
+            "search_config.json" in members or "belief_decks.json" in members
+        ):
+            raise RuntimeError("direct-policy queue bundle contains search assets")
         turn_order_member = members.get("turn_order_profile.json")
         turn_order_bytes = (
             archive.extractfile(turn_order_member).read()
@@ -291,8 +305,12 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
             f"queued submission deck must contain 60 cards, got {len(cards)}"
         )
     try:
-        search_config = json.loads(search_config_bytes)
-        belief_decks = json.loads(belief_decks_bytes)
+        search_config = (
+            json.loads(search_config_bytes or b"") if search_assets_packaged else {}
+        )
+        belief_decks = (
+            json.loads(belief_decks_bytes or b"") if search_assets_packaged else {}
+        )
         turn_order_profile = (
             json.loads(turn_order_bytes)
             if turn_order_bytes
@@ -304,7 +322,7 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError("queued belief-MCTS assets are invalid JSON") from exc
     hypotheses = belief_decks.get("deck_lists") or []
-    search_contract_valid = (
+    search_contract_valid = not search_assets_packaged or (
         search_config.get("schema")
         == "poke_bot.submission_search_config/v1"
         and search_config.get("enabled") is False
@@ -353,11 +371,13 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
             == expected["matchup_tree"]
         ),
         "search_config": (
-            "sha256:" + hashlib.sha256(search_config_bytes).hexdigest()
+            not search_assets_packaged
+            or "sha256:" + hashlib.sha256(search_config_bytes or b"").hexdigest()
             == expected["search_config"]
         ),
         "belief_decks": (
-            "sha256:" + hashlib.sha256(belief_decks_bytes).hexdigest()
+            not search_assets_packaged
+            or "sha256:" + hashlib.sha256(belief_decks_bytes or b"").hexdigest()
             == expected["belief_decks"]
         ),
         "belief_mcts_contract": search_contract_valid,
@@ -379,6 +399,8 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
 def _ensure_automatic_one_shot_authorization(
     entry: dict[str, Any],
     authorization_path: Path,
+    *,
+    owner_decision_source: str = STANDING_OWNER_DECISION,
 ) -> dict[str, Any]:
     """Materialize one exact standing-authorized grant immediately before upload."""
 
@@ -396,7 +418,7 @@ def _ensure_automatic_one_shot_authorization(
             "When the training cycle completes on a deck always submit "
             "with a one shot."
         ),
-        "standing_owner_decision_source": STANDING_OWNER_DECISION,
+        "standing_owner_decision_source": str(owner_decision_source),
         "remaining_uses": 1,
         "nonce": nonce,
         "expires_at_epoch": time.time() + 3600.0,
@@ -455,6 +477,7 @@ def process_once(
     kaggle: Path,
     default_competition: str,
     authorization_path: Path = DEFAULT_AUTHORIZATION,
+    required_owner_decision_source: str = STANDING_OWNER_DECISION,
 ) -> dict[str, Any]:
     queue_path = queue_path.expanduser().resolve()
     process_lock_path = queue_path.with_suffix(queue_path.suffix + ".processor.lock")
@@ -496,7 +519,7 @@ def process_once(
                     raise RuntimeError("Kaggle one-shot authorization count changed")
                 if (
                     str(payload.get("standing_owner_decision_source") or "")
-                    != STANDING_OWNER_DECISION
+                    != str(required_owner_decision_source)
                 ):
                     raise RuntimeError(
                         "Kaggle standing owner authorization source changed"
@@ -634,6 +657,7 @@ def process_once(
                     authorization = _ensure_automatic_one_shot_authorization(
                         entry,
                         authorization_path,
+                        owner_decision_source=required_owner_decision_source,
                     )
                 except RuntimeError as exc:
                     entry["attempt_started_at"] = None
@@ -731,6 +755,10 @@ def _parse_args() -> argparse.Namespace:
         default=DEFAULT_AUTHORIZATION,
     )
     parser.add_argument("--competition", default="pokemon-tcg-ai-battle")
+    parser.add_argument(
+        "--required-owner-decision-source",
+        default=STANDING_OWNER_DECISION,
+    )
     parser.add_argument("--poll-seconds", type=float, default=60.0)
     parser.add_argument("--once", action="store_true")
     return parser.parse_args()
@@ -745,6 +773,7 @@ def main() -> int:
                 kaggle=args.kaggle,
                 default_competition=args.competition,
                 authorization_path=args.authorization,
+                required_owner_decision_source=args.required_owner_decision_source,
             )
             print(json.dumps(result, sort_keys=True), flush=True)
         except Exception as exc:

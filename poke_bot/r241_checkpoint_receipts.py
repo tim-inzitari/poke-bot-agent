@@ -154,6 +154,10 @@ R195_LIVE_ONLY_SUCCESSOR_MODEL_CONFIG_DEFAULTS: dict[str, object] = {
     "visible_tutor_completion_route_runtime_enabled": False,
     "terminal_conversion_route_enabled": False,
     "terminal_conversion_route_runtime_enabled": False,
+    "tactical_sequence_outcome_head_enabled": False,
+    "tactical_sequence_outcome_route_enabled": False,
+    "tactical_sequence_outcome_route_present": False,
+    "tactical_sequence_outcome_route_runtime_enabled": False,
 }
 
 _SHA256_PREFIX = "sha256:"
@@ -602,7 +606,14 @@ def _assert_runtime_model_config_matches_serialized(
             )
         normalized_live.pop(field)
     if normalized_live != serialized_config:
-        raise R241CheckpointReceiptError("runtime reconstruction changed model_config")
+        changed = sorted(
+            key
+            for key in set(normalized_live) | set(serialized_config)
+            if normalized_live.get(key) != serialized_config.get(key)
+        )
+        raise R241CheckpointReceiptError(
+            f"runtime reconstruction changed model_config fields: {changed}"
+        )
 
 
 def _assert_main_optimizer_excludes_adapters(
@@ -3067,6 +3078,7 @@ def _recompute_peak_checkpoint_audit(
     policy: R241AuditPolicy,
     environment: Mapping[str, str],
     training_activation: FileIdentity,
+    head_role_map: FileIdentity,
 ) -> dict[str, object]:
     """Redo peak evidence with the receipt's checked host-local EA38 copy."""
 
@@ -3077,6 +3089,7 @@ def _recompute_peak_checkpoint_audit(
         policy=policy,
         environment=environment,
         adapter_training_activation=training_activation.path,
+        head_role_map_path=head_role_map.path,
     )
 
 
@@ -3155,7 +3168,11 @@ def validate_peak_r195_preservation_receipt(
         adapter_identity.path,
         source_snapshot=source_snapshot,
     )
-    baseline_identity, baseline_registry = _baseline_adapter_roster(policy=policy)
+    baseline_receipt_row = dict(receipt.get("baseline_adapter_roster") or {})
+    baseline_identity, baseline_registry = _baseline_adapter_roster(
+        path=Path(str(baseline_receipt_row.get("path") or "")),
+        policy=policy,
+    )
     _identity_matches(
         receipt.get("baseline_adapter_roster"),
         baseline_identity,
@@ -3228,9 +3245,21 @@ def validate_peak_r195_preservation_receipt(
         policy=policy,
         environment=environment,
         training_activation=training_activation,
+        head_role_map=_identity_from_row(
+            audit.get("head_role_map"),
+            label="peak-r195 audited head-role map",
+        ),
     )
     if recomputed.get("audit_fingerprint_sha256") != audit.get("audit_fingerprint_sha256"):
-        raise R241CheckpointReceiptError("peak-r195 receipt audit no longer matches checkpoint bytes")
+        changed_sections = sorted(
+            key
+            for key in set(recomputed) | set(audit)
+            if key != "audit_fingerprint_sha256" and recomputed.get(key) != audit.get(key)
+        )
+        raise R241CheckpointReceiptError(
+            "peak-r195 receipt audit no longer matches checkpoint bytes; "
+            f"changed sections: {changed_sections}"
+        )
     _parent_identity, parent_payload = _load_checkpoint_payload(
         parent.path,
         label="r195 parent checkpoint",

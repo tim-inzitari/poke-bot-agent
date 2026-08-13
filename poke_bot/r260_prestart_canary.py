@@ -82,6 +82,10 @@ MIN_CANARY_STEPS: Final = 2
 R260_ROUTE_DELTA_CAP: Final = 1.0
 R260_TUTOR_LOSS_WEIGHT: Final = 0.025
 R260_TERMINAL_LOSS_WEIGHT: Final = 0.025
+R274_TACTICAL_LOSS_WEIGHT: Final = 0.025
+R274_BOOTSTRAP_TRAINABLE_PREFIXES: Final[tuple[str, ...]] = (
+    migration.SUCCESSOR_TENSOR_PREFIXES
+)
 R260_INZI_TRAINER_INPUT: Final = (
     "local_inzi_disk_backed_exact_four_key_streaming_index_only"
 )
@@ -420,7 +424,14 @@ def _assert_local_non_symlink_inzi_path(
 
 
 def _daily_meta_sha256s(value: Mapping[str, Any]) -> dict[str, str]:
-    """Extract the exact 20-day map that the immutable Inzi index must carry."""
+    """Extract the 20 embedded daily semantic identities for the Inzi index.
+
+    The sidecar binding's ``sha256`` is the immutable file identity of
+    ``meta.json``.  The streaming reader is keyed by the independently
+    self-verified ``meta_sha256`` inside that file; treating the outer file
+    digest as the inner semantic digest makes a valid transferred corpus
+    impossible to index.
+    """
 
     rows = _mapping(
         value.get("daily_sidecar_meta_receipts"), label="daily sidecar receipts"
@@ -434,9 +445,30 @@ def _daily_meta_sha256s(value: Mapping[str, Any]) -> dict[str, str]:
         day_text = str(day).strip()
         if not day_text or day_text in result:
             raise R260PrestartCanaryError("r260 Inzi daily receipt days are invalid")
+        receipt = _mapping(row, label=f"daily sidecar receipt {day_text}")
+        path = Path(str(receipt.get("path") or "")).expanduser()
+        if not path.exists():
+            # Portable config validation may run from a host that has only the
+            # immutable binding.  In that case the independently supplied
+            # streaming-index provenance still has to match this map exactly.
+            result[day_text] = _require_sha(
+                receipt.get("sha256"),
+                label=f"daily sidecar receipt {day_text}",
+            )
+            continue
+        path = _regular_file(path, label=f"daily sidecar meta {day_text}")
+        try:
+            meta = _mapping(
+                json.loads(path.read_text(encoding="utf-8")),
+                label=f"daily sidecar meta {day_text}",
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise R260PrestartCanaryError(
+                f"daily sidecar meta {day_text} is unreadable"
+            ) from exc
         result[day_text] = _require_sha(
-            _mapping(row, label=f"daily sidecar receipt {day_text}").get("sha256"),
-            label=f"daily sidecar receipt {day_text}",
+            meta.get("meta_sha256"),
+            label=f"daily sidecar semantic identity {day_text}",
         )
     return dict(sorted(result.items()))
 
@@ -741,7 +773,7 @@ def prepare_r260_prestart_canary_config(
                 "deterministic": True,
             },
             "gradient_requirements": {
-                "new_parameter_prefixes": list(migration.SUCCESSOR_TENSOR_PREFIXES),
+                "new_parameter_prefixes": list(R274_BOOTSTRAP_TRAINABLE_PREFIXES),
                 "inherited_route_prefixes": list(routes),
                 "finite_and_nonzero_required": True,
             },
@@ -756,7 +788,12 @@ def prepare_r260_prestart_canary_config(
             "loss_weights": {
                 "visible_tutor_completion": R260_TUTOR_LOSS_WEIGHT,
                 "terminal_conversion": R260_TERMINAL_LOSS_WEIGHT,
-                "total_auxiliary": R260_TUTOR_LOSS_WEIGHT + R260_TERMINAL_LOSS_WEIGHT,
+                "tactical_sequence_outcome": R274_TACTICAL_LOSS_WEIGHT,
+                "total_auxiliary": (
+                    R260_TUTOR_LOSS_WEIGHT
+                    + R260_TERMINAL_LOSS_WEIGHT
+                    + R274_TACTICAL_LOSS_WEIGHT
+                ),
             },
             "input_migration_child_runtime_gates": {
                 field: False for field in RUNTIME_GATE_FIELDS
@@ -875,7 +912,7 @@ def validate_r260_prestart_canary_config(
         raise R260PrestartCanaryError("r260 gradient requirement inventory changed")
     if (
         tuple(gradients.get("new_parameter_prefixes") or ())
-        != migration.SUCCESSOR_TENSOR_PREFIXES
+        != R274_BOOTSTRAP_TRAINABLE_PREFIXES
     ):
         raise R260PrestartCanaryError("r260 successor gradient prefixes changed")
     _normalise_prefixes(gradients.get("inherited_route_prefixes") or ())
@@ -903,7 +940,12 @@ def validate_r260_prestart_canary_config(
     if losses != {
         "visible_tutor_completion": R260_TUTOR_LOSS_WEIGHT,
         "terminal_conversion": R260_TERMINAL_LOSS_WEIGHT,
-        "total_auxiliary": R260_TUTOR_LOSS_WEIGHT + R260_TERMINAL_LOSS_WEIGHT,
+        "tactical_sequence_outcome": R274_TACTICAL_LOSS_WEIGHT,
+        "total_auxiliary": (
+            R260_TUTOR_LOSS_WEIGHT
+            + R260_TERMINAL_LOSS_WEIGHT
+            + R274_TACTICAL_LOSS_WEIGHT
+        ),
     }:
         raise R260PrestartCanaryError("r260 auxiliary loss budget changed")
     input_gates = _mapping(
@@ -1297,7 +1339,9 @@ def run_bounded_deterministic_expert_canary(
             "inherited_route_prefixes"
         ]
     )
-    prefixes = migration.SUCCESSOR_TENSOR_PREFIXES + tuple(str(item) for item in routes)
+    prefixes = R274_BOOTSTRAP_TRAINABLE_PREFIXES + tuple(
+        str(item) for item in routes
+    )
     snapshots: list[dict[str, dict[str, Any]]] = []
     coverage_rows: list[Mapping[str, int]] = []
     calibration_rows: list[Mapping[str, float | int]] = []
@@ -1496,7 +1540,7 @@ def _canary_receipt(
     ):
         raise R260PrestartCanaryError("r260 canary execution drifted")
     gradients = _mapping(receipt.get("gradient_audit"), label="gradient audit")
-    expected_prefixes = migration.SUCCESSOR_TENSOR_PREFIXES + tuple(
+    expected_prefixes = R274_BOOTSTRAP_TRAINABLE_PREFIXES + tuple(
         _mapping(config["gradient_requirements"], label="gradient requirements")[
             "inherited_route_prefixes"
         ]

@@ -158,6 +158,102 @@ def memory_state() -> dict[str, int | None]:
     }
 
 
+def _default_network_interfaces() -> list[str]:
+    """Return the host interfaces carrying its default route."""
+
+    if platform.system() == "Linux":
+        binary = shutil.which("ip") or "/usr/sbin/ip"
+        raw = run([binary, "route", "show", "default"])
+        return sorted(set(re.findall(r"(?:^|\s)dev\s+(\S+)", raw)))
+    raw = run(["/sbin/route", "-n", "get", "default"])
+    return sorted(
+        set(re.findall(r"(?m)^\s*interface:\s*(\S+)\s*$", raw))
+    )
+
+
+def _linux_network_counters(interfaces: set[str]) -> tuple[int, int]:
+    received = 0
+    transmitted = 0
+    for line in Path("/proc/net/dev").read_text().splitlines()[2:]:
+        name, separator, counters = line.partition(":")
+        if not separator or name.strip() not in interfaces:
+            continue
+        fields = counters.split()
+        if len(fields) >= 9:
+            received += int(fields[0])
+            transmitted += int(fields[8])
+    return received, transmitted
+
+
+def _darwin_network_counters(interfaces: set[str]) -> tuple[int, int]:
+    raw = run(["/usr/sbin/netstat", "-ibdn"], timeout=3)
+    lines = raw.splitlines()
+    if not lines:
+        raise ValueError("netstat returned no interface counters")
+    headings = lines[0].split()
+    ibytes_index = headings.index("Ibytes")
+    obytes_index = headings.index("Obytes")
+    # macOS repeats one interface's cumulative counters for every bound
+    # address. Retain the maximum per interface so those rows are not summed.
+    per_interface: dict[str, tuple[int, int]] = {}
+    for line in lines[1:]:
+        fields = line.split()
+        if not fields or fields[0].rstrip("*") not in interfaces:
+            continue
+        if len(fields) <= max(ibytes_index, obytes_index):
+            continue
+        name = fields[0].rstrip("*")
+        try:
+            counters = (int(fields[ibytes_index]), int(fields[obytes_index]))
+        except ValueError:
+            continue
+        previous = per_interface.get(name, (0, 0))
+        per_interface[name] = (
+            max(previous[0], counters[0]),
+            max(previous[1], counters[1]),
+        )
+    return (
+        sum(row[0] for row in per_interface.values()),
+        sum(row[1] for row in per_interface.values()),
+    )
+
+
+def network_state() -> dict[str, Any]:
+    """Read cumulative hardware-interface counters for central rate sampling."""
+
+    sampled_at = time.time()
+    interfaces = _default_network_interfaces()
+    if not interfaces:
+        return {
+            "available": False,
+            "interfaces": [],
+            "sampled_at": sampled_at,
+            "reason": "default network interface unavailable",
+        }
+    try:
+        if platform.system() == "Linux":
+            received, transmitted = _linux_network_counters(set(interfaces))
+            source = "/proc/net/dev"
+        else:
+            received, transmitted = _darwin_network_counters(set(interfaces))
+            source = "netstat -ibdn"
+    except (OSError, ValueError, IndexError):
+        return {
+            "available": False,
+            "interfaces": interfaces,
+            "sampled_at": sampled_at,
+            "reason": "network counters unavailable",
+        }
+    return {
+        "available": True,
+        "interfaces": interfaces,
+        "rx_bytes": received,
+        "tx_bytes": transmitted,
+        "sampled_at": sampled_at,
+        "counter_source": source,
+    }
+
+
 def gpu_state() -> list[dict[str, Any]]:
     binary = shutil.which("nvidia-smi")
     if not binary:
@@ -232,10 +328,30 @@ def gpu_state() -> list[dict[str, Any]]:
             ]
         except (OSError, subprocess.TimeoutExpired, plistlib.InvalidFileException, StopIteration):
             return []
+    compute_pids_by_uuid: dict[str, list[int]] = {}
+    compute_raw = run(
+        [
+            binary,
+            "--query-compute-apps=gpu_uuid,pid",
+            "--format=csv,noheader,nounits",
+        ],
+        timeout=4,
+    )
+    for line in compute_raw.splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) != 2:
+            continue
+        gpu_uuid, pid_text = parts
+        try:
+            pid = int(pid_text)
+        except ValueError:
+            continue
+        compute_pids_by_uuid.setdefault(gpu_uuid, []).append(pid)
+
     raw = run(
         [
             binary,
-            "--query-gpu=index,name,utilization.gpu,memory.used,memory.total,power.draw,power.limit,temperature.gpu",
+            "--query-gpu=index,uuid,name,utilization.gpu,memory.used,memory.total,power.draw,power.limit,temperature.gpu",
             "--format=csv,noheader,nounits",
         ],
         timeout=4,
@@ -243,18 +359,23 @@ def gpu_state() -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for line in raw.splitlines():
         parts = [part.strip() for part in line.split(",")]
-        if len(parts) != 8:
+        if len(parts) != 9:
             continue
+        gpu_uuid = parts[1]
         result.append(
             {
                 "index": int(parts[0]) if parts[0].isdigit() else None,
-                "name": parts[1],
-                "utilization": number(parts[2]),
-                "memory_used_mib": number(parts[3]),
-                "memory_total_mib": number(parts[4]),
-                "power_w": number(parts[5]),
-                "power_limit_w": number(parts[6]),
-                "temperature_c": number(parts[7]),
+                "uuid": gpu_uuid,
+                "name": parts[2],
+                "utilization": number(parts[3]),
+                "memory_used_mib": number(parts[4]),
+                "memory_total_mib": number(parts[5]),
+                "power_w": number(parts[6]),
+                "power_limit_w": number(parts[7]),
+                "temperature_c": number(parts[8]),
+                "compute_process_pids": sorted(
+                    set(compute_pids_by_uuid.get(gpu_uuid, []))
+                ),
             }
         )
     return result
@@ -506,6 +627,7 @@ def main() -> None:
     parser.add_argument("--name", default="")
     args = parser.parse_args()
     memory = memory_state()
+    network = network_state()
     loads = os.getloadavg()
     rows = process_rows()
     optimization = apple_optimization_state(rows)
@@ -565,6 +687,7 @@ def main() -> None:
                     "swap_total_bytes": memory.get("swap_total_bytes"),
                     "swap_used_bytes": memory.get("swap_used_bytes"),
                     "swap_free_bytes": memory.get("swap_free_bytes"),
+                    "network": network,
                 },
                 "gpus": gpus,
                 "worker": worker,

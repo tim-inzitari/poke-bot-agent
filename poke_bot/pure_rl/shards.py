@@ -22,6 +22,7 @@ class CompactDecision:
     # retained only when the simulator/replay importer can construct them
     # exactly; downstream losses mask individual missing targets.
     aux_labels: dict[str, Any] = field(default_factory=dict)
+    tactical_sequence_supervision: dict[str, Any] | None = None
 
 
 @dataclass
@@ -70,6 +71,11 @@ def compact_decision_from_step(
         action=action,
         observation=dict(step.get("observation") or {}),
         aux_labels=dict(step.get("aux_labels") or {}),
+        tactical_sequence_supervision=(
+            dict(step["tactical_sequence_supervision"])
+            if isinstance(step.get("tactical_sequence_supervision"), dict)
+            else None
+        ),
     )
 
 
@@ -95,6 +101,9 @@ def game_to_jsonable(game: CompactGame) -> dict[str, Any]:
                 "action": list(d.action),
                 "observation": d.observation,
                 "aux_labels": d.aux_labels,
+                "tactical_sequence_supervision": (
+                    d.tactical_sequence_supervision
+                ),
             }
             for d in game.decisions
         ],
@@ -182,6 +191,11 @@ def iter_shard_games(path: Path) -> Iterator[CompactGame]:
                     action=[int(x) for x in (d.get("action") or [])],
                     observation=dict(d.get("observation") or {}),
                     aux_labels=dict(d.get("aux_labels") or {}),
+                    tactical_sequence_supervision=(
+                        dict(d["tactical_sequence_supervision"])
+                        if isinstance(d.get("tactical_sequence_supervision"), dict)
+                        else None
+                    ),
                 )
                 for d in (raw.get("decisions") or [])
             ]

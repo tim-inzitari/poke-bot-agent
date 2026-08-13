@@ -1,0 +1,37 @@
+[Unit]
+Description=Service Alakazam r274 five-update submission boundaries
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_r274_rl_submission_boundaries.py \
+  --runtime-root /home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1 \
+  --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python \
+  --kaggle /home/inzi/miniconda3/envs/poke-bot-agent/bin/kaggle \
+  --authorization /home/inzi/.config/pokebot/kaggle-submission-authorization.json \
+  --attempt-receipts /home/inzi/.local/state/pokebot/kaggle-submission-attempts \
+  --contract /home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1/state/alakazam-new-list-direct-policy-r241.json \
+  --active-matchup-tree /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/submissions/bootstrap-r281-v3/matchup-tree-runtime-active.json \
+  --matchup-roster /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-matchup-readiness/candidate-roster.json \
+  --cg-root /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/cg-r236/cg \
+  --boundary-exchange /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-rl-submission-boundaries \
+  --submission-root /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/submissions/rl-boundaries \
+  --queue /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-rl-submission-queue.json \
+  --poll-seconds 60
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=30
+KillMode=control-group
+MemoryHigh=24G
+MemoryMax=36G
+LimitNOFILE=4096
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/logs/rl-submission-boundaries.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/logs/rl-submission-boundaries.log
+
+[Install]
+WantedBy=default.target

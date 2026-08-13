@@ -90,6 +90,11 @@ def main() -> int:
     parser.add_argument("--max-context", type=int, default=config.MODEL.max_context)
     parser.add_argument("--memory-floor-gib", type=float, default=16.0)
     parser.add_argument("--min-records", type=int, default=1)
+    parser.add_argument(
+        "--own-deck-ledger",
+        action="store_true",
+        help="Featurize the exact public OwnDeckLedger and target-only heads.",
+    )
     args = parser.parse_args()
 
     requested = str(args.archetype).strip().casefold()
@@ -163,6 +168,7 @@ def main() -> int:
                     min_available_bytes=int(args.memory_floor_gib * 1024**3),
                     min_records=int(args.min_records),
                     required_archetype=requested,
+                    own_deck_ledger_enabled=bool(args.own_deck_ledger),
                 )
                 completed.append(
                     {

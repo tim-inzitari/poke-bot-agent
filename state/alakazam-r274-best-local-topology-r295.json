@@ -1,0 +1,32 @@
+{
+  "schema": "poke_bot.alakazam_r274_best_local_topology/v1",
+  "status": "measured_best_local_topology_selected",
+  "recorded_at_utc": "2026-08-12T17:50:00Z",
+  "service": "pokebot-alakazam-r274-rl.service",
+  "iteration": 1,
+  "selected": {
+    "simulator_processes": 8,
+    "environments_per_process": 4,
+    "concurrent_games": 32,
+    "leaf_replicas": {"cuda_0": 12, "cuda_1": 30},
+    "early_process_gpu_assignment": {"cuda_0": 3, "cuda_1": 5},
+    "measured_gps_approx": 0.45
+  },
+  "rejected_local_measurements": [
+    {"simulator_processes": 32, "environments_per_process": 4, "leaf_replicas_total": 42, "measured_gps_approx": 0.2},
+    {"simulator_processes": 32, "environments_per_process": 4, "leaf_replicas_total": 6, "measured_first_completion_seconds": 105}
+  ],
+  "remote_scheduler_semantics_when_explicitly_readmitted": "advertised worker processes multiplied by four packed environments; never collapse process count by pack size",
+  "remote_workers_current": 0,
+  "rtp_search_mcts_off": true,
+  "partial_resume": {
+    "sidecar": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r295-iter1-best-local-partial-resume.json",
+    "sidecar_sha256": "sha256:895a9c5fbd0bfa697f73c9d299d017a238f5083f469cddd9537d254da8890b46",
+    "shard_sha256": "sha256:4b31f522e81114b9fdf97fa7ede4f61fd3e065073509a34128f0f87bda37b1d0",
+    "retained_source_games": 3938,
+    "retained_self_play_source_games": 340,
+    "retained_public_source_games": 3598,
+    "decisions": 266786,
+    "collect_only_missing_job_identities": true
+  }
+}

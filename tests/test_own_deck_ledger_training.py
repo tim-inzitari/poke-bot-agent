@@ -85,8 +85,9 @@ def test_convert_record_reconstructs_ledger_before_context_trim(monkeypatch) -> 
         verify_info_set=True,
         ledger_snapshot=None,
         own_deck_supervision=None,
+        tactical_sequence_supervision=None,
     ) -> DecisionSample:
-        del verify_info_set, own_deck_supervision
+        del verify_info_set, own_deck_supervision, tactical_sequence_supervision
         captured.append(ledger_snapshot)
         return DecisionSample(
             board=_sv(features.NUM_BOARD_TOKENS),

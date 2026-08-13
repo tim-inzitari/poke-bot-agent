@@ -1,7 +1,7 @@
 # Pokémon RL Goal Gateway
 
 Schema: `poke_bot.goal_gateway/v1`  
-Revision: `262`
+Revision: `309`
 
 Status: `authoritative`
 
@@ -15,6 +15,21 @@ goal should remain short:
 > explicitly orders immediate activation.
 
 ## Current objective
+
+### Active task routing
+
+The active Alakazam rule-derivative task is delegated to
+`goals/alakazam-elmo-rule-derivative/GOAL.md`. Its sole typed authority is
+`goals/alakazam-elmo-rule-derivative/contract.json`, and its current
+receipt-backed phase/artifact projection is
+`goals/alakazam-elmo-rule-derivative/STATUS.json`. The status file is
+presentation and resume state only: it may not authorize work, override the
+dedicated contract, or replace immutable receipts.
+
+This root gateway and `state/alakazam-new-list-direct-policy-r241.json`
+continue to own the separate r274 terminal lineage and the production handoff
+boundary. Reading `/goal` for the derivative must follow the delegated files
+above; it must not merge derivative semantics or status into r274 ownership.
 
 Treat Slowking as a terminal failed experiment under the explicit revision-79
 owner boundary. Preserve its sealed collections, failed evaluations, and
@@ -1147,6 +1162,791 @@ collection, ten-update, five-epoch refresh, full-head, adapter-runtime-on, or
 one-terminal-submit requirements.  Typed source remains
 `state/alakazam-new-list-direct-policy-r241.json`.
 
+Under revision 269-TRAINING, supersede revision 248's deferral before r241
+starts.  Use Elmo to collect and seal the newest completed authenticated
+PTCGReplay ingest from `https://ptcgreplay.netlify.app/`, then prepare the new
+Matchup Adapter identities and routes as an explicit pre-start readiness gate.
+The source may supply only exact numeric archetype identity, exact name,
+prevalence, and priority; it supplies no actions, gradients, hidden state,
+outcomes, training rows, or gate wins.  Preserve Router Format 6 slots 0--19
+and every inherited r195 adapter tensor byte-for-byte.  Allocate newly verified
+archetypes monotonically into the lowest never-used slots beginning at 20;
+never rename, reindex, retire, or reuse an existing slot.  Every new slot starts
+exact-zero and dormant, and becomes training-ready only after checksum-bound
+source snapshot, replay-support, causal-router fit, precision/support,
+zero-state bypass, seat/disjointness, and immutable adapter-readiness receipts.
+Runtime activation remains separately receipt-gated.  The exact frozen Kaggle
+submission 55378392 research opponent receives a distinct immutable opponent
+identity/route and may not be aliased to the Alakazam learner route or supply
+weights, RTP, traces, or targets.  Collection and fitting run only as new
+managed Elmo workloads and must not restart, reconfigure, preempt, or share
+mutable outputs with the healthy r259 producer.  Bind the sealed roster,
+snapshot, slot allocation, and ready adapter artifacts into the one r241
+activation overlay before training starts.  Preserve revisions 263--268's
+exact deck and guide, 22 active heads/routes, tactical ablations, 25-update
+cycle, fixed 1,024 + 7,172 game mix, r195 research counts, and six submissions.
+The PTCGReplay credential remains runtime-only and may never be committed,
+logged, or included in a receipt.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 270-TRAINING, collect the decklists exposed by the completed
+PTCGReplay Meta snapshot alongside its archetype rows, but treat them only as
+guide/reference material for adapter preparation.  Their card multisets and
+core-card summaries may support soft causal card-signature features, replay
+discovery, confidence diagnostics, and human review.  They are not exact deck
+requirements, hard signature rules, action or outcome labels, eligibility
+conditions, routing proofs, gate evidence, or reasons to reject a valid
+observed variant.  Training support and activation still require independent
+checksum-backed replay observations and the revision-269 causal-router,
+precision/support, bypass, disjointness, and readiness receipts.  Typed source
+remains `state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 271-TRAINING, train a separately versioned causal Matchup
+Adapter router candidate on Elmo for the revision-269/270 expanded Meta
+snapshot roster before r241 starts.  The existing router, crosswalk, slots
+0--19, and r195 adapter bank remain immutable and selectable history.  Fit only
+from checksum-backed public-state replay observations and source-disjoint
+splits; PTCGReplay names, prevalence, core-card summaries, and guide decklists
+may identify/stratify examples but do not become action labels, hard deck
+rules, or proof.  Require per-identity and aggregate held-out precision,
+weighted support, ambiguity/unknown bypass, seat balance, calibration,
+collision, latency, deterministic parity, and exact slot-crosswalk receipts.
+The frozen submission-55378392 research opponent retains its distinct package
+identity and route and may never alias the Alakazam learner identity.  Publish
+the candidate and its fit receipts as separate managed Elmo artifacts; do not
+touch r259 or an interactive session.  Select or activate the new router only
+through the one pre-start activation overlay after all gates pass.  If it
+fails, preserve the failure and keep training blocked rather than weakening a
+threshold or silently falling back to an incomplete expanded roster.  Typed
+source remains `state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 272-TRAINING, append every real numeric archetype identity in
+the completed revision-269 Meta snapshot window to the Format-6 roster, not
+only the top-20 display subset.  Exclude the pooled `Rogue / Other` row because
+the source explicitly defines it as a non-archetype bucket.  Preserve every
+existing identity and allocate each unseen numeric source ID exactly once in
+stable snapshot order to the next never-used slot.  An appended identity may
+remain exact-zero/dormant when replay support is insufficient; inclusion in
+the roster does not waive revision-269/271 training-readiness or runtime-
+activation gates.  Keep the frozen submission-55378392 opponent identity
+distinct from all source archetypes and from the Alakazam learner route.  Typed
+source remains `state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 273-TRAINING, key every collected Meta snapshot row, guide
+decklist, core-card summary, replay-support index, router target, crosswalk
+entry, and adapter allocation by its exact PTCGReplay numeric `source_id`.
+Display names are non-authoritative labels only and may not merge, redirect, or
+alias identities.  In particular, current source ID 167 remains distinct from
+historical Teal Mask Ogerpon ex source ID 151, which stays preserved in its
+existing slot.  The frozen Kaggle submission 55378392 remains in a separate
+package-identity namespace and is never coerced into a PTCGReplay source ID.
+Typed source remains `state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 274-TRAINING, treat the already sealed twenty-of-twenty Inzi
+daily-shard transfer as the payload handoff boundary.  Perform the remaining
+deterministic join, schema/count/digest validation, causal parity, completion,
+aggregate binding, pre-start canary preparation, activation-overlay
+publication, and managed trainer setup locally on Inzi.  Do not retransmit the
+daily shard payloads or require a second Elmo-built copy of the same joined
+dataset.  Elmo remains read-only source and immutable receipt truth and may
+provide only compact source identities, receipts, and adapter artifacts needed
+by the Inzi gates.  Rehash every Inzi daily file against its immutable per-day
+transfer evidence, ignore dot-prefixed failed-transfer remnants, preserve all
+original per-day receipts, and issue a new revision-274 local-post-transfer
+attestation.  The final canonical root remains training-ineligible until the
+complete local join/promotion/binding/parity and every revision-263--273
+all-head, tactical, sidecar, adapter, canary, and overlay gate passes.  Inzi is
+the sole training host and no service may start from partial or stale evidence.
+After setup and run artifacts are complete, a low-priority create-only return
+copy to Elmo is permitted for archival replication; it is not a launch or
+training gate and may not interrupt training.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 275-TRAINING, convert the never-started new Alakazam training
+lineage from runtime candidate revision 241 to runtime candidate revision 274.
+The active candidate ID, run root, managed trainer/finalizer/queue units,
+runtime registry, activation overlay, start authorization, receipts, packages,
+and dashboard labels must all use revision 274.  Revision 241 remains
+immutable design and transfer provenance only; it has no trainer, selector,
+submission, or serving authority.  Preserve the already transferred r260
+dataset at its checksum-bound physical staging path rather than copying the
+large payload merely to rename a directory; its revision-274 binding must name
+it explicitly as imported r241/r260 provenance.  The full revision-263--273
+OwnDeckLedger, tactical-outlook, all-22-head/route, exact-ID Matchup Adapter,
+25-update, and six-submission contract is unchanged.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json` as the historical gateway for
+this converted candidate.
+
+Under revision 276-TRAINING, accelerate the revision-274 simulator collection
+with checksum-gated `LibcgMultiEnv` packing.  Use four environments per pack
+for self-play and for exact public packages whose opponent ID, content digest,
+portable-baseline contract, training group, worker capability, and retention
+receipt match the immutable revision-182 safety allowlist.  Unknown, changed,
+legacy, malformed, research-package, or otherwise unverified public opponents
+remain singleton `play` jobs; in particular, the exact submission 55378392
+research cell remains singleton unless it later receives its own separate
+retention attestation.  Keep remote farms engaged while using packed transport,
+retain independent child identity/result/accounting, and use the available
+Inzi simulator cores without changing the exact 1,024 self-play + 7,172 public
+= 8,196 games, 4,098/4,098 seats, ≥1,024 H10 Marnie, or ≥128 exact r195
+floors.  Multi-env failure falls back only to the verified singleton path and
+may not reduce counts, weaken gates, introduce RTP/search, or change policy
+semantics.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 277-TRAINING, keep the new four-output tactical-sequence
+outcome head in shadow-training mode throughout the exact 25-epoch expert
+bootstrap.  Its masked causal loss remains `0.025`, but its Fusion route must
+contribute exactly zero to bootstrap policy logits and cannot influence the
+bootstrap submission.  After the bootstrap and its submission are both
+checksum-receipted, activate the learned zero-safe route before RL update 0;
+it then participates in all 25 RL updates and later five-epoch refreshes while
+the bounded tactical search planner itself remains shadow-only and has no
+dispatch, selector, serving, package, or submission authority.  The activation
+requires finite-gradient, label-coverage, calibration, bounded-influence,
+direct-action-parity, and route-on/off impact receipts.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 278-KAGGLE, submit exactly one testing-only raw derivative of
+the immutable revision-195 NO-RTP Alakazam submission `55378392` using the
+owner's exact new revision-241 60-card Alakazam list.  Replace only the
+`deck.csv` member; preserve the r195 model, runtime, Matchup Adapter tree,
+NO-RTP profile, search-disabled assets, and every other archive member
+byte-for-byte.  Perform no training, retraining, checkpoint mutation,
+registration, selector change, promotion, or training-service interruption.
+Use `first_if_allowed` and the exact visible Kaggle label
+`r195 NO RTP raw resubmit, new Alakazam list, not retrained otherwise`.
+This is one-shot test evidence only and does not consume, replace, retry, or
+change any revision-274 training or six-submission obligation.  This completed
+as Kaggle submission `55437592` at `2026-08-11T16:30:18Z`; evaluation was
+pending at activation.  The derivative bundle is
+`sha256:e5f89d16afcd68c20a69b85a134138adaf5cf514658224b740e829141a7cca27`.
+Typed source: `state/alakazam-r195-new-list-no-retrain-r278.json`.
+
+Under revision 279-TRAINING, stop and permanently supersede the r274
+resident-Python-object bootstrap attempt before it reaches GPU training.  Its
+managed service was stopped cleanly through systemd; preserve its journal and
+resource evidence, but never restart that loader or claim learned progress from
+it.  Before restarting the 25-epoch bootstrap, build exactly one reusable,
+checksum-bound joined training pack locally on Inzi from the already transferred
+twenty Alakazam daily feature shards and OwnDeck side store.  Join OwnDeckLedger
+by one bulk key operation rather than per-decision SQLite point queries, attach
+the tactical overlay exactly once, and encode the complete learner corpus as
+flat contiguous numeric arrays with explicit variable-length offsets.  The pack
+must retain every applicable ordinary, OwnDeck, visible-tutor,
+terminal-conversion, combo, and shadow-tactical target and mask; it may not
+fall back to resident Python game/decision objects for epoch training.
+
+Fail closed unless the sealed pack validates exactly 26,704 Alakazam
+acting-seat games and 2,040,911 Alakazam decisions, the exact twenty-day source
+and feature digests, all sidecar/tactical provenance, offset bounds, tensor
+dtypes/shapes, selected-option legality, source-disjoint split identity, and
+the r274 all-22-head/bootstrap-route contract.  Train from pinned CPU-memory
+batches streamed to `cuda:1`; build/join occurs once and all 25 epochs plus the
+later five-epoch refreshes reuse the same immutable pack.  This changes only
+data representation and loading: the r195 parent, exact deck, Matchup Adapter
+gates, shadow tactical route boundary, six-submission schedule, 25 RL updates,
+direct-policy/RTP-off behavior, and every revision-263--277 requirement remain
+unchanged.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 280-TRAINING, keep the immutable revision-279 contiguous pack
+as the restart-safe CPU artifact, but make full numeric GPU residency on
+Inzi's `cuda:1` RTX PRO 5000 Blackwell the primary epoch-training path.  The
+sealed pack is 5,725,073,070 bytes and the measured device capacity is 48,935
+MiB, so copy every corpus and side tensor to `cuda:1` once after checksum and
+shape validation, then derive each game batch by device-side index gathering.
+Do not rebuild Python game or decision objects, perform host-side row decoding,
+or stream the same batch from CPU during ordinary epoch training.  Preserve
+the CPU pack as immutable restart/cache truth and retain pinned CPU-to-GPU
+batch streaming only as an explicit fail-closed fallback after a measured GPU
+allocation or safety-headroom failure; never fall back to the superseded
+resident-object loader.  This data-residency correction changes no parent,
+target, mask, loss, head, route, adapter, split, epoch, update, simulator,
+RTP, deck, submission, or activation-gate contract.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 281-TRAINING, correct the completed r280 bootstrap boundary:
+the ordinary 25-epoch expert pass is not a complete r274 bootstrap when its
+receipt reports zero Matchup Adapter rows or leaves the eligible adapter bank
+unchanged.  Before any bootstrap submission, tactical-route activation, or RL
+update 0, train the eligible Matchup Adapter bank for the bootstrap from
+checksum-backed, training-eligible public-state replay support with exact
+archetype/package identities and source-disjoint validation.  This is real
+optimizer training, not roster rebinding, router-only fitting, zero-slot
+materialization, or preservation evidence.  Emit an immutable derivative
+checkpoint and receipt proving nonzero labeled adapter rows, optimizer steps,
+finite changed eligible adapter tensors, per-route support/validation, exact
+isolation of every non-adapter tensor, and exact-zero dormant behavior for any
+slot that lacks all readiness gates.  The already completed ordinary and
+tactical optimizer work remains immutable parent evidence and must not be
+replayed merely to add the missing adapter phase.  The bootstrap submission
+must descend from this adapter-trained child.  Later RL updates retain their
+separate one-epoch adapter-only continuation after every update.  This changes
+no deck, RTP-off/direct-policy boundary, 25-update/six-submission schedule,
+router precision gate, or tactical planner authority.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 282-TRAINING, remove the per-RL-update tactical shadow-search
+materialization gate from the active revision-274 25-update loop.  The owner
+prefers immediate full-model RL backprop over waiting for 1,024 newly searched
+tactical roots on every sealed update.  Preserve the completed expert tactical
+bootstrap, its activated learned route, checkpoint, receipts, and shadow-only
+planner evidence, but do not run `materialize_tactical_shard_overlay` on RL
+shards and set the RL tactical-sequence-specific supervised loss to exactly
+zero.  The tactical planner retains no dispatch, serving, selector, package, or
+submission authority.  Resume update 0 from its immutable exact 8,196-game
+collection receipt; do not recollect it.  All ordinary full-model RL losses,
+the other 21 heads/routes, one adapter-only continuation epoch, direct-policy
+and RTP-off boundaries, exact opponent/seat contracts, 25 updates, five-update
+expert refresh cadence, and six-submission schedule remain unchanged.  This is
+an immediate pre-gradient boundary change: preserve the superseded partial
+materialization process evidence, stop/restart only the declared managed
+training service, and proceed to optimizer training.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 283-TRAINING, strengthen revision 282 by physically removing
+only the new four-output `tactical_sequence_outcome_head` and its dedicated
+`tactical_sequence_outcome_route` from the active r274 learner before update-0
+backprop.  Preserve the older strategic `tactical_outcome` head and its Fusion
+route unchanged and active.  Create a checksum-bound tactical-free architecture
+child in memory from the immutable activated bootstrap parent: the two new
+tactical-sequence parameter prefixes must be absent from the update-0
+checkpoint, their three model-config gates must be false, and every retained
+parent tensor must load unchanged before RL optimization.  The old bootstrap,
+route-activation, and partial per-update materialization artifacts remain
+immutable historical evidence and are not active lineage requirements.  The
+active learner now has 21 heads/routes; all 21 remain active and train normally,
+including the old strategic tactical head.  Resume from the sealed update-0
+collection without recollection.  Every other revision-282 boundary remains
+unchanged.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 284-TRAINING, stop the incomplete revision-192 broad formal
+holdout that followed update 0 and preserve its exact completed prefix as
+diagnostic-only, training-ineligible, gate-ineligible evidence.  It is neither
+a pass nor a completed formal evaluation.  Advance the already trained and
+promotion-passed update-0 candidate through an immutable owner-deferral receipt
+without recollection or retraining, and run the replacement formal holdout for
+the first time after update 1.  Every revision-274 formal holdout from that
+point forward contains exactly two checksum-bound opponents and no others: the
+frozen revision-195 NO-RTP direct-policy submission `55378392` and the exact
+H10 Marnie's Grimmsnarl ex specialist
+`specialist-marnie-final-format-h10-f20efb20f5c3`.  Evaluate exactly 250 greedy
+games per opponent, split 125/125 by learner seat, for 500 total games with no
+early stop.  This formal-only roster change does not narrow the diverse public
+training mix, its H10 Marnie and r195 minimum cells, or the separate diagnostic
+research-control roster.
+
+At the same update boundary, deactivate `combo_state` again for iteration 1
+and every later update and expert refresh: retain the physical historical head
+and route tensors for exact checkpoint compatibility, but set its supervised
+loss to exactly zero and its Fusion route off.  Do not delete or rewrite its
+update-0 learned weights.  The old strategic `tactical_outcome` head remains
+active, while the already removed new tactical-sequence head remains absent.
+The active learner therefore has 21 physical retained heads, 20 active Fusion
+routes, and no combo gradient or policy-logit influence after the boundary.
+Bind the holdout deferral, replacement contract, combo shutdown, candidate
+digest, partial-prefix evidence, and remote-fleet continuation to one immutable
+receipt before restarting only the managed r274 trainer.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 285-TRAINING, shorten only the active r274 RL horizon from 25
+updates to exactly 20 updates: commit `iter_00000` through `iter_00019`, finish
+with the existing five-epoch refresh and one-shot submission at boundary 20,
+and never collect `iter_00020`.  The bootstrap submission plus boundaries 5,
+10, 15, and 20 make exactly five authorized submissions for this lineage.
+Remove the former boundary-25 refresh/submission obligation.  Preserve every
+per-update game, seat, public-mix, adapter, direct-policy/RTP-off, revised
+holdout, combo-off, and receipt requirement.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 286-TRAINING, immediately quarantine Elmo from the active r274
+production collection because its 36 advertised workers are producing only
+about 0.17 games/second and its four-game jobs have emitted repeated
+`poke_bot.submission_budget` import failures.  Stop only the managed r274
+trainer cleanly, seal the exact iteration-1 shard as an immutable append-only
+partial-resume sidecar, and restart that same iteration with Bert as the sole
+remote endpoint.  Preserve every completed source game and recollect only
+missing job identities; do not change the checkpoint, seeds, schedule, seats,
+public mix, formal holdout, adapter learning, direct-policy/RTP-off behavior,
+or 20-update horizon.  Keep Elmo's worker managed but outside production while
+it is repaired and tested independently.  Elmo may rejoin only after an exact
+singleton and four-game package canary proves the complete worker/baseline
+import surface, zero recurrence across every worker child, checksum parity,
+and materially useful measured throughput, followed by explicit owner
+readmission.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 288-TRAINING, add a separately versioned, default-off
+Alakazam turn-checklist heuristic logit layer for the exact new-list runtime.
+It must expose and score exactly these eight causal, per-turn questions:
+`ko_hand_threshold`, `safe_spend_above_threshold`,
+`replacement_alakazam_line`, `unavoidable_draws_before_attack`,
+`bench_prize_exposure`, `immediate_disruption_outcome`,
+`unknown_prize_robust_line`, and `terminal_before_forced_draw`.  Bind the
+owner-supplied checklist guide attachment
+`sha256:682f60fc9211e8092c7122b2addfcbe0bfe91ca33d75bddf2171007894585cd2`.
+The immutable r195 NO-RTP checkpoint
+`sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a`
+remains the weight parent, but it is not the exact new-list deck: the runtime
+must bind the exact-list canonical multiset
+`sha256:a42e047c45c419a599a31f2e20a6209d324558082f27e12091ade8918376d182`.
+
+This is not a guide takeover or a checkpoint-tensor change.  When later
+activated, it is a bounded, deterministic residual applied after the current
+neural heads, learned Fusion, OwnDeck, and Matchup Adapter effects and before
+legal action selection, with total per-option influence clipped to
+`[-0.10, +0.10]`.  Historic guide runtime action authority remains false; the
+new layer is separately scoped and must be neutral (zero residual with an
+unavailable reason) for malformed, unknown, hidden, or otherwise noncausal
+evidence.  It must not infer hidden information or invoke search, rollouts,
+MCTS, RTP, or a new action authority.
+
+Elmo may run a small, isolated calibration only: freeze every neural
+checkpoint tensor and train at most the eight scalar checklist gates plus one
+separate guide gate on source-disjoint exact-new-list data.  That calibration
+is validation-only; it has no production-loop, learner, selector, submission,
+or Elmo-readmission authority.  Do not alter the current active iteration or
+its sealed prefix.  Implement and validate in parallel, then activate only at
+the next safe receipt-backed boundary.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 289-TRAINING, permit one Elmo-only, training-ineligible
+turn-checklist diagnostic BO250 after the r288 implementation and parity
+preflight pass.  It is exactly 125 seed-matched, seat-swapped pairs (250 total
+games) using the exact new-list deck on both arms.  The candidate arm is the
+current receipt-bound r274 direct policy with the separate checklist layer;
+the control is the immutable r195 NO-RTP direct policy.  The candidate must
+occupy exactly 125 games in each seat and exactly 125 actual-first and 125
+actual-second games.  Both arms remain direct policy only: no RTP, search,
+MCTS, rollout, hidden inference, calibration leakage, production selector,
+Kaggle, promotion, or learner authority.
+
+Calibration rows and seeds must be source-disjoint from this BO250.  Elmo
+remains excluded from production; this diagnostic cannot satisfy, weaken, or
+replace any production readmission condition.  Fail closed if the exact
+receipt-bound r274 candidate artifact is unavailable or fails parity—never
+substitute another checkpoint, direct policy, deck, or layer state.  Do not
+touch the active iteration; run only as an isolated receipt-backed diagnostic.
+Typed source remains `state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 290-TRAINING, make the r288 turn-checklist layer part of the
+current active Inzi r274 learner lineage, not a standalone r195-only side
+model.  Activate it at the first safe immutable iteration boundary after the
+currently in-flight collection is sealed and before the next collection
+dispatch.  Never switch it on mid-shard or during the current iteration, and
+never recollect, restart, or otherwise disturb the sealed work to install it.
+Once receipt-activated, apply the same bounded layer consistently to subsequent
+r274 behavior-policy collection, ordinary direct-policy evaluation, refresh
+evaluation, and every later receipt-built submission runtime.  Neural
+checkpoint/head, OwnDeck, and Matchup Adapter training continue unchanged; the
+residual itself is not a trainable checkpoint tensor.  The immutable r195
+model remains a parent/control only.
+
+Elmo calibration and the r289 BO250 remain isolated from Inzi and cannot
+directly mutate it.  A calibrated configuration is admissible only through a
+checksum-bound boundary receipt with parity evidence; it cannot create
+production Elmo authority.  RTP, search, and MCTS remain off.  Typed source
+remains `state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 291-TRAINING, supersede only revision 290's activation timing.
+Do not deploy, activate, or stage an Inzi runtime change for the checklist at
+the next boundary.  It remains an intended additive r274-lineage candidate,
+but testing is now Elmo-only in an isolated non-production directory and
+process.  Elmo may receive create-only copies or read-only pulls of the exact
+receipt-bound r274 checkpoint/package/config and immutable r195 control; it
+must never modify Inzi files, services, runtime, boundary configuration, or
+drop-ins, and must not stop, restart, or preempt the active trainer.  No
+production worker change is authorized.
+
+Complete local and Elmo unit, parity, and calibration checks plus the isolated
+r289 BO250 first.  Any later Inzi activation requires a new explicit owner
+decision after those results; a receipt or boundary alone has no activation
+authority.  Elmo remains excluded from production, and RTP/search/MCTS remain
+off.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 292-TRAINING, supersede only the semantic interpretation of
+turn-checklist channel `replacement_alakazam_line`.  It means the backup
+attacker line on the **Bench only**; the current Active Alakazam line is always
+excluded.  The per-turn trace must classify that bench-only backup as `ready`
+only for a Benched Alakazam with Psychic-providing Energy, `completable` only
+for a Benched Kadabra or Abra with every exact, visible evolution, Energy, and
+timing resource needed, and `not_live` when it depends on an unknown draw or
+any possibly prized key card.  Unknown/malformed evolution eligibility or
+timing is `unavailable`, neutral, and must never be guessed live.  A regression
+must prove that an Active Alakazam alone does not count as a backup line or
+produce positive `replacement_alakazam_line` evidence.
+
+Preserve revision 291's Elmo-only non-production boundary: do not touch Inzi,
+its services, runtime, boundary configuration, or active trainer.  The r289
+BO250 remains delayed until the corrected bench-only regression, local/Elmo
+unit checks, and parity checks all pass; it remains training-ineligible and
+does not create any production or readmission authority.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 293-TRAINING, audit the turn-checklist layer against every
+existing active r274 learned surface—current neural heads, learned Fusion,
+OwnDeck, and Matchup Adapter effects—but do not edit any of those existing
+logics by default.  Resolve overlap or double counting only through the new
+checklist layer's gates and per-channel trace: the trace must identify the
+existing-route overlap or distinct rationale, the new-layer attenuation or
+suppression decision, and its post-deduplication signed residual.  An existing
+head, Fusion route, OwnDeck path, or Matchup Adapter may change only after a
+drastic correctness issue is separately evidenced and reported before action.
+
+The legacy broad guide scorer has no runtime residual authority while known
+semantic contradictions remain.  Validated rules derived from the owner
+attachment may inform the eight named checklist channels, but the separate
+guide gate is default/exact zero or trace-only until source-disjoint corrected
+validation resolves those contradictions.  Preserve revision 291's Elmo-only
+non-production / no-Inzi boundary.  The r289 BO250 is delayed until this
+overlap audit and the guide-gate trace-or-zero receipt pass, alongside the
+existing r292 checks.  This record authorizes no code or service change. Typed
+source remains `state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 294-TRAINING, bind the owner-supplied guide attachment
+`/Users/tsinzitari/.codex/attachments/fdee1eae-e3b4-4631-bb52-864f8f7e68d9/pasted-text.txt`
+(`sha256:4580196717277a5d5672eb44bc5c69c9de56ca9ebb9ca93fa76a2c9b5ba278a3`)
+as the superseding source for `poke_bot/alakazam_new_list_heuristics.py`
+scorer semantics.  That existing scorer must be updated from the new guide,
+while learned neural heads, Fusion, OwnDeck, and Matchup Adapter logic remain
+unchanged.  The attachment's then-incomplete four-Alakazam inventory sentence
+did not provide a complete replacement 60-card list and conflicted with the
+checksum-bound three-copy canonical list, so it had no deck authority and did
+not alter the exact list or multiset.  The guide scorer remains training-only
+with no direct runtime action authority.  Validated deterministic attachment
+rules may inform the eight checklist channels, but broad `guide_support`
+remains exact-zero or trace-only until corrected source-disjoint validation.
+Preserve the Elmo-only/no-Inzi boundary.  This record performs no code or
+service change.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 295-TRAINING, supersede only revision 294's attachment byte
+identity because that same attachment path was corrected in place.  Its new
+identity is
+`sha256:5cc092c9ed93b3e0e4ecae9fca9d50409bea6979e8d92e358f684091e0cdff8b`.
+The owner-supplied corrected guide now supplies the exact 17-Pokémon,
+36-Trainer, 7-Energy inventory, including three Alakazam, and it matches the
+existing checksum-bound canonical 60-card list and multiset.  Preserve those
+canonical deck bytes and digest unchanged.  The required scorer update remains
+training-only with no direct runtime action authority; learned neural heads,
+Fusion, OwnDeck, and Matchup Adapter logic remain immutable under this review.
+Checklist channels may use validated deterministic guide rules, while broad
+`guide_support` stays exact-zero or trace-only until source-disjoint corrected
+validation.  Preserve Elmo-only/no-Inzi isolation.  This record performs no
+code or service change.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 296-TRAINING, clarify the multi-environment scheduler's worker
+accounting for every remote that is later explicitly readmitted.  An
+endpoint's advertised worker count is concurrent worker-process/socket
+capacity; a four-game `self_play_multi` packet is four environments executed
+behind one such worker.  Effective environment capacity is advertised workers
+multiplied by four, never advertised workers divided by four and never a
+packed packet collapsed into one source game.  Every child retains its
+independent job, seed, seat, result, trajectory, and receipt identity.  This
+does not readmit Elmo or Bert, alter the current Inzi-only production
+override, or weaken any health and explicit-owner readmission requirement.
+RTP/search/MCTS remain off.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 297-TRAINING, the active Inzi production collector has a hard
+topology of exactly 32 simulator processes with four `LibcgMultiEnv`
+environments per process (128 concurrent environments).  Short startup-window
+GPS measurements do not authorize reducing that concurrency or replacing the
+owner's sustained measurement.  Keep the corrected dual-GPU routing, the
+Inzi-only/no-remotes override, append-only partial-shard preservation, and
+RTP/search/MCTS-off behavior.  Any later remote readmission inherits revision
+296's worker-times-four accounting.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 299-TRAINING, the owner rescinds revision 297's hard requirement
+that active Inzi production remain at exactly 32 simulator processes. Preserve
+four `LibcgMultiEnv` environments per selected simulator process, but choose the
+next process count from sustained completed-game throughput and resource
+telemetry rather than treating 32 as a floor. Bias policy-leaf inference toward
+the higher-capacity Blackwell GPU while retaining the RTX 3080 Ti as bounded
+spillover; the exact leaf split must be receipt-backed and must not overload
+either device. Do not interrupt the current in-flight collection merely to
+apply this correction: activate the selected topology at the next clean managed,
+append-only, receipt-backed collection boundary. Inzi-only/no-remotes and
+RTP/search/MCTS-off behavior remain unchanged. Revision 296's worker-times-four
+accounting still governs any later explicitly authorized remote readmission.
+Typed source remains `state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 300-TRAINING, the owner selects the next Inzi production
+topology as exactly 16 simulator processes with four `LibcgMultiEnv`
+environments per process, for 64 concurrent environments. This supersedes
+revision 299's open process-count selection and revision 297's 32-process
+requirement. Keep Blackwell as the primary policy-leaf inference device and
+the RTX 3080 Ti as bounded spillover. Do not interrupt the current in-flight
+self-play phase; activate 16×4 only after that phase seals at the next clean
+managed append-only boundary. Inzi-only/no-remotes and RTP/search/MCTS-off
+behavior remain unchanged. Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 301-TRAINING, supersede revision 300's 16×4 selection so the
+next Inzi collector restores the historical target of 96 concurrent local
+game environments under multi-environment packing. The prior 96 profile used
+96 singleton simulator workers at one game each; the packed equivalent is
+exactly 24 simulator processes with four `LibcgMultiEnv` environments each.
+Activate 24×4 only after the current self-play phase seals at the clean managed
+append-only boundary. Keep Blackwell primary, the RTX 3080 Ti as bounded
+spillover, Inzi-only/no-remotes, and RTP/search/MCTS off. Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 302-TRAINING, the owner clarifies that revision 298's isolated
+Alakazam simulator-rules and auxiliary-head experiment is a separate goal,
+not a live branch of this production goal. Preserve revision 298 and its
+attachment as immutable historical provenance. The then-current revision-4
+experiment gateway was
+`goals/alakazam-elmo-rule-derivative/GOAL.md`
+(`sha256:2af67560510ca7ffd9fe0bc6ff37cdbbd74f5a78d6c5237091bb527d49ce4ed8`);
+its sole typed canonical source is
+`goals/alakazam-elmo-rule-derivative/contract.json`
+(`sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2`),
+bound to owner
+attachment
+`/Users/tsinzitari/.codex/attachments/8100a736-c437-41f2-b559-97f78d2e2f78/pasted-text.txt`
+(`sha256:0f440fc71043b4352e6401a3187c9d582c1c5614d76e186095e0eef51017af6f`).
+At revision 302 this root goal and
+`state/alakazam-new-list-direct-policy-r241.json` retained
+only a non-authoritative handoff and historical reference for that experiment;
+they must not supply competing live experiment semantics. The separate goal
+authorizes isolated Elmo implementation and evaluation only. It grants no
+Inzi file, service, runtime, worker, collection, checkpoint, selector,
+package, submission, propagation, restart, or production-activation change.
+Revisions 300--301's production-topology decisions are unchanged.
+
+Under revision 303-TRAINING, after the dedicated derivative completes Elmo
+implementation/schema freeze, exact 2026-07-13 through 2026-08-11 UTC
+re-featurization and census, branch adjudication, and verified quarantined Inzi
+shard staging, hand bootstrap/training to Inzi's `cuda:1` RTX PRO 5000
+Blackwell at one clean receipt-backed boundary. Preserve current healthy r274
+work until its collection/shard, optimizer/adapter, checkpoint, and commit are
+durable; do not stop early or switch mid-unit. Then fully pause exactly
+`pokebot-alakazam-r274-rl.service` and the r274-specific
+`pokebot-alakazam-r274-rl-submission-boundaries.service` through user systemd,
+leaving the shared `pokebot-kaggle-submission-queue.service` unchanged. Seal
+the exact r274 parent,
+optimizer, registry, service definitions, corpus, schema, frozen tensors,
+Blackwell ABI/capacity, readiness, activation, and rollback receipts before
+staged shards become training-eligible. The derivative becomes the sole active
+Alakazam training/collection lineage; “overwrite” is a logical managed-lineage
+handoff, never destructive mutation or deletion of r274 artifacts.
+
+After successful Blackwell bootstrap and candidate validation, build exactly
+one checksum-exact Kaggle package on the exact new Alakazam list, binding the
+checkpoint, deck, runtime, simulator/catalog, feature/target/checklist schemas,
+Matchup Adapter inventory, package parity/smoke, visible label, and single-use
+authorization. Durably enqueue it `first_if_allowed` under the existing quota
+and spacing guards. A pending quota/spacing entry is sufficient for the next
+step; do not wait for upload or score, do not claim submission without an
+upload receipt, and never lose, mutate, or falsify the checkpoint on delay or
+failure.
+
+Once that queue receipt is durable, start derivative self-play across every
+known host proved available, eligible, and checksum-compatible by the same
+frozen fleet inventory. Bind per-host package parity, explicit GPU/worker
+routing and resource caps, managed service definitions, global collection and
+game/lease identities, append-only shards, and duplicate suppression. Inzi
+Blackwell remains the sole learner/optimizer. No old r274 training or
+collection may run concurrently, and no unreceipted host drop, device fallback,
+duplicate game, resource-cap weakening, serving-selector change, or shared
+queue-service change is allowed. No runtime or service change is performed by
+recording revision 303. The dedicated derivative semantics and closed receipt
+inventories remain solely canonical in
+`goals/alakazam-elmo-rule-derivative/contract.json`; the production handoff is
+owned by `state/alakazam-new-list-direct-policy-r241.json`.
+The current dedicated revision-6 gateway is
+`goals/alakazam-elmo-rule-derivative/GOAL.md`
+(`sha256:d275696bb8322c1741463d63b4506d9b04f1252c3c6cdbe7559c999b55b83da7`)
+and its sole typed contract is
+`goals/alakazam-elmo-rule-derivative/contract.json`
+(`sha256:98e39d771569bdf778885848fc61732275c89c517e057a34bd3006144c23bdd1`).
+
+Under revision 304-TRAINING, the owner terminates this root task's r274
+production cycle after the currently active iteration 1 update. Finish
+iteration 1 without interrupting or recollecting its in-flight exact
+collection: seal exactly 8,196 games with every existing seat, H10 Marnie,
+frozen submission-55378392, direct-policy, RTP/search/MCTS-off, adapter,
+combo-off, and receipt invariant; then run its ordinary retained-head
+optimizer, one isolated Matchup Adapter continuation epoch, exact revision-284
+two-opponent formal holdout, and durable `iter_00001` commit.
+
+Build and upload exactly one new `first_if_allowed` direct-policy Kaggle
+submission from that exact durable iteration-1 learner, with the exact new
+Alakazam deck, runtime-on trained Matchup Adapter bank/tree, and RTP, search,
+and MCTS absent. The upload must receive its own immutable request, package,
+single-use authorization, queue/attempt, and accepted submission-ID receipt;
+pending quota or spacing waits and may not be called submitted. After that
+accepted upload receipt, stop the managed r274 loop cleanly. Do not collect
+iteration 2 or execute former refresh/submission boundaries 5, 10, 15, or 20.
+This supersedes revision 285's remaining r274 horizon while preserving its
+already completed bootstrap submission and every immutable iteration-0 and
+iteration-1 artifact.
+
+Because the current interpreter was launched under the superseded horizon,
+arm a checksum-bound managed boundary fence before iteration-1 collection
+seals. The fence must prevent iteration-2 dispatch without racing a
+post-commit poll and may restart only the managed r274 trainer at the sealed
+iteration-1 collection boundary if required to load the fence. Never
+terminate or interfere with an interactive session. Revision 304 governs only
+this root r274 loop; revision 303's separately owned derivative goal remains
+separate and receives no runtime authority from this instruction. Typed source
+remains `state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 305-TRAINING, every future pure-RL optimizer cycle repeats a
+deterministic contiguous packing step after its source collection shards are
+sealed and before baseline preparation or backpropagation.  This RL replay
+pack is distinct from the revision-279 expert pack and from the legacy
+eight-part Python-object replay cache.  It contains the exact accumulated
+training games, decisions, targets, masks, variable-length offsets, source
+identities, and checksum-bound Matchup Adapter ticket/route metadata needed by
+the ordinary full-model optimizer and the isolated adapter continuation.
+
+The step always runs locally on Inzi from immutable local shards, using
+configurable deterministic multiprocessing at 1/2/4/8/16/32 workers; Elmo,
+Bert, and LAN transfer have no role.  Worker count is not capped at eight: use
+the fastest supported count proven by an isolated local Inzi benchmark for the
+actual corpus and available RAM/I/O bandwidth, but never change canonical
+ordering or tensors.
+Merge in source order, cache the completed pack for optimizer epochs and later
+refreshes, and require exact serial parity plus identical seeded one-step
+optimizer results.  Keep batch size, shuffle, losses, weights, masks, and
+optimizer semantics unchanged; larger batches require a separate owner
+decision.  Preserve the serial loader as fail-safe.  Do not modify or restart
+the currently active revision-304 optimizer; activation is allowed only for a
+future run at a sealed receipt-backed boundary after validation.  Typed source
+remains `state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 306-TRAINING, select exactly 16 local Inzi preparation workers
+for the revision-305 contiguous RL replay packing step on subsequent training
+starts.  Retain 1/2/4/8/32 only as supported diagnostic configurations; do not
+auto-select them for production.  This does not restart, reconfigure, or alter
+the currently active revision-304 optimizer.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 307-TRAINING, finish the already active r274 iteration-1
+ordinary optimizer and its required one-epoch Matchup Adapter continuation,
+but skip both the revision-284 formal holdout and the research-control
+measurement for this terminal iteration.  Do not interrupt the optimizer,
+discard its candidate, recollect games, or claim any measured evaluation pass.
+Commit the exact trained learner as durable `iter_00001`, build and upload the
+single revision-304 `first_if_allowed` direct-policy Kaggle submission with
+RTP, search, and MCTS off, then stop the managed r274 loop before iteration-2
+collection.  Preserve all earlier diagnostic and measured evidence unchanged.
+This is a terminal evaluation waiver for this exact root r274 iteration only;
+it does not alter future evaluation defaults or the separately owned derivative
+goal.  Typed source remains
+`state/alakazam-new-list-direct-policy-r241.json`.
+
+Under revision 309-KAGGLE, submit one additional checksum-exact copy of the
+immutable revision-195 NO-RTP Alakazam package from Kaggle submission
+`55378392`.  Reuse bundle
+`sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145`
+and checkpoint
+`sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a`
+without changing any archive member, deck, runtime, Matchup Adapter, search,
+RTP, checkpoint, selector, or training service.  The copy remains
+`first_if_allowed` and uses the exact visible label
+`r195 iter 21 261d367e131e NO RTP`.  Queue it immediately under the existing
+daily quota and four-hour spacing rules with a fresh one-shot authorization
+and immutable upload receipt.  This copy does not replace, retry, relabel, or
+mutate submission `55378392`.  This completed as Kaggle submission `55468965`
+at `2026-08-12T23:38:18Z`; evaluation was pending at activation.  Typed source:
+`state/alakazam-r195-no-rtp-additional-copy-r309.json`.
+
+Under revision 298-TRAINING, stage a separately versioned simulator-rules
+representation and auxiliary-head overhaul for Alakazam as an **isolated
+Elmo-only experiment**.  Do not change, restart, activate, package, propagate,
+or otherwise touch Inzi or production.  Preserve revision-195 NO-RTP as the
+immutable weight parent and the current exact r241/r274 policy as the baseline.
+Any implementation is a versioned derivative whose zero-gated/layer-off mode
+reproduces the baseline logits exactly; it may not rewrite the parent
+checkpoint, current baseline, selector, packages, or active head logic in
+place.
+
+The pinned competition simulator and its legal option list are ground truth;
+official paper rules are secondary where they differ.  Do not invent attacks
+the simulator omits when an effect cannot resolve, including full Bench,
+deck-zero draw, or opponent-handCount-zero effects.  Mega Zygarde ex
+Nullifying Zero resolves automatically left-to-right with no target-order
+choice and simultaneous KOs.  Reproduce the simulator's sequential Prize and
+promotion prompts after simultaneous KOs, calling a result a draw if both
+players ultimately reach zero Prizes.  Mega Pokémon ex yield three Prizes,
+ordinary Pokémon ex yield two, ordinary Pokémon generally yield one, subject
+to explicit modifiers; `megaEx` takes precedence when both `ex` and `megaEx`
+are true.  The "next Alakazam line" remains the replacement attacker on the
+Bench only, never the current Active line.
+
+All policy, value, Fusion, rule-adapter, checklist, target, and public-belief
+search inputs use only the acting player's public information set.  Exact
+opponent hand identities, opponent deck order, and unrevealed Prize identities
+are never runtime inputs.  Privileged hidden fields may appear only in a
+separately typed named-belief target payload and may not generate actions,
+policy teachers, action filters, rollout branches, or counterfactual values;
+one realized true-environment trajectory/reward is allowed.  A metamorphic
+test must vary every privileged opponent-card identity while holding public
+state/history and seeds fixed, then prove sanitized features, policy logits,
+and public-belief decisions bit-identical.
+
+Phase 1 is an Elmo collision census over the pinned simulator and exact
+r274/new-list data.  Record the canonical public-observation hash, current
+feature/token hash, complete semantic option key, and simulator
+successor/event-chain hash for every legal option.  Fail on equal model
+encodings with distinct simulator successors or outcome distributions; classify
+intentional hidden-information equivalence, intentional permutation
+equivalence, simulator-legality proxy, and genuine public-state/option
+non-identifiability, including frequency and action-change risk.
+
+Phase 2 adds a parallel zero-gated public-rule adapter, not an in-place parent
+mutation.  It represents public HP/max HP, evolution stack/preEvolution and
+appearThisTurn, typed-energy units and attached card identities, effective Bench
+maximum, turn-action/resource flags, public terminal reason, and visible
+looking/search menus.  It encodes select context/type, contextCard/effect
+source, bounded exact NUMBER values with overflow failure, min/max and
+remaining damage/energy budgets, Option.count, normalized SKILL
+physical-source/serial binding, semantic source/target/area/slot/attachment,
+and a stable simulator discriminator only after semantic fields still collide.
+It must not blindly embed global serials or candidate ordinals, and it must
+preserve option-permutation equivariance unless order is simulator-semantic.
+Structured public card/attack metadata feeds a zero-initialized residual; text
+hashes are not a rules parser, and pinned-simulator transitions supply targets.
+
+Phase 3 derives exact public simulator targets for option semantics, typed-cost
+attack readiness, immediate damage/counters/draw/discard/energy/Bench/KO,
+post-modifier Prize yield, turn-resource use, deterministic prompt chains,
+terminal reason (including simultaneous-KO draw), and deck-out/forced-draw
+timing.  In the derivative, repair `lethal_threat`, `prize_race`,
+`action_utility`, `game_phase`, `opponent_hand`, `opponent_remainder`, and
+`terminal_conversion` against those targets exactly as bound in the typed
+source.  This authorizes no production learned-head, Fusion, OwnDeck, or
+Matchup Adapter mutation.
+
+Phase 4 requires all eight checklist channels at every scored factorized stage
+and in evaluate-only forced turns: value/evidence, availability mask, exact
+public provenance, unavailable/unknown reason, signed normalized vector,
+applied gate, and post-cap residual.  Unknown or hidden evidence is neutral
+zero, never guessed.  `bench_prize_exposure` (Q5) and
+`immediate_disruption_outcome` (Q6) remain trace-only at exact zero gate until
+their predicates are separately calibrated and explicitly enabled; do not
+claim full logit coverage for either.  Preserve Q3's Bench-only replacement
+line contract.
+
+Phase 5 requires engine-backed and metamorphic tests for bounded NUMBER,
+distinct SKILL sources, semantic attack/prompt collisions, energy/damage
+budgets, evolution/turn flags, typed special energy, Prize yields and
+modifiers, deck/Bench/hand legality, Nullifying Zero ordering, simultaneous-KO
+Prize/promotion/draw behavior, initiating-action prompt-chain credit, hidden
+state invariance, legal masking, permutation/padding, finite residual caps,
+and exact layer-off baseline logits.  The owner attachment is
+`/Users/tsinzitari/.codex/attachments/7b1d4464-b2f6-4fcc-8a6e-52abc35e3aaf/pasted-text.txt`
+(`sha256:d3f06071663dde2ae7012da72b407b410c7facd06d09ab723cad05af44ddb2cb`).
+Typed source remains `state/alakazam-new-list-direct-policy-r241.json`.
+
 Under revision 251-TRAINING, correct r241's activation topology without
 changing its deck, guide, simulator, ten-update cycle, peak-r195 head/adapter
 semantics, exact public mix, PTCGReplay deferral, or one-terminal-submit
@@ -1726,6 +2526,113 @@ After all 20 days pass, the deterministic join and terminal receipts may be
 created and the fully verified tree atomically promoted to revision 261's
 canonical Inzi training root.  Never stop, restart, or reconfigure the healthy
 r259 managed producer to perform this overlap.
+
+Under revision 263-TRAINING, fold the revision-257 shadow tactical sequence
+planner into this same still-unstarted Alakazam successor and train its
+public-state sequence/outcome hint live throughout all ten updates.  This is
+training-only shadow cotrain: direct policy remains the sole dispatched action
+authority, and tactical traces, learned hints, SME goals, discrepancy paths,
+or certificates may never override, label, or become a submitted action.
+Preserve the revision-257 chance, hidden-information/tutor re-observation,
+actor/turn, owned-child, 64-complete-action, history, and fingerprint
+boundaries.  The revision-257 prohibition on model/training changes is
+superseded only for this r241 successor's receipt-backed shadow cotrain; its
+MCTS/RTP/Kaggle/selector/serving prohibitions remain in force.
+
+Train the complete OwnDeckLedger sidecar surface live in every update as well:
+the shared ledger and option adapter, visible tutor-completion head, and
+terminal-conversion head retain their revision-260 causal masks and 0.05 total
+auxiliary budget.  Add one zero-safe four-output tactical-sequence outcome
+hint head with a separate 0.025 masked loss budget.  Collect at least 1,024
+bounded public-state tactical shadow roots from the ordinary direct-policy
+training games in each update, bind their source observation/legal-order and
+simulated-history fingerprints, and train only on exact simulator terminal
+facts or explicitly observed public SME-goal/boundary labels.  Fabricated,
+hidden, evaluation, Kaggle, partial-path, value/prior, or unreceipted labels
+fail closed.  Both five-epoch expert refreshes continue training every
+applicable deck-sidecar target; tactical supervision is used there only when
+a checksum-bound compatible trace exists.  Before activation require
+zero-safe migration, finite-gradient/coverage/calibration, bounded-influence,
+source-disjoint evaluation, live-cotrain accounting, direct-action parity, and
+shadow planner latency/reliability receipts.  No additional owner decision is
+required after those gates pass.
+
+Under revision 264-TRAINING, use the immutable revision-195 ladder-proven
+Alakazam model checkpoint (`sha256:261d367e…9cc3a`) as the weight parent and
+zero-safely adapt it to the r260/r263 deck-ledger and shadow-tactical system.
+The 600.0 revision-195 RTP submission proves the shared model lineage, but its
+RTP sidecar has no action, target, package, or serving authority in this
+direct-policy successor.
+
+Replace revision 241's ten-update/one-terminal-submit horizon with the owner's
+established full cycle.  First run an exact 25-epoch expert bootstrap over the
+checksum-pinned 20-day corpus and complete one first-if-allowed direct-policy
+submission from that durable bootstrap checkpoint.  Then run exactly 25 RL
+updates (`iter_00000` through `iter_00024`) with the unchanged exact 1,024
+self-play plus 7,172 public-mix games, at least 1,024 direct H10 Marnie games,
+and exact 4,098/4,098 seat split per update.  After completed updates 5, 10,
+15, 20, and 25, run the small exact five-epoch expert soft refresh and submit
+once from each durable refreshed checkpoint before continuing.  This yields
+exactly six receipt-backed submissions total: bootstrap, then boundaries 5,
+10, 15, 20, and 25.  No early gate exit, extra collection wave, milestone
+skip, duplicate/retry copy, or unreceipted upload is allowed.  The r263 deck
+sidecar and shadow tactical objectives cotrain through all 25 updates and every
+applicable expert pass.  Update 25 is the terminal boundary; no `iter_00025`
+collection is authorized.
+
+Under revision 265-TRAINING, activate and train every architecture-present
+ordinary model head and Fusion route in this successor.  In particular,
+`combo_state` changes from present/loss-off/route-off history to exact masked
+loss weight 0.025 and an enabled Fusion route, using only causal checksum-bound
+labels.  Preserve the 18 already-active inherited routes and activate combo as
+the nineteenth inherited route; keep the two r260 typed option heads/routes
+active as already required.  The r263 tactical outcome head is fully trainable
+and live as a shadow-planner ordering hint, but remains outside action Fusion:
+that single deliberate boundary is required so the shadow planner cannot
+become dispatched direct-policy authority.  Require per-head nonzero support,
+finite gradient, optimizer-state, checkpoint inventory, causal-mask, runtime
+influence, and terminal activation receipts; a silently dead or merely
+architecture-present head fails closed.
+
+Under revision 266-TRAINING, make the learned tactical-sequence outcome head's
+Fusion route active in the direct-policy learner as well.  The bounded search
+planner remains shadow-only and cannot directly dispatch, override, or supply
+proof authority; its checksum-bound public-state traces supervise the learned
+head, and that learned representation may influence ordinary direct-policy
+logits only through the same typed, trained Fusion machinery as every other
+active head.  This makes all 22 architecture heads and all 22 corresponding
+routes active.  Log route-on versus route-off paired inference at bootstrap
+and every five-update boundary, including action-change rate, top-action
+margin delta, KL divergence, value delta, terminal-win/SME label calibration,
+support, route magnitude, and latency.  Promotion requires finite, nonzero,
+bounded influence with source-disjoint outcome evidence and no hidden-state,
+proof, or direct-search authority.  Publish these impact receipts to the
+training dashboard so the owner can inspect the tactical route separately and
+alongside the full all-head model.
+
+Under revision 267-TRAINING, add the exact frozen revision-195 600.0 ladder
+submission package (submission `55378477`, bundle
+`sha256:2f982f25…2000f9`, RTP sidecar `sha256:dde7b813…3aee`) to the
+r241 public specialist research roster.  Run at least 128 games against that
+exact package in every one of the 25 updates, with at least 64 learner-first
+and 64 learner-second games.  These games are a named research cell inside,
+not in addition to, the unchanged 7,172 public-mix total and do not reduce the
+at-least-1,024 direct H10 Marnie cell.  The frozen r195 opponent may use its
+checksum-bound RTP sidecar only as its own opponent action policy.  No r195
+weight, RTP state, action, trace, hidden state, or package member may be loaded
+into the learner, used as supervised target authority, or shipped in an r241
+submission.  Require per-update package identity, seat, game-count, outcome,
+and disjoint research-cell receipts and expose its results separately on the
+dashboard.
+
+Under revision 268-TRAINING, correct revision 267's research-opponent identity
+to the owner's exact linked Kaggle submission `55378392`: the frozen
+revision-195 **NO RTP** direct-policy bundle
+`sha256:dfa8bfcc…b7145`, public score 500.4.  Submission `55378477`, bundle
+`2f982f25…`, and RTP sidecar `dde7b813…` are not this research cell and have
+no training-opponent, learner, target, package, or serving authority.  Keep
+the revision-267 minimum 128 games/update, 64/64 learner seats, fixed 7,172
+public total, H10 minimum, receipts, and dashboard reporting unchanged.
 
 Under revision 231-MCTS, one stuck, timed-out, crashed, or malformed fleet
 worker may never crash or cancel the whole r229 BO1000. Preserve an immutable
@@ -2616,6 +3523,12 @@ toward zero as the learned policy internalizes or surpasses it.
 - Transition graph: `ops/specialist_transition_graph.json`
 - Compatibility projection for older controllers:
   `ops/current_goal_requirements.json`
+- Active delegated Alakazam rule-derivative gateway:
+  `goals/alakazam-elmo-rule-derivative/GOAL.md`
+- Sole typed Alakazam rule-derivative authority:
+  `goals/alakazam-elmo-rule-derivative/contract.json`
+- Receipt-backed Alakazam rule-derivative execution-status projection:
+  `goals/alakazam-elmo-rule-derivative/STATUS.json`
 - Live runtime truth: the canonical selector, managed-service state, and
   immutable receipts named by the compatibility projection
 
@@ -2910,6 +3823,51 @@ or workflow has changed:
 | 260-TRAINING | 2026-08-11 | Highest priority: because r241 never armed or started and its final launcher check failed closed, fold last night's r258 `OwnDeckLedger` architecture into the next r241 receipt line before update 0. Preserve the 19 inherited heads/18 active Fusion-v3 routes and combo-off semantics; add the width-128 shared ledger, eight-feature option adapter, and typed 7-output tutor-completion plus 6-output terminal-conversion heads/routes with zero-safe migration and a total masked auxiliary budget of 0.05. | Explicitly supersedes r258's post-r241-completion/no-r241-mutation delay only at this safe pre-start boundary. Bind the completed Elmo exact-20-day side store only after all 20 shards and join/parity/schema/count/digest receipts pass; then require the corrected typed parent `FileIdentity`, zero-safe migration, training canary, bounded influence/evaluation, new immutable source/H10/peak/image/quartet/overlay, and managed-service preflight. Activate immediately after those receipts without another owner decision. Old 1c34/v8/v6/r13 artifacts remain immutable inactive history. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
 | 261-TRAINING | 2026-08-11 | Make Inzi the sole managed training host for the r260 combined successor. Elmo may preprocess and receipt the protected expert corpus and run bounded disposable parity checks, but it may not train the learner. | After 20/20 Elmo sidecar completion, create-only copy the exact daily layout and deterministic joined dataset to the canonical Inzi r260 training root, rehash typed FileIdentities there, and require the Inzi trainer to use only its local disk-backed streaming index. Any Elmo `/mnt/Main/` training path fails closed. All r260 architecture, evidence, schedule, direct-policy, and activation gates remain unchanged. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
 | 262-TRAINING | 2026-08-11 | Begin transferring already committed immutable r259 daily sidecars to a non-eligible Inzi staging root while Elmo finishes the remaining days. | Transfer only committed non-dot daily directories, create-only and byte-identical; seal and rehash each day on Inzi, append later commits, and retain zero training authority until 20/20 plus join/parity/transport receipts pass and the tree is atomically promoted. Do not restart or reconfigure the healthy r259 producer. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 263-TRAINING | 2026-08-11 | Train the revision-257 public-state tactical sequence planner's outcome hint live as a shadow cotrain objective in the same ten-update r241 successor, and explicitly train the full causal OwnDeckLedger/tutor/terminal sidecar surface in every update and applicable expert refresh. | Add one zero-safe 4-output tactical outcome hint head at masked loss 0.025 while preserving the deck auxiliaries' 0.05 budget. Require at least 1,024 bounded tactical shadow roots per update and exact trace/accounting/parity/influence/latency receipts. The ordinary direct policy remains the sole dispatched and submitted action; no MCTS, RTP, tactical override, hidden-state target, evaluation/Kaggle training, selector, or serving authority is granted. Typed source: `state/alakazam-new-list-direct-policy-r241.json`; revision-257 planner provenance remains `state/alakazam-r228-vs-r195-no-mcts-fleet-bo1000-r229.json`. |
+| 264-TRAINING | 2026-08-11 | Use the immutable ladder-proven r195 model checkpoint as the zero-safe weight parent, then run the established full Alakazam cycle: exact 25-epoch expert bootstrap and submit, followed by exactly 25 RL updates in five-update blocks, each block ending in an exact five-epoch soft refresh and submit. | Exactly six first-if-allowed receipt-backed direct-policy submissions are authorized: bootstrap plus boundaries 5/10/15/20/25. Preserve 1,024 self-play + 7,172 public mix, ≥1,024 H10 Marnie, and 4,098/4,098 seats per update. Cotrain r263 deck/tactical objectives through all 25 updates. The r195 RTP sidecar remains excluded from action/target/package/serving authority even though its 600.0 submission proves the shared parent model lineage. No iter_00025 collection, skip, duplicate, or unreceipted retry is allowed. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 265-TRAINING | 2026-08-11 | Make every ordinary architecture-present head live and trainable in the r264 successor, including activating Alakazam `combo_state` with masked loss 0.025 and its inherited Fusion route. | Require all 19 inherited routes plus the two r260 option routes active, with per-head support/gradient/optimizer/checkpoint/influence receipts. The r263 tactical outcome head is also actively trained and used as a shadow ordering hint, but remains outside action Fusion so it cannot dispatch or override direct-policy actions. No hidden/fabricated label or dead-head placeholder is eligible. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 266-TRAINING | 2026-08-11 | Activate the learned tactical-sequence outcome head's direct-policy Fusion route so its learned public-state representation affects the learner, while keeping the bounded sequence search planner itself shadow-only. | All 22 heads and 22 routes are trainable/active. Require route-on/off paired ablation at bootstrap and every five-update boundary with action-change rate, margin/KL/value deltas, calibration, support, magnitude, and latency, plus bounded nonzero influence and source-disjoint outcome receipts. Show the isolated tactical impact on the dashboard. The planner still cannot dispatch/override actions or treat hints as proof. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 267-TRAINING | 2026-08-11 | Add the exact frozen r195 600.0 ladder submission package to the public specialist research roster for at least 128 games in every update. | Count the cell inside the fixed 7,172 public games, require at least 64/64 learner seats, and preserve ≥1,024 direct H10 Marnie games. The r195 RTP sidecar may act only for that frozen opponent; no r195 weight/RTP/action/trace/hidden state enters learner targets, runtime, or submissions. Receipt and dashboard-report package identity, counts, seats, and outcomes separately each update. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 268-TRAINING | 2026-08-11 | Correct the r267 research opponent to the owner's exact linked Kaggle submission `55378392`, the frozen r195 NO-RTP direct-policy bundle `sha256:dfa8bfcc…b7145` (500.4). | Submission 55378477, its `2f982f25…` bundle, and RTP sidecar are excluded. Preserve ≥128 games/update, ≥64/64 learner seats, fixed 7,172 public total, ≥1,024 H10 Marnie, per-update receipts, and dashboard reporting. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 269-TRAINING | 2026-08-11 | Before training, use Elmo and the newest completed authenticated PTCGReplay ingest to prepare new Matchup Adapter identities/routes, including a distinct frozen 55378392 NO-RTP research-opponent route. | Supersedes r248's deferral. Seal the source snapshot and append only to never-used Format-6 slots starting at 20; preserve slots 0--19 and r195 tensors byte-identically. New slots begin exact-zero/dormant and require data-support, causal-fit, precision/support, bypass, disjointness, and readiness receipts before training, with runtime activation separately gated. Use separate managed Elmo workloads and do not alter healthy r259. PTCGReplay meta has zero action/target/outcome/gate authority and credentials stay runtime-only. Bind all readiness receipts into the one pre-start overlay; preserve r263--r268 deck/guide/all-head/tactical/25-update/six-submit requirements. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 270-TRAINING | 2026-08-11 | Also collect the decklists exposed by the completed PTCGReplay Meta snapshot to help prepare the new matchup adapters. | Decklists are guide/reference evidence only: soft card-signature features, replay discovery, confidence diagnostics, and review. They are not exact deck requirements, hard rules, labels, eligibility/gate evidence, or routing proof. Independent checksum-backed replay support and all r269 receipts remain mandatory. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 271-TRAINING | 2026-08-11 | Retrain a separately versioned causal Matchup Adapter router candidate on Elmo for the expanded r269/r270 Meta snapshot roster before r241 training. | Preserve the existing router/crosswalk, slots 0--19, and r195 tensors immutably. Fit only on checksum-backed public-state replay observations with source-disjoint splits; snapshot/decklist metadata is guide/identity/stratification evidence only. Require per-ID and aggregate precision/support, ambiguity/unknown bypass, balance, calibration, collision, latency, parity, crosswalk, and distinct-55378392 receipts. Activation is overlay-only after all gates pass; failure blocks training without threshold weakening. Do not touch r259 or interactive sessions. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 272-TRAINING | 2026-08-11 | Add every real archetype from the completed PTCGReplay Meta snapshot window, not only the top-20 rows. | Exclude `Rogue / Other`; preserve all existing slot identities; append each unseen numeric ID once in stable snapshot order. Unsupported additions remain exact-zero/dormant until r269/r271 fit and activation gates pass. Keep frozen submission 55378392 a distinct non-aliased opponent identity. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 273-TRAINING | 2026-08-11 | Send every snapshot row, guide decklist, replay-support index, router target, and adapter allocation to its exact PTCGReplay numeric ID. | Names are display-only and cannot merge or alias IDs. Current Teal ID 167 stays distinct from preserved historical ID 151. Kaggle submission 55378392 remains a separate package identity, not a PTCGReplay ID. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 274-TRAINING | 2026-08-11 | Complete the already transferred twenty-day sidecar dataset, all pre-start gates, overlay, and managed trainer setup locally on Inzi without retransmitting the large payload. | Rehash all Inzi daily files against preserved immutable per-day receipts, ignore dot-prefixed failed-transfer remnants, and issue a new local-post-transfer attestation before deterministic join/promotion. Elmo stays read-only source/receipt truth and may send only compact evidence and adapter artifacts. A later low-priority create-only return copy is archival-only and cannot gate or interrupt training. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 275-TRAINING | 2026-08-11 | Convert the never-started new training runtime from candidate r241 to candidate r274. | All active run, unit, registry, overlay, receipt, package, and dashboard identities use r274. r241 remains design/transfer provenance only and has no runtime authority. Keep the large transferred r260 payload at its existing checksum-bound physical path and bind that imported provenance into r274 rather than copying it for naming alone. Preserve the full r263--r273 feature and schedule stack. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 276-TRAINING | 2026-08-11 | Use checksum-gated four-way LibcgMultiEnv packing to accelerate the r274 simulator loop and keep Inzi's available simulator cores engaged. | Pack self-play and only exact r182-retention-compatible public packages; every unknown, changed, legacy, malformed, research, or unattested package remains singleton. Preserve independent child accounting, remote participation, exact 8,196 games, 4,098/4,098 seats, ≥1,024 H10 Marnie, ≥128 exact submission 55378392, direct-policy-only semantics, and all existing gates. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 277-TRAINING | 2026-08-11 | Shadow-train the new tactical-sequence outcome head during the 25-epoch bootstrap, then use its learned route only after bootstrap. | Bootstrap route influence is exact zero and the bootstrap submission excludes it. Activate the zero-safe Fusion route only after checksum-backed bootstrap/submission plus gradient, coverage, calibration, bounded-influence, parity, and impact receipts; use it for RL updates 0–24 and later refreshes. The bounded search planner remains shadow-only throughout. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 278-KAGGLE | 2026-08-11 | Submit one raw r195 NO-RTP test with only `deck.csv` replaced by the exact new r241 Alakazam list, visibly labeled `r195 NO RTP raw resubmit, new Alakazam list, not retrained otherwise`. | No retraining or model/runtime/adapter/search/selector/registration/training-service change. Preserve every non-deck archive member byte-for-byte, use one-shot `first_if_allowed`, and keep all r274 training plus six-submission obligations unchanged. Typed source: `state/alakazam-r195-new-list-no-retrain-r278.json`. |
+| 279-TRAINING | 2026-08-11 | Permanently supersede the stopped resident-Python-object r274 bootstrap loader and materialize one immutable joined contiguous expert pack locally on Inzi. | The sealed pack must bulk-join OwnDeckLedger once, attach tactical labels once, encode flat numeric arrays plus offsets, validate exactly 26,704 Alakazam games and 2,040,911 decisions, and be reused for the 25-epoch bootstrap and later five-epoch refreshes. The old object loader remains stopped and ineligible. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 280-TRAINING | 2026-08-11 | Keep the revision-279 CPU pack as restart truth but make full numeric residency on Inzi `cuda:1` the primary epoch path. | Copy the validated pack once, gather game batches on-device, and avoid ordinary host decoding or repeated CPU-to-GPU batch streaming. Pinned CPU streaming is fallback-only after measured allocation/headroom failure; the Python-object loader is never a fallback. This changes no model, target, route, adapter, schedule, deck, RTP, or submission contract. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 281-TRAINING | 2026-08-11 | A bootstrap with zero Matchup Adapter rows is incomplete: train the eligible adapter bank before the bootstrap submission and RL update 0. | Run a checksum-bound adapter-only optimizer phase from training-eligible, exact-identity, source-disjoint replay support. Require nonzero rows/steps, finite changed eligible adapter tensors, per-route validation, non-adapter bit identity, and exact-zero dormant unsupported slots. Preserve the completed ordinary/tactical parents; the submission must descend from the adapter-trained child. The one-epoch adapter continuation after each later RL update remains required. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 282-TRAINING | 2026-08-12 | Remove per-update tactical shadow-search materialization from r274 and resume the sealed update-0 collection directly into full-model backprop. | Preserve bootstrap tactical evidence, but use zero tactical-sequence-specific RL loss and do not recollect update 0. All other retained heads, adapters, counts, and schedule remain unchanged. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 283-TRAINING | 2026-08-12 | Physically remove only the new tactical-sequence head and route before update-0 backprop. | Preserve the old strategic tactical head and every other retained head/route. The active learner has 21 heads/routes and resumes the sealed collection without recollection. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 284-TRAINING | 2026-08-12 | Move the replacement formal holdout to after update 1, restrict every future formal holdout to exact frozen r195 submission 55378392 plus exact H10 Marnie, and deactivate combo again. | Preserve the stopped 2,142/4,500 broad-holdout prefix as diagnostic-only and never call it a pass. Advance the trained update-0 candidate through one immutable deferral receipt; formal holdout becomes exactly 500 games (250/opponent, 125/125 seats) after update 1 and later. Keep the diverse public training mix separate. Retain combo tensors but set combo loss zero and route off from iteration 1 onward. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 285-TRAINING | 2026-08-12 | Run exactly 20 r274 RL updates, not 25. | Commit iterations 0–19, refresh and submit at 5/10/15/20, and forbid iteration-20 collection. The bootstrap plus four RL-boundary submissions make exactly five; the former boundary-25 obligation is removed. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 286-TRAINING | 2026-08-12 | Quarantine Elmo from active r274 production until it is independently fixed and canary-proven. | Cleanly stop only the managed trainer, seal iteration 1 for append-only partial resume, and resume with Bert as the sole remote while preserving completed games and every training invariant. Elmo requires exact singleton/four-game import, child-wide recurrence, checksum, and useful-throughput evidence plus explicit owner readmission before rejoining. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 287-TRAINING | 2026-08-12 | Resume the r274 production loop on Inzi only for now. | Preserve the exact sealed iteration-1 prefix and checkpoint, disable every remote endpoint, and collect only missing jobs with 32 local simulator workers. Elmo repair remains isolated; Bert is healthy but intentionally excluded. RTP/search remain off and all counts, holdouts, adapters, refreshes, and submission boundaries remain unchanged. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 288-TRAINING | 2026-08-12 | Stage a default-off bounded Alakazam turn-checklist logit residual covering the eight named causal questions, bound to the supplied checklist attachment and exact new-list deck rather than treating r195 as the identical list. | Apply only after current neural/Fusion/OwnDeck/Matchup Adapter effects and before legal selection; clip total residual to ±0.10, neutralize unknown/malformed/noncausal evidence, preserve guide runtime authority false, and forbid hidden inference/search/RTP. Elmo may calibrate only nine scalar gates against source-disjoint exact-new-list data with all neural tensors frozen; this is isolated validation and cannot rejoin production. Do not touch the active iteration; activate only at the next safe receipt-backed boundary. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 289-TRAINING | 2026-08-12 | Permit one isolated Elmo diagnostic BO250: 125 seed-matched seat-swapped pairs using the exact new list on both arms, comparing the receipt-bound r274 checklist candidate with immutable r195 NO-RTP direct control. | Require exact 125/125 candidate seats and 125/125 actual-first/second, source-disjoint calibration seeds/rows, direct-policy-only execution, and a fail-closed exact r274 artifact/parity check. It is training-ineligible, non-promotion, has no production/selector/Kaggle/readmission authority, and cannot alter the active iteration. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 290-TRAINING | 2026-08-12 | Make the r288 checklist layer a staged component of the current Inzi r274 learner lineage, not an r195-only side model. | Activate only at the first immutable iteration boundary after the in-flight collection seals and before next dispatch—never mid-shard/current iteration/recollection/restart. Thereafter use it consistently for r274 collection, direct/refresh evaluation, and later receipt-built submission runtime. Neural/head/OwnDeck/Adapter training stays unchanged; Elmo calibration/BO250 stays isolated and reaches Inzi only through a checksum-bound parity receipt. RTP/search/MCTS and production Elmo remain off. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 291-TRAINING | 2026-08-12 | Supersede only r290’s activation timing: retain the checklist as an additive r274 candidate, but do not deploy or activate it on Inzi at any current boundary. | Test only in an isolated Elmo non-production directory/process using create-only/read-only exact receipt-bound artifacts. Do not alter Inzi files/services/runtime or active trainer, including boundary config/drop-ins; no production-worker change. Complete local+Elmo unit/parity/calibration and BO250 first. A later Inzi activation requires a new explicit owner decision; neither results nor a boundary can auto-activate it. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 292-TRAINING | 2026-08-12 | Correct `replacement_alakazam_line` to mean only the bench backup attacker; exclude the current Active Alakazam line. | Trace `ready` only for Benched Alakazam plus Psychic-providing Energy; trace `completable` only for Benched Kadabra/Abra with all exact visible evolution, Energy, and timing resources; mark unknown draw/possibly prized dependency `not_live`, and unknown eligibility/timing neutral/unavailable. Require a regression that Active Alakazam alone does not count. Preserve r291 Elmo-only/no-Inzi isolation and delay BO250 until corrected local/Elmo regression and parity checks pass. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 293-TRAINING | 2026-08-12 | Audit checklist overlap against active r274 heads/Fusion/OwnDeck/Matchup Adapter, leaving existing logic unchanged by default. | Resolve duplicate influence only in new-layer gates/traces; changes to existing learned logic require separately evidenced/reported drastic correctness issue. Legacy broad guide scoring has no runtime residual authority while semantic contradictions remain; attachment rules may inform the eight channels, while the separate guide gate is exact-zero or trace-only until source-disjoint corrected validation. Preserve r291 Elmo-only/no-Inzi and delay BO250 until the r293 audit/guide-gate receipt passes. No code/service change is authorized. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 294-TRAINING | 2026-08-12 | Bind attachment `fdee1eae…` / `458019…278a3` as the superseding guide-scorer semantics source. | Update only the training-only `alakazam_new_list_heuristics` scorer later; retain neural/Fusion/OwnDeck/Adapter logic. The attachment's then-incomplete four-Alakazam sentence had no deck authority, so the checksum-bound canonical list stayed unchanged. Broad guide support remains zero/trace-only; preserve Elmo-only/no-Inzi. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 295-TRAINING | 2026-08-12 | Supersede r294’s attachment byte identity after the same attachment was corrected in place to `5cc092…dff8b`. | The corrected owner-supplied exact 17/36/7 inventory, including three Alakazam, matches the canonical checksum-bound list; leave its bytes/digest unchanged. Preserve the scorer-update/training-only/no-direct-runtime-action boundary, learned-head immutability, broad-guide zero/trace-only gate, and Elmo-only/no-Inzi isolation. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 298-TRAINING | 2026-08-12 | Stage an isolated Elmo-only simulator-rules representation and auxiliary-head overhaul from attachment `7b1d4464…` / `d3f060…d2cb`. | Preserve immutable r195 and exact r241/r274 baseline. Build only a versioned zero-gated derivative with exact layer-off logits; do not change/restart/activate/package/propagate Inzi or production. The simulator/legal options and public information set are authoritative; Phase 1 collision census, Phase 2 public-rule representation, Phase 3 simulator targets/head repairs, Phase 4 eight-channel trace contract, and Phase 5 engine/metamorphic tests are mandatory. Q3 remains Bench-only and Q5/Q6 remain trace-only with exact-zero gates pending separate calibration. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 299-TRAINING | 2026-08-12 | Rescind r297's hard 32-process Inzi floor; retain four environments per selected process and bias inference leaves toward Blackwell. | Leave the current 32×4 collection untouched until its next clean receipt-backed boundary. At that boundary select process count from sustained completed-game/resource evidence, make Blackwell the primary leaf target, and retain the 3080 Ti as bounded spillover. Inzi-only and RTP/search/MCTS-off remain unchanged. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 300-TRAINING | 2026-08-12 | Select exactly 16 simulator processes × 4 environments for the next Inzi production topology. | Activate 16×4 only after the current self-play phase seals; make Blackwell primary for policy-leaf inference with the 3080 Ti as bounded spillover. Preserve the shard, Inzi-only operation, and RTP/search/MCTS-off. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 301-TRAINING | 2026-08-12 | Restore 96 concurrent local games using the packed equivalent of the historical 96×1 topology: exactly 24 processes × 4 environments. | Supersede r300's 16×4 selection. Activate 24×4 after the current self-play phase seals, with Blackwell primary and the 3080 Ti as bounded spillover. Preserve the shard, Inzi-only operation, and RTP/search/MCTS-off. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 302-TRAINING | 2026-08-12 | Hand revision 298's isolated Elmo Alakazam rules/head experiment to its own authoritative goal and sole typed source, bound to attachment `8100a736…` / `0f440f…af6f`. | Preserve r298 as historical provenance. This root and the production r241 state retain only a non-authoritative handoff/reference. The dedicated goal permits isolated Elmo implementation/evaluation only and grants no Inzi, runtime, restart, collection, checkpoint, selector, packaging, submission, propagation, or production authority. Revisions 300--301 are unchanged. Dedicated gateway: `goals/alakazam-elmo-rule-derivative/GOAL.md`. |
+| 303-TRAINING | 2026-08-12 | After the derivative's exact Elmo schema/corpus/census and verified staging gates pass, supersede the current Inzi r274 training lineage at one clean receipt-backed boundary with frozen-parent bootstrap/training on Inzi Blackwell; then queue one checksum-exact single-use `first_if_allowed` Kaggle package and, once its accepted-or-quota/spacing-pending receipt is durable, start derivative self-play across the receipt-proven full available fleet without waiting for score. | Preserve healthy r274 until all in-flight collection/shard/optimizer/adapter/checkpoint/commit work seals; then pause only its exact trainer and r274 submission-boundary units via user systemd, keep the shared Kaggle queue service unchanged, preserve every r274 byte and rollback receipt, and forbid concurrent old-lineage work. Staged shards become eligible atomically at handoff. Require exact parent/corpus/schema/frozen-tensor/Blackwell/readiness/activation/rollback, package/queue/upload, fleet inventory/parity/routing/activation/shard receipts. No runtime/service action occurs while recording this revision and no serving selector is authorized. Typed production handoff source: `state/alakazam-new-list-direct-policy-r241.json`; dedicated semantics: `goals/alakazam-elmo-rule-derivative/contract.json`. |
+| 304-TRAINING | 2026-08-12 | Finish the active r274 iteration 1, upload its exact durable updated learner to Kaggle, then stop this root task's r274 loop. | Preserve and finish the exact collection, optimizer, adapter epoch, r284 500-game holdout, and `iter_00001` commit. Upload exactly one new first-if-allowed direct-policy/RTP-off submission with immutable request/package/authorization/attempt/upload receipts. Fence before any iteration-2 dispatch, stop the managed r274 loop only after accepted upload, and cancel every later r274 update/refresh/submission obligation. The separate derivative remains owned by its own goal. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 305-TRAINING | 2026-08-12 | Repeat deterministic contiguous packing for every future sealed pure-RL replay set before baseline preparation/backprop, including packed Matchup Adapter continuation metadata; always execute this step locally on Inzi. | Source-only implementation now; do not alter/restart the active revision-304 optimizer. Support 1/2/4/8/16/32 deterministic workers, benchmark selection on Inzi, canonical source order, exact tensor/batch/optimizer parity, cached reuse, and serial fail-safe. Elmo/Bert/LAN are excluded; activation waits for a future sealed receipt-backed boundary. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 306-TRAINING | 2026-08-12 | Use exactly 16 local Inzi workers for the future contiguous RL replay packing step. | Activate on subsequent training starts only; no current-run restart or reconfiguration. Other supported counts remain diagnostic-only and production auto-selection is disabled. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 307-TRAINING | 2026-08-12 | For the terminal r274 iteration 1, finish the active ordinary optimizer and one Matchup Adapter continuation epoch, skip formal holdout and research-control evaluation, then commit, submit to Kaggle, and stop before iteration 2. | This exact iteration receives an owner evaluation waiver and may not be called a measured pass. Preserve earlier evidence, do not interrupt or recollect, keep RTP/search/MCTS off, require the accepted submission-ID receipt, and leave future defaults and the separate derivative goal unchanged. Typed source: `state/alakazam-new-list-direct-policy-r241.json`. |
+| 308-TRACKING | 2026-08-12 | Route `/goal` tracking for the Alakazam Elmo rule derivative through its dedicated human gateway, sole typed contract, and concise receipt-backed execution-status projection, while preserving the root/r241 ownership of the separate r274 terminal lineage and production handoff. | Active immediately as a metadata-only routing change. It changes no derivative semantics, runtime, service, selector, checkpoint, corpus, training, staging, queue, or submission authority. |
+| 309-KAGGLE | 2026-08-12 | Submit one additional checksum-exact copy of immutable r195 NO-RTP submission `55378392` with exact label `r195 iter 21 261d367e131e NO RTP`. | Activated immediately without changing archive bytes, training, or runtime. Fresh one-shot authorization was consumed before upload; Kaggle submission `55468965` was accepted for evaluation at `2026-08-12T23:38:18Z`. Typed source: `state/alakazam-r195-no-rtp-additional-copy-r309.json`. |
 
 ## Non-regression invariants
 

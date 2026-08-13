@@ -26,9 +26,11 @@ from poke_bot.dataset import (
 from poke_bot.pure_rl.shards import CompactDecision, CompactGame, iter_shard_games
 from poke_bot.blackwell_heads import attach_blackwell_strategy_labels
 from poke_bot.strategic_heads import attach_expanded_strategic_labels
+from poke_bot.own_deck_ledger import OwnDeckLedger
+from poke_bot.own_deck_supervision import build_own_deck_supervision_targets
 
 
-COMPACT_CACHE_SCHEMA_VERSION = 3
+COMPACT_CACHE_SCHEMA_VERSION = 5
 _STREAM_STAGING_NAME = re.compile(r"^iter_\d{5}\.(\d+)\.\d+$")
 
 
@@ -74,6 +76,19 @@ def _cache_signature(
     max_context: int,
 ) -> dict[str, Any]:
     stat = path.stat()
+    own_deck_ledger_enabled = bool(
+        getattr(config.MODEL, "own_deck_ledger_enabled", False)
+        or os.environ.get("POKEBOT_OWN_DECK_LEDGER_RUNTIME", "")
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
+    guide_targets_enabled = (
+        os.environ.get("POKEBOT_CURRENT_DECK_GUIDE_TARGETS", "")
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
     return {
         "source": str(path.resolve()),
         "source_size": int(stat.st_size),
@@ -83,6 +98,18 @@ def _cache_signature(
         "compact_cache_schema": COMPACT_CACHE_SCHEMA_VERSION,
         "dataset_cache_schema": DATASET_CACHE_SCHEMA_VERSION,
         "feature_schema": features.FEATURE_SCHEMA_VERSION,
+        "own_deck_ledger_enabled": own_deck_ledger_enabled,
+        "current_deck_guide": (
+            os.environ.get("POKEBOT_CURRENT_DECK_GUIDE", "").strip().lower()
+            if guide_targets_enabled
+            else ""
+        ),
+        "current_deck_guide_targets": guide_targets_enabled,
+        "current_deck_guide_version": (
+            os.environ.get("POKEBOT_CURRENT_DECK_GUIDE_VERSION", "").strip()
+            if guide_targets_enabled
+            else ""
+        ),
     }
 
 
@@ -869,16 +896,48 @@ def compact_game_to_sequence(
             game.target_provenance.get("terminal_policy_failure")
         ),
     )
+    ledger_enabled = bool(
+        getattr(config.MODEL, "own_deck_ledger_enabled", False)
+        or os.environ.get("POKEBOT_OWN_DECK_LEDGER_RUNTIME", "")
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
+    ledger_snapshots = None
+    own_deck_supervision = None
+    if ledger_enabled:
+        # Compact RL shards retain the complete acting-seat public trajectory.
+        # Reconstruct the causal ledger and tutor/terminal labels once across
+        # that full trajectory before max-context truncation, exactly like the
+        # ordinary record converter.  This is independent of the removed
+        # tactical-sequence search target.
+        ledger = OwnDeckLedger(list(game.deck))
+        ledger_snapshots = [
+            ledger.observe(dict(step["observation"])) for step in all_steps
+        ]
+        own_deck_supervision = build_own_deck_supervision_targets(all_steps)
+        if len(own_deck_supervision) != len(all_steps):
+            raise ValueError("compact own-deck supervision lost step alignment")
     source_decisions = game.decisions[:max_ctx]
     steps = all_steps[:max_ctx]
     decisions_truncated = max(0, len(game.decisions) - len(source_decisions))
     decisions: list[DecisionSample] = []
-    for d, step in zip(source_decisions, steps):
+    for decision_index, (d, step) in enumerate(zip(source_decisions, steps)):
         try:
             sample = featurize_step(
                 step,
                 list(game.deck) if game.deck else [0] * 60,
                 verify_info_set=verify_info_set,
+                ledger_snapshot=(
+                    None
+                    if ledger_snapshots is None
+                    else ledger_snapshots[decision_index]
+                ),
+                own_deck_supervision=(
+                    None
+                    if own_deck_supervision is None
+                    else own_deck_supervision[decision_index]
+                ),
             )
         except Exception:
             # Fall back: keep selected_index via synthetic single stage when
@@ -910,6 +969,9 @@ def compact_game_to_sequence(
                         selected_is_stop=bool(
                             getattr(stage, "selected_is_stop", False)
                         ),
+                        ledger_option_features=(
+                            stage.ledger_option_features
+                        ),
                     )
                 )
             sample.policy_stages = stages
@@ -935,6 +997,23 @@ def compact_game_to_sequence(
             "max_context": max_ctx,
             "decisions_truncated": decisions_truncated,
             "expanded_strategic_targets": strategic_contract,
+            **(
+                {
+                    "own_deck_ledger": {
+                        "enabled": True,
+                        "reconstruction": (
+                            "full_original_actor_visible_history_before_trimming"
+                        ),
+                        "transition_after_used_as_input": False,
+                    },
+                    "own_deck_supervision": {
+                        "enabled": True,
+                        "reconstruction": "full_original_trajectory",
+                    },
+                }
+                if ledger_enabled
+                else {}
+            ),
         },
     )
 

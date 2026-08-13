@@ -69,6 +69,22 @@ from scripts.dashboard_snapshot import (
 )
 
 
+def test_dashboard_subprocess_telemetry_replaces_non_utf8_output(
+    monkeypatch,
+) -> None:
+    observed: dict[str, object] = {}
+
+    def fake_run(_argv, **kwargs):
+        observed.update(kwargs)
+        return types.SimpleNamespace(stdout="optimizer heartbeat \ufffd\n")
+
+    monkeypatch.setattr(dashboard_snapshot_module.subprocess, "run", fake_run)
+
+    assert dashboard_snapshot_module.run(["journalctl"]) == "optimizer heartbeat \ufffd"
+    assert observed["text"] is True
+    assert observed["errors"] == "replace"
+
+
 def test_marnie_shadow_guide_projection_survives_bootstrap_service_exit() -> None:
     boundary = {
         "current": False,
@@ -293,9 +309,13 @@ def test_curriculum_worker_reads_leaf_topology_from_managed_trainer_child(
     assert worker["leaf_gpu0_replicas"] == 4
     assert worker["leaf_gpu1_replicas"] == 12
     assert worker["leaf_servers"] == 16
+    assert worker["managed_process_pids"] == [123, 456]
 
 
 def test_final_format_marnie_is_a_live_curriculum_service() -> None:
+    assert dashboard_snapshot_module._is_curriculum_service_unit(
+        "pokebot-alakazam-r274-rl.service"
+    )
     assert dashboard_snapshot_module._is_curriculum_service_unit(
         "pokebot-final-format-marnie-r104-h10-rl.service"
     )
@@ -365,6 +385,53 @@ def test_gpu0_assignment_is_out_of_fleet_only_with_zero_effective_replicas() -> 
     assert (
         gpus[0]["assignment"]
         == "OUT OF FLEET · no active trainer leaf replicas"
+    )
+
+
+def test_gpu_assignments_fall_back_to_managed_cuda_process_ownership() -> None:
+    gpus = [
+        {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 3080 Ti",
+            "compute_process_pids": [101, 999],
+        },
+        {
+            "index": 1,
+            "name": "NVIDIA RTX PRO 5000 Blackwell",
+            "compute_process_pids": [102, 103, 998],
+        },
+    ]
+    curriculum = {
+        "active": True,
+        "worker": {
+            "leaf_gpu0_replicas": 0,
+            "leaf_gpu1_replicas": 0,
+            "managed_process_pids": [101, 102, 103],
+            "command": "python scripts/train_pure_rl.py --leaf-eval gpu-server",
+            "topology_source": "managed service process topology",
+        },
+    }
+
+    dashboard_snapshot_module.annotate_gpu_production_assignments(
+        gpus,
+        curriculum,
+        {"active": False},
+    )
+
+    assert gpus[0]["production_active"] is True
+    assert gpus[0]["production_leaf_replicas"] is None
+    assert gpus[0]["production_gpu_processes"] == 1
+    assert gpus[0]["production_gpu_process_pids"] == [101]
+    assert gpus[0]["assignment"] == (
+        "PRODUCTION · 1 trainer-owned GPU processes"
+    )
+    assert "managed trainer cgroup" in gpus[0]["assignment_source"]
+    assert gpus[1]["production_active"] is True
+    assert gpus[1]["production_leaf_replicas"] is None
+    assert gpus[1]["production_gpu_processes"] == 2
+    assert gpus[1]["production_gpu_process_pids"] == [102, 103]
+    assert gpus[1]["assignment"] == (
+        "PRODUCTION · policy workers + trainer · 2 GPU processes"
     )
 
 
@@ -686,7 +753,7 @@ def test_curriculum_progress_separates_sockets_from_remote_owned_games() -> None
         "",
         "pure_rl collect:self_play iter=6:  12%|x| 123/1024 "
         "[00:42<05:08, 2.91game/s, rsock=52, rout=52, eout=36, "
-        "bout=16, sps=226.7]",
+        "bout=16, sps=226.7]   [remote] queue probe failed",
         iteration_hint=6,
     )
 
@@ -696,6 +763,9 @@ def test_curriculum_progress_separates_sockets_from_remote_owned_games() -> None
     assert parsed["metrics"]["remote_outstanding"] == 52
     assert parsed["metrics"]["remote_outstanding_elmo"] == 36
     assert parsed["metrics"]["remote_outstanding_bert"] == 16
+    assert parsed["elapsed"] == "00:42"
+    assert parsed["eta"] == "05:08"
+    assert "[remote]" not in parsed["line"]
 
     html = (
         Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
@@ -5846,6 +5916,69 @@ def test_scheduler_queue_panel_is_separate_and_shows_flow_and_latency() -> None:
     assert "generation → ingest" in html
     assert "0 · collection complete / 0" in html
     assert "endpoint queues are intentionally idle" in html
+
+
+def test_fleet_schedule_uses_exact_tqdm_and_keeps_terminal_high_in_view() -> None:
+    html = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
+    ).read_text(encoding="utf-8")
+
+    assert 'id="fleet-schedule-stage"' in html
+    assert 'id="fleet-schedule-owned"' in html
+    assert 'id="fleet-live-tqdm"' in html
+    assert "sq.phase||pureInner.stage" in html
+    assert "pureInner.line||cp.line" in html
+
+
+def test_fleet_annotations_prefer_exact_tqdm_over_coarse_controller_phase() -> None:
+    payload = _fleet_payload(active=True, elmo_jobs=12, bert_jobs=4)
+    payload["curriculum"]["stage"] = "rl_update_1_collecting"
+    payload["curriculum"]["progress"]["stage"] = "rl_update_1_collecting"
+    payload["curriculum"]["scheduler_queues"] = {
+        "available": True,
+        "mode": "waiting",
+        "phase_active": False,
+        "unassigned": 0,
+        "unassigned_source": (
+            "scheduler idle outside game-generation phase "
+            "(rl_update_1_collecting)"
+        ),
+    }
+    payload["training"] = {
+        "pure_rl_progress": {
+            "available": True,
+            "run": payload["curriculum"]["run"],
+            "inner": {
+                "available": True,
+                "stage": "collect:public_mix",
+                "iteration": 1,
+                "current": 3,
+                "total": 7172,
+                "percent": 0.0,
+                "remotes": 52,
+                "metrics": {
+                    "remote_outstanding": 208,
+                    "remote_outstanding_elmo": 144,
+                    "remote_outstanding_bert": 64,
+                },
+            },
+        }
+    }
+    cache = SnapshotCache()
+
+    cache._annotate_fleet_rates(payload)
+    cache._annotate_scheduler_queues(payload)
+
+    assert payload["fleet_rates"]["stage"] == "collect:public_mix"
+    assert payload["scheduler_queues"]["phase"] == "collect:public_mix"
+    assert payload["scheduler_queues"]["phase_source"] == (
+        "exact live trainer tqdm"
+    )
+    assert payload["scheduler_queues"]["mode"] == "live_generation"
+    assert payload["scheduler_queues"]["unassigned_estimated"] is True
+    assert payload["fleet"]["elmo"]["worker"]["allocation_state"].split(
+        " ·", 1
+    )[0] in {"WORKING", "REFILLING"}
 
 
 def test_scheduler_unassigned_never_leaks_from_preceding_phase(monkeypatch) -> None:
@@ -12033,3 +12166,65 @@ def test_r192_marnie_splusplus_projection_fails_closed_on_early_receipt() -> Non
     candidate["collection_contract"]["strong_public_practice_games"] = 4585
 
     assert SnapshotCache._staged_alakazam_marnie_splusplus_opponent(candidate) is None
+
+
+def test_fleet_network_rates_are_measured_per_host_and_reset_safe() -> None:
+    cache = SnapshotCache()
+
+    def payload(sampled_at: float, rx: int, tx: int, interface: str = "eno1") -> dict:
+        return {
+            "fleet": {
+                "inzi": {
+                    "system": {
+                        "network": {
+                            "available": True,
+                            "interfaces": [interface],
+                            "sampled_at": sampled_at,
+                            "rx_bytes": rx,
+                            "tx_bytes": tx,
+                        }
+                    }
+                }
+            }
+        }
+
+    first = payload(100.0, 1_000, 2_000)
+    cache._annotate_fleet_network_rates(first)
+    assert first["fleet"]["inzi"]["system"]["network"]["rate_available"] is False
+
+    second = payload(102.0, 3_048, 6_096)
+    cache._annotate_fleet_network_rates(second)
+    network = second["fleet"]["inzi"]["system"]["network"]
+    assert network["rate_available"] is True
+    assert network["rx_bytes_per_second"] == pytest.approx(1_024.0)
+    assert network["tx_bytes_per_second"] == pytest.approx(2_048.0)
+
+    reset = payload(104.0, 10, 20)
+    cache._annotate_fleet_network_rates(reset)
+    assert reset["fleet"]["inzi"]["system"]["network"]["rate_available"] is False
+
+    changed_interface = payload(106.0, 1_000, 2_000, "eth0")
+    cache._annotate_fleet_network_rates(changed_interface)
+    assert changed_interface["fleet"]["inzi"]["system"]["network"]["rate_available"] is False
+
+
+def test_dashboard_renders_network_in_out_for_every_hardware_card() -> None:
+    html = rendered_index()
+    assert b"network in / out" in html
+    assert b"rx_bytes_per_second" in html
+    assert b"tx_bytes_per_second" in html
+
+
+def test_dashboard_renders_live_pure_rl_tqdm_heartbeat() -> None:
+    html = rendered_index()
+    assert b'id="live-tqdm"' in html
+    assert b"Live Pure RL tqdm" in html
+    assert b"bootstrapProgress.heartbeat" in html
+    assert b"live journal heartbeat" in html
+    assert b'id="pure-overall-fill"' in html
+    assert b'id="pure-inner-fill"' in html
+    assert b'id="pure-tqdm"' in html
+    assert b'id="pure-training-use"' in html
+    assert b"Trained vs used vs shadow" in html
+    assert "COLLECTING · NO GRADIENTS".encode() in html
+    assert b"SHADOW ONLY" in html

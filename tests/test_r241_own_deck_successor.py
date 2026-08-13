@@ -41,7 +41,7 @@ def _parent(path: Path) -> Path:
 
 def _owner(path: Path, parent: Path) -> object:
     value = {
-        "latest_owner_clarification_revision": 262,
+        "latest_owner_clarification_revision": 275,
         "parent": {"checkpoint": str(parent), "checkpoint_sha256": checkpoint.checkpoint_digest(parent), "checkpoint_bytes": parent.stat().st_size},
         "own_deck_head_structure_import": {
             "owner_revision": 260,

@@ -117,6 +117,21 @@ VISIBLE_TUTOR_COMPLETION_HEAD_SCHEMA = (
     "poke_bot.visible_tutor_completion_head/v1"
 )
 TERMINAL_CONVERSION_HEAD_SCHEMA = "poke_bot.terminal_conversion_head/v1"
+TACTICAL_SEQUENCE_OUTCOME_HEAD_SCHEMA = (
+    "poke_bot.tactical_sequence_outcome_hint_head/v1"
+)
+TACTICAL_SEQUENCE_OUTCOME_TARGET_SCHEMA = (
+    "poke_bot.tactical_sequence_outcome_targets/v1"
+)
+TACTICAL_SEQUENCE_OUTCOME_OUTPUT_LAYOUT = (
+    "no_proof",
+    "exact_terminal_win",
+    "public_sme_goal",
+    "typed_boundary",
+)
+TACTICAL_SEQUENCE_OUTCOME_OUTPUT_DIM = len(
+    TACTICAL_SEQUENCE_OUTCOME_OUTPUT_LAYOUT
+)
 OWN_DECK_OPTION_ROUTE_SCHEMA = "poke_bot.own_deck_option_route/v1"
 H10_STRATEGIC_OUTPUT_DIMS: dict[str, int] = {
     "action_q": 1,
@@ -455,6 +470,7 @@ class TypedOwnDeckOptionHead(nn.Module):
         outputs: int,
         schema: str,
         output_layout: Sequence[str],
+        target_schema: str = OWN_DECK_SUPERVISION_SCHEMA,
     ) -> None:
         super().__init__()
         if min(int(d_model), int(outputs)) <= 0:
@@ -464,6 +480,7 @@ class TypedOwnDeckOptionHead(nn.Module):
         self.d_model = int(d_model)
         self.outputs = int(outputs)
         self.schema = str(schema)
+        self.target_schema = str(target_schema)
         self.output_layout = tuple(str(item) for item in output_layout)
         self.projection = nn.Linear(self.d_model, self.outputs)
 
@@ -485,7 +502,7 @@ class TypedOwnDeckOptionHead(nn.Module):
             "enabled": True,
             "outputs": self.outputs,
             "output_layout": list(self.output_layout),
-            "target_schema": OWN_DECK_SUPERVISION_SCHEMA,
+            "target_schema": self.target_schema,
             "input": "ledger_enriched_board_state_cross_attended_legal_option_hidden",
             "target_only_supervision": True,
             "direct_action_selection_authority": False,
@@ -1918,6 +1935,9 @@ class TemporalCabtTransformer(nn.Module):
         self.terminal_conversion_head_enabled = bool(
             getattr(cfg, "terminal_conversion_head_enabled", False)
         )
+        self.tactical_sequence_outcome_head_enabled = bool(
+            getattr(cfg, "tactical_sequence_outcome_head_enabled", False)
+        )
         self.visible_tutor_completion_route_enabled = bool(
             getattr(cfg, "visible_tutor_completion_route_enabled", False)
         )
@@ -1930,9 +1950,23 @@ class TemporalCabtTransformer(nn.Module):
         self.terminal_conversion_route_runtime_enabled = bool(
             getattr(cfg, "terminal_conversion_route_runtime_enabled", False)
         )
+        self.tactical_sequence_outcome_route_enabled = bool(
+            getattr(cfg, "tactical_sequence_outcome_route_enabled", False)
+        )
+        self.tactical_sequence_outcome_route_present = bool(
+            getattr(cfg, "tactical_sequence_outcome_route_present", False)
+        )
+        self.tactical_sequence_outcome_route_runtime_enabled = bool(
+            getattr(
+                cfg,
+                "tactical_sequence_outcome_route_runtime_enabled",
+                False,
+            )
+        )
         if (
             self.visible_tutor_completion_head_enabled
             or self.terminal_conversion_head_enabled
+            or self.tactical_sequence_outcome_head_enabled
         ) and not self.own_deck_ledger_enabled:
             raise ValueError(
                 "own-deck successor heads require own_deck_ledger_enabled"
@@ -1950,6 +1984,27 @@ class TemporalCabtTransformer(nn.Module):
         ):
             raise ValueError("terminal conversion route requires its physical head")
         if (
+            self.tactical_sequence_outcome_route_enabled
+            and not self.tactical_sequence_outcome_head_enabled
+        ):
+            raise ValueError(
+                "tactical sequence outcome route requires its physical head"
+            )
+        if (
+            self.tactical_sequence_outcome_route_present
+            and not self.tactical_sequence_outcome_head_enabled
+        ):
+            raise ValueError(
+                "tactical sequence outcome route tensors require their head"
+            )
+        if (
+            self.tactical_sequence_outcome_route_enabled
+            and not self.tactical_sequence_outcome_route_present
+        ):
+            raise ValueError(
+                "tactical sequence outcome route activation requires route tensors"
+            )
+        if (
             self.visible_tutor_completion_route_runtime_enabled
             and not self.visible_tutor_completion_route_enabled
         ):
@@ -1964,8 +2019,16 @@ class TemporalCabtTransformer(nn.Module):
                 "terminal conversion route runtime requires its route"
             )
         if (
+            self.tactical_sequence_outcome_route_runtime_enabled
+            and not self.tactical_sequence_outcome_route_enabled
+        ):
+            raise ValueError(
+                "tactical sequence outcome route runtime requires its route"
+            )
+        if (
             self.visible_tutor_completion_route_runtime_enabled
             or self.terminal_conversion_route_runtime_enabled
+            or self.tactical_sequence_outcome_route_runtime_enabled
         ) and not self.own_deck_ledger_runtime_enabled:
             raise ValueError(
                 "own-deck successor route runtime requires "
@@ -1993,6 +2056,17 @@ class TemporalCabtTransformer(nn.Module):
                 if self.terminal_conversion_head_enabled
                 else None
             )
+            self.tactical_sequence_outcome_head = (
+                TypedOwnDeckOptionHead(
+                    d_model=cfg.d_model,
+                    outputs=TACTICAL_SEQUENCE_OUTCOME_OUTPUT_DIM,
+                    schema=TACTICAL_SEQUENCE_OUTCOME_HEAD_SCHEMA,
+                    output_layout=TACTICAL_SEQUENCE_OUTCOME_OUTPUT_LAYOUT,
+                    target_schema=TACTICAL_SEQUENCE_OUTCOME_TARGET_SCHEMA,
+                )
+                if self.tactical_sequence_outcome_head_enabled
+                else None
+            )
             self.visible_tutor_completion_route = (
                 OptionConditionedHeadRoute(
                     d_model=cfg.d_model,
@@ -2011,6 +2085,16 @@ class TemporalCabtTransformer(nn.Module):
                     typed_output_centered=True,
                 )
                 if self.terminal_conversion_route_enabled
+                else None
+            )
+            self.tactical_sequence_outcome_route = (
+                OptionConditionedHeadRoute(
+                    d_model=cfg.d_model,
+                    head_dim=TACTICAL_SEQUENCE_OUTCOME_OUTPUT_DIM,
+                    width=DECISION_FUSION_V2_ROUTE_WIDTH,
+                    typed_output_centered=True,
+                )
+                if self.tactical_sequence_outcome_route_present
                 else None
             )
 
@@ -2518,6 +2602,88 @@ class TemporalCabtTransformer(nn.Module):
             return None
         return torch.stack(residuals, dim=0).to(dtype=dtype)
 
+    def own_deck_ledger_packed_residuals(
+        self,
+        *,
+        present: Tensor,
+        availability_card_ids: Tensor,
+        availability_stats: Tensor,
+        availability_offsets: Tensor,
+        scalar_vectors: Tensor,
+        select_card_ids: Tensor,
+        select_counts: Tensor,
+        select_offsets: Tensor,
+        looking_card_ids: Tensor,
+        looking_counts: Tensor,
+        looking_offsets: Tensor,
+        dtype: torch.dtype,
+        offline_training_path: bool = False,
+    ) -> Tensor | None:
+        """Vectorize an immutable flat ledger pack without Python snapshots."""
+
+        if not self._own_deck_ledger_active(
+            offline_training_path=offline_training_path
+        ):
+            return None
+        adapter = self.own_deck_ledger_adapter
+        if not isinstance(adapter, OwnDeckLedgerAdapter):
+            return None
+        batch = int(present.numel())
+        if (
+            present.shape != (batch,)
+            or scalar_vectors.shape != (batch, adapter.scalar_dim)
+            or availability_offsets.shape != (batch + 1,)
+            or select_offsets.shape != (batch + 1,)
+            or looking_offsets.shape != (batch + 1,)
+            or availability_stats.shape
+            != (availability_card_ids.numel(), OWN_DECK_LEDGER_CARD_STATS_DIM)
+            or select_counts.shape != select_card_ids.shape
+            or looking_counts.shape != looking_card_ids.shape
+        ):
+            raise ValueError("packed own-deck ledger tensor shape changed")
+
+        def segment_mean(values: Tensor, offsets: Tensor) -> Tensor:
+            lengths = (offsets[1:] - offsets[:-1]).to(dtype=torch.long)
+            rows = torch.repeat_interleave(
+                torch.arange(batch, device=values.device), lengths
+            )
+            output = torch.zeros(
+                batch, values.size(-1), device=values.device, dtype=values.dtype
+            )
+            if rows.numel():
+                output.index_add_(0, rows, values)
+                output = output / lengths.clamp_min(1).unsqueeze(-1).to(values.dtype)
+            return output
+
+        availability_rows = adapter.availability_row(
+            torch.cat(
+                (
+                    adapter.card_embedding(availability_card_ids.to(torch.long)),
+                    adapter.card_stats(availability_stats.to(torch.float32)),
+                ),
+                dim=-1,
+            )
+        )
+        availability = segment_mean(availability_rows, availability_offsets)
+        select = segment_mean(
+            adapter.select_card_embedding(select_card_ids.to(torch.long))
+            + adapter.menu_count(select_counts.to(torch.float32).unsqueeze(-1)),
+            select_offsets,
+        )
+        looking = segment_mean(
+            adapter.looking_card_embedding(looking_card_ids.to(torch.long))
+            + adapter.menu_count(looking_counts.to(torch.float32).unsqueeze(-1)),
+            looking_offsets,
+        )
+        scalar = adapter.scalar_encoder(scalar_vectors.to(torch.float32))
+        residual = torch.tanh(
+            adapter.output(
+                adapter.trunk(torch.cat((availability, select, looking, scalar), dim=-1))
+            )
+        )
+        residual = residual * present.to(residual.dtype).unsqueeze(-1)
+        return residual.to(dtype=dtype)
+
     def own_deck_ledger_option_residuals(
         self,
         ledger_option_features: object,
@@ -2641,11 +2807,12 @@ class TemporalCabtTransformer(nn.Module):
             return None
 
     def own_deck_option_head_inventory(self) -> dict[str, object]:
-        """Describe dormant tutor/terminal heads without changing H10 fusion."""
+        """Describe successor option heads without changing H10 fusion."""
 
         modules: dict[str, object] = {}
         tutor = self.visible_tutor_completion_head
         terminal = self.terminal_conversion_head
+        tactical = self.tactical_sequence_outcome_head
         if isinstance(tutor, TypedOwnDeckOptionHead):
             route = self.visible_tutor_completion_route
             modules["visible_tutor_completion"] = {
@@ -2674,6 +2841,21 @@ class TemporalCabtTransformer(nn.Module):
                     sum(parameter.numel() for parameter in route.parameters())
                 ) if isinstance(route, OptionConditionedHeadRoute) else 0,
             }
+        if isinstance(tactical, TypedOwnDeckOptionHead):
+            route = self.tactical_sequence_outcome_route
+            modules["tactical_sequence_outcome"] = {
+                **tactical.inventory(
+                    name="tactical_sequence_outcome",
+                    route_enabled=self.tactical_sequence_outcome_route_enabled,
+                    route_runtime_enabled=(
+                        self.tactical_sequence_outcome_route_runtime_enabled
+                    ),
+                ),
+                "shadow_search_dispatch_authority": False,
+                "route_parameters": int(
+                    sum(parameter.numel() for parameter in route.parameters())
+                ) if isinstance(route, OptionConditionedHeadRoute) else 0,
+            }
         return {
             "schema": OWN_DECK_OPTION_ROUTE_SCHEMA,
             "target_schema": OWN_DECK_SUPERVISION_SCHEMA,
@@ -2693,16 +2875,23 @@ class TemporalCabtTransformer(nn.Module):
         result: dict[str, Tensor] = {}
         tutor = self.visible_tutor_completion_head
         terminal = self.terminal_conversion_head
+        tactical = self.tactical_sequence_outcome_head
         if isinstance(tutor, TypedOwnDeckOptionHead):
             result["visible_tutor_completion_logits"] = tutor(option_hidden)
         if isinstance(terminal, TypedOwnDeckOptionHead):
             result["terminal_conversion_logits"] = terminal(option_hidden)
+        if isinstance(tactical, TypedOwnDeckOptionHead):
+            result["tactical_sequence_outcome_logits"] = tactical(option_hidden)
         return result
 
     def _own_deck_option_heads_present(self) -> bool:
         return bool(
             isinstance(self.visible_tutor_completion_head, TypedOwnDeckOptionHead)
             or isinstance(self.terminal_conversion_head, TypedOwnDeckOptionHead)
+            or isinstance(
+                self.tactical_sequence_outcome_head,
+                TypedOwnDeckOptionHead,
+            )
         )
 
     def _own_deck_option_route_active(self, name: str) -> bool:
@@ -2726,6 +2915,18 @@ class TemporalCabtTransformer(nn.Module):
                 )
                 and isinstance(self.terminal_conversion_route, OptionConditionedHeadRoute)
             )
+        if name == "tactical_sequence_outcome":
+            return bool(
+                self.tactical_sequence_outcome_route_enabled
+                and (
+                    self.training
+                    or self.tactical_sequence_outcome_route_runtime_enabled
+                )
+                and isinstance(
+                    self.tactical_sequence_outcome_route,
+                    OptionConditionedHeadRoute,
+                )
+            )
         raise ValueError(f"unknown own-deck option route: {name}")
 
     def own_deck_option_route_deltas(
@@ -2748,6 +2949,14 @@ class TemporalCabtTransformer(nn.Module):
             if not isinstance(route, OptionConditionedHeadRoute) or logits is None:
                 raise RuntimeError("terminal conversion route/head contract is incomplete")
             deltas["terminal_conversion"] = route(option_hidden, logits)
+        if self._own_deck_option_route_active("tactical_sequence_outcome"):
+            route = self.tactical_sequence_outcome_route
+            logits = typed.get("tactical_sequence_outcome_logits")
+            if not isinstance(route, OptionConditionedHeadRoute) or logits is None:
+                raise RuntimeError(
+                    "tactical sequence outcome route/head contract is incomplete"
+                )
+            deltas["tactical_sequence_outcome"] = route(option_hidden, logits)
         return deltas
 
     def own_deck_option_aided_policy_logits(
@@ -2760,6 +2969,7 @@ class TemporalCabtTransformer(nn.Module):
         if not (
             self._own_deck_option_route_active("visible_tutor_completion")
             or self._own_deck_option_route_active("terminal_conversion")
+            or self._own_deck_option_route_active("tactical_sequence_outcome")
         ):
             return base_logits
         deltas = self.own_deck_option_route_deltas(option_hidden)

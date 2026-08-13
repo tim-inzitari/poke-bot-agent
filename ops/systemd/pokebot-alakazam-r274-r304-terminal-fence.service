@@ -1,0 +1,11 @@
+[Unit]
+Description=Arm r274 revision-304 terminal fence after exact iteration-1 collection
+After=pokebot-alakazam-r274-rl.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/apply_r304_iter1_terminal_fence.py --unit pokebot-alakazam-r274-rl.service --collection-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/collection_receipts/iter_00001.json --contract /home/inzi/poke-bot-agent/state/alakazam-new-list-direct-policy-r241.json --drop-in /home/inzi/.config/systemd/user/pokebot-alakazam-r274-rl.service.d/r304-iter1-terminal.conf --output /home/inzi/poke-bot-agent/outputs/state/alakazam-r274-r304-iter1-terminal-fence-activation.json --poll-seconds 1
+
+[Install]
+WantedBy=default.target

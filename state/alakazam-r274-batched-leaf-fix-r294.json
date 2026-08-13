@@ -1,0 +1,23 @@
+{
+  "schema": "poke_bot.alakazam_r274_batched_leaf_fix/v1",
+  "status": "managed_restart_authorized_and_partial_collection_sealed",
+  "recorded_at_utc": "2026-08-12T17:45:00Z",
+  "service": "pokebot-alakazam-r274-rl.service",
+  "iteration": 1,
+  "simulator_processes": 32,
+  "environments_per_process": 4,
+  "leaf_replicas": {"cuda_0": 2, "cuda_1": 4},
+  "remote_workers": 0,
+  "rtp_search_mcts_off": true,
+  "reason": "replace 42 independent CUDA contexts with shared request-batching leaf pools",
+  "partial_resume": {
+    "sidecar": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r294-iter1-batched-leaf-partial-resume.json",
+    "sidecar_sha256": "sha256:368cf9af73be628140af3f9a965e42f3b7ca7a593462c1952a52161772920f6b",
+    "shard_sha256": "sha256:40e137c73197c3347221ba9efd404cfc2393872956926d2ff8c471f408cc2f5f",
+    "retained_source_games": 3914,
+    "retained_self_play_source_games": 316,
+    "retained_public_source_games": 3598,
+    "decisions": 265021,
+    "collect_only_missing_job_identities": true
+  }
+}

@@ -64,8 +64,10 @@ def test_missing_selected_key_fails_closed(tmp_path: Path) -> None:
         list(index.rows_for_sequences([sequence]))
 
 
-def test_build_rejects_prefix_or_hidden_daily_layout(tmp_path: Path) -> None:
-    """Only the final 20 committed day directories may become an index."""
+def test_build_ignores_hidden_transfer_remnants_but_rejects_visible_extras(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """r274 preserves dot remnants but indexes only the 20 committed days."""
 
     root = tmp_path / "r260-own-deck-training-dataset-staging-09848f04"
     daily = root / "daily"
@@ -79,10 +81,34 @@ def test_build_rejects_prefix_or_hidden_daily_layout(tmp_path: Path) -> None:
         (daily / day).mkdir()
     (daily / ".2026-08-11.r259.partial").mkdir()
 
+    from poke_bot import r260_inzi_sidecar_index as index_module
+
+    monkeypatch.setattr(
+        index_module,
+        "read_daily_meta",
+        lambda _root, day: {
+            "meta_sha256": expected[day],
+            "source": {"manifest": {"sha256": "sha256:" + "a" * 64}},
+        },
+    )
+    monkeypatch.setattr(
+        index_module,
+        "iter_daily_sidecar_rows",
+        lambda *_args, **_kwargs: iter(()),
+    )
+    R260InziSidecarIndex.build(
+        sidecar_root=root,
+        output=tmp_path / "index.sqlite3",
+        source_manifest_sha256="sha256:" + "a" * 64,
+        daily_meta_sha256s=expected,
+    )
+
+    (daily / "2026-08-11").mkdir()
+
     with pytest.raises(R260InziSidecarIndexError, match="committed non-dot"):
         R260InziSidecarIndex.build(
             sidecar_root=root,
-            output=tmp_path / "index.sqlite3",
+            output=tmp_path / "extra-index.sqlite3",
             source_manifest_sha256="sha256:" + "a" * 64,
             daily_meta_sha256s=expected,
         )
@@ -415,12 +441,18 @@ def test_streaming_r260_refresh_uses_disk_index_and_updates_all_required_paths(
         seed=71,
         max_context=8,
         batch_games=1,
+        manifest_workers=2,
         device=torch.device("cpu"),
     )
     assert result["rl_iteration"] == 4
     assert result["max_games_per_batch"] == 1
+    assert result["manifest_workers"] == 2
+    assert result["manifest_plan_scans"] == 1
+    assert result["manifest_plan_reused_across_epochs"] is True
     assert result["sampled_keys"]
     assert all(result["gradient_reachability"].values())
     payload = checkpoint.load_checkpoint(output, map_location="cpu")
     assert payload["rl_iteration"] == 4
     assert payload["extra"]["r260_streaming_rehearsal"]["full_window_device_resident"] is False
+    assert payload["extra"]["r260_streaming_rehearsal"]["manifest_workers"] == 2
+    assert payload["extra"]["r260_streaming_rehearsal"]["manifest_plan_scans"] == 1

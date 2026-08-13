@@ -25,6 +25,8 @@ from poke_bot.r260_sidecar_materialization import (
     CompletionResult,
     R260SidecarMaterializationError,
     attest_r260_causal_local_remote_parity,
+    attest_r274_local_post_transfer,
+    attest_r274_local_rebuild_parity,
     audit_r260_sidecar,
     audit_r260_sidecar_prefix,
     bind_r260_inzi_dataset,
@@ -34,6 +36,7 @@ from poke_bot.r260_sidecar_materialization import (
     promote_r260_inzi_staging_root,
     stage_r260_sidecar_prefix_to_inzi,
     transport_r260_sidecar_to_inzi,
+    write_r274_local_post_transfer_receipt,
 )
 
 
@@ -90,6 +93,35 @@ def parser() -> argparse.ArgumentParser:
     materialize.add_argument("--source-window-receipt", required=True, type=_path)
     materialize.add_argument("--evidence-root", required=True, type=_path)
     materialize.add_argument("--expected-sidecar-root", type=_path)
+    materialize.add_argument("--receipt-identity-root", type=_path)
+
+    local_attest = commands.add_parser(
+        "attest-local-transfer", help="rehash the sealed 20/20 Inzi transfer under r274"
+    )
+    _add_owner(local_attest)
+    local_attest.add_argument("--inzi-staging-root", required=True, type=_path)
+    local_attest.add_argument("--source-manifest", required=True, type=_path)
+    local_attest.add_argument("--source-window-receipt", required=True, type=_path)
+    local_attest.add_argument("--legacy-receipts-root", required=True, type=_path)
+    local_attest.add_argument("--expected-elmo-sidecar-root", required=True, type=_path)
+
+    local_transport = commands.add_parser(
+        "bind-local-transfer", help="bind an Inzi-local join to the r274 transfer attestation"
+    )
+    _add_owner(local_transport)
+    local_transport.add_argument("--inzi-sidecar-root", required=True, type=_path)
+    local_transport.add_argument("--inzi-evidence-root", required=True, type=_path)
+    local_transport.add_argument("--local-post-transfer-attestation", required=True, type=_path)
+    local_transport.add_argument("--receipt-identity-root", required=True, type=_path)
+
+    local_parity = commands.add_parser(
+        "parity-local-rebuild", help="independently rebuild and compare the joined dataset on Inzi"
+    )
+    _add_owner(local_parity)
+    local_parity.add_argument("--inzi-sidecar-root", required=True, type=_path)
+    local_parity.add_argument("--inzi-evidence-root", required=True, type=_path)
+    local_parity.add_argument("--receipt-identity-root", required=True, type=_path)
+    local_parity.add_argument("--sample-limit", type=int, default=256)
 
     stage = commands.add_parser(
         "stage-prefix", help="append-only copy of committed non-dot days into Inzi staging"
@@ -136,6 +168,7 @@ def parser() -> argparse.ArgumentParser:
     finalize.add_argument("--inzi-sidecar-root", required=True, type=_path)
     finalize.add_argument("--inzi-evidence-root", required=True, type=_path)
     finalize.add_argument("--expected-elmo-sidecar-root", required=True, type=_path)
+    finalize.add_argument("--receipt-identity-root", type=_path)
 
     bind = commands.add_parser(
         "bind-inzi", help="write the final Inzi dataset binding")
@@ -194,6 +227,7 @@ def main(argv: list[str] | None = None) -> int:
                 evidence_root=args.evidence_root,
                 expected_sidecar_root=args.expected_sidecar_root,
                 owner_contract=contract,
+                receipt_identity_root=args.receipt_identity_root,
             )
             output = {
                 "evidence_root": str(result.evidence_root),
@@ -205,6 +239,38 @@ def main(argv: list[str] | None = None) -> int:
                 "digest_receipt": _identity(result.digest_receipt),
                 "row_count": result.row_count,
             }
+        elif args.command == "attest-local-transfer":
+            attestation, prefix = attest_r274_local_post_transfer(
+                inzi_staging_root=args.inzi_staging_root,
+                source_manifest=args.source_manifest,
+                source_window_receipt=args.source_window_receipt,
+                legacy_receipts_root=args.legacy_receipts_root,
+                expected_elmo_sidecar_root=args.expected_elmo_sidecar_root,
+                owner_contract=contract,
+            )
+            output = {
+                "local_post_transfer_attestation": _identity(attestation),
+                "complete_prefix_receipt": _identity(prefix),
+                "training_eligible": False,
+            }
+        elif args.command == "bind-local-transfer":
+            result = write_r274_local_post_transfer_receipt(
+                inzi_sidecar_root=args.inzi_sidecar_root,
+                inzi_evidence_root=args.inzi_evidence_root,
+                local_post_transfer_attestation=args.local_post_transfer_attestation,
+                receipt_identity_root=args.receipt_identity_root,
+                owner_contract=contract,
+            )
+            output = {"transport_receipt": _identity(result)}
+        elif args.command == "parity-local-rebuild":
+            result = attest_r274_local_rebuild_parity(
+                inzi_sidecar_root=args.inzi_sidecar_root,
+                inzi_evidence_root=args.inzi_evidence_root,
+                receipt_identity_root=args.receipt_identity_root,
+                owner_contract=contract,
+                sample_limit=args.sample_limit,
+            )
+            output = {"parity_receipt": _identity(result)}
         elif args.command == "stage-prefix":
             result = stage_r260_sidecar_prefix_to_inzi(
                 source_sidecar_root=args.source_sidecar_root,
@@ -261,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
                 inzi_evidence_root=args.inzi_evidence_root,
                 expected_elmo_sidecar_root=args.expected_elmo_sidecar_root,
                 owner_contract=contract,
+                receipt_identity_root=args.receipt_identity_root,
             )
             output = {
                 "aggregate_binding": _identity(result.aggregate_binding),

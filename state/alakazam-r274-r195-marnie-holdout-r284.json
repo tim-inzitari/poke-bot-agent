@@ -1,0 +1,76 @@
+{
+  "schema": "poke_bot.competition_gate_program/v1",
+  "owner_decision_revision": 284,
+  "updated_at_utc": "2026-08-12T11:15:00Z",
+  "active_gate_id": "alakazam-r274-r195-55378392-plus-marnie-h10-r284",
+  "owner_restricted_formal_only_roster": true,
+  "frozen_specialist_registry_augmentation_allowed": false,
+  "active_gate_semantics": {
+    "gate_roster_size": 2,
+    "games_per_opponent": 250,
+    "gate_games_total": 500,
+    "formal_only": true,
+    "diverse_public_training_mix_unchanged": true,
+    "partial_update_0_broad_holdout_eligible": false
+  },
+  "next_gate": {
+    "id": "alakazam-r274-r195-55378392-plus-marnie-h10-r284",
+    "label": "Alakazam r274 exact r195 NO-RTP plus H10 Marnie holdout (revision 284)",
+    "status": "queued_after_iteration_1",
+    "purpose": "Measure the r274 learner against only the two owner-selected frozen specialists.",
+    "candidate_source": "current exact r274 candidate after each completed update beginning with iteration 1",
+    "exact_result_pointer": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r284-two-specialist-formal-result.json",
+    "evaluation": {
+      "mode": "greedy",
+      "games_per_opponent": 250,
+      "games_total": 500,
+      "minimum_games_per_opponent": 250,
+      "seat0_games_per_opponent": 125,
+      "seat1_games_per_opponent": 125,
+      "confidence_level": 0.9,
+      "confidence_method": "matched-seat cluster nonparametric bootstrap",
+      "all_matchups_must_complete": true,
+      "checkpoint_digest_required": true,
+      "fixed_seed_manifest_required": true,
+      "formal_eval_disjoint_from_training": true,
+      "package_digest_deduplicated": true,
+      "partial_results_gate_eligible": false,
+      "sequential_early_stop": false
+    },
+    "pass_criteria": {
+      "audit_must_pass": true,
+      "skill_weighted_win_rate": 0.75,
+      "skill_weighted_confidence_lower": 0.6,
+      "s_tier_mean_floor": 0.4,
+      "individual_opponent_floor": 0.15,
+      "s_plus_individual_floor": 0.3,
+      "s_plus_below_floor_allowance": 0
+    },
+    "roster": [
+      {
+        "opponent_id": "alakazam-r195-no-rtp-submission-55378392",
+        "archetype_id": "alakazam-r195-submission-55378392",
+        "archetype_label": "Frozen r195 NO-RTP submission 55378392",
+        "tier": "S",
+        "weight": 1.0,
+        "content_digest": "sha256:61e3fc64baa03ec127974166fa85c6f237e531cfccf56b6e6d82c0b6b3af0dab",
+        "source_bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+        "submission_id": 55378392,
+        "rtp_enabled": false,
+        "source": "exact installed frozen revision-195 NO-RTP direct-policy submission package"
+      },
+      {
+        "opponent_id": "specialist-marnie-final-format-h10-f20efb20f5c3",
+        "archetype_id": "marnie-s-grimmsnarl-ex",
+        "archetype_label": "Frozen final-format H10 Marnie's Grimmsnarl ex",
+        "tier": "S+",
+        "weight": 2.0,
+        "content_digest": "sha256:f7c25cfd0bba674ceb4c2156a6e2fef87a3ff9effc74ed41b33fbb17fd627787",
+        "frozen_checkpoint_digest": "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381",
+        "frozen_specialist": true,
+        "source": "checksum-exact final-format H10 Marnie's Grimmsnarl ex specialist"
+      }
+    ],
+    "research_measurements": []
+  }
+}

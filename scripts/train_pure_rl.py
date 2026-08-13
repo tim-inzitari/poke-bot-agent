@@ -63,6 +63,7 @@ from poke_bot.pure_rl.dataset_bridge import (  # noqa: E402
     validated_replay_cache_manifest,
 )
 from poke_bot.pure_rl.eval_public import (  # noqa: E402
+    HeldOutGateResult,
     OFFICIAL_BASELINE_IDS,
     active_gate_goal_rank,
     aggregate_heldout_wr,
@@ -494,6 +495,53 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--r241-own-deck-sidecar-binding-sha256", default="")
     p.add_argument("--r241-own-deck-inzi-dataset-binding", type=Path, default=None)
     p.add_argument("--r241-own-deck-inzi-dataset-binding-sha256", default="")
+    p.add_argument("--r274-expert-tactical-overlay", type=Path, default=None)
+    p.add_argument("--r274-expert-tactical-overlay-sha256", default="")
+    p.add_argument(
+        "--r274-bootstrap-handoff-receipt",
+        type=Path,
+        default=None,
+        help=(
+            "Immutable post-submission tactical-route activation receipt. "
+            "When supplied, the exact external 25-epoch bootstrap is already "
+            "complete and must not be repeated before update zero."
+        ),
+    )
+    p.add_argument("--r274-bootstrap-handoff-receipt-sha256", default="")
+    p.add_argument(
+        "--r274-r195-research-baseline-receipt",
+        type=Path,
+        default=None,
+        help=(
+            "Immutable local-install receipt for the exact NO-RTP Kaggle "
+            "submission 55378392 research opponent."
+        ),
+    )
+    p.add_argument("--r274-r195-research-baseline-receipt-sha256", default="")
+    p.add_argument("--r280-contiguous-expert-pack", type=Path, default=None)
+    p.add_argument("--r280-contiguous-expert-pack-receipt", type=Path, default=None)
+    p.add_argument("--r280-refresh-device", default="cuda:1")
+    p.add_argument(
+        "--r274-submission-boundary-dir",
+        type=Path,
+        default=(
+            Path(os.environ["PURE_RL_R274_SUBMISSION_BOUNDARY_DIR"])
+            if os.environ.get("PURE_RL_R274_SUBMISSION_BOUNDARY_DIR")
+            else None
+        ),
+        help=(
+            "Receipt exchange directory for the r274 five-update submission "
+            "fence. Required for the exact 25-update cycle."
+        ),
+    )
+    p.add_argument(
+        "--r274-submission-boundary-poll-seconds",
+        type=float,
+        default=float(
+            os.environ.get("PURE_RL_R274_SUBMISSION_BOUNDARY_POLL_SECONDS", "15")
+        ),
+        help="Polling interval while a required r274 upload receipt is pending.",
+    )
     p.add_argument("--games-per-iter", type=int, default=256)
     p.add_argument(
         "--require-exact-training-seat-split",
@@ -923,6 +971,25 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--formal-holdout-contract",
+        type=Path,
+        default=None,
+        help=(
+            "Optional formal-only gate program. Training practice continues "
+            "to use --active-gate-contract; only formal heldout evaluation "
+            "uses this separately checksum-bound roster."
+        ),
+    )
+    p.add_argument(
+        "--r284-iteration-boundary-receipt",
+        type=Path,
+        default=None,
+        help=(
+            "Immutable owner receipt authorizing update-0 holdout deferral "
+            "and the combo-off iteration-1 continuation."
+        ),
+    )
+    p.add_argument(
         "--research-control-registry",
         type=Path,
         default=(
@@ -1060,7 +1127,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--expert-rehearsal-before-first",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=False,
         help="Run one expert complement pass before local iteration 0, then use normal cadence.",
     )
     p.add_argument(
@@ -1141,6 +1209,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--expert-rehearsal-batch-size",
         type=int,
         default=int(os.environ.get("PURE_RL_EXPERT_REHEARSAL_BATCH_SIZE", "8192")),
+    )
+    p.add_argument(
+        "--expert-manifest-workers",
+        type=int,
+        default=int(os.environ.get("PURE_RL_EXPERT_MANIFEST_WORKERS", "32")),
+        help=(
+            "CPU workers for the one-time immutable expert-manifest scan; "
+            "the verified split is reused across refresh epochs."
+        ),
     )
     p.add_argument(
         "--expert-matchup-adapter-manifest",
@@ -1589,8 +1666,25 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 R241_FIXED_CYCLE_UPDATES = 10
+R274_FIXED_CYCLE_UPDATES = 20
 R241_FIXED_CYCLE_REHEARSAL_EVERY = 5
 R241_FIXED_CYCLE_REHEARSAL_EPOCHS = 5
+R274_BOOTSTRAP_EPOCHS = 25
+R274_CANDIDATE_ID = "alakazam-new-list-direct-policy-r274"
+R274_SUBMISSION_REQUEST_SCHEMA = "poke_bot.r274_rl_submission_request/v1"
+R274_SUBMISSION_UPLOAD_SCHEMA = "poke_bot.r274_rl_submission_upload/v1"
+R274_R195_RESEARCH_BASELINE_SCHEMA = (
+    "poke_bot.r274_r195_submission_55378392_research_baseline/v1"
+)
+R274_R195_RESEARCH_OPPONENT_ID = "alakazam-r195-no-rtp-submission-55378392"
+R274_R195_RESEARCH_BUNDLE_SHA256 = (
+    "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145"
+)
+R274_R195_RESEARCH_MODEL_SHA256 = (
+    "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a"
+)
+R274_R195_RESEARCH_GAMES_MINIMUM = 128
+R274_R195_RESEARCH_EACH_SEAT_MINIMUM = 64
 
 
 def _fixed_cycle_updates(args: argparse.Namespace) -> int:
@@ -1624,17 +1718,63 @@ def _validate_fixed_cycle_configuration(args: argparse.Namespace) -> int:
             "--r241-peak-r195-preservation-receipt and its sha256 must be "
             "provided together"
         )
+    handoff = getattr(args, "r274_bootstrap_handoff_receipt", None)
+    handoff_sha256 = str(
+        getattr(args, "r274_bootstrap_handoff_receipt_sha256", "") or ""
+    ).strip()
+    submission_boundary_dir = getattr(args, "r274_submission_boundary_dir", None)
+    submission_poll_seconds = float(
+        getattr(args, "r274_submission_boundary_poll_seconds", 15.0)
+    )
+    if not math.isfinite(submission_poll_seconds) or submission_poll_seconds <= 0.0:
+        raise ValueError("--r274-submission-boundary-poll-seconds must be positive")
+    research_receipt = getattr(args, "r274_r195_research_baseline_receipt", None)
+    research_receipt_sha256 = str(
+        getattr(args, "r274_r195_research_baseline_receipt_sha256", "") or ""
+    ).strip()
+    r280_pack = getattr(args, "r280_contiguous_expert_pack", None)
+    r280_pack_receipt = getattr(
+        args, "r280_contiguous_expert_pack_receipt", None
+    )
+    if (r280_pack is None) != (r280_pack_receipt is None):
+        raise ValueError(
+            "--r280-contiguous-expert-pack and its receipt must be supplied together"
+        )
+    if (research_receipt is None) != (not research_receipt_sha256):
+        raise ValueError(
+            "--r274-r195-research-baseline-receipt and its sha256 must be supplied together"
+        )
+    if (handoff is None) != (not handoff_sha256):
+        raise ValueError(
+            "--r274-bootstrap-handoff-receipt and its sha256 must be supplied together"
+        )
+    if handoff_sha256 and not re.fullmatch(r"sha256:[0-9a-f]{64}", handoff_sha256):
+        raise ValueError("--r274-bootstrap-handoff-receipt-sha256 must be canonical")
     if updates == 0:
         if receipt is not None:
             raise ValueError(
                 "the r241 peak-r195 preservation receipt is allowed only with "
                 "--fixed-cycle-updates 10"
             )
+        if handoff is not None:
+            raise ValueError("the r274 bootstrap handoff requires --fixed-cycle-updates 25")
+        if submission_boundary_dir is not None:
+            raise ValueError(
+                "the r274 submission boundary directory requires --fixed-cycle-updates 25"
+            )
+        if research_receipt is not None:
+            raise ValueError(
+                "the r274 r195 research baseline requires --fixed-cycle-updates 25"
+            )
+        if r280_pack is not None:
+            raise ValueError(
+                "the r280 contiguous refresh pack requires --fixed-cycle-updates 25"
+            )
         return 0
-    if updates != R241_FIXED_CYCLE_UPDATES:
+    if updates not in {R241_FIXED_CYCLE_UPDATES, R274_FIXED_CYCLE_UPDATES}:
         raise ValueError(
-            "--fixed-cycle-updates currently supports only the exact r241 "
-            f"{R241_FIXED_CYCLE_UPDATES}-update cycle"
+            "--fixed-cycle-updates supports only the exact r241 10-update "
+            "cycle or r274 25-update cycle"
         )
     if receipt is None:
         raise ValueError(
@@ -1664,26 +1804,212 @@ def _validate_fixed_cycle_configuration(args: argparse.Namespace) -> int:
             "the r241 fixed cycle requires --expert-rehearsal-epochs "
             f"{R241_FIXED_CYCLE_REHEARSAL_EPOCHS}"
         )
-    if bool(getattr(args, "expert_rehearsal_before_first", False)):
+    rehearsal_before_first = bool(
+        getattr(args, "expert_rehearsal_before_first", False)
+    )
+    external_bootstrap = handoff is not None
+    if external_bootstrap and updates != R274_FIXED_CYCLE_UPDATES:
+        raise ValueError("the r274 bootstrap handoff is allowed only for the 25-update cycle")
+    if updates == R241_FIXED_CYCLE_UPDATES and rehearsal_before_first:
         raise ValueError(
             "the r241 fixed cycle permits no expert rehearsal before iter 0"
+        )
+    if (
+        updates == R274_FIXED_CYCLE_UPDATES
+        and not external_bootstrap
+        and not rehearsal_before_first
+    ):
+        raise ValueError(
+            "the r274 fixed cycle requires its bootstrap before iteration 0"
+        )
+    if external_bootstrap and rehearsal_before_first:
+        raise ValueError("the externally completed r274 bootstrap must not be repeated")
+    if updates == R274_FIXED_CYCLE_UPDATES and submission_boundary_dir is None:
+        raise ValueError(
+            "the r274 fixed cycle requires --r274-submission-boundary-dir"
+        )
+    if updates == R274_FIXED_CYCLE_UPDATES and research_receipt is None:
+        raise ValueError(
+            "the r274 fixed cycle requires --r274-r195-research-baseline-receipt"
+        )
+    if updates == R274_FIXED_CYCLE_UPDATES and r280_pack is None:
+        raise ValueError(
+            "the r274 fixed cycle requires the reusable r280 contiguous expert pack"
+        )
+    if research_receipt_sha256 and not re.fullmatch(
+        r"sha256:[0-9a-f]{64}", research_receipt_sha256
+    ):
+        raise ValueError(
+            "--r274-r195-research-baseline-receipt-sha256 must be canonical"
+        )
+    if updates != R274_FIXED_CYCLE_UPDATES and submission_boundary_dir is not None:
+        raise ValueError(
+            "the r274 submission boundary directory is valid only for the 25-update cycle"
+        )
+    if updates != R274_FIXED_CYCLE_UPDATES and research_receipt is not None:
+        raise ValueError(
+            "the r274 r195 research baseline is valid only for the 25-update cycle"
+        )
+    if updates != R274_FIXED_CYCLE_UPDATES and r280_pack is not None:
+        raise ValueError(
+            "the r280 contiguous refresh pack is valid only for the 25-update cycle"
         )
     if int(getattr(args, "expert_rehearsal_force_before", -1)) != -1:
         raise ValueError(
             "the r241 fixed cycle permits no forced expert rehearsal"
         )
-    if (
-        int(getattr(args, "expert_rehearsal_one_time_before", -1)) != -1
-        or int(getattr(args, "expert_rehearsal_one_time_epochs", 0)) != 0
-    ):
+    one_time_before = int(
+        getattr(args, "expert_rehearsal_one_time_before", -1)
+    )
+    one_time_epochs = int(getattr(args, "expert_rehearsal_one_time_epochs", 0))
+    if updates == R241_FIXED_CYCLE_UPDATES:
+        if one_time_before != -1 or one_time_epochs != 0:
+            raise ValueError(
+                "the r241 fixed cycle permits no one-time expert rehearsal override"
+            )
+    elif external_bootstrap:
+        if one_time_before != -1 or one_time_epochs != 0:
+            raise ValueError(
+                "the r274 bootstrap handoff forbids a second one-time bootstrap"
+            )
+    elif one_time_before != 0 or one_time_epochs != R274_BOOTSTRAP_EPOCHS:
         raise ValueError(
-            "the r241 fixed cycle permits no one-time expert rehearsal override"
+            "the r274 fixed cycle requires an exact 25-epoch one-time expert "
+            "bootstrap before iteration 0"
         )
     if bool(getattr(args, "population_own_models_only", False)):
         raise ValueError(
             "the r241 fixed cycle cannot run a population closing rehearsal"
         )
     return updates
+
+
+def _r274_submission_boundary_paths(
+    root: Path, boundary_update: int
+) -> tuple[Path, Path]:
+    boundary_update = int(boundary_update)
+    if boundary_update not in {1, 5, 10, 15, 20, 25}:
+        raise RuntimeError(f"invalid r274 submission boundary: {boundary_update}")
+    boundary_dir = Path(root).expanduser().resolve() / f"boundary-{boundary_update:05d}"
+    return boundary_dir / "request.json", boundary_dir / "upload.json"
+
+
+def _materialize_r274_submission_request(
+    *,
+    root: Path,
+    boundary_update: int,
+    checkpoint_identity: Mapping[str, Any],
+    rehearsal_receipt_identity: Mapping[str, Any],
+    owner_contract_sha256: str,
+) -> tuple[Path, dict[str, Any]]:
+    """Create or revalidate the immutable trainer-to-uploader request."""
+
+    request_path, _ = _r274_submission_boundary_paths(root, boundary_update)
+    request = {
+        "schema": R274_SUBMISSION_REQUEST_SCHEMA,
+        "candidate_id": R274_CANDIDATE_ID,
+        "boundary_update": int(boundary_update),
+        "rl_updates_completed": int(boundary_update),
+        "checkpoint": dict(checkpoint_identity),
+        "expert_rehearsal_receipt": dict(rehearsal_receipt_identity),
+        "owner_contract_sha256": str(owner_contract_sha256),
+        "direct_policy": True,
+        "rtp_enabled": False,
+        "next_collection_started": False,
+    }
+    request["request_sha256"] = _canonical_digest(request)
+    if request_path.is_file():
+        try:
+            existing = json.loads(request_path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                f"r274 submission request is unreadable: {request_path}"
+            ) from exc
+        if existing != request:
+            raise RuntimeError(
+                f"r274 submission request drift at boundary {boundary_update}"
+            )
+    else:
+        _write_json_exclusive(request_path, request)
+    return request_path, request
+
+
+def _validate_r274_submission_upload(
+    *,
+    upload: Mapping[str, Any],
+    request: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the immutable upload receipt that unlocks the next block."""
+
+    receipt = dict(upload)
+    expected_request_sha256 = str(request.get("request_sha256") or "")
+    if (
+        receipt.get("schema") != R274_SUBMISSION_UPLOAD_SCHEMA
+        or receipt.get("status") not in {"submitted", "reconciled"}
+        or receipt.get("candidate_id") != R274_CANDIDATE_ID
+        or int(receipt.get("boundary_update", -1))
+        != int(request.get("boundary_update", -2))
+        or str(receipt.get("request_sha256") or "") != expected_request_sha256
+        or dict(receipt.get("checkpoint") or {})
+        != dict(request.get("checkpoint") or {})
+        or receipt.get("direct_policy") is not True
+        or receipt.get("rtp_enabled") is not False
+    ):
+        raise RuntimeError("r274 submission upload receipt does not match its request")
+    try:
+        remote_submission_id = int(receipt.get("remote_submission_id"))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("r274 upload receipt lacks a remote submission id") from exc
+    if remote_submission_id <= 0:
+        raise RuntimeError("r274 upload receipt remote submission id must be positive")
+    declared = str(receipt.get("receipt_sha256") or "")
+    unsigned = {key: value for key, value in receipt.items() if key != "receipt_sha256"}
+    if declared != _canonical_digest(unsigned):
+        raise RuntimeError("r274 upload receipt digest mismatch")
+    return receipt
+
+
+def _load_r274_r195_research_baseline_contract(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Validate the exact locally installed submission-55378392 opponent."""
+
+    if _fixed_cycle_updates(args) != R274_FIXED_CYCLE_UPDATES:
+        return {}
+    path = Path(args.r274_r195_research_baseline_receipt).expanduser().resolve()
+    identity = _r241_file_identity(path)
+    if identity["digest"] != str(
+        args.r274_r195_research_baseline_receipt_sha256
+    ):
+        raise RuntimeError("r274 r195 research baseline receipt digest mismatch")
+    try:
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("r274 r195 research baseline receipt is invalid") from exc
+    if (
+        receipt.get("schema") != R274_R195_RESEARCH_BASELINE_SCHEMA
+        or receipt.get("status") != "installed_exact_local_research_baseline"
+        or receipt.get("baseline_id") != R274_R195_RESEARCH_OPPONENT_ID
+        or int(receipt.get("submission_id", -1)) != 55378392
+        or receipt.get("source_bundle_sha256")
+        != R274_R195_RESEARCH_BUNDLE_SHA256
+        or receipt.get("model_sha256") != R274_R195_RESEARCH_MODEL_SHA256
+        or receipt.get("direct_policy_only") is not True
+        or receipt.get("rtp_enabled") is not False
+        or int(receipt.get("training_games_minimum_each_update", -1))
+        != R274_R195_RESEARCH_GAMES_MINIMUM
+        or int(receipt.get("learner_first_minimum", -1))
+        != R274_R195_RESEARCH_EACH_SEAT_MINIMUM
+        or int(receipt.get("learner_second_minimum", -1))
+        != R274_R195_RESEARCH_EACH_SEAT_MINIMUM
+        or receipt.get("transport") != "singleton_play"
+        or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(receipt.get("installed_content_sha256") or ""),
+        )
+    ):
+        raise RuntimeError("r274 r195 research baseline contract changed")
+    return {**receipt, "receipt": identity}
 
 
 def _gate_pass_should_stop(
@@ -1706,19 +2032,19 @@ def _assert_r241_precollection_refresh_binding(
     rehearsal_record: Optional[Mapping[str, Any]],
     r241_peak_r195_training_contract: Optional[Mapping[str, Any]],
 ) -> None:
-    """Bind iter-5 collection to the checkpoint produced by its soft refresh."""
+    """Bind each five-update collection boundary to its soft refresh."""
 
     if not r241_peak_r195_training_contract:
         return
     iteration = int(iteration)
-    if iteration != R241_FIXED_CYCLE_REHEARSAL_EVERY:
+    if iteration <= 0 or iteration % R241_FIXED_CYCLE_REHEARSAL_EVERY != 0:
         return
     record = dict(rehearsal_record or {})
     refreshed_digest = str(record.get("checkpoint_digest") or "")
     checkpoint_identity = dict(record.get("checkpoint_identity") or {})
     if (
         int(record.get("before_iteration", -1))
-        != R241_FIXED_CYCLE_REHEARSAL_EVERY
+        != iteration
         or int(record.get("epochs", -1))
         != R241_FIXED_CYCLE_REHEARSAL_EPOCHS
         or not refreshed_digest.startswith("sha256:")
@@ -1727,26 +2053,30 @@ def _assert_r241_precollection_refresh_binding(
         or str(collection_behavior_digest) != refreshed_digest
     ):
         raise RuntimeError(
-            "r241 iter-5 collection must use the exact checkpoint produced by "
+            f"fixed-cycle iter-{iteration} collection must use the exact checkpoint produced by "
             "the completed 5-epoch precollection refresh"
         )
     validate_r241_peak_r195_live_fusion_record(
         dict(record.get("peak_r195_live_fusion") or {}),
         contract=r241_peak_r195_training_contract,
         phase="expert_refresh",
-        boundary_iteration=R241_FIXED_CYCLE_REHEARSAL_EVERY,
+        boundary_iteration=iteration,
     )
 
 
 def _r241_precollection_refresh_due(
     iteration: int,
     r241_peak_r195_training_contract: Optional[Mapping[str, Any]],
+    fixed_cycle_updates: int = R241_FIXED_CYCLE_UPDATES,
 ) -> bool:
-    """The only nonterminal r241 refresh is after commit 4, before collect 5."""
+    """Refresh at each nonterminal five-update fixed-cycle boundary."""
 
+    iteration = int(iteration)
     return bool(
-        r241_peak_r195_training_contract
-        and int(iteration) == R241_FIXED_CYCLE_REHEARSAL_EVERY
+        int(fixed_cycle_updates) > 0
+        and iteration > 0
+        and iteration < int(fixed_cycle_updates)
+        and iteration % R241_FIXED_CYCLE_REHEARSAL_EVERY == 0
     )
 
 
@@ -1804,53 +2134,66 @@ def _assert_fixed_cycle_completion(
             f"history={completed_history} expected={list(range(updates))}"
         )
 
-    scheduled_refresh = Path(run_dir) / "rehearsals" / "before_iter_00005.json"
-    if not scheduled_refresh.is_file():
-        raise RuntimeError(
-            "fixed cycle is missing its required 5-epoch refresh before iter 5"
-        )
-    try:
-        refresh = json.loads(scheduled_refresh.read_text(encoding="utf-8"))
-    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise RuntimeError("fixed cycle cannot read its before-iter-5 refresh") from exc
-    if (
-        int(refresh.get("before_iteration", -1))
-        != R241_FIXED_CYCLE_REHEARSAL_EVERY
-        or int(refresh.get("epochs", -1))
-        != R241_FIXED_CYCLE_REHEARSAL_EPOCHS
+    for boundary_iteration in range(
+        R241_FIXED_CYCLE_REHEARSAL_EVERY,
+        updates,
+        R241_FIXED_CYCLE_REHEARSAL_EVERY,
     ):
-        raise RuntimeError(
-            "fixed cycle before-iter-5 refresh does not have the exact "
-            "5-epoch receipt"
+        scheduled_refresh = (
+            Path(run_dir)
+            / "rehearsals"
+            / f"before_iter_{boundary_iteration:05d}.json"
         )
-    if r241_peak_r195_training_contract:
-        validate_r241_peak_r195_live_fusion_record(
-            dict(refresh.get("peak_r195_live_fusion") or {}),
-            contract=r241_peak_r195_training_contract,
-            phase="expert_refresh",
-            boundary_iteration=R241_FIXED_CYCLE_REHEARSAL_EVERY,
-        )
-        collection_path = _collection_receipt_path(
-            Path(run_dir), R241_FIXED_CYCLE_REHEARSAL_EVERY
-        )
-        try:
-            boundary_collection = json.loads(
-                collection_path.read_text(encoding="utf-8")
+        if not scheduled_refresh.is_file():
+            raise RuntimeError(
+                "fixed cycle is missing its required 5-epoch refresh before "
+                f"iter {boundary_iteration}"
             )
+        try:
+            refresh = json.loads(scheduled_refresh.read_text(encoding="utf-8"))
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise RuntimeError(
-                "fixed cycle cannot verify its iter-5 collection receipt"
+                "fixed cycle cannot read its precollection refresh before "
+                f"iter {boundary_iteration}"
             ) from exc
-        _assert_r241_precollection_refresh_binding(
-            iteration=R241_FIXED_CYCLE_REHEARSAL_EVERY,
-            collection_behavior_digest=str(
-                boundary_collection.get("checkpoint_digest") or ""
-            ),
-            rehearsal_record=refresh,
-            r241_peak_r195_training_contract=(
-                r241_peak_r195_training_contract
-            ),
-        )
+        if (
+            int(refresh.get("before_iteration", -1)) != boundary_iteration
+            or int(refresh.get("epochs", -1))
+            != R241_FIXED_CYCLE_REHEARSAL_EPOCHS
+        ):
+            raise RuntimeError(
+                f"fixed cycle before-iter-{boundary_iteration} refresh does "
+                "not have the exact 5-epoch receipt"
+            )
+        if r241_peak_r195_training_contract:
+            validate_r241_peak_r195_live_fusion_record(
+                dict(refresh.get("peak_r195_live_fusion") or {}),
+                contract=r241_peak_r195_training_contract,
+                phase="expert_refresh",
+                boundary_iteration=boundary_iteration,
+            )
+            collection_path = _collection_receipt_path(
+                Path(run_dir), boundary_iteration
+            )
+            try:
+                boundary_collection = json.loads(
+                    collection_path.read_text(encoding="utf-8")
+                )
+            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise RuntimeError(
+                    "fixed cycle cannot verify its collection receipt for "
+                    f"iter {boundary_iteration}"
+                ) from exc
+            _assert_r241_precollection_refresh_binding(
+                iteration=boundary_iteration,
+                collection_behavior_digest=str(
+                    boundary_collection.get("checkpoint_digest") or ""
+                ),
+                rehearsal_record=refresh,
+                r241_peak_r195_training_contract=(
+                    r241_peak_r195_training_contract
+                ),
+            )
 
     next_iteration_artifacts = [
         _collection_receipt_path(Path(run_dir), updates),
@@ -2484,6 +2827,22 @@ def _load_r260_own_deck_training_inputs(args: argparse.Namespace) -> dict[str, A
         return {}
     if not all(path_present and digest_present for path_present, digest_present in supplied):
         raise RuntimeError("r260 own-deck receipt paths and sha256 values must be supplied together")
+    tactical_path = args.r274_expert_tactical_overlay
+    tactical_digest = str(args.r274_expert_tactical_overlay_sha256 or "")
+    if (tactical_path is None) != (not tactical_digest):
+        raise RuntimeError(
+            "r274 expert tactical overlay path and sha256 must be supplied together"
+        )
+    if tactical_path is None:
+        raise RuntimeError("r274 own-deck successor requires an expert tactical overlay")
+    from poke_bot.tactical_sequence_materialization import (
+        validate_tactical_target_overlay,
+    )
+    tactical_identity = validate_tactical_target_overlay(
+        tactical_path, minimum_roots=1024
+    )
+    if tactical_identity["sha256"] != tactical_digest:
+        raise RuntimeError("r274 expert tactical overlay digest mismatch")
     if _fixed_cycle_updates(args) == 0:
         raise RuntimeError("r260 own-deck inputs are allowed only for the r241 fixed cycle")
     from poke_bot import checkpoint as checkpoint_mod
@@ -2512,7 +2871,12 @@ def _load_r260_own_deck_training_inputs(args: argparse.Namespace) -> dict[str, A
             raise RuntimeError(f"r260 {name} receipt must be an object")
         raw[name] = payload
     try:
-        owner = load_r260_owner_contract()
+        historical_owner = dict(raw["migration"].get("owner_contract") or {})
+        owner = load_r260_owner_contract(
+            Path(str(historical_owner.get("path") or "")),
+            expected_sha256=str(historical_owner.get("sha256") or ""),
+            expected_clarification_revision=None,
+        )
         migration_receipt = validate_r260_migration_receipt(raw["migration"], owner_contract=owner, require_local_child=True)
         canary = validate_r260_canary_activation(raw["canary_activation"], migration_receipt=migration_receipt, owner_contract=owner, require_local_checkpoint=True)
         sidecar = validate_r260_sidecar_binding(raw["sidecar"], owner_contract=owner)
@@ -2522,9 +2886,49 @@ def _load_r260_own_deck_training_inputs(args: argparse.Namespace) -> dict[str, A
     canary_checkpoint = dict(canary["canary_checkpoint"])
     if args.initial_learner_checkpoint is None:
         raise RuntimeError("r260 own-deck successor requires --initial-learner-checkpoint")
-    initial = checkpoint_mod.checkpoint_digest(Path(args.initial_learner_checkpoint).expanduser().resolve())
-    if initial != canary_checkpoint["sha256"]:
-        raise RuntimeError("r260 initial learner does not match the runtime-enabled canary checkpoint")
+    initial_path = Path(args.initial_learner_checkpoint).expanduser().resolve()
+    initial = checkpoint_mod.checkpoint_digest(initial_path)
+    initial_payload = checkpoint_mod.load_checkpoint(initial_path, map_location="cpu")
+    initial_model_config = dict(initial_payload.get("model_config") or {})
+    tactical_free_model_config = dict(initial_model_config)
+    for field in (
+        "tactical_sequence_outcome_head_enabled",
+        "tactical_sequence_outcome_route_enabled",
+        "tactical_sequence_outcome_route_present",
+        "tactical_sequence_outcome_route_runtime_enabled",
+    ):
+        tactical_free_model_config[field] = False
+    tactical_free_payload = dict(initial_payload)
+    tactical_free_payload["model_config"] = tactical_free_model_config
+    tactical_free_payload["model_state_dict"] = {
+        name: value
+        for name, value in dict(initial_payload.get("model_state_dict") or {}).items()
+        if not name.startswith("tactical_sequence_outcome_head.")
+        and not name.startswith("tactical_sequence_outcome_route.")
+    }
+    handoff_path = getattr(args, "r274_bootstrap_handoff_receipt", None)
+    handoff_sha256 = str(
+        getattr(args, "r274_bootstrap_handoff_receipt_sha256", "") or ""
+    ).strip()
+    handoff: dict[str, Any] | None = None
+    if handoff_path is not None:
+        from poke_bot.r274_bootstrap_handoff import validate_handoff_receipt
+
+        handoff_identity = _r241_file_identity(
+            Path(handoff_path).expanduser().resolve()
+        )
+        if handoff_identity["digest"] != handoff_sha256:
+            raise RuntimeError("r274 bootstrap handoff receipt digest mismatch")
+        try:
+            handoff = validate_handoff_receipt(
+                handoff_path, expected_initial_checkpoint=initial_path
+            )
+        except Exception as exc:
+            raise RuntimeError(f"r274 bootstrap handoff validation failed: {exc}") from exc
+    elif initial != canary_checkpoint["sha256"]:
+        raise RuntimeError(
+            "r260 initial learner does not match the runtime-enabled canary checkpoint"
+        )
     return {
         "owner_contract_sha256": owner.sha256,
         "migration_receipt_sha256": migration_receipt["receipt_sha256"],
@@ -2540,6 +2944,38 @@ def _load_r260_own_deck_training_inputs(args: argparse.Namespace) -> dict[str, A
             for day, row in dict(sidecar["daily_sidecar_meta_receipts"]).items()
         },
         "runtime_gates": dict(canary["runtime_gates"]),
+        "successor_model_config_sha256": _canonical_digest(
+            dict(initial_payload.get("model_config") or {})
+        ),
+        "successor_state_schema_sha256": _r241_checkpoint_state_schema_digest(
+            initial_payload
+        ),
+        "tactical_free_model_config_sha256": _canonical_digest(
+            tactical_free_model_config
+        ),
+        "tactical_free_state_schema_sha256": _r241_checkpoint_state_schema_digest(
+            tactical_free_payload
+        ),
+        "expert_tactical_overlay_identity": tactical_identity,
+        "r274_bootstrap_handoff": (
+            {
+                "receipt_sha256": handoff["receipt_sha256"],
+                "file_identity": dict(handoff["file_identity"]),
+                "bootstrap_submission_checkpoint": dict(
+                    handoff["bootstrap_submission_checkpoint"]
+                ),
+                "bootstrap_upload_receipt": dict(
+                    handoff["bootstrap_upload_receipt"]
+                ),
+                "bootstrap_remote_submission_id": int(
+                    handoff["bootstrap_remote_submission_id"]
+                ),
+                "activated_checkpoint": dict(handoff["activated_checkpoint"]),
+                "impact": dict(handoff["impact"]),
+            }
+            if handoff is not None
+            else None
+        ),
     }
 
 
@@ -2557,7 +2993,8 @@ def _validate_r260_scheduled_rehearsal_receipt(
         "pre_checkpoint", "post_checkpoint", "index", "inzi_dataset",
         "index_provenance", "loss_weights", "rl_iteration_before_after",
         "bounded_batch_games", "full_window_device_resident", "sampled_keys",
-        "gradient_reachability",
+        "gradient_reachability", "expert_tactical_overlay",
+        "tactical_exact_root_count",
     }
     if (
         set(receipt) != required
@@ -2586,6 +3023,9 @@ def _validate_r260_scheduled_rehearsal_receipt(
     post = _rehashed_r260_file_identity(receipt["post_checkpoint"], label="post-checkpoint")
     index = _rehashed_r260_file_identity(receipt["index"], label="streaming index")
     dataset = _rehashed_r260_file_identity(receipt["inzi_dataset"], label="Inzi dataset")
+    tactical_overlay = _rehashed_r260_file_identity(
+        receipt["expert_tactical_overlay"], label="expert tactical overlay"
+    )
     if pre["sha256"] == post["sha256"]:
         raise RuntimeError("r260 rehearsal receipt did not create a child checkpoint")
     provenance = dict(receipt.get("index_provenance") or {})
@@ -2634,18 +3074,28 @@ def _validate_r260_scheduled_rehearsal_receipt(
         )
     except Exception as exc:
         raise RuntimeError("r260 rehearsal receipt streaming index drifted") from exc
-    if receipt["loss_weights"] != {"visible_tutor_completion": 0.025, "terminal_conversion": 0.025}:
+    if receipt["loss_weights"] != {
+        "visible_tutor_completion": 0.025,
+        "terminal_conversion": 0.025,
+        "tactical_sequence_outcome": 0.025,
+    }:
         raise RuntimeError("r260 rehearsal receipt loss profile drifted")
     bounds = receipt["rl_iteration_before_after"]
     if not isinstance(bounds, list) or len(bounds) != 2 or bounds[0] != bounds[1] or int(receipt["bounded_batch_games"]) <= 0 or receipt["full_window_device_resident"] is not False:
         raise RuntimeError("r260 rehearsal receipt boundedness/iteration drifted")
-    required_prefixes = {"own_deck_ledger_adapter.", "visible_tutor_completion_head.", "terminal_conversion_head.", "visible_tutor_completion_route.", "terminal_conversion_route.", "decision_fusion."}
+    required_prefixes = {"own_deck_ledger_adapter.", "visible_tutor_completion_head.", "terminal_conversion_head.", "tactical_sequence_outcome_head.", "visible_tutor_completion_route.", "terminal_conversion_route.", "decision_fusion."}
+    if expected_r260_inputs is not None and expected_r260_inputs.get(
+        "r274_bootstrap_handoff"
+    ):
+        required_prefixes.add("tactical_sequence_outcome_route.")
     if (
         set(receipt["gradient_reachability"] or {}) != required_prefixes
         or not all(receipt["gradient_reachability"].values())
         or not receipt["sampled_keys"]
     ):
         raise RuntimeError("r260 rehearsal receipt lacks finite gradient/key evidence")
+    if int(receipt["tactical_exact_root_count"]) < 1024:
+        raise RuntimeError("r260 rehearsal receipt lacks tactical root coverage")
     for key in receipt["sampled_keys"]:
         if (
             not isinstance(key, list)
@@ -2669,6 +3119,10 @@ def _validate_r260_scheduled_rehearsal_receipt(
                 raise RuntimeError(f"r260 rehearsal receipt changed {name}")
         if dataset != dict(expected.get("inzi_dataset_identity") or {}):
             raise RuntimeError("r260 rehearsal receipt Inzi dataset identity drifted")
+        if tactical_overlay != dict(
+            expected.get("expert_tactical_overlay_identity") or {}
+        ):
+            raise RuntimeError("r260 rehearsal receipt tactical overlay drifted")
         expected_daily = {
             str(day): str(digest).lower()
             for day, digest in sorted(
@@ -2684,6 +3138,7 @@ def _validate_r260_scheduled_rehearsal_receipt(
     receipt["post_checkpoint"] = post
     receipt["index"] = index
     receipt["inzi_dataset"] = dataset
+    receipt["expert_tactical_overlay"] = tactical_overlay
     receipt["index_provenance"] = {
         "schema": "poke_bot.r260_inzi_sidecar_index/v1",
         "source_manifest_sha256": source_manifest,
@@ -2739,7 +3194,9 @@ def _load_r241_peak_r195_training_contract(
         )
 
     parent = dict(receipt.get("parent") or {})
-    parent_path = Path(str(parent.get("checkpoint") or "")).expanduser().resolve()
+    parent_path = Path(
+        str(parent.get("checkpoint") or parent.get("path") or "")
+    ).expanduser().resolve()
     parent_identity = _r241_file_identity(parent_path)
     if (
         parent_identity["digest"] != str(parent.get("sha256") or "")
@@ -2781,15 +3238,35 @@ def _load_r241_peak_r195_training_contract(
     if not cg_root_raw:
         raise RuntimeError("r241 checkpoint-derived validation requires CG_LIB_PATH")
     cg_root = Path(cg_root_raw).expanduser().resolve()
+    historical_direct = dict(receipt.get("direct_environment") or {})
+    historical_cg_root = Path(
+        str(historical_direct.get("cg_lib_path") or "")
+    ).expanduser().resolve()
+    historical_environment = dict(os.environ)
+    historical_environment["CG_LIB_PATH"] = str(historical_cg_root)
     try:
+        current_library = _r241_file_identity(cg_root / "cg" / "libcg.so")
+        for forbidden_name in ("POKEBOT_LIBCG_PATH", "POKEBOT_BATCH_LIBCG"):
+            if str(os.environ.get(forbidden_name) or "").strip():
+                raise RuntimeError(
+                    f"r274 live simulator uses forbidden {forbidden_name}"
+                )
+        if (
+            str(os.environ.get("POKEBOT_USE_RECURSIVE_TURN_PLANNER") or "0")
+            not in {"0", "false", "False"}
+            or str(os.environ.get("POKEBOT_SEARCH_MODE") or "policy") != "policy"
+            or str(os.environ.get("POKEBOT_SUBMISSION_SEARCH_DISABLE") or "1")
+            not in {"1", "true", "True"}
+        ):
+            raise RuntimeError("r274 live learner is not direct-policy/RTP-off")
         validated_receipt = (
             r241_checkpoint_receipts.validate_peak_r195_preservation_receipt(
                 receipt_path=receipt_path,
                 parent_checkpoint=parent_path,
                 learner_matchup_tree=learner_tree_path,
                 h10_matchup_tree=h10_tree_path,
-                official_cg_root=cg_root,
-                environment=dict(os.environ),
+                official_cg_root=historical_cg_root,
+                environment=historical_environment,
             )
         )
     except r241_checkpoint_receipts.R241CheckpointReceiptError as exc:
@@ -2798,6 +3275,15 @@ def _load_r241_peak_r195_training_contract(
         ) from exc
     if validated_receipt != receipt:
         raise RuntimeError("r241 validated preservation receipt changed in memory")
+    historical_library = dict(
+        historical_direct.get("linux_x86_64_library") or {}
+    )
+    if (
+        current_library["digest"] != historical_library.get("sha256")
+        or current_library["size_bytes"]
+        != int(historical_library.get("size_bytes", -1))
+    ):
+        raise RuntimeError("r274 live libcg bytes differ from the sealed r195 parent")
 
     if (
         str(args.mode) != "specialist"
@@ -2842,8 +3328,15 @@ def _load_r241_peak_r195_training_contract(
         if requested_path is None:
             raise RuntimeError(f"r241 preservation receipt lacks requested {name}")
         identity = _r241_file_identity(bound_path)
+        requested_matches_historical = (
+            bound_path == Path(requested_path).expanduser().resolve()
+        )
+        successor_public_overlay = (
+            args.r274_bootstrap_handoff_receipt is not None
+            and name in {"active_gate_contract", "frozen_specialist_registry"}
+        )
         if (
-            bound_path != Path(requested_path).expanduser().resolve()
+            (not requested_matches_historical and not successor_public_overlay)
             or identity["digest"] != str(binding.get("sha256") or "")
             or identity["size_bytes"] != int(binding.get("size_bytes", -1))
         ):
@@ -2888,10 +3381,8 @@ def _load_r241_peak_r195_training_contract(
     state_schema_digest = _r241_checkpoint_state_schema_digest(parent_payload)
     trainable_parameter_count = sum(
         int(tensor.numel())
-        for name, tensor in state_dict.items()
+        for _name, tensor in state_dict.items()
         if hasattr(tensor, "numel")
-        and not str(name).endswith("_feature_schema_version")
-        and not str(name).startswith("matchup_adapter_bank.")
     )
     if trainable_parameter_count != 10_750_146:
         raise RuntimeError("r241 peak-r195 serialized model profile changed")
@@ -2904,11 +3395,13 @@ def _load_r241_peak_r195_training_contract(
         str(args.current_deck_guide_head_role_map or "")
     ).expanduser().resolve()
     role_identity = _r241_file_identity(role_path)
+    requested_role_identity = _r241_file_identity(requested_role_path)
     if (
-        role_path != requested_role_path
-        or role_identity["digest"] != str(role_binding.get("sha256") or "")
+        role_identity["digest"] != str(role_binding.get("sha256") or "")
         or int(role_identity["size_bytes"])
         != int(role_binding.get("size_bytes", -1))
+        or requested_role_identity["digest"] != role_identity["digest"]
+        or requested_role_identity["size_bytes"] != role_identity["size_bytes"]
     ):
         raise RuntimeError("r241 peak-r195 head-role map identity changed")
     try:
@@ -2991,12 +3484,25 @@ def _load_r241_peak_r195_training_contract(
         "combo_state": float(args.combo_state_loss_weight),
         "guide": float(args.alakazam_guide_loss_weight),
     }
+    expected_command_loss = dict(expected_ordinary)
     if (
-        actual_arg_loss != expected_ordinary
+        args.r274_bootstrap_handoff_receipt is not None
+        and args.r284_iteration_boundary_receipt is None
+    ):
+        # The immutable r195 receipt proves ancestry.  Its combo route was
+        # deliberately dormant; the independently receipt-backed r274 handoff
+        # activates that resident head for successor learning.
+        expected_command_loss["combo_state"] = 0.025
+    if (
+        actual_arg_loss != expected_command_loss
         or args.expert_rehearsal_guide_loss_weight is None
         or float(args.expert_rehearsal_guide_loss_weight) != 0.0
     ):
-        raise RuntimeError("r241 command changed the sealed training loss profile")
+        raise RuntimeError(
+            "r241 command changed the sealed training loss profile: "
+            f"actual={actual_arg_loss} expected={expected_command_loss} "
+            f"refresh_guide={args.expert_rehearsal_guide_loss_weight}"
+        )
     inherited_expanded = canonical_expanded_loss_weights(
         dict(
             dict(
@@ -3064,7 +3570,10 @@ def _load_r241_peak_r195_training_contract(
         or int(runtime_receipt_identity["size_bytes"])
         != int(runtime_receipt_binding.get("size_bytes", -1))
         or not configured_tree
-        or Path(configured_tree).expanduser().resolve() != learner_tree_path
+        or (
+            args.r274_bootstrap_handoff_receipt is None
+            and Path(configured_tree).expanduser().resolve() != learner_tree_path
+        )
         or requested_activation != runtime_receipt_path
         or os.environ.get("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "").strip().lower()
         not in {"1", "true", "yes", "on"}
@@ -3266,6 +3775,7 @@ def _checkpoint_contract(
     smoke: bool,
     allow_legacy_inference_profile: bool = False,
     r241_peak_r195_training_contract: Optional[Mapping[str, Any]] = None,
+    r274_successor_training_contract: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """Fail closed unless a checkpoint is the exact intended trusted profile."""
     from poke_bot import checkpoint, features
@@ -3426,6 +3936,99 @@ def _checkpoint_contract(
             "rl_iteration": int(payload.get("rl_iteration", 0)),
             "legacy_inference_profile": False,
             "r241_peak_r195_preserved": True,
+        }
+    r274_contract = dict(r274_successor_training_contract or {})
+    if r274_contract:
+        tactical_free = os.environ.get(
+            "POKEBOT_R274_DISABLE_RL_TACTICAL_COTRAIN", ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        expected_true = (
+            "expanded_heads_enabled",
+            "setup_board_outcome_head_enabled",
+            "combo_state_head_enabled",
+            "combo_state_route_enabled",
+            "decision_fusion_enabled",
+            "decision_fusion_runtime_enabled",
+            "decision_fusion_dedicated_routes_enabled",
+            "decision_fusion_dedicated_routes_runtime_enabled",
+            "decision_fusion_typed_output_centered_routes_enabled",
+            "h10_capacity_enabled",
+            "own_deck_ledger_enabled",
+            "own_deck_ledger_runtime_enabled",
+            "visible_tutor_completion_head_enabled",
+            "visible_tutor_completion_route_enabled",
+            "visible_tutor_completion_route_runtime_enabled",
+            "terminal_conversion_head_enabled",
+            "terminal_conversion_route_enabled",
+            "terminal_conversion_route_runtime_enabled",
+        )
+        tactical_fields = (
+            "tactical_sequence_outcome_head_enabled",
+            "tactical_sequence_outcome_route_enabled",
+            "tactical_sequence_outcome_route_present",
+            "tactical_sequence_outcome_route_runtime_enabled",
+        )
+        actual_is_tactical_free = all(
+            actual.get(name) is False for name in tactical_fields
+        )
+        expected_config_digests = {
+            str(r274_contract.get("successor_model_config_sha256") or "")
+        }
+        expected_schema_digests = {
+            str(r274_contract.get("successor_state_schema_sha256") or "")
+        }
+        if tactical_free:
+            expected_config_digests.add(
+                str(r274_contract.get("tactical_free_model_config_sha256") or "")
+            )
+            expected_schema_digests.add(
+                str(r274_contract.get("tactical_free_state_schema_sha256") or "")
+            )
+        if (
+            _canonical_digest(actual) not in expected_config_digests
+            or _r241_checkpoint_state_schema_digest(payload)
+            not in expected_schema_digests
+            or str(actual.get("decision_context") or "") != "history"
+            or any(actual.get(name) is not True for name in expected_true)
+            or (
+                not actual_is_tactical_free
+                and any(actual.get(name) is not True for name in tactical_fields)
+            )
+            or (actual_is_tactical_free and not tactical_free)
+            or str(actual.get("matchup_adapter_format") or "")
+            != "poke-bot-matchup-adapter-bank-v6"
+        ):
+            raise RuntimeError(
+                f"r274 successor checkpoint architecture/schema changed: {path}"
+            )
+        provenance = dict(payload.get("provenance") or {})
+        feature_schema = provenance.get("feature_schema")
+        if feature_schema != features.FEATURE_SCHEMA_VERSION:
+            raise RuntimeError(
+                f"r274 successor feature schema mismatch at {path}: "
+                f"checkpoint={feature_schema!r} runtime={features.FEATURE_SCHEMA_VERSION!r}"
+            )
+        state_dict = dict(payload.get("model_state_dict") or {})
+        parameter_count = sum(
+            int(value.numel())
+            for key, value in state_dict.items()
+            if hasattr(value, "numel")
+            and not str(key).endswith("_feature_schema_version")
+        )
+        return {
+            "path": str(path),
+            "digest": checkpoint.checkpoint_digest(path),
+            "pure_rl": True,
+            "smoke": bool(smoke),
+            "trusted_policy": trusted,
+            "model_profile": actual,
+            "decision_context": "history",
+            "max_context": int(actual.get("max_context", 0)),
+            "feature_schema": feature_schema,
+            "trainable_parameters": parameter_count,
+            "rl_iteration": int(payload.get("rl_iteration", 0)),
+            "legacy_inference_profile": False,
+            "r274_successor_receipt_bound": True,
         }
     # Legacy checkpoints predate the dormant-bank flag. Missing and explicit
     # false are the same inactive contract; true remains a real profile change.
@@ -3995,9 +4598,15 @@ def _design_contract(
             "heldout_per_opponent_floor": float(args.heldout_per_opponent_floor),
             "active_contract": (
                 _path_content_identity(
-                    Path(args.active_gate_contract).expanduser().resolve()
+                    Path(
+                        args.formal_holdout_contract
+                        or args.active_gate_contract
+                    ).expanduser().resolve()
                 )
-                if args.active_gate_contract is not None
+                if (
+                    args.formal_holdout_contract is not None
+                    or args.active_gate_contract is not None
+                )
                 else None
             ),
             "frozen_specialist_registry": dict(frozen_specialist_registry),
@@ -4143,6 +4752,51 @@ def _design_contract(
                 "roster": _opponent_specs_contract(research_control_specs),
                 "registry": dict(research_control_registry),
             },
+            "r274_submission_55378392_training_cell": (
+                {
+                    "enabled": True,
+                    "submission_id": 55378392,
+                    "opponent_id": R274_R195_RESEARCH_OPPONENT_ID,
+                    "bundle_sha256": R274_R195_RESEARCH_BUNDLE_SHA256,
+                    "model_sha256": R274_R195_RESEARCH_MODEL_SHA256,
+                    "minimum_games_each_update": R274_R195_RESEARCH_GAMES_MINIMUM,
+                    "minimum_games_each_seat": R274_R195_RESEARCH_EACH_SEAT_MINIMUM,
+                    "inside_public_mix": True,
+                    "transport": "singleton_play",
+                    "receipt": _path_content_identity(
+                        Path(args.r274_r195_research_baseline_receipt)
+                        .expanduser()
+                        .resolve()
+                    ),
+                }
+                if _fixed_cycle_updates(args) == R274_FIXED_CYCLE_UPDATES
+                else None
+            ),
+            "r280_gpu_resident_expert_refresh": (
+                {
+                    "enabled": True,
+                    "owner_revision": 280,
+                    "pack": _path_content_identity(
+                        Path(args.r280_contiguous_expert_pack)
+                        .expanduser()
+                        .resolve()
+                    ),
+                    "pack_receipt": _path_content_identity(
+                        Path(args.r280_contiguous_expert_pack_receipt)
+                        .expanduser()
+                        .resolve()
+                    ),
+                    "device": str(args.r280_refresh_device),
+                    "epochs_each_boundary": 5,
+                    "boundaries": [5, 10, 15, 20],
+                    "full_numeric_pack_resident": True,
+                    "device_side_batch_gather": True,
+                    "host_batch_streaming_used": False,
+                    "resident_python_objects_used": False,
+                }
+                if _fixed_cycle_updates(args) == R274_FIXED_CYCLE_UPDATES
+                else None
+            ),
             "official_exploit": {
                 "opponents": list(args.official_exploit_opponents),
                 "fraction_per_selected_opponent": float(
@@ -4300,6 +4954,10 @@ _BOUNDARY_MIGRATABLE_DESIGN_PATHS = frozenset(
         # enabled only through an explicit completed-boundary migration.
         "expert_rehearsal.matchup_adapters",
         "collection.behavior_policy",
+        # Revision 283 removes only the failed new tactical-sequence
+        # head/route at the already sealed update-0 pre-gradient boundary.
+        "r260_own_deck_successor.tactical_free_model_config_sha256",
+        "r260_own_deck_successor.tactical_free_state_schema_sha256",
         # Explicitly recording the already-effective specialist/population
         # opponent eligibility is a schema-only boundary change.  The values
         # remain fingerprinted after migration, so a later scope change still
@@ -4347,6 +5005,15 @@ _DECISION_FUSION_RUNTIME_MIGRATION_PATHS = frozenset(
 
 _ALAKAZAM_COMBO_ROUTE_DISABLE_MIGRATION_PATHS = frozenset(
     {"learner.profile.combo_state_route_enabled"}
+)
+
+
+_R284_ITERATION1_BOUNDARY_MIGRATION_PATHS = frozenset(
+    {
+        "collection.r280_gpu_resident_expert_refresh.boundaries",
+        "games.heldout_additive_remotes",
+        "remotes.disabled",
+    }
 )
 
 
@@ -4967,6 +5634,7 @@ def _validate_or_migrate_design_fingerprint(
     current: dict[str, Any],
     allow_clean_boundary_migration: bool,
     migration_reason: Optional[str],
+    owner_r284_iteration1_boundary: bool,
 ) -> str:
     """Validate lineage, or append one tightly-scoped clean-boundary migration."""
     stored, stored_digest, receipts = _load_design_migration_chain(run_dir, manifest)
@@ -5119,7 +5787,10 @@ def _validate_or_migrate_design_fingerprint(
             for allowed in _BOUNDARY_MIGRATABLE_DESIGN_PATHS
         )
         and not path.startswith("source.")
-        and not (path == "run.iterations" and safe_ceiling_reduction)
+        and not (
+            path in {"run.iterations", "run.fixed_cycle_updates"}
+            and safe_ceiling_reduction
+        )
         and not (
             path == "run.iterations"
             and safe_marnie_revision113_ceiling_extension
@@ -5135,6 +5806,10 @@ def _validate_or_migrate_design_fingerprint(
         and not (
             safe_alakazam_combo_route_disable
             and path in _ALAKAZAM_COMBO_ROUTE_DISABLE_MIGRATION_PATHS
+        )
+        and not (
+            owner_r284_iteration1_boundary
+            and path in _R284_ITERATION1_BOUNDARY_MIGRATION_PATHS
         )
         and not (
             safe_alakazam_r193_large_refresh
@@ -5217,6 +5892,13 @@ def _validate_or_migrate_design_fingerprint(
         run_dir, next_iteration
     ).resolve()
     next_artifact_set = {path.resolve() for path in next_artifacts}
+    preserved_partial_collection = (
+        _verified_partial_collection_resume(
+            expected_shard, iteration=next_iteration
+        )
+        if expected_shard.is_file()
+        else None
+    )
     source_only_change = bool(changed) and all(
         path.startswith("source.") for path in changed
     )
@@ -5275,11 +5957,17 @@ def _validate_or_migrate_design_fingerprint(
                 and path
                 in {
                     "run.iterations",
+                    "run.fixed_cycle_updates",
                     "collection.strong_public_practice.seed_contract.iterations",
                 }
             )
             or path == "gates.active_contract"
             or path.startswith("gates.active_contract.")
+            or path
+            in {
+                "r260_own_deck_successor.tactical_free_model_config_sha256",
+                "r260_own_deck_successor.tactical_free_state_schema_sha256",
+            }
             or (
                 safe_iteration15_optimizer_cap_recovery
                 and path
@@ -5291,6 +5979,14 @@ def _validate_or_migrate_design_fingerprint(
             or (
                 safe_fusion_v3_contract_repair
                 and path in _FUSION_V3_CONTRACT_REPAIR_PATHS
+            )
+            or (
+                safe_alakazam_combo_route_disable
+                and path in _ALAKAZAM_COMBO_ROUTE_DISABLE_MIGRATION_PATHS
+            )
+            or (
+                owner_r284_iteration1_boundary
+                and path in _R284_ITERATION1_BOUNDARY_MIGRATION_PATHS
             )
             for path in changed
         )
@@ -5353,12 +6049,83 @@ def _validate_or_migrate_design_fingerprint(
                 "artifact for the trained candidate"
             )
         artifacts_are_preserved_trained_candidate = True
+    partial_source_migration_receipt_ok = False
+    partial_source_receipt_path = os.environ.get(
+        "POKEBOT_PARTIAL_SOURCE_MIGRATION_RECEIPT", ""
+    ).strip()
+    if (
+        source_only_change
+        and preserved_partial_collection is not None
+        and partial_source_receipt_path
+        and next_artifact_set == {expected_shard}
+    ):
+        try:
+            source_receipt = json.loads(
+                Path(partial_source_receipt_path).read_text(encoding="utf-8")
+            )
+            source_root = Path(__file__).resolve().parent.parent
+            repair = dict(source_receipt.get("repair") or {})
+            partial = dict(source_receipt.get("partial_resume") or {})
+            partial_source_migration_receipt_ok = bool(
+                source_receipt.get("schema")
+                == "poke_bot.alakazam_r274_dual_gpu_router_fix/v1"
+                and source_receipt.get("status")
+                == "managed_restart_authorized_and_partial_collection_sealed"
+                and source_receipt.get("previous_design_fingerprint")
+                == stored_digest
+                and source_receipt.get("current_design_fingerprint")
+                == current_digest
+                and partial.get("shard_sha256")
+                == preserved_partial_collection.get("shard_sha256")
+                and partial.get("sidecar_sha256")
+                == _sha256_file(
+                    Path(preserved_partial_collection["sidecar_path"])
+                )
+                and repair.get("hardware_source_sha256")
+                == _sha256_file(source_root / "poke_bot/pure_rl/hardware.py")
+                and repair.get("multi_env_source_sha256")
+                == _sha256_file(
+                    source_root / "poke_bot/pure_rl/multi_env_self_play.py"
+                )
+                and repair.get("trainer_source_sha256")
+                == _sha256_file(Path(__file__).resolve())
+            )
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            partial_source_migration_receipt_ok = False
+
     artifacts_are_preserved_transaction = bool(
         artifacts_are_preserved_collection
         or artifacts_are_preserved_trained_candidate
+        or (
+            preserved_partial_collection is not None
+            and next_artifact_set == {expected_shard}
+            and (
+                source_only_change
+                or {
+                    path for path in changed if not path.startswith("source.")
+                }
+                == {
+                    "games.heldout_additive_remotes",
+                    "remotes.disabled",
+                    "remotes.endpoints",
+                }
+            )
+            and str(migration_reason).strip()
+            == "receipt_backed_completed_collection_resume_v1"
+        )
+        or (
+            initial_collection_resume
+            and preserved_partial_collection is not None
+            and next_artifact_set == {expected_shard}
+        )
+        or partial_source_migration_receipt_ok
     )
     if (
-        (not initial_collection_resume and not commit_path.is_file())
+        (
+            not initial_collection_resume
+            and not commit_path.is_file()
+            and not artifacts_are_preserved_trained_candidate
+        )
         or (next_artifacts and not artifacts_are_preserved_transaction)
         or (
             initial_empty_run
@@ -5371,9 +6138,12 @@ def _validate_or_migrate_design_fingerprint(
             initial_collection_resume
             and not initial_empty_run
             and (
-                preserved_collection is None
-                or int(preserved_collection.get("iteration", -1)) != 0
-                or not artifacts_are_preserved_collection
+                (
+                    preserved_collection is None
+                    or int(preserved_collection.get("iteration", -1)) != 0
+                    or not artifacts_are_preserved_transaction
+                )
+                and preserved_partial_collection is None
             )
         )
     ):
@@ -5387,6 +6157,7 @@ def _validate_or_migrate_design_fingerprint(
             f"stored={stored_digest} current={current_digest} "
             f"next_artifacts={sorted(str(path) for path in next_artifact_set)} "
             f"preserved_collection_ok={artifacts_are_preserved_collection} "
+            f"preserved_partial_ok={preserved_partial_collection is not None} "
             f"preserved_transaction_ok={artifacts_are_preserved_transaction}"
         )
     committed = (
@@ -5457,6 +6228,27 @@ def _validate_or_migrate_design_fingerprint(
                 ),
             }
             if artifacts_are_preserved_transaction
+            and preserved_collection is not None
+            else None
+        ),
+        "preserved_partial_collection": (
+            {
+                "sidecar": str(preserved_partial_collection["sidecar_path"]),
+                "sidecar_sha256": _sha256_file(
+                    Path(preserved_partial_collection["sidecar_path"])
+                ),
+                "iteration": int(preserved_partial_collection["iteration"]),
+                "retained_source_games": int(
+                    preserved_partial_collection["retained_source_games"]
+                ),
+                "missing_source_games": len(
+                    preserved_partial_collection["missing_job_indices"]
+                ),
+                "shard_sha256": str(
+                    preserved_partial_collection["shard_sha256"]
+                ),
+            }
+            if preserved_partial_collection is not None
             else None
         ),
         "preserved_trained_candidate": (
@@ -5512,6 +6304,9 @@ def _iteration_artifact_paths(run_dir: Path, iteration: int) -> list[Path]:
 
 
 _COMPLETED_COLLECTION_SCHEMA = "poke_bot.completed_collection/v1"
+_PARTIAL_COLLECTION_RESUME_SCHEMA = (
+    "poke_bot.partial_collection_resume_authorization/v1"
+)
 _TRAINING_SEAT_SPLIT_SCHEMA = "poke_bot.alakazam_refresh_seat_split/v1"
 _TRAINING_SEAT_SPLIT_SUMMARY_SCHEMA = (
     "poke_bot.alakazam_refresh_seat_split_summary/v1"
@@ -6103,6 +6898,51 @@ def _collection_receipt_path(run_dir: Path, iteration: int) -> Path:
     )
 
 
+def _verified_partial_collection_resume(
+    shard: Path,
+    *,
+    iteration: int,
+) -> Optional[dict[str, Any]]:
+    """Verify the explicit append-only authorization for one partial shard.
+
+    Partial collection is never inferred from a parseable file.  The operator
+    must seal the exact bytes, source-game identities, record/decision counts,
+    behavior checkpoint, and missing identities in an immutable sidecar, then
+    opt in with ``POKEBOT_PARTIAL_COLLECTION_RESUME_SIDECAR``.
+    """
+    raw_path = os.environ.get("POKEBOT_PARTIAL_COLLECTION_RESUME_SIDECAR", "").strip()
+    if not raw_path:
+        return None
+    sidecar_path = Path(raw_path).expanduser().resolve()
+    shard = Path(shard).resolve()
+    try:
+        payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        stat = shard.stat()
+        retained = [int(value) for value in payload.get("retained_job_indices") or ()]
+        missing = [int(value) for value in payload.get("missing_job_indices") or ()]
+        if (
+            payload.get("schema") != _PARTIAL_COLLECTION_RESUME_SCHEMA
+            or payload.get("status") != "authorized_append_only_resume"
+            or int(payload.get("iteration", -1)) != int(iteration)
+            or Path(str(payload.get("shard_path") or "")).resolve() != shard
+            or int(payload.get("shard_size", -1)) != int(stat.st_size)
+            or int(payload.get("shard_mtime_ns", -1)) != int(stat.st_mtime_ns)
+            or str(payload.get("shard_sha256") or "") != _sha256_file(shard)
+            or int(payload.get("trajectory_records", -1)) <= 0
+            or int(payload.get("decisions", -1)) <= 0
+            or len(retained) != int(payload.get("retained_source_games", -1))
+            or len(set(retained)) != len(retained)
+            or len(set(missing)) != len(missing)
+            or set(retained) & set(missing)
+            or sorted(retained + missing) != list(range(int(payload.get("requested_games", -1))))
+            or not str(payload.get("behavior_checkpoint_digest") or "").startswith("sha256:")
+        ):
+            return None
+        return {**payload, "sidecar_path": str(sidecar_path)}
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
 def _completed_collection_digest(path: Path) -> str:
     """Hash the shard at every receipt trust boundary."""
     return _sha256_file(Path(path).resolve())
@@ -6580,6 +7420,13 @@ def _ensure_recoverable_completed_collection(
         shard.resolve()
     }:
         return None
+    if _verified_partial_collection_resume(shard, iteration=iteration) is not None:
+        print(
+            "[pure_rl] partial collection is explicitly sealed; defer completed-"
+            "collection recovery until append-only refill finishes",
+            flush=True,
+        )
+        return None
     expected, minimum_fraction, max_context = _completed_collection_contract(
         contract
     )
@@ -6810,6 +7657,28 @@ def _recover_interrupted_iteration(
             f"recovery called before committed iteration {iteration} was replayed"
         )
     artifacts = _iteration_artifact_paths(run_dir, iteration)
+    expected_partial_shard = (
+        Path(run_dir) / "shards" / f"iter_{iteration:05d}.jsonl"
+    ).resolve()
+    partial_resume = (
+        _verified_partial_collection_resume(
+            expected_partial_shard, iteration=iteration
+        )
+        if expected_partial_shard.is_file()
+        else None
+    )
+    if (
+        partial_resume is not None
+        and {path.resolve() for path in artifacts} == {expected_partial_shard}
+    ):
+        print(
+            "[pure_rl] preserve explicitly sealed partial collection for "
+            f"append-only resume iter={iteration} "
+            f"retained={partial_resume['retained_source_games']} "
+            f"missing={len(partial_resume['missing_job_indices'])}",
+            flush=True,
+        )
+        return None
     manifest_path = Path(run_dir) / "manifest.json"
     if manifest_path.is_file():
         immutable_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -7046,7 +7915,13 @@ def _validate_resume_state(
         )
     if args.base_checkpoint is not None:
         requested = Path(args.base_checkpoint).expanduser().resolve()
-        if requested != ckpt:
+        successor_resume = bool(
+            getattr(args, "r241_own_deck_migration_receipt", None) is not None
+            and getattr(args, "initial_learner_checkpoint", None) is not None
+            and Path(args.initial_learner_checkpoint).expanduser().resolve()
+            == ckpt
+        )
+        if requested != ckpt and not successor_resume:
             raise RuntimeError(
                 "--base-checkpoint conflicts with resumed champion: "
                 f"{requested} != {ckpt}"
@@ -7622,6 +8497,7 @@ def _ensure_pure_rl_checkpoint(
     smoke: bool = False,
     allow_legacy_inference_profile: bool = False,
     r241_peak_r195_training_contract: Optional[Mapping[str, Any]] = None,
+    r274_successor_training_contract: Optional[Mapping[str, Any]] = None,
 ) -> Path:
     """Build or validate a fresh small Pure-RL seed (not AZ / not starter prior)."""
     import torch
@@ -7645,6 +8521,7 @@ def _ensure_pure_rl_checkpoint(
             smoke=smoke,
             allow_legacy_inference_profile=allow_legacy_inference_profile,
             r241_peak_r195_training_contract=r241_peak_r195_training_contract,
+            r274_successor_training_contract=r274_successor_training_contract,
         )
         model = load_model_from_checkpoint(path, device=torch.device("cpu"))
         n = count_params(model)
@@ -7657,13 +8534,14 @@ def _ensure_pure_rl_checkpoint(
                 raise RuntimeError(
                     "r241 loaded model parameter count differs from its sealed receipt"
                 )
-        else:
+        elif not r274_successor_training_contract:
             validate_param_budget(n, fail_max=int(config.PURE_RL.param_fail_max))
         cfg = getattr(model, "cfg", None)
         # Pure-RL overnight is d_model=96 L4/4/4 (~1.77M). Hope/legacy giants
         # are d_model>=192 — refuse those, not the intentional dense seed.
         if (
             not r241_peak_r195_training_contract
+            and not r274_successor_training_contract
             and cfg is not None
             and int(getattr(cfg, "d_model", 0)) >= 192
         ):
@@ -8092,6 +8970,13 @@ def _record_to_compact_game(record: dict[str, Any]) -> Optional[CompactGame]:
                 action=[int(x) for x in (step.get("action") or [])],
                 observation=dict(step.get("observation") or {}),
                 aux_labels=dict(step.get("aux_labels") or {}),
+                tactical_sequence_supervision=(
+                    dict(step["tactical_sequence_supervision"])
+                    if isinstance(
+                        step.get("tactical_sequence_supervision"), dict
+                    )
+                    else None
+                ),
             )
         )
     if not decisions:
@@ -9436,6 +10321,7 @@ def _interleaved_opponent_schedule(
     iteration: int,
     priority_weights: Optional[dict[str, float]] = None,
     priority_minimum_games: Optional[dict[str, int]] = None,
+    diverse_minimum_games: Optional[dict[str, int]] = None,
     priority_group: str = "official_target",
 ) -> tuple[tuple[Any, str], ...]:
     """Build an exact, evenly interleaved practice/diverse training schedule.
@@ -9562,6 +10448,42 @@ def _interleaved_opponent_schedule(
             str(spec.id): sum(str(row.id) == str(spec.id) for row in priority_sequence)
             for spec in priority
         } == {str(spec.id): quotas[index] for index, spec in enumerate(priority)}
+    diverse_sequence: list[Any] = []
+    if diverse_minimum_games is not None and n_diverse > 0:
+        ids = [str(spec.id) for spec in diverse]
+        if set(diverse_minimum_games) != set(ids):
+            raise ValueError("diverse minimums must cover the exact diverse roster")
+        floors: list[int] = []
+        for opponent_id in ids:
+            value = diverse_minimum_games[opponent_id]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError("diverse minimum games must be nonnegative integers")
+            floors.append(int(value))
+        if sum(floors) > n_diverse:
+            raise ValueError("diverse minimum games exceed the fixed diverse quota")
+        remaining = n_diverse - sum(floors)
+        quotas = [
+            floor + remaining // len(diverse)
+            for floor in floors
+        ]
+        for offset in range(remaining % len(diverse)):
+            quotas[(d_offset + offset) % len(diverse)] += 1
+        current = [0] * len(diverse)
+        order = [(d_offset + index) % len(diverse) for index in range(len(diverse))]
+        rank = {index: position for position, index in enumerate(order)}
+        for _ in range(n_diverse):
+            for index, quota in enumerate(quotas):
+                current[index] += quota
+            selected = max(
+                range(len(diverse)),
+                key=lambda index: (current[index], -rank[index]),
+            )
+            current[selected] -= n_diverse
+            diverse_sequence.append(diverse[selected])
+        assert {
+            str(spec.id): sum(str(row.id) == str(spec.id) for row in diverse_sequence)
+            for spec in diverse
+        } == {str(spec.id): quotas[index] for index, spec in enumerate(diverse)}
     p_index = d_index = 0
     schedule: list[tuple[Any, str]] = []
     for position in range(total):
@@ -9579,7 +10501,11 @@ def _interleaved_opponent_schedule(
             p_index += 1
             schedule.append((spec, priority_label))
         else:
-            spec = diverse[(d_offset + d_index) % len(diverse)]
+            spec = (
+                diverse_sequence[d_index]
+                if diverse_sequence
+                else diverse[(d_offset + d_index) % len(diverse)]
+            )
             d_index += 1
             schedule.append((spec, "diverse_public"))
     assert p_index == n_priority and d_index == n_diverse
@@ -9608,6 +10534,88 @@ def _public_training_seat(
     ).encode("utf-8")
     offset = int.from_bytes(hashlib.sha256(token).digest()[:8], "big") & 1
     return int((offset + max(0, int(occurrence))) & 1)
+
+
+def _assert_r274_r195_research_jobs(
+    jobs: Sequence[Mapping[str, Any]],
+    *,
+    expected_content_digest: str,
+    iteration: int,
+) -> dict[str, Any]:
+    """Prove the exact 55378392 cell before dispatching any update games."""
+
+    selected = [
+        dict(job)
+        for job in jobs
+        if str(job.get("opponent_id") or "") == R274_R195_RESEARCH_OPPONENT_ID
+    ]
+    seat_counts = {
+        seat: sum(int(job.get("our_seat", -1)) == seat for job in selected)
+        for seat in (0, 1)
+    }
+    if (
+        len(selected) < R274_R195_RESEARCH_GAMES_MINIMUM
+        or seat_counts[0] < R274_R195_RESEARCH_EACH_SEAT_MINIMUM
+        or seat_counts[1] < R274_R195_RESEARCH_EACH_SEAT_MINIMUM
+    ):
+        raise RuntimeError(
+            "r274 submission-55378392 research cell lacks its 128-game 64/64 floor"
+        )
+    for job in selected:
+        provenance = dict(job.get("target_provenance") or {})
+        spec = dict(job.get("spec") or {})
+        # Pre-dispatch rows are complete simulator jobs.  Post-collection rows
+        # are the deliberately smaller canonical runtime audit projection;
+        # _consume_results binds the same immutable opponent fields onto that
+        # projection before the row can be retained.
+        # Dispatched job plans carry ``spec``.  Consumed result projections
+        # deliberately omit it while retaining target provenance for the
+        # immutable opponent/audit binding.  Provenance presence therefore
+        # cannot distinguish the two representations.
+        runtime_projection = not bool(spec)
+        content_digest = str(
+            provenance.get("opponent_content_digest")
+            or job.get("opponent_content_digest")
+            or ""
+        )
+        training_group = str(
+            provenance.get("opponent_training_group")
+            or job.get("opponent_training_group")
+            or ""
+        )
+        formal_eval = (
+            provenance.get("formal_eval")
+            if provenance
+            else job.get("formal_eval")
+        )
+        if (
+            training_group != "diverse_public"
+            or formal_eval is not False
+            or content_digest != expected_content_digest
+            or (not runtime_projection and spec.get("content_digest") != expected_content_digest)
+            or job.get("training_eligible") is not True
+        ):
+            raise RuntimeError(
+                "r274 submission-55378392 research job identity changed"
+            )
+    return {
+        "schema": "poke_bot.r274_submission_55378392_research_plan/v1",
+        "iteration": int(iteration),
+        "submission_id": 55378392,
+        "opponent_id": R274_R195_RESEARCH_OPPONENT_ID,
+        "bundle_sha256": R274_R195_RESEARCH_BUNDLE_SHA256,
+        "model_sha256": R274_R195_RESEARCH_MODEL_SHA256,
+        "installed_content_sha256": expected_content_digest,
+        "games": len(selected),
+        "learner_first_games": seat_counts[0],
+        "learner_second_games": seat_counts[1],
+        "inside_public_mix": True,
+        "training_eligible": True,
+        "formal_eval": False,
+        "rtp_enabled": False,
+        "transport": "singleton_play",
+        "passed": True,
+    }
 
 
 def _paired_official_exploit(
@@ -9666,6 +10674,7 @@ def _build_collect_jobs(
     priority_frac: float = 0.0,
     priority_weights: Optional[dict[str, float]] = None,
     priority_minimum_games: Optional[dict[str, int]] = None,
+    diverse_minimum_games: Optional[dict[str, int]] = None,
     priority_group: str = "official_target",
     priority_temperature: Optional[float] = None,
     priority_archetypes: Optional[dict[str, str]] = None,
@@ -9674,6 +10683,7 @@ def _build_collect_jobs(
     official_exploit_frac: float = 0.0,
     official_exploit_temperature: float = 0.35,
     exact_training_seat_split: bool = False,
+    own_deck_ledger_enabled: Optional[bool] = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Return ``(self_play_jobs, baseline_jobs)`` — self-play is the primary signal."""
     self_jobs: list[dict[str, Any]] = []
@@ -9681,6 +10691,10 @@ def _build_collect_jobs(
     if not decks:
         return self_jobs, base_jobs
     ctx = int(max_context if max_context is not None else pure_rl_model_config().max_context)
+    if own_deck_ledger_enabled is None:
+        own_deck_ledger_enabled = os.environ.get(
+            "POKEBOT_OWN_DECK_LEDGER_RUNTIME", ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
     frac = float(
         self_play_frac
         if self_play_frac is not None
@@ -9798,6 +10812,7 @@ def _build_collect_jobs(
             iteration=int(iteration),
             priority_weights=priority_weights,
             priority_minimum_games=priority_minimum_games,
+            diverse_minimum_games=diverse_minimum_games,
             priority_group=str(priority_group),
         )
     # Portable baseline identity hashing walks each installed source tree.
@@ -9894,6 +10909,10 @@ def _build_collect_jobs(
             "training_eligible": True,
             "archetype": arch,
             "collect_privileged_belief": True,
+            # GPU-leaf workers intentionally have model=None and therefore
+            # cannot infer successor capabilities from a local checkpoint.
+            # Bind the receipt-selected ledger route into the immutable job.
+            "own_deck_ledger_enabled": bool(own_deck_ledger_enabled),
         }
         if ladder_mix is not None:
             common["deck_mix"] = {
@@ -10572,6 +11591,7 @@ def _dataset_from_replay_window(
     it: int,
     *,
     initial_replay_shards: Optional[list[Path]] = None,
+    tactical_overlay_dir: Optional[Path] = None,
 ) -> Any:
     """Fresh-data bias (Spinning Up on-policy theme): short window only.
 
@@ -10608,6 +11628,14 @@ def _dataset_from_replay_window(
             verify_info_set=False,
             max_context=pure_rl_model_config().max_context,
         )
+        if tactical_overlay_dir is not None:
+            overlay = Path(tactical_overlay_dir) / f"iter_{j:05d}.json"
+            if overlay.is_file():
+                from poke_bot.tactical_sequence_materialization import (
+                    attach_tactical_target_overlay,
+                )
+
+                attach_tactical_target_overlay(ds.sequences, overlay)
         seqs.extend(list(ds.sequences))
     return BootstrapDataset(sequences=seqs)
 
@@ -10740,6 +11768,7 @@ def _consume_results(
     practice_written_indices: Optional[set[int]] = None,
     replacement_spool: Optional[Path] = None,
     retained_job_indices: Optional[set[int]] = None,
+    collection_job_contracts: Optional[Mapping[int, Mapping[str, Any]]] = None,
 ) -> None:
     """``live_wr_gate=(target_wr, min_games)`` streams a running WR onto the
     bar as heldout games land (official baselines only) — passed only from
@@ -10822,6 +11851,20 @@ def _consume_results(
                 ),
                 "heldout_contract_invalid": heldout_contract_invalid,
             }
+        if collection_job_contracts is not None:
+            try:
+                collection_job_index = int(res.get("job_index"))
+            except (TypeError, ValueError):
+                collection_job_index = -1
+            collection_contract = dict(
+                collection_job_contracts.get(collection_job_index) or {}
+            )
+            if not collection_contract:
+                raise RuntimeError(
+                    "canonical collection result lacks its immutable job contract: "
+                    f"job_index={collection_job_index}"
+                )
+            runtime_audit_row.update(collection_contract)
         canonical_collection = retained_job_indices is not None
         # Evaluation rows describe every attempted evaluation game.  Training
         # rows instead describe only records retained in the canonical shard;
@@ -11750,6 +12793,136 @@ def _exclude_protected_baseline_aliases(
     return [spec for spec in candidates if str(spec.id) not in alias_ids], aliases
 
 
+def _rehydrate_partial_collection_resume(
+    *,
+    shard_path: Path,
+    sidecar: dict[str, Any],
+    self_play_jobs: list[dict[str, Any]],
+    baseline_jobs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Reconstruct source-game audit rows from every sealed trajectory row."""
+    jobs = {
+        int(job.get("job_index", -1)): job
+        for job in [*self_play_jobs, *baseline_jobs]
+    }
+    if -1 in jobs or len(jobs) != len(self_play_jobs) + len(baseline_jobs):
+        raise RuntimeError("partial collection resume job schedule is not unique")
+    retained_expected = {int(value) for value in sidecar["retained_job_indices"]}
+    self_play_job_indices = {
+        int(job.get("job_index", -1)) for job in self_play_jobs
+    }
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    episode_ids: set[str] = set()
+    records = 0
+    decisions = 0
+    with Path(shard_path).open("r", encoding="utf-8") as handle:
+        for line in handle:
+            obj = json.loads(line)
+            episode_id = str(obj.get("episode_id") or "")
+            provenance = dict(obj.get("target_provenance") or {})
+            job_index = int(provenance.get("collection_job_index", -1))
+            decision_rows = obj.get("decisions")
+            if (
+                not episode_id
+                or episode_id in episode_ids
+                or job_index not in jobs
+                or not isinstance(decision_rows, list)
+                or not decision_rows
+                or str(provenance.get("behavior_checkpoint_digest") or "")
+                != str(sidecar["behavior_checkpoint_digest"])
+            ):
+                raise RuntimeError(
+                    "partial collection resume shard provenance is invalid: "
+                    f"episode={episode_id!r} job_index={job_index}"
+                )
+            episode_ids.add(episode_id)
+            grouped.setdefault(job_index, []).append(obj)
+            records += 1
+            decisions += len(decision_rows)
+    if (
+        set(grouped) != retained_expected
+        or records != int(sidecar["trajectory_records"])
+        or decisions != int(sidecar["decisions"])
+    ):
+        raise RuntimeError("partial collection resume counters changed after sealing")
+
+    rows: list[dict[str, Any]] = []
+    for job_index in sorted(grouped):
+        job = jobs[job_index]
+        job_provenance = dict(job.get("target_provenance") or {})
+        job_spec = dict(job.get("spec") or {})
+        trajectory_rows = grouped[job_index]
+        self_play = job_index in self_play_job_indices
+        # Mirror jobs only collect both trajectories when both seats use the
+        # exact same checkpoint.  Learner-vs-prior self-play intentionally
+        # records the learner's assigned seat only; seat balance is provided
+        # by the alternating job schedule.  Treating every self-play job as a
+        # two-row source game made valid partial shards impossible to resume.
+        collect_both = bool(self_play and job.get("collect_both_seats", False))
+        expected_records = 2 if collect_both else 1
+        if len(trajectory_rows) != expected_records:
+            raise RuntimeError(
+                "partial collection resume source-game trajectory cardinality changed: "
+                f"job={job_index} got={len(trajectory_rows)} expected={expected_records}"
+            )
+        assigned_seat = int(job.get("our_seat", -1))
+        by_seat = {int(row.get("seat", -1)): row for row in trajectory_rows}
+        if assigned_seat not in by_seat or (
+            collect_both and set(by_seat) != {0, 1}
+        ):
+            raise RuntimeError(
+                f"partial collection resume seat provenance changed: job={job_index}"
+            )
+        acting = dict(by_seat[assigned_seat].get("target_provenance") or {})
+        opponent = (
+            dict(by_seat[1 - assigned_seat].get("target_provenance") or {})
+            if collect_both
+            else {}
+        )
+        rows.append(
+            {
+                "job_index": job_index,
+                "our_seat": assigned_seat,
+                "archetype": str(job.get("archetype") or ""),
+                "opponent_id": str(job.get("opponent_id") or ""),
+                "opponent_content_digest": str(
+                    job_provenance.get("opponent_content_digest")
+                    or job.get("opponent_content_digest")
+                    or job_spec.get("content_digest")
+                    or ""
+                ),
+                "opponent_training_group": str(
+                    job_provenance.get("opponent_training_group")
+                    or job.get("opponent_training_group")
+                    or ""
+                ),
+                "formal_eval": (
+                    job_provenance.get("formal_eval")
+                    if "formal_eval" in job_provenance
+                    else job.get("formal_eval")
+                ),
+                "training_eligible": bool(
+                    job_provenance.get(
+                        "training_eligible", job.get("training_eligible", False)
+                    )
+                ),
+                "self_play": self_play,
+                "invalid": False,
+                "policy_terminal_failure": bool(acting.get("terminal_policy_failure")),
+                "matchup_runtime_audit": acting.get("matchup_runtime_audit"),
+                "opponent_matchup_runtime_audit": opponent.get(
+                    "matchup_runtime_audit"
+                ),
+            }
+        )
+    return {
+        "rows": rows,
+        "trajectory_records": records,
+        "decisions": decisions,
+        "retained_job_indices": retained_expected,
+    }
+
+
 def _collect_wave(
     *,
     self_play_jobs: list[dict[str, Any]],
@@ -11911,9 +13084,66 @@ def _collect_wave(
         shard_path.suffix + ".replacement-capacity.jsonl"
     )
     replacement_spool.unlink(missing_ok=True)
+    partial_resume = _verified_partial_collection_resume(
+        shard_path, iteration=int(iteration)
+    )
+    dispatch_self_play_jobs = list(self_play_jobs)
+    dispatch_baseline_jobs = list(baseline_jobs)
+    if partial_resume is not None:
+        restored = _rehydrate_partial_collection_resume(
+            shard_path=shard_path,
+            sidecar=partial_resume,
+            self_play_jobs=self_play_jobs,
+            baseline_jobs=baseline_jobs,
+        )
+        retained = set(restored["retained_job_indices"])
+        retained_self_play_indices.update(primary_self_play_indices & retained)
+        retained_public_indices.update(
+            {int(job.get("job_index", -1)) for job in baseline_jobs} & retained
+        )
+        rows.extend(restored["rows"])
+        writer._n_games = int(restored["trajectory_records"])
+        writer._n_decisions = int(restored["decisions"])
+        writer._t0 = time.time() - max(
+            float(partial_resume.get("elapsed_sec") or 1.0), 1.0
+        )
+        stats["ok"] = len(retained)
+        stats["with_record"] = len(retained)
+        stats["self_play"] = len(retained_self_play_indices)
+        stats["trajectories_written"] = int(restored["trajectory_records"])
+        stats["partial_collection_resume"] = {
+            "schema": _PARTIAL_COLLECTION_RESUME_SCHEMA,
+            "sidecar": str(partial_resume["sidecar_path"]),
+            "sidecar_sha256": _sha256_file(Path(partial_resume["sidecar_path"])),
+            "retained_source_games": len(retained),
+            "missing_source_games": len(partial_resume["missing_job_indices"]),
+            "original_shard_sha256": str(partial_resume["shard_sha256"]),
+        }
+        dispatch_self_play_jobs = [
+            job
+            for job in self_play_jobs
+            if int(job.get("job_index", -1)) not in retained
+        ]
+        dispatch_baseline_jobs = [
+            job
+            for job in baseline_jobs
+            if int(job.get("job_index", -1)) not in retained
+        ]
+        for job_index in practice_record_contracts:
+            if int(job_index) in retained_public_indices:
+                practice_seen_indices.add(int(job_index))
+                practice_successful_indices.add(int(job_index))
+                practice_written_indices.add(int(job_index))
+        print(
+            "[pure_rl] partial collection resume verified "
+            f"retained={len(retained)} "
+            f"missing={len(partial_resume['missing_job_indices'])} "
+            f"records={writer.n_games} decisions={writer.n_decisions}",
+            flush=True,
+        )
     if not self_play_jobs and not baseline_jobs:
         return writer, rows, stats
-    if replay_eligible:
+    if replay_eligible and partial_resume is None:
         replay_cache = StreamingReplayCache.maybe_start(
             shard_path,
             verify_info_set=False,
@@ -12132,11 +13362,11 @@ def _collect_wave(
         )
 
     # Primary: pure self-play — local MultiEnv + additive remote self_play sockets.
-    if self_play_jobs:
+    if dispatch_self_play_jobs:
         progress = _TqdmProgress(
             stage="collect:self_play",
             iteration=int(iteration),
-            total=len(self_play_jobs),
+            total=len(dispatch_self_play_jobs),
             remotes=remotes,
         )
         try:
@@ -12149,7 +13379,7 @@ def _collect_wave(
                     results_iter = _additive_iter(
                         pool=pool,
                         local_fn=worker_self_play,
-                        jobs=self_play_jobs,
+                        jobs=dispatch_self_play_jobs,
                         kind="self_play",
                         baseline_workers=local_workers,
                         progress=progress,
@@ -12157,14 +13387,14 @@ def _collect_wave(
                 elif use_multi_env_batches:
                     batches = [
                         {"jobs": chunk}
-                        for chunk in chunk_jobs(self_play_jobs, multi_n)
+                        for chunk in chunk_jobs(dispatch_self_play_jobs, multi_n)
                     ]
                     results_iter = _flatten_batch_results(
                         pool.imap_unordered(worker_self_play_multi, batches)
                     )
                 else:
                     results_iter = pool.imap_unordered(
-                        worker_self_play, self_play_jobs
+                        worker_self_play, dispatch_self_play_jobs
                     )
                 _consume_results(
                     results_iter,
@@ -12337,6 +13567,19 @@ def _collect_wave(
     ) -> None:
         if not jobs:
             return
+        collection_job_contracts = {}
+        for job in jobs:
+            provenance = dict(job.get("target_provenance") or {})
+            collection_job_contracts[int(job.get("job_index", -1))] = {
+                "opponent_content_digest": str(
+                    provenance.get("opponent_content_digest") or ""
+                ),
+                "opponent_training_group": str(
+                    provenance.get("opponent_training_group") or ""
+                ),
+                "formal_eval": provenance.get("formal_eval"),
+                "training_eligible": job.get("training_eligible") is True,
+            }
         progress = _TqdmProgress(
             stage=stage,
             iteration=int(iteration),
@@ -12376,12 +13619,13 @@ def _collect_wave(
                     retained_job_indices=(
                         retained_public_indices if replay_eligible else None
                     ),
+                    collection_job_contracts=collection_job_contracts,
                 )
         finally:
             progress.close()
 
     _run_baseline_phase(
-        baseline_jobs,
+        dispatch_baseline_jobs,
         stage=stage_label or "collect:public_mix",
         phase_live_wr_gate=live_wr_gate,
     )
@@ -12522,7 +13766,7 @@ def _collect_wave(
     ).strip().lower() in ("1", "true", "yes", "on") or str(
         os.environ.get("POKEBOT_REMOTE_NO_LOCAL_FALLBACK", "0")
     ).strip().lower() in ("1", "true", "yes", "on")
-    if self_play_jobs and use_remotes:
+    if dispatch_self_play_jobs and use_remotes:
         expected_endpoints = sorted(
             {str(client.endpoint) for client in remote_farm.clients}
         )
@@ -13061,6 +14305,7 @@ def _heldout_eval(
     gate_wr: float = 0.70,
     opponent_ids: Optional[tuple[str, ...]] = None,
     stage_label: str = "heldout",
+    owner_deferred: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Greedy gate against official bots on a disjoint, balanced seed schedule.
 
@@ -13070,6 +14315,21 @@ def _heldout_eval(
     Specialist target training may use the same public opponent policies, but
     never these greedy jobs or their seed range.
     """
+    if owner_deferred:
+        return [], {
+            "passed": False,
+            "owner_deferred": True,
+            "reason": "owner_r284_moved_update_0_holdout_to_iteration_1",
+            "requested_games": int(n_games),
+            "rows": 0,
+            "valid_games": 0,
+            "checkpoint_digest": str(digest),
+            "greedy_required": True,
+            "per_opponent": {},
+            "exact_distribution": False,
+            "exact_weights": False,
+            "partial_results_gate_eligible": False,
+        }
     _self_jobs, base_jobs = _build_collect_jobs(
         n_games=n_games,
         ckpt=ckpt,
@@ -13447,8 +14707,92 @@ def _promotion_eval(
                 "timeout_s": int(game_timeout_s),
             }
         )
-    with WorkerPool(num_workers=max(1, min(int(n_workers), n_games))) as pool:
-        rows = list(pool.imap_unordered(remote_promotion_job, jobs))
+    def _job_identity(row: dict[str, Any]) -> tuple[int, int, int]:
+        """Identity of one exact promotion game across transport retries."""
+
+        return (
+            int(row["seed"]),
+            int(row["candidate_seat"]),
+            int(row["cluster_id"]),
+        )
+
+    def _run_wave(
+        wave: list[dict[str, Any]], *, worker_cap: int
+    ) -> list[dict[str, Any]]:
+        with WorkerPool(
+            num_workers=max(1, min(int(worker_cap), len(wave)))
+        ) as pool:
+            return list(pool.imap_unordered(remote_promotion_job, wave))
+
+    rows = _run_wave(jobs, worker_cap=int(n_workers))
+    jobs_by_identity = {_job_identity(job): job for job in jobs}
+    rows_by_identity = {_job_identity(row): row for row in rows}
+    retry_audit: list[dict[str, Any]] = []
+
+    # A promotion game is an evaluation identity, not a particular worker
+    # process attempt.  Retry only failed exact identities, with the same seed,
+    # deck, seats, checkpoints, and cluster.  The smaller recovery wave avoids
+    # turning transient process/model-load pressure into a learner rollback;
+    # valid results are never replayed or replaced.  Two bounded waves still
+    # fail closed if the exact game cannot execute successfully.
+    for retry_index in range(1, 3):
+        invalid_identities = [
+            identity
+            for identity, row in rows_by_identity.items()
+            if not row.get("valid", True)
+        ]
+        missing_identities = [
+            identity
+            for identity in jobs_by_identity
+            if identity not in rows_by_identity
+        ]
+        retry_identities = sorted(
+            set(invalid_identities) | set(missing_identities)
+        )
+        if not retry_identities:
+            break
+        retry_jobs = [jobs_by_identity[identity] for identity in retry_identities]
+        retry_workers = max(1, min(8, int(n_workers), len(retry_jobs)))
+        prior_errors = {
+            str(identity): str(
+                rows_by_identity.get(identity, {}).get("error")
+                or "missing worker result"
+            )
+            for identity in retry_identities
+        }
+        retry_rows = _run_wave(retry_jobs, worker_cap=retry_workers)
+        retry_rows_by_identity = {
+            _job_identity(row): row for row in retry_rows
+        }
+        for identity in retry_identities:
+            replacement = retry_rows_by_identity.get(identity)
+            if replacement is None:
+                original = jobs_by_identity[identity]
+                replacement = {
+                    "seed": int(original["seed"]),
+                    "candidate_seat": int(original["candidate_seat"]),
+                    "cluster_id": int(original["cluster_id"]),
+                    "valid": False,
+                    "winner": 2,
+                    "error": "promotion recovery wave returned no result",
+                }
+            rows_by_identity[identity] = replacement
+        remaining_invalid = sum(
+            not rows_by_identity[identity].get("valid", True)
+            for identity in retry_identities
+        )
+        retry_audit.append(
+            {
+                "retry_wave": retry_index,
+                "exact_games_retried": len(retry_identities),
+                "worker_cap": retry_workers,
+                "prior_errors": prior_errors,
+                "recovered_games": len(retry_identities) - remaining_invalid,
+                "remaining_invalid_games": remaining_invalid,
+            }
+        )
+
+    rows = [rows_by_identity[_job_identity(job)] for job in jobs]
     report = evaluate_candidate_gate(rows, cfg)
     report.update(
         {
@@ -13456,6 +14800,13 @@ def _promotion_eval(
             "incumbent": incumbent.as_dict(),
             "deck_schedule": "paired_same_deck_both_candidate_seats",
             "search": False,
+            "transport_recovery": {
+                "schema": "poke_bot.promotion_exact_game_transport_recovery/v1",
+                "same_seed_deck_seat_checkpoint_and_cluster_required": True,
+                "valid_games_retried": 0,
+                "maximum_retry_waves": 2,
+                "waves": retry_audit,
+            },
         }
     )
     return report, rows
@@ -13901,6 +15252,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
     """Real CABT collect → AWR → held-out loop with optional remote farms."""
     import torch
     from poke_bot.baselines_runtime import (
+        BaselineSpec,
         baseline_content_digest,
         ensure_baselines_installed,
         filter_loadable_baselines,
@@ -13922,6 +15274,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
     from poke_bot.remote_jobs import RemoteWorkerFarm
 
     fixed_cycle_updates = _validate_fixed_cycle_configuration(args)
+    r274_r195_research_contract = (
+        _load_r274_r195_research_baseline_contract(args)
+        if fixed_cycle_updates == R274_FIXED_CYCLE_UPDATES
+        else {}
+    )
     r241_peak_r195_training_contract = (
         _load_r241_peak_r195_training_contract(args)
         if fixed_cycle_updates
@@ -13932,6 +15289,35 @@ def run_full_loop(args: argparse.Namespace) -> int:
         if fixed_cycle_updates
         else {}
     )
+    if r260_own_deck_training_inputs.get("r274_bootstrap_handoff"):
+        activated = dict(
+            r260_own_deck_training_inputs["r274_bootstrap_handoff"].get(
+                "activated_checkpoint"
+            )
+            or {}
+        )
+        os.environ["POKEBOT_COMBO_STATE_ROUTE_ENABLED"] = (
+            "0" if args.r284_iteration_boundary_receipt is not None else "1"
+        )
+        os.environ["POKEBOT_COMBO_STATE_ROUTE_SPECIALIST"] = "alakazam"
+        os.environ["POKEBOT_COMBO_STATE_ROUTE_CHECKPOINT_DIGEST"] = str(
+            activated.get("sha256") or activated.get("digest") or ""
+        )
+    disable_rl_tactical_cotrain = os.environ.get(
+        "POKEBOT_R274_DISABLE_RL_TACTICAL_COTRAIN", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if disable_rl_tactical_cotrain and not r260_own_deck_training_inputs:
+        raise RuntimeError(
+            "RL tactical cotrain override is valid only for the r274 own-deck successor"
+        )
+    # The peak-r195 receipt remains mandatory ancestry evidence for the fixed
+    # cycle, but its serialized profile validator describes the pre-successor
+    # architecture.  Once the independently validated r260/r274 handoff is
+    # present, applying that legacy profile to descendant checkpoints would
+    # incorrectly reject the OwnDeck/tactical architecture and its active
+    # routes.  The successor evidence above owns runtime-profile validation.
+    if r260_own_deck_training_inputs:
+        r241_peak_r195_training_contract = {}
     if int(args.expert_rehearsal_every) < 0:
         raise ValueError("--expert-rehearsal-every cannot be negative")
     if int(args.expert_rehearsal_force_before) < -1:
@@ -13974,6 +15360,8 @@ def run_full_loop(args: argparse.Namespace) -> int:
         raise ValueError("--expert-rehearsal-lr must be positive")
     if int(args.expert_rehearsal_batch_size) <= 0:
         raise ValueError("--expert-rehearsal-batch-size must be positive")
+    if int(args.expert_manifest_workers) <= 0:
+        raise ValueError("--expert-manifest-workers must be positive")
     if int(args.expert_min_decisions) <= 0:
         raise ValueError("--expert-min-decisions must be positive")
     expert_required_targets = tuple(
@@ -14050,6 +15438,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
     active_gate_contract: Optional[dict[str, Any]] = None
     active_gate_contract_identity: Optional[dict[str, Any]] = None
     active_gate: Optional[dict[str, Any]] = None
+    formal_gate_contract: Optional[dict[str, Any]] = None
+    formal_gate_contract_identity: Optional[dict[str, Any]] = None
+    formal_gate: Optional[dict[str, Any]] = None
     frozen_specialist_registry_path = (
         Path(args.frozen_specialist_registry).expanduser().resolve()
     )
@@ -14122,6 +15513,75 @@ def run_full_loop(args: argparse.Namespace) -> int:
             "stage=heldout:strong_public_gate",
             flush=True,
         )
+    r284_boundary_receipt: dict[str, Any] = {}
+    formal_gate_contract = active_gate_contract
+    formal_gate_contract_identity = active_gate_contract_identity
+    formal_gate = active_gate
+    if args.formal_holdout_contract is not None:
+        formal_gate_path = Path(args.formal_holdout_contract).expanduser().resolve()
+        formal_gate_contract = load_active_gate_contract(formal_gate_path)
+        if (
+            formal_gate_contract.get("owner_decision_revision") != 284
+            or formal_gate_contract.get("owner_restricted_formal_only_roster")
+            is not True
+            or formal_gate_contract.get(
+                "frozen_specialist_registry_augmentation_allowed"
+            )
+            is not False
+        ):
+            raise RuntimeError("formal holdout override is not the exact r284 contract")
+        formal_gate_contract_identity = _path_content_identity(formal_gate_path)
+        formal_gate = dict(formal_gate_contract["next_gate"])
+        formal_roster = list(formal_gate.get("roster") or [])
+        formal_ids = tuple(str(row.get("opponent_id") or "") for row in formal_roster)
+        if formal_ids != (
+            "alakazam-r195-no-rtp-submission-55378392",
+            "specialist-marnie-final-format-h10-f20efb20f5c3",
+        ):
+            raise RuntimeError("r284 formal holdout roster identity changed")
+        args.heldout_games = int(formal_gate["evaluation"]["games_total"])
+        args.gate_wr = float(formal_gate["pass_criteria"]["skill_weighted_win_rate"])
+        args.heldout_per_opponent_floor = float(
+            formal_gate["pass_criteria"].get("individual_opponent_floor", 0.0)
+        )
+        print(
+            "[pure_rl] FORMAL_HOLDOUT_OVERRIDE "
+            f"id={formal_gate['id']} opponents={len(formal_roster)} "
+            f"games={args.heldout_games} first_iteration=1",
+            flush=True,
+        )
+        if args.r284_iteration_boundary_receipt is None:
+            raise RuntimeError("r284 formal holdout requires its boundary receipt")
+        r284_receipt_path = (
+            Path(args.r284_iteration_boundary_receipt).expanduser().resolve()
+        )
+        r284_boundary_receipt = json.loads(
+            r284_receipt_path.read_text(encoding="utf-8")
+        )
+        if (
+            r284_boundary_receipt.get("schema")
+            != "poke_bot.alakazam_r274_iteration_1_boundary_r284/v1"
+            or r284_boundary_receipt.get("owner_revision") != 284
+            or r284_boundary_receipt.get("status") != "authorized"
+            or r284_boundary_receipt.get("run_name")
+            != "alakazam_new_list_direct_policy_r274"
+            or r284_boundary_receipt.get("defer_formal_holdout_through_iteration")
+            != 0
+            or r284_boundary_receipt.get("first_formal_holdout_iteration") != 1
+            or float(r284_boundary_receipt.get("combo_state_loss_weight", -1.0))
+            != 0.0
+            or r284_boundary_receipt.get("combo_state_route_enabled") is not False
+            or r284_boundary_receipt.get("combo_state_tensors_preserved") is not True
+            or r284_boundary_receipt.get("formal_holdout_contract_sha256")
+            != _sha256_file(formal_gate_path)
+            or r284_boundary_receipt.get("candidate_checkpoint_sha256")
+            != "sha256:645f8e6a0bc5e0cb98695e5a65151f38eef2e5011ca63f3ea4eded42cf4a11a2"
+            or int(r284_boundary_receipt.get("partial_broad_holdout_games", -1))
+            != 2142
+            or r284_boundary_receipt.get("partial_broad_holdout_gate_eligible")
+            is not False
+        ):
+            raise RuntimeError("r284 iteration boundary receipt is invalid")
     if int(args.heldout_games) <= 0:
         raise ValueError("heldout game count must be positive")
     seed_namespace_contract = _assert_seed_namespace_contract(
@@ -14213,8 +15673,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
             smoke=False,
             allow_legacy_inference_profile=True,
             r241_peak_r195_training_contract=(
-                r241_peak_r195_training_contract
+                {} if r260_own_deck_training_inputs else r241_peak_r195_training_contract
             ),
+            r274_successor_training_contract=r260_own_deck_training_inputs,
         )
         print(
             f"[pure_rl] RESUME next_iteration={start_iteration} "
@@ -14236,17 +15697,23 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 "refusing destructive/inferred resume — use a new run name"
             )
         seed_path = (
-            Path(args.base_checkpoint).expanduser().resolve()
-            if args.base_checkpoint is not None
-            else (run_dir / "checkpoints" / "seed.pt")
+            Path(args.initial_learner_checkpoint).expanduser().resolve()
+            if r260_own_deck_training_inputs
+            and args.initial_learner_checkpoint is not None
+            else (
+                Path(args.base_checkpoint).expanduser().resolve()
+                if args.base_checkpoint is not None
+                else (run_dir / "checkpoints" / "seed.pt")
+            )
         )
         ckpt = _ensure_pure_rl_checkpoint(
             seed_path,
             args.seed,
             smoke=False,
             r241_peak_r195_training_contract=(
-                r241_peak_r195_training_contract
+                {} if r260_own_deck_training_inputs else r241_peak_r195_training_contract
             ),
+            r274_successor_training_contract=r260_own_deck_training_inputs,
         )
         start_iteration = 0
 
@@ -14286,8 +15753,59 @@ def run_full_loop(args: argparse.Namespace) -> int:
 
     ensure_baselines_installed()
     manifest_baselines = load_manifest()
+    # Validate the checksum-bound data-only H10 package before importing any
+    # historical baseline entry point that may transiently touch CG_LIB_PATH.
+    manifest_baselines.sort(
+        key=lambda spec: 0 if spec.id == "specialist-marnie-final-format-h10-f20efb20f5c3" else 1
+    )
+    if r274_r195_research_contract:
+        installed_path = Path(
+            str(r274_r195_research_contract.get("installed_path") or "")
+        ).expanduser().resolve()
+        manifest_r195 = [
+            spec
+            for spec in manifest_baselines
+            if spec.id == R274_R195_RESEARCH_OPPONENT_ID
+        ]
+        if len(manifest_r195) > 1:
+            raise RuntimeError("submission-55378392 appears more than once in manifest")
+        if manifest_r195:
+            if manifest_r195[0].path.resolve() != installed_path:
+                raise RuntimeError(
+                    "submission-55378392 manifest path disagrees with install receipt"
+                )
+        else:
+            manifest_baselines.append(
+                BaselineSpec(
+                    id=R274_R195_RESEARCH_OPPONENT_ID,
+                    name="Alakazam r195 NO-RTP submission 55378392",
+                    dir_name=installed_path.name,
+                    group="specialists",
+                    source="receipt-bound exact Kaggle submission 55378392",
+                    path=installed_path,
+                )
+            )
     loadable, _failed_baselines = filter_loadable_baselines(manifest_baselines)
     by_id = {s.id: s for s in loadable}
+    r274_r195_research_spec = None
+    if r274_r195_research_contract:
+        r274_r195_research_spec = by_id.get(R274_R195_RESEARCH_OPPONENT_ID)
+        if r274_r195_research_spec is None:
+            raise RuntimeError(
+                "exact submission-55378392 research baseline is unavailable"
+            )
+        installed_path = Path(
+            str(r274_r195_research_contract.get("installed_path") or "")
+        ).expanduser().resolve()
+        installed_digest = baseline_content_digest(r274_r195_research_spec.path)
+        if (
+            r274_r195_research_spec.path.resolve() != installed_path
+            or installed_digest
+            != str(r274_r195_research_contract["installed_content_sha256"])
+        ):
+            raise RuntimeError(
+                "submission-55378392 research baseline bytes changed"
+            )
     frozen_specialist_ids = tuple(
         str(row["opponent_id"])
         for row in frozen_specialist_registry.get("specialists") or []
@@ -14336,20 +15854,28 @@ def run_full_loop(args: argparse.Namespace) -> int:
         )
     if active_gate is None or active_gate_contract is None:
         raise RuntimeError("full-loop active gate contract was not initialized")
-    active_gate_ids = tuple(
+    practice_gate_ids = tuple(
         str(row["opponent_id"]) for row in active_gate["roster"]
     )
+    if formal_gate is None or formal_gate_contract is None:
+        raise RuntimeError("full-loop formal holdout contract was not initialized")
+    active_gate_ids = tuple(
+        str(row["opponent_id"]) for row in formal_gate["roster"]
+    )
     missing = [
-        opponent_id for opponent_id in active_gate_ids if opponent_id not in by_id
+        opponent_id
+        for opponent_id in set(practice_gate_ids) | set(active_gate_ids)
+        if opponent_id not in by_id
     ]
     if missing:
         raise RuntimeError(f"active gate packages are unavailable: {missing}")
     heldout_specs = [by_id[opponent_id] for opponent_id in active_gate_ids]
+    practice_specs = [by_id[opponent_id] for opponent_id in practice_gate_ids]
     installed_gate_digests = {
         spec.id: baseline_content_digest(spec.path) for spec in heldout_specs
     }
     verify_roster_content(
-        active_gate,
+        formal_gate,
         installed_gate_digests,
     )
     active_gate_content_digests = set(installed_gate_digests.values())
@@ -14369,25 +15895,24 @@ def run_full_loop(args: argparse.Namespace) -> int:
     research_control_registry_output = (
         paths.OUTPUTS_DIR / "state" / "research_control_registry_latest.json"
     )
-    if active_gate_contract is not None and active_gate is not None:
-        raw_prior_pointer = str(active_gate.get("exact_result_pointer") or "").strip()
+    if formal_gate_contract is not None and formal_gate is not None:
+        raw_prior_pointer = str(formal_gate.get("exact_result_pointer") or "").strip()
         if not raw_prior_pointer:
             raise RuntimeError("active gate has no exact_result_pointer")
         published = _publish_committed_active_gate_result(
             run_dir=run_dir,
-            active_gate=active_gate,
+            active_gate=formal_gate,
             result_pointer=Path(raw_prior_pointer),
         )
         if published is not None:
             published_result, published_commit = published
             _reconcile_passed_gate_research_controls(
                 registry_path=research_control_path,
-                gate_contract=active_gate_contract,
+                gate_contract=formal_gate_contract,
                 exact_result_path=published_result,
                 commit_path=published_commit,
                 output_path=research_control_registry_output,
             )
-    practice_specs = list(heldout_specs)
     if (
         args.mode == "specialist"
         and frozen_specialist_ids
@@ -14436,13 +15961,29 @@ def run_full_loop(args: argparse.Namespace) -> int:
         excluded_gate_digest_aliases: list[str] = []
         excluded_research_digest_aliases: list[str] = []
     else:
-        heldout_ids = set(research_ids) | set(active_gate_ids)
+        # The exact frozen r195 submission deliberately has two roles in r274:
+        # a seed-disjoint formal holdout opponent and a >=128-game training
+        # research cell.  Keep every other protected opponent out of collection,
+        # while allowing that one receipt-bound identity into the public mix.
+        formal_training_exceptions = (
+            {R274_R195_RESEARCH_OPPONENT_ID}
+            if r274_r195_research_contract
+            else set()
+        )
+        heldout_ids = (
+            set(research_ids) | set(active_gate_ids) | set(practice_gate_ids)
+        ) - formal_training_exceptions
         collect_candidates = [
             spec for spec in loadable if spec.id not in heldout_ids
         ]
+        training_protected_gate_digests = {
+            digest
+            for opponent_id, digest in installed_gate_digests.items()
+            if opponent_id not in formal_training_exceptions
+        }
         protected_training_digests = (
             set(installed_research_digests.values())
-            | set(active_gate_content_digests)
+            | training_protected_gate_digests
         )
         collect_content_digests = {
             spec.id: baseline_content_digest(spec.path)
@@ -14452,7 +15993,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
             spec.id
             for spec in collect_candidates
             if collect_content_digests.get(spec.id)
-            in active_gate_content_digests
+            in training_protected_gate_digests
         )
         excluded_research_digest_aliases = sorted(
             spec.id
@@ -14491,6 +16032,21 @@ def run_full_loop(args: argparse.Namespace) -> int:
         raise RuntimeError(
             "no training opponents remain after excluding the formal held-out set"
         )
+    r274_diverse_minimum_games: Optional[dict[str, int]] = None
+    if r274_r195_research_contract:
+        collect_ids = {str(spec.id) for spec in collect_specs}
+        if R274_R195_RESEARCH_OPPONENT_ID not in collect_ids:
+            raise RuntimeError(
+                "submission-55378392 research opponent is absent from diverse public replay"
+            )
+        r274_diverse_minimum_games = {
+            opponent_id: (
+                R274_R195_RESEARCH_GAMES_MINIMUM
+                if opponent_id == R274_R195_RESEARCH_OPPONENT_ID
+                else 0
+            )
+            for opponent_id in collect_ids
+        }
     ladder_mix = None
     ladder_representatives = None
     ladder_contract: Optional[dict[str, Any]] = None
@@ -14567,7 +16123,10 @@ def run_full_loop(args: argparse.Namespace) -> int:
         ckpt,
         smoke=False,
         allow_legacy_inference_profile=resumed,
-        r241_peak_r195_training_contract=r241_peak_r195_training_contract,
+        r241_peak_r195_training_contract=(
+            {} if r260_own_deck_training_inputs else r241_peak_r195_training_contract
+        ),
+        r274_successor_training_contract=r260_own_deck_training_inputs,
     )
     initial_replay_shards = [
         Path(path).expanduser().resolve() for path in args.initial_replay_shard
@@ -14617,6 +16176,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
             r241_peak_r195_training_contract=(
                 {} if r260_own_deck_training_inputs else r241_peak_r195_training_contract
             ),
+            r274_successor_training_contract=r260_own_deck_training_inputs,
         )
         for field in (
             "model_profile",
@@ -14790,6 +16350,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     str(active_gate["id"]) if active_gate is not None else None
                 ),
                 "active_gate_contract": active_gate_contract_identity,
+                "formal_holdout_contract": formal_gate_contract_identity,
                 "heldout_opponents": list(active_gate_ids),
                 "our_decks": deck_names,
                 "n_decks": len(decks),
@@ -14866,6 +16427,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 args.allow_clean_boundary_design_migration
             ),
             migration_reason=_effective_boundary_design_migration_reason(args),
+            owner_r284_iteration1_boundary=bool(r284_boundary_receipt),
         )
 
     configured_terminal_marker_name = str(
@@ -15328,6 +16890,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 priority_frac=effective_practice_fraction,
                 priority_weights=official_target_weights,
                 priority_minimum_games=(practice_minimum_games or None),
+                diverse_minimum_games=r274_diverse_minimum_games,
                 priority_group=(
                     STRONG_PUBLIC_PRACTICE_GROUP
                     if active_gate is not None
@@ -15367,6 +16930,37 @@ def run_full_loop(args: argparse.Namespace) -> int:
             _assert_training_jobs_exclude_research_controls(
                 [*self_jobs, *base_jobs], research_control_registry
             )
+            r274_r195_research_plan: Optional[dict[str, Any]] = None
+            r274_r195_research_plan_path: Optional[Path] = None
+            if r274_r195_research_contract:
+                r274_r195_research_plan = _assert_r274_r195_research_jobs(
+                    base_jobs,
+                    expected_content_digest=str(
+                        r274_r195_research_contract["installed_content_sha256"]
+                    ),
+                    iteration=int(it),
+                )
+                r274_r195_research_plan["install_receipt"] = dict(
+                    r274_r195_research_contract["receipt"]
+                )
+                r274_r195_research_plan_path = (
+                    run_dir
+                    / "collection_plans"
+                    / f"r274-r195-55378392-iter-{it:05d}.json"
+                )
+                if r274_r195_research_plan_path.is_file():
+                    prior = json.loads(
+                        r274_r195_research_plan_path.read_text(encoding="utf-8")
+                    )
+                    if prior != r274_r195_research_plan:
+                        raise RuntimeError(
+                            "existing submission-55378392 research plan changed"
+                        )
+                else:
+                    _write_json_exclusive(
+                        r274_r195_research_plan_path,
+                        r274_r195_research_plan,
+                    )
             from collections import Counter
 
             public_groups = Counter(
@@ -15484,8 +17078,20 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 self_jobs = [*self_jobs, *refill_jobs]
             shard = run_dir / "shards" / f"iter_{it:05d}.jsonl"
             if shard.is_file():
-                raise RuntimeError(
-                    f"refusing to overwrite immutable collect shard: {shard}"
+                partial_resume = _verified_partial_collection_resume(
+                    shard, iteration=int(it)
+                )
+                if partial_resume is None or str(
+                    partial_resume.get("behavior_checkpoint_digest") or ""
+                ) != str(dig):
+                    raise RuntimeError(
+                        f"refusing to overwrite immutable collect shard: {shard}"
+                    )
+                print(
+                    "[pure_rl] append-only partial collection kick authorized "
+                    f"iter={it} retained={partial_resume['retained_source_games']} "
+                    f"missing={len(partial_resume['missing_job_indices'])}",
+                    flush=True,
                 )
             collect_started = time.time()
             _atomic_json(
@@ -15536,6 +17142,27 @@ def run_full_loop(args: argparse.Namespace) -> int:
             requested = int(args.games_per_iter)
             scheduled_attempts = len(self_jobs) + len(base_jobs)
             retained_jobs = int(stats.get("with_record", 0))
+            r274_r195_research_retained: Optional[dict[str, Any]] = None
+            if r274_r195_research_contract:
+                r274_r195_research_retained = _assert_r274_r195_research_jobs(
+                    rows,
+                    expected_content_digest=str(
+                        r274_r195_research_contract["installed_content_sha256"]
+                    ),
+                    iteration=int(it),
+                )
+                if (
+                    r274_r195_research_plan is None
+                    or int(r274_r195_research_retained["games"])
+                    != int(r274_r195_research_plan["games"])
+                    or int(r274_r195_research_retained["learner_first_games"])
+                    != int(r274_r195_research_plan["learner_first_games"])
+                    or int(r274_r195_research_retained["learner_second_games"])
+                    != int(r274_r195_research_plan["learner_second_games"])
+                ):
+                    raise RuntimeError(
+                        "retained submission-55378392 cell differs from its immutable schedule"
+                    )
             stats.update(
                 {
                     "requested_games": requested,
@@ -15553,6 +17180,16 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     "strong_public_practice_plan": (
                         str(practice_plan_path)
                         if practice_plan_path is not None
+                        else None
+                    ),
+                    "r274_submission_55378392_research_plan": (
+                        {
+                            **dict(r274_r195_research_plan or {}),
+                            "retained": r274_r195_research_retained,
+                            "path": str(r274_r195_research_plan_path),
+                            "sha256": _sha256_file(r274_r195_research_plan_path),
+                        }
+                        if r274_r195_research_plan_path is not None
                         else None
                     ),
                 }
@@ -15898,7 +17535,72 @@ def run_full_loop(args: argparse.Namespace) -> int:
                             "path": str(existing_seat_index.resolve()),
                             "sha256": _sha256_file(existing_seat_index),
                         }
-            if r260_own_deck_training_inputs:
+            if args.r280_contiguous_expert_pack is not None:
+                from poke_bot.r280_gpu_resident_refresh import (
+                    run_refresh as run_r280_gpu_resident_refresh,
+                    validate_refresh_receipt as validate_r280_refresh_receipt,
+                )
+
+                rehearsal_checkpoint, receipt_path = rehearsal_paths(run_dir, it)
+                pack_path = Path(args.r280_contiguous_expert_pack).expanduser().resolve()
+                pack_receipt_path = Path(
+                    args.r280_contiguous_expert_pack_receipt
+                ).expanduser().resolve()
+                if receipt_path.is_file():
+                    record = validate_r280_refresh_receipt(
+                        receipt_path,
+                        expected_parent_sha256=parent.digest,
+                        expected_pack_sha256=_sha256_file(pack_path),
+                        expected_before_iteration=int(it),
+                    )
+                else:
+                    record = run_r280_gpu_resident_refresh(
+                        pack_path=pack_path,
+                        pack_receipt_path=pack_receipt_path,
+                        parent_path=Path(parent.path),
+                        parent_digest=parent.digest,
+                        output_path=rehearsal_checkpoint,
+                        receipt_path=receipt_path,
+                        before_iteration=int(it),
+                        device_name=str(args.r280_refresh_device),
+                        requested_batch_size=int(args.expert_rehearsal_batch_size),
+                        learning_rate=float(args.expert_rehearsal_lr),
+                        seed=int(args.seed) + 5_100_000 + int(it),
+                        loss_weights={
+                            "archetype": float(args.archetype_aux_loss_weight),
+                            "opponent_hand": float(args.opp_hand_loss_weight),
+                            "opponent_hidden_remainder": float(
+                                args.opp_remainder_loss_weight
+                            ),
+                            "lethal_threat": float(
+                                args.lethal_threat_loss_weight
+                            ),
+                            "prize_race": float(args.prize_race_loss_weight),
+                            "setup_board_outcome": float(
+                                args.setup_board_outcome_loss_weight
+                            ),
+                            "combo_state": float(args.combo_state_loss_weight),
+                        },
+                        expanded_head_schedule=expanded_head_contract,
+                    )
+                prepared = _verified_checkpoint_identity(
+                    {
+                        "path": record["checkpoint"]["path"],
+                        "digest": record["checkpoint"]["sha256"],
+                    }
+                )
+                record = {
+                    **record,
+                    "checkpoint_identity": prepared.as_dict(),
+                    "reused": bool(receipt_path.is_file()),
+                }
+                print(
+                    "[pure_rl] r280 GPU-resident expert refresh committed "
+                    f"before_iter={it} checkpoint={prepared.digest[:19]}…",
+                    flush=True,
+                )
+                return prepared, record
+            if r260_own_deck_training_inputs and not disable_rl_tactical_cotrain:
                 # The successor never enters the resident corpus path: its
                 # Inzi-only index streams and exact-key attaches one bounded
                 # host batch at a time.
@@ -15942,6 +17644,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     amp=train_dev.type == "cuda", max_decisions_per_batch=int(args.expert_rehearsal_batch_size),
                     visible_tutor_completion_loss_weight=0.025,
                     terminal_conversion_loss_weight=0.025,
+                    tactical_sequence_outcome_loss_weight=0.025,
                     collect_own_deck_promotion_metrics=True,
                 )
                 result = streaming_r260_host_rehearsal_step(
@@ -15950,6 +17653,10 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     archetype_id=str(args.specialist_archetype), epochs=rehearsal_epochs,
                     cfg=stream_cfg, seed=corpus_split_seed, max_context=rehearsal_context,
                     batch_games=max(1, int(args.expert_rehearsal_batch_size) // 128),
+                    manifest_workers=int(args.expert_manifest_workers),
+                    tactical_overlay_path=r260_own_deck_training_inputs[
+                        "expert_tactical_overlay_identity"
+                    ]["path"],
                 )
                 record = {
                     "schema": "poke_bot.r260_scheduled_expert_rehearsal/v1",
@@ -15976,6 +17683,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     "inzi_dataset": dict(
                         r260_own_deck_training_inputs["inzi_dataset_identity"]
                     ),
+                    "expert_tactical_overlay": dict(
+                        r260_own_deck_training_inputs[
+                            "expert_tactical_overlay_identity"
+                        ]
+                    ),
                     "index_provenance": {
                         "schema": "poke_bot.r260_inzi_sidecar_index/v1",
                         "source_manifest_sha256": (
@@ -15992,6 +17704,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     "loss_weights": {
                         "visible_tutor_completion": 0.025,
                         "terminal_conversion": 0.025,
+                        "tactical_sequence_outcome": 0.025,
                     },
                     "rl_iteration_before_after": [
                         int(result["rl_iteration"]),
@@ -16001,6 +17714,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     "full_window_device_resident": False,
                     "sampled_keys": [list(key) for key in result["sampled_keys"]],
                     "gradient_reachability": result["gradient_reachability"],
+                    "tactical_exact_root_count": result[
+                        "tactical_exact_root_count"
+                    ],
                 }
                 record["receipt_sha256"] = _canonical_digest(record)
                 receipt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -16211,18 +17927,93 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 }
             return prepared, record
 
+        def _wait_for_r274_submission(
+            *,
+            boundary_update: int,
+            checkpoint_identity: Any,
+            rehearsal_receipt_path: Path,
+        ) -> Optional[dict[str, Any]]:
+            """Fence every r274 five-update block on its Kaggle upload receipt."""
+
+            if fixed_cycle_updates != R274_FIXED_CYCLE_UPDATES:
+                return None
+            boundary_root = Path(args.r274_submission_boundary_dir)
+            owner_contract_sha256 = str(
+                r260_own_deck_training_inputs.get("owner_contract_sha256") or ""
+            )
+            if int(boundary_update) == 1:
+                r304_contract = os.environ.get("POKEBOT_R304_OWNER_CONTRACT", "").strip()
+                if not r304_contract:
+                    raise RuntimeError(
+                        "revision-304 submission fence lacks its owner contract path"
+                    )
+                owner_contract_sha256 = _r241_file_identity(
+                    Path(r304_contract)
+                )["digest"]
+            if not re.fullmatch(r"sha256:[0-9a-f]{64}", owner_contract_sha256):
+                raise RuntimeError(
+                    "r274 submission fence lacks its canonical owner contract digest"
+                )
+            request_path, request = _materialize_r274_submission_request(
+                root=boundary_root,
+                boundary_update=boundary_update,
+                checkpoint_identity=checkpoint_identity.as_dict(),
+                rehearsal_receipt_identity=_r241_file_identity(
+                    rehearsal_receipt_path
+                ),
+                owner_contract_sha256=owner_contract_sha256,
+            )
+            _, upload_path = _r274_submission_boundary_paths(
+                boundary_root, boundary_update
+            )
+            print(
+                "[pure_rl] R274_SUBMISSION_FENCE_WAIT "
+                f"boundary={boundary_update} request={request_path} "
+                f"upload={upload_path}",
+                flush=True,
+            )
+            while not upload_path.is_file():
+                time.sleep(float(args.r274_submission_boundary_poll_seconds))
+            try:
+                upload = json.loads(upload_path.read_text(encoding="utf-8"))
+            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise RuntimeError(
+                    f"r274 submission upload receipt is unreadable: {upload_path}"
+                ) from exc
+            validated = _validate_r274_submission_upload(
+                upload=upload,
+                request=request,
+            )
+            result = {
+                "request": _r241_file_identity(request_path),
+                "upload": _r241_file_identity(upload_path),
+                "remote_submission_id": int(validated["remote_submission_id"]),
+            }
+            print(
+                "[pure_rl] R274_SUBMISSION_FENCE_PASSED "
+                f"boundary={boundary_update} "
+                f"remote_submission_id={result['remote_submission_id']}",
+                flush=True,
+            )
+            return result
+
         def _prepare_r241_precollection_refresh(
             it: int, parent: Any
         ) -> tuple[Any, dict[str, Any]]:
             """Commit/recover boundary 5 before any iter-5 game is dispatched."""
 
             if not _r241_precollection_refresh_due(
-                it, r241_peak_r195_training_contract
+                it, r241_peak_r195_training_contract, fixed_cycle_updates
             ):
                 raise RuntimeError(
-                    "r241 precollection refresh requested outside boundary 5"
+                    "fixed-cycle precollection refresh requested outside a "
+                    "nonterminal five-update boundary"
                 )
-            state_key = "r241_precollection_expert_refresh"
+            state_key = (
+                "r241_precollection_expert_refresh"
+                if int(it) == R241_FIXED_CYCLE_REHEARSAL_EVERY
+                else f"r274_precollection_expert_refresh_{int(it):05d}"
+            )
             boundary = dict(loop_state.get(state_key) or {})
             receipt_path = rehearsal_paths(run_dir, it)[1]
             leaves_stopped = False
@@ -16330,6 +18121,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     r241_peak_r195_training_contract
                 ),
             )
+            submission_upload = _wait_for_r274_submission(
+                boundary_update=it,
+                checkpoint_identity=refreshed,
+                rehearsal_receipt_path=receipt_path,
+            )
             if leaves_stopped:
                 _rebuild_leaves_if_needed(refreshed.path, refreshed.digest)
             publish = _hard_gate_publish_weights(
@@ -16345,6 +18141,8 @@ def run_full_loop(args: argparse.Namespace) -> int:
             published_boundary = dict(published_state.get(state_key) or boundary)
             published_boundary["runtime_publish"] = publish
             published_boundary["next_collection_started"] = False
+            if submission_upload is not None:
+                published_boundary["submission_upload"] = submission_upload
             published_state[state_key] = published_boundary
             _atomic_json(run_dir / "loop_state.json", published_state)
             loop_state.clear()
@@ -16365,7 +18163,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
             """Seal the completed iter-5 collection against its refreshed digest."""
 
             if not _r241_precollection_refresh_due(
-                it, r241_peak_r195_training_contract
+                it, r241_peak_r195_training_contract, fixed_cycle_updates
             ):
                 return
             behavior = _collection_behavior_identity(dict(collect_bundle))
@@ -16379,7 +18177,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
             )
             receipt_path = Path(str(collect_bundle.get("receipt") or ""))
             receipt_identity = _r241_file_identity(receipt_path)
-            state_key = "r241_precollection_expert_refresh"
+            state_key = (
+                "r241_precollection_expert_refresh"
+                if int(it) == R241_FIXED_CYCLE_REHEARSAL_EVERY
+                else f"r274_precollection_expert_refresh_{int(it):05d}"
+            )
             boundary_state = json.loads(json.dumps(loop_state))
             boundary = dict(boundary_state.get(state_key) or {})
             if (
@@ -16487,6 +18289,15 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 "refreshed": rehearsed.as_dict(),
                 "epochs": int(args.expert_rehearsal_epochs),
             }
+            submission_upload = _wait_for_r274_submission(
+                boundary_update=boundary_iteration,
+                checkpoint_identity=rehearsed,
+                rehearsal_receipt_path=rehearsal_paths(
+                    run_dir, boundary_iteration
+                )[1],
+            )
+            if submission_upload is not None:
+                terminal_state["terminal_submission_upload"] = submission_upload
             _atomic_json(run_dir / "loop_state.json", terminal_state)
             loop_state.clear()
             loop_state.update(terminal_state)
@@ -16530,7 +18341,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
             )
             precollect_rehearsals[0] = first_record
         if _r241_precollection_refresh_due(
-            start_iteration, r241_peak_r195_training_contract
+            start_iteration,
+            r241_peak_r195_training_contract,
+            fixed_cycle_updates,
         ):
             learner_identity, boundary_record = (
                 _prepare_r241_precollection_refresh(
@@ -16555,7 +18368,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 learner_identity.digest,
             )
         if _r241_precollection_refresh_due(
-            start_iteration, r241_peak_r195_training_contract
+            start_iteration,
+            r241_peak_r195_training_contract,
+            fixed_cycle_updates,
         ):
             _bind_r241_precollection_collection(
                 start_iteration,
@@ -16613,6 +18428,63 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     flush=True,
                 )
 
+            tactical_overlay_record: Optional[dict[str, Any]] = None
+            tactical_overlay_dir: Optional[Path] = None
+            if r260_own_deck_training_inputs and not disable_rl_tactical_cotrain:
+                from poke_bot.tactical_sequence_materialization import (
+                    materialize_tactical_shard_overlay,
+                    validate_tactical_target_overlay,
+                )
+
+                tactical_overlay_dir = run_dir / "tactical_sequence_overlays"
+                tactical_overlay_path = (
+                    tactical_overlay_dir / f"iter_{it:05d}.json"
+                )
+                if tactical_overlay_path.is_file():
+                    tactical_overlay_record = validate_tactical_target_overlay(
+                        tactical_overlay_path,
+                        shard_path=shard_path,
+                        checkpoint_path=behavior_before.path,
+                        checkpoint_digest=behavior_before.digest,
+                        minimum_roots=1024,
+                    )
+                else:
+                    tactical_overlay_record = materialize_tactical_shard_overlay(
+                        shard_path,
+                        checkpoint_path=behavior_before.path,
+                        checkpoint_digest=behavior_before.digest,
+                        output_path=tactical_overlay_path,
+                        minimum_roots=1024,
+                        device=train_dev,
+                    )
+                    tactical_overlay_record = validate_tactical_target_overlay(
+                        tactical_overlay_path,
+                        shard_path=shard_path,
+                        checkpoint_path=behavior_before.path,
+                        checkpoint_digest=behavior_before.digest,
+                        minimum_roots=1024,
+                    )
+                _write_json_exclusive(
+                    run_dir
+                    / "tactical_sequence_overlay_receipts"
+                    / f"iter_{it:05d}.json",
+                    {
+                        "schema": "poke_bot.r274_tactical_sequence_overlay_receipt/v1",
+                        "iteration": int(it),
+                        "mode": "shadow_only",
+                        "planner_dispatch_authority": False,
+                        "source": "ordinary_direct_policy_training_games_only",
+                        "overlay": tactical_overlay_record,
+                        "collection_receipt": str(collect_bundle["receipt"]),
+                    },
+                )
+                print(
+                    "[pure_rl] tactical shadow overlay committed "
+                    f"iter={it} roots={tactical_overlay_record['roots']} "
+                    f"sha256={tactical_overlay_record['sha256']}",
+                    flush=True,
+                )
+
             # The ladder pass is durable and happens before loading the large
             # replay window into host RAM.  Recovery checks the receipt/orphan
             # checkpoint first, so a reboot can never repeat a completed pass
@@ -16661,6 +18533,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 run_dir,
                 it,
                 initial_replay_shards=initial_replay_shards,
+                tactical_overlay_dir=tactical_overlay_dir,
             )
             family_replay_weighting: Optional[dict[str, Any]] = None
             if family_training_contract is not None:
@@ -16819,6 +18692,13 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 train_cfg.archetype_residual_loss_weights = dict(
                     family_training_contract["residual_objectives"]
                 )
+            if r260_own_deck_training_inputs:
+                train_cfg.visible_tutor_completion_loss_weight = 0.025
+                train_cfg.terminal_conversion_loss_weight = 0.025
+                train_cfg.tactical_sequence_outcome_loss_weight = (
+                    0.0 if disable_rl_tactical_cotrain else 0.025
+                )
+                train_cfg.collect_own_deck_promotion_metrics = True
             if args.tactical_outcome_loss_weight_override is not None:
                 from poke_bot import checkpoint as checkpoint_mod
 
@@ -16884,6 +18764,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         "behavior_checkpoint": behavior_before.as_dict(),
                         "learner_parent": learner_before.as_dict(),
                         "expert_rehearsal": rehearsal_record,
+                        "tactical_sequence_overlay": tactical_overlay_record,
                         "opponent_pool": [
                             _verified_checkpoint_identity(entry).as_dict()
                             for entry in opponent_pool
@@ -17160,6 +19041,38 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 "(bounded formal-eval memory envelope)",
                 flush=True,
             )
+            formal_holdout_deferred = bool(
+                int(it) == 0
+                and r284_boundary_receipt
+                and candidate.digest
+                == str(r284_boundary_receipt.get("candidate_checkpoint_sha256") or "")
+            )
+            terminal_eval_waived = bool(
+                int(it) == 1
+                and str(args.run_name)
+                == "alakazam_new_list_direct_policy_r274"
+                and os.environ.get("POKEBOT_R307_SKIP_TERMINAL_EVAL", "0")
+                == "1"
+            )
+            formal_holdout_deferred = bool(
+                formal_holdout_deferred or terminal_eval_waived
+            )
+            if terminal_eval_waived:
+                print(
+                    "[pure_rl] TERMINAL_EVALUATION_OWNER_WAIVED "
+                    f"iter={it} candidate={candidate.digest[:19]}… "
+                    "formal_holdout=skipped research_control=skipped "
+                    "measured_pass_claim=0 owner_revision=307",
+                    flush=True,
+                )
+            if formal_holdout_deferred and not terminal_eval_waived:
+                print(
+                    "[pure_rl] FORMAL_HOLDOUT_OWNER_DEFERRED "
+                    f"iter={it} candidate={candidate.digest[:19]}… "
+                    "first_formal_iteration=1 partial_broad_prefix=2142/4500 "
+                    "gate_eligible=0",
+                    flush=True,
+                )
             try:
                 heldout_rows, heldout_audit = _heldout_eval(
                     ckpt=Path(candidate.path),
@@ -17188,8 +19101,12 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         if active_gate is not None
                         else "heldout"
                     ),
+                    owner_deferred=formal_holdout_deferred,
                 )
-                if int(args.research_control_games_per_iter) > 0:
+                if (
+                    int(args.research_control_games_per_iter) > 0
+                    and not formal_holdout_deferred
+                ):
                     research_control_result = _research_control_measurement(
                         run_dir=run_dir,
                         iteration=int(it),
@@ -17243,17 +19160,17 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 ),
                 per_opponent_floor=args.heldout_per_opponent_floor,
             )
-            evaluation_gate_contract = active_gate_contract
-            evaluation_active_gate = active_gate
-            if active_gate_contract is not None and active_gate is not None:
-                primary_gate_id = str(active_gate["id"])
+            evaluation_gate_contract = formal_gate_contract
+            evaluation_active_gate = formal_gate
+            if formal_gate_contract is not None and formal_gate is not None:
+                primary_gate_id = str(formal_gate["id"])
                 prior_gate_passed = _gate_passed_in_history(
                     loop_state,
                     gate_id=primary_gate_id,
                     through_iteration=int(it) - 1,
                 )
                 fallback_contract = materialize_fallback_gate_contract(
-                    active_gate_contract,
+                    formal_gate_contract,
                     completed_iteration=int(it) - 1,
                     prior_gate_passed=prior_gate_passed,
                 )
@@ -17328,6 +19245,43 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 raw_heldout_gate = dict(active_gate_result)
             else:
                 raw_heldout_gate = asdict(gate)
+            if formal_holdout_deferred:
+                assert active_gate_result is not None
+                deferred_record = {
+                    "passed": False,
+                    "eligible": False,
+                    "owner_deferred": True,
+                    "reason": "owner_r284_moved_update_0_holdout_to_iteration_1",
+                    "partial_broad_holdout_games": 2142,
+                    "partial_broad_holdout_planned_games": 4500,
+                    "partial_broad_holdout_gate_eligible": False,
+                    "boundary_receipt": str(
+                        Path(args.r284_iteration_boundary_receipt)
+                        .expanduser()
+                        .resolve()
+                    ),
+                }
+                if terminal_eval_waived:
+                    deferred_record.update(
+                        {
+                            "owner_revision": 307,
+                            "owner_deferred": False,
+                            "owner_waived": True,
+                            "reason": "owner_r307_terminal_evaluation_waiver",
+                            "formal_holdout_skipped": True,
+                            "research_control_measurement_skipped": True,
+                            "measured_pass_claim_allowed": False,
+                            "evaluation_waiver_scope": "r274_iteration_1_only",
+                        }
+                    )
+                active_gate_result.update(deferred_record)
+                gate.passed = False
+                gate.reason = (
+                    "owner_terminal_evaluation_waiver"
+                    if terminal_eval_waived
+                    else "owner_deferred_to_iteration_1"
+                )
+                raw_heldout_gate = dict(active_gate_result)
             heldout_champion_updated = False
             candidate_heldout_evidence: Optional[dict[str, Any]] = None
             prior_active_evidence: dict[str, Any] = {}
@@ -17355,7 +19309,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 comparable_gate_ids = {
                     str(value)
                     for value in (
-                        (active_gate or {}).get("id"),
+                        (formal_gate or {}).get("id"),
                         (evaluation_active_gate or {}).get("id"),
                     )
                     if value
@@ -17428,6 +19382,13 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     promoted=bool(promoted),
                 )
             )
+            if formal_holdout_deferred and candidate_safety_ok:
+                carry_candidate = True
+                learner_carry_reason = (
+                    "owner_r307_terminal_evaluation_waiver_carry"
+                    if terminal_eval_waived
+                    else "owner_r284_deferred_holdout_promotion_carry"
+                )
             exact_gate_regression = {
                 "enabled": False,
                 "reason": "active_gate_or_anchor_unavailable",
@@ -17538,7 +19499,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 )
                 and it + 1 < int(args.iterations)
                 and not _r241_precollection_refresh_due(
-                    it + 1, r241_peak_r195_training_contract
+                    it + 1,
+                    r241_peak_r195_training_contract,
+                    fixed_cycle_updates,
                 )
             ):
                 collection_publish_proof = _hard_gate_publish_weights(
@@ -17883,6 +19846,51 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 )
             except Exception as exc:  # never let a display helper break training
                 print(f"[pure_rl] wr_trend WARN: {exc!r}", flush=True)
+
+            owner_terminal_after = int(
+                os.environ.get("POKEBOT_R304_TERMINAL_AFTER_ITERATION", "-1")
+            )
+            if owner_terminal_after >= 0 and int(it) == owner_terminal_after:
+                if (
+                    str(args.run_name) != "alakazam_new_list_direct_policy_r274"
+                    or fixed_cycle_updates != R274_FIXED_CYCLE_UPDATES
+                    or owner_terminal_after != 1
+                ):
+                    raise RuntimeError(
+                        "terminal submission fence is valid only for r274 iter 1"
+                    )
+                collection_receipt_path = _collection_receipt_path(run_dir, it)
+                submission_upload = _wait_for_r274_submission(
+                    boundary_update=1,
+                    checkpoint_identity=learner_after,
+                    rehearsal_receipt_path=collection_receipt_path,
+                )
+                terminal_state = json.loads(json.dumps(loop_state))
+                terminal_state["r304_owner_terminal"] = {
+                    "schema": "poke_bot.alakazam_r274_iter1_owner_terminal/v1",
+                    "owner_revision": 307,
+                    "formal_holdout_skipped": True,
+                    "research_control_measurement_skipped": True,
+                    "measured_evaluation_pass_claimed": False,
+                    "completed_iteration": 1,
+                    "checkpoint": learner_after.as_dict(),
+                    "collection_receipt": _r241_file_identity(
+                        collection_receipt_path
+                    ),
+                    "submission_upload": submission_upload,
+                    "next_collection_started": False,
+                    "iteration_2_collection_allowed": False,
+                    "created_at_utc": datetime.now(timezone.utc).isoformat(),
+                }
+                _atomic_json(run_dir / "loop_state.json", terminal_state)
+                loop_state.clear()
+                loop_state.update(terminal_state)
+                print(
+                    "[pure_rl] R304_OWNER_TERMINAL_COMPLETE "
+                    "iteration=1 next_collection_started=false",
+                    flush=True,
+                )
+                return 0
             if gate.passed:
                 terminal_minimum_reached = (
                     int(args.minimum_terminal_iteration) < 0
@@ -18025,7 +20033,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
             if next_it < int(args.iterations):
                 collection_learner = learner_after
                 if _r241_precollection_refresh_due(
-                    next_it, r241_peak_r195_training_contract
+                    next_it,
+                    r241_peak_r195_training_contract,
+                    fixed_cycle_updates,
                 ):
                     collection_learner, boundary_record = (
                         _prepare_r241_precollection_refresh(
@@ -18045,7 +20055,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     collection_learner.digest,
                 )
                 if _r241_precollection_refresh_due(
-                    next_it, r241_peak_r195_training_contract
+                    next_it,
+                    r241_peak_r195_training_contract,
+                    fixed_cycle_updates,
                 ):
                     _bind_r241_precollection_collection(
                         next_it,

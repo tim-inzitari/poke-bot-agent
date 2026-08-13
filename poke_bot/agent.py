@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import os
 import random
 import sys
@@ -259,6 +260,23 @@ class PolicyAgent:
         default=None,
         kw_only=True,
     )
+    #: r287 bounded Alakazam checklist residual.  This is deliberately a
+    #: policy-side, parameter-free route: it reads the live legal stage after
+    #: the frozen neural policy (including Fusion, OwnDeck and matchup routes)
+    #: has produced its score, so enabling it never changes a checkpoint or
+    #: state_dict.  ``None`` resolves from the explicit environment arm and
+    #: otherwise remains off.
+    turn_checklist_logit_layer_enabled: Optional[bool] = field(
+        default=None,
+        kw_only=True,
+    )
+    #: Optional immutable r287 layer config.  Supplying a path does not arm
+    #: the layer by itself; ``turn_checklist_logit_layer_enabled`` remains the
+    #: explicit gate.
+    turn_checklist_logit_layer_config_path: Optional[str] = field(
+        default=None,
+        kw_only=True,
+    )
     #: Formal training/eval must propagate model/runtime errors so the caller
     #: invalidates the game instead of counting random fallback play.
     strict_runtime: bool = False
@@ -316,8 +334,35 @@ class PolicyAgent:
     last_slowking_distill_trace: Optional[dict[str, Any]] = field(
         default=None, init=False, repr=False
     )
+    #: Latest factorized-stage audit emitted by the bounded r287 checklist
+    #: route.  Kept separate from checkpoint/model traces and cleared per
+    #: game/selection so stale advice can never be mistaken for current state.
+    last_turn_checklist_logit_trace: Optional[dict[str, Any]] = field(
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
+        # The checklist route is consciously policy-side and default-off.  It
+        # cannot be inferred from deck identity, model metadata, or config
+        # presence: an operator must choose the constructor flag or the named
+        # environment arm at a receipt-backed boundary.
+        if self.turn_checklist_logit_layer_enabled is None:
+            checklist_env = os.environ.get(
+                "POKEBOT_ALAKAZAM_TURN_CHECKLIST_LOGIT_LAYER", ""
+            ).strip().lower()
+            self.turn_checklist_logit_layer_enabled = checklist_env in {
+                "1", "true", "yes", "on"
+            }
+        else:
+            self.turn_checklist_logit_layer_enabled = bool(
+                self.turn_checklist_logit_layer_enabled
+            )
+        if self.turn_checklist_logit_layer_config_path is None:
+            checklist_config_path = os.environ.get(
+                "POKEBOT_ALAKAZAM_TURN_CHECKLIST_LOGIT_CONFIG", ""
+            ).strip()
+            if checklist_config_path:
+                self.turn_checklist_logit_layer_config_path = checklist_config_path
         # Keep the ledger local to a game/policy instance.  ``OwnDeckLedger``
         # copies the starting multiset and exposes only immutable public
         # snapshots, so later deck-list mutations cannot retroactively alter a
@@ -664,6 +709,7 @@ class PolicyAgent:
             self._slowking_distill_bridge.runtime._decisions = 0
             self._slowking_distill_bridge.runtime._search_calls = 0
         self.last_slowking_distill_trace = None
+        self.last_turn_checklist_logit_trace = None
 
     def matchup_adapter_shadow_snapshot(self) -> dict[str, Any]:
         """Return the current shadow or activated causal route audit."""
@@ -862,7 +908,136 @@ class PolicyAgent:
             return None
         return option_features(obs_dict, candidates)
 
+    def _record_turn_checklist_not_evaluated(
+        self,
+        *,
+        selected_action: list[int],
+        reason: str,
+        candidate_rows: Optional[list[list[int]]] = None,
+        factorized_prefix: Optional[list[int]] = None,
+        factorized_stage_index: Optional[int] = None,
+        selected_candidate_index: Optional[int] = None,
+    ) -> None:
+        """Record an explicit eight-question audit when no residual ran.
+
+        Forced setup controls and non-greedy policy authorities do not expose a
+        post-neural factorized score to this layer.  They must therefore not
+        look like a zero-evidence evaluation: this compact, action-inert trace
+        says that every checklist answer is unavailable instead.  Keeping the
+        schema aligned with ordinary stage traces makes an omitted evaluation
+        distinguishable from an evaluated-but-neutral stage.
+        """
+
+        if not bool(getattr(self, "turn_checklist_logit_layer_enabled", False)):
+            return
+
+        channel_names = (
+            "ko_hand_threshold",
+            "safe_spend_above_threshold",
+            "replacement_alakazam_line",
+            "unavoidable_draws_before_attack",
+            "bench_prize_exposure",
+            "immediate_disruption_outcome",
+            "unknown_prize_robust_line",
+            "terminal_before_forced_draw",
+        )
+        rows = [list(row) for row in (candidate_rows or [])]
+        selected = list(selected_action)
+        prefix = list(factorized_prefix or [])
+        if selected_candidate_index is None:
+            try:
+                selected_candidate_index = rows.index(selected)
+            except ValueError:
+                selected_candidate_index = None
+        zeros = [0.0] * len(rows)
+        unavailable = [False] * len(rows)
+
+        def channel(name: str) -> dict[str, Any]:
+            return {
+                "name": name,
+                "raw": list(zeros),
+                "normalized": list(zeros),
+                "option_availability": list(unavailable),
+                "available": False,
+                "status": "unavailable",
+                "reason": reason,
+            }
+
+        channels = [channel(name) for name in channel_names]
+        guide_support = channel("guide_support")
+        stage = {
+            "enabled": True,
+            "applied": False,
+            "evaluation_mode": "not_evaluated",
+            "action_authority": False,
+            "score_space": "not_evaluated",
+            "factorized_stage_index": factorized_stage_index,
+            "factorized_prefix": prefix,
+            "candidate_rows": rows,
+            "selected_candidate_index": selected_candidate_index,
+            # ``selected_stage_index`` is the explicit candidate position in
+            # this factorized stage.  Keep ``selected_candidate_index`` too so
+            # downstream readers do not confuse it with the stage ordinal.
+            "selected_stage_index": selected_candidate_index,
+            "selected_candidate": selected,
+            "whole_decision_budget_initial": 0.10,
+            "whole_decision_budget_before": 0.10,
+            "whole_decision_budget_consumed": 0.0,
+            "whole_decision_budget_remaining": 0.10,
+            "base_argmax_index": None,
+            "adjusted_argmax_index": None,
+            "stage_argmax_changed_at_prefix": False,
+            # Deprecated compatibility alias.  This has *never* described a
+            # coupled whole-policy/action counterfactual.
+            "action_changed_from_base_policy": False,
+            "channel_names": list(channel_names),
+            "channels": channels,
+            "guide_support": guide_support,
+            "scalar_gates": {},
+            "residuals": list(zeros),
+            "facts": {},
+            "available": False,
+            "active": False,
+            "reason": reason,
+            "explicit_invocation": False,
+            "normalized_channel_vectors": {
+                name: list(zeros) for name in channel_names
+            },
+            "normalized_guide_support_vector": list(zeros),
+            "channel_status": {
+                name: {
+                    "available": False,
+                    "status": "unavailable",
+                    "reason": reason,
+                }
+                for name in (*channel_names, "guide_support")
+            },
+            "channel_option_availability": {
+                name: list(unavailable)
+                for name in (*channel_names, "guide_support")
+            },
+        }
+        self.last_turn_checklist_logit_trace = {
+            "enabled": True,
+            "evaluation_mode": "not_evaluated",
+            "action_authority": False,
+            "selected_action": selected,
+            "reason": reason,
+            "stages": [stage],
+            "whole_decision_budget_initial": 0.10,
+            "whole_decision_budget_consumed": 0.0,
+            "whole_decision_budget_remaining": 0.10,
+        }
+
     def _record_go_first(self, obs_dict: dict, go_first: list[int]) -> list[int]:
+        self._record_turn_checklist_not_evaluated(
+            selected_action=list(go_first),
+            reason="forced_go_first_contract",
+            candidate_rows=[list(go_first)],
+            factorized_prefix=[],
+            factorized_stage_index=0,
+            selected_candidate_index=0,
+        )
         try:
             features.assert_info_set(obs_dict)
             ledger_snapshot = self._observe_own_deck_ledger(obs_dict)
@@ -912,6 +1087,12 @@ class PolicyAgent:
         extra_diagnostics: Optional[dict[str, Any]] = None,
     ) -> list[int]:
         """Factorized greedy assuming board history was already appended."""
+        # The checklist layer is evaluated at each factorized prefix, but its
+        # authority is a *whole-decision* absolute budget.  A selected path may
+        # therefore consume at most 0.10 total |logit residual| even when the
+        # legal action takes multiple factorized stages.
+        whole_decision_budget_initial = 0.10
+        whole_decision_budget_remaining = whole_decision_budget_initial
         obs = cg_env.to_observation(obs_dict)
         if obs.current is None:
             raise ValueError("greedy inference requires post-setup observation")
@@ -930,8 +1111,364 @@ class PolicyAgent:
         allow_legacy_ledger_fallback = not bool(
             getattr(self, "own_deck_ledger_enabled", False)
         )
+        checklist_enabled = bool(
+            getattr(self, "turn_checklist_logit_layer_enabled", False)
+        )
+        checklist_stage_traces: list[dict[str, Any]] = []
+        # Never leave an audit from a prior decision visible while the current
+        # factorized decision is still being decoded.
+        self.last_turn_checklist_logit_trace = None
 
-        def score(candidates: list[list[int]]) -> list[float]:
+        def _trace_payload(trace: Any) -> dict[str, Any]:
+            """Serialize a layer trace without coupling Agent to its class."""
+
+            to_dict = getattr(trace, "to_dict", None)
+            if callable(to_dict):
+                payload = to_dict()
+            elif isinstance(trace, Mapping):
+                payload = dict(trace)
+            else:
+                payload = {"trace": repr(trace)}
+            return payload if isinstance(payload, dict) else {"trace": repr(payload)}
+
+        def _argmax_index(values: list[float]) -> int | None:
+            if not values:
+                return None
+            return max(range(len(values)), key=values.__getitem__)
+
+        def _trace_residuals(trace: Any, *, width: int) -> list[float]:
+            """Read the module's aligned raw-logit residual vector strictly."""
+
+            payload = _trace_payload(trace)
+            values = payload.get("residuals")
+            if not isinstance(values, (list, tuple)) or len(values) != width:
+                raise ValueError("checklist trace residual width mismatch")
+            residuals = [float(value) for value in values]
+            if any(not math.isfinite(value) for value in residuals):
+                raise ValueError("checklist trace residual is non-finite")
+            if any(abs(value) > 0.100001 for value in residuals):
+                raise ValueError("checklist trace residual exceeded module cap")
+            return residuals
+
+        def _budgeted_residuals(
+            residuals: list[float],
+        ) -> tuple[list[float], list[float], float]:
+            """Restrict one stage to the unspent selected-path budget."""
+
+            before = max(0.0, float(whole_decision_budget_remaining))
+            applied = [max(-before, min(before, value)) for value in residuals]
+            return applied, list(residuals), before
+
+        def _remote_priors_with_residual(
+            probabilities: list[float], residuals: list[float]
+        ) -> list[float]:
+            """Apply exact trace logits to remote priors without reviving zeros."""
+
+            if len(probabilities) != len(residuals):
+                raise ValueError("remote prior/residual width mismatch")
+            if not any(abs(value) > 0.0 for value in residuals):
+                # An exact no-op must preserve remote values byte-for-value;
+                # this also retains any intentional zero-probability support.
+                return list(probabilities)
+            total = sum(probabilities)
+            if not math.isfinite(total) or total <= 0.0:
+                raise ValueError("remote prior mass is invalid")
+            supported = [
+                index for index, value in enumerate(probabilities) if value > 0.0
+            ]
+            if not supported:
+                raise ValueError("remote prior has no positive support")
+            log_scores = [float("-inf")] * len(probabilities)
+            for index in supported:
+                log_scores[index] = (
+                    math.log(probabilities[index] / total) + residuals[index]
+                )
+            maximum = max(log_scores[index] for index in supported)
+            weights = [0.0] * len(probabilities)
+            for index in supported:
+                weights[index] = math.exp(log_scores[index] - maximum)
+            normalizer = sum(weights)
+            if not math.isfinite(normalizer) or normalizer <= 0.0:
+                raise ValueError("remote checklist normalization is invalid")
+            return [value / normalizer for value in weights]
+
+        def _append_checklist_trace(
+            trace: Any,
+            *,
+            base_scores: list[float],
+            adjusted_scores: list[float],
+            score_space: str,
+            candidates: list[list[int]],
+            factorized_prefix: list[int],
+            factorized_stage_index: int,
+            module_residuals: list[float],
+            applied_residuals: list[float],
+            budget_before: float,
+        ) -> None:
+            """Attach exact base-vs-adjusted stage choice telemetry.
+
+            Softmax preserves argmax, so raw local logits and remote priors
+            both answer whether this bounded route changed the policy's legal
+            stage argmax at the prefix actually evaluated.  This is not a
+            whole-action counterfactual: a prior-stage change can lead to a
+            different later prefix.  Candidate rows and the prefix are carried
+            with the vector so every residual component remains auditable.
+            """
+
+            payload = _trace_payload(trace)
+            # The module's vector is preserved separately from the actual
+            # action-authoritative vector when the selected-path budget clips a
+            # later stage.  Consumers must read ``residuals`` for what was
+            # actually applied to this policy score.
+            payload["module_residuals_before_whole_decision_cap"] = list(
+                module_residuals
+            )
+            payload["residuals"] = list(applied_residuals)
+            base_index = _argmax_index(base_scores)
+            adjusted_index = _argmax_index(adjusted_scores)
+            stage_argmax_changed = (
+                base_index is not None
+                and adjusted_index is not None
+                and base_index != adjusted_index
+            )
+            payload.update(
+                {
+                    "enabled": True,
+                    "applied": True,
+                    "evaluation_mode": "evaluated",
+                    "action_authority": True,
+                    "score_space": score_space,
+                    "factorized_stage_index": int(factorized_stage_index),
+                    "factorized_prefix": list(factorized_prefix),
+                    "candidate_rows": [list(row) for row in candidates],
+                    "selected_candidate_index": None,
+                    "selected_stage_index": None,
+                    "selected_candidate": None,
+                    "whole_decision_budget_initial": whole_decision_budget_initial,
+                    "whole_decision_budget_before": budget_before,
+                    "whole_decision_budget_consumed": None,
+                    "whole_decision_budget_remaining": None,
+                    "base_argmax_index": base_index,
+                    "adjusted_argmax_index": adjusted_index,
+                    "stage_argmax_changed_at_prefix": stage_argmax_changed,
+                    # Deprecated compatibility alias.  Consumers must use the
+                    # canonical name above and must not treat either field as
+                    # a final sampled-action or whole-policy comparison.
+                    "action_changed_from_base_policy": stage_argmax_changed,
+                }
+            )
+            checklist_stage_traces.append(payload)
+
+        def _apply_checklist_logits(
+            logits: torch.Tensor,
+            candidates: list[list[int]],
+            *,
+            factorized_prefix: list[int],
+            factorized_stage_index: int,
+        ) -> torch.Tensor:
+            """Apply the opt-in residual after all frozen model score routes."""
+
+            if not checklist_enabled:
+                return logits
+            try:
+                from .alakazam_turn_checklist_logit_layer import (
+                    apply_turn_checklist_logits,
+                )
+
+                base_logits = logits.detach().clone()
+                adjusted, trace = apply_turn_checklist_logits(
+                    observation=obs_dict,
+                    candidates=candidates,
+                    deck=self.deck,
+                    logits=logits,
+                    ledger_snapshot=ledger_snapshot,
+                    config_path=getattr(
+                        self, "turn_checklist_logit_layer_config_path", None
+                    ),
+                )
+                if not isinstance(adjusted, torch.Tensor):
+                    raise TypeError("checklist logit layer returned non-tensor logits")
+                if adjusted.shape != logits.shape:
+                    raise ValueError("checklist logit layer changed policy width")
+                if adjusted.device != logits.device:
+                    raise ValueError("checklist logit layer changed policy device")
+                if not bool(torch.isfinite(adjusted).all().item()):
+                    raise ValueError("checklist logit layer returned non-finite logits")
+                if adjusted.numel() and float(
+                    torch.max(torch.abs(adjusted - logits)).item()
+                ) > 0.100001:
+                    raise ValueError("checklist logit layer exceeded residual cap")
+                module_residuals = _trace_residuals(trace, width=logits.numel())
+                applied_residuals, raw_residuals, budget_before = _budgeted_residuals(
+                    module_residuals
+                )
+                residual_tensor = torch.as_tensor(
+                    applied_residuals,
+                    dtype=logits.dtype,
+                    device=logits.device,
+                )
+                adjusted = logits + residual_tensor
+                if not bool(torch.isfinite(adjusted).all().item()):
+                    raise ValueError("budgeted checklist logits are non-finite")
+                _append_checklist_trace(
+                    trace,
+                    base_scores=[
+                        float(value) for value in base_logits.cpu().tolist()
+                    ],
+                    adjusted_scores=[
+                        float(value)
+                        for value in adjusted.detach().cpu().tolist()
+                    ],
+                    score_space="local_logits",
+                    candidates=candidates,
+                    factorized_prefix=factorized_prefix,
+                    factorized_stage_index=factorized_stage_index,
+                    module_residuals=raw_residuals,
+                    applied_residuals=applied_residuals,
+                    budget_before=budget_before,
+                )
+                return adjusted
+            except Exception as exc:
+                # The bounded residual is an optional advisory path.  A bad
+                # config or an unavailable fact must reduce exactly to the
+                # frozen neural policy, not make an otherwise legal turn fail.
+                checklist_stage_traces.append(
+                    {
+                        "enabled": True,
+                        "applied": False,
+                        "evaluation_mode": "evaluated",
+                        "action_authority": False,
+                        "reason": "checklist_layer_unavailable",
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "score_space": "local_logits",
+                        "factorized_stage_index": int(factorized_stage_index),
+                        "factorized_prefix": list(factorized_prefix),
+                        "candidate_rows": [list(row) for row in candidates],
+                        "selected_candidate_index": None,
+                        "selected_stage_index": None,
+                        "selected_candidate": None,
+                        "whole_decision_budget_initial": whole_decision_budget_initial,
+                        "whole_decision_budget_before": whole_decision_budget_remaining,
+                        "whole_decision_budget_consumed": 0.0,
+                        "whole_decision_budget_remaining": (
+                            whole_decision_budget_remaining
+                        ),
+                        "base_argmax_index": None,
+                        "adjusted_argmax_index": None,
+                        "stage_argmax_changed_at_prefix": False,
+                        "action_changed_from_base_policy": False,
+                    }
+                )
+                return logits
+
+        def _apply_checklist_probabilities(
+            probabilities: list[float],
+            candidates: list[list[int]],
+            *,
+            factorized_prefix: list[int],
+            factorized_stage_index: int,
+        ) -> list[float]:
+            """Apply the same bounded residual to remote leaf priors.
+
+            The remote server intentionally returns only normalized priors.  Its
+            probabilities are therefore converted inside the layer to legal
+            log scores, shifted by the same residual, and renormalized before
+            this factorized argmax/sampler sees them.
+            """
+
+            if not checklist_enabled:
+                return probabilities
+            try:
+                from .alakazam_turn_checklist_logit_layer import (
+                    apply_turn_checklist_probabilities,
+                )
+
+                base_probabilities = [float(value) for value in probabilities]
+                adjusted, trace = apply_turn_checklist_probabilities(
+                    observation=obs_dict,
+                    candidates=candidates,
+                    deck=self.deck,
+                    probabilities=base_probabilities,
+                    ledger_snapshot=ledger_snapshot,
+                    config_path=getattr(
+                        self, "turn_checklist_logit_layer_config_path", None
+                    ),
+                )
+                adjusted_list = [float(value) for value in adjusted]
+                if len(adjusted_list) != len(base_probabilities):
+                    raise ValueError("checklist layer changed remote policy width")
+                if (
+                    any(
+                        not math.isfinite(value) or value < 0.0
+                        for value in adjusted_list
+                    )
+                    or sum(adjusted_list) <= 0.0
+                ):
+                    raise ValueError(
+                        "checklist layer returned invalid remote probabilities"
+                    )
+                module_residuals = _trace_residuals(
+                    trace, width=len(base_probabilities)
+                )
+                applied_residuals, raw_residuals, budget_before = _budgeted_residuals(
+                    module_residuals
+                )
+                # Do not derive a remote logit adjustment from changed
+                # probabilities.  The trace vector is the same raw-logit
+                # residual used locally, while zero prior support remains
+                # impossible after reweighting.
+                adjusted_list = _remote_priors_with_residual(
+                    base_probabilities, applied_residuals
+                )
+                _append_checklist_trace(
+                    trace,
+                    base_scores=base_probabilities,
+                    adjusted_scores=adjusted_list,
+                    score_space="remote_priors",
+                    candidates=candidates,
+                    factorized_prefix=factorized_prefix,
+                    factorized_stage_index=factorized_stage_index,
+                    module_residuals=raw_residuals,
+                    applied_residuals=applied_residuals,
+                    budget_before=budget_before,
+                )
+                return adjusted_list
+            except Exception as exc:
+                checklist_stage_traces.append(
+                    {
+                        "enabled": True,
+                        "applied": False,
+                        "evaluation_mode": "evaluated",
+                        "action_authority": False,
+                        "reason": "checklist_layer_unavailable",
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "score_space": "remote_priors",
+                        "factorized_stage_index": int(factorized_stage_index),
+                        "factorized_prefix": list(factorized_prefix),
+                        "candidate_rows": [list(row) for row in candidates],
+                        "selected_candidate_index": None,
+                        "selected_stage_index": None,
+                        "selected_candidate": None,
+                        "whole_decision_budget_initial": whole_decision_budget_initial,
+                        "whole_decision_budget_before": whole_decision_budget_remaining,
+                        "whole_decision_budget_consumed": 0.0,
+                        "whole_decision_budget_remaining": (
+                            whole_decision_budget_remaining
+                        ),
+                        "base_argmax_index": None,
+                        "adjusted_argmax_index": None,
+                        "stage_argmax_changed_at_prefix": False,
+                        "action_changed_from_base_policy": False,
+                    }
+                )
+                return probabilities
+
+        def score(
+            candidates: list[list[int]],
+            *,
+            factorized_prefix: list[int],
+            factorized_stage_index: int,
+        ) -> list[float]:
             nonlocal cached_state, cached_spatial, cached_fusion_state
             options = features.build_option_tokens(obs_dict, candidates)
             ledger_option_features = self._ledger_option_features(
@@ -956,7 +1493,12 @@ class PolicyAgent:
                 out = self.leaf_backend([packet])[0]
                 if out.combos != candidates or len(out.priors) != len(candidates):
                     raise RuntimeError("factorized remote policy response mismatch")
-                return list(out.priors)
+                return _apply_checklist_probabilities(
+                    list(out.priors),
+                    candidates,
+                    factorized_prefix=factorized_prefix,
+                    factorized_stage_index=factorized_stage_index,
+                )
             if self.model is None:
                 raise RuntimeError(
                     "greedy inference requires a model or remote leaf backend"
@@ -1029,6 +1571,12 @@ class PolicyAgent:
                     },
                     allow_legacy_fallback=allow_legacy_ledger_fallback,
                 )[0, : len(candidates)]
+            logits = _apply_checklist_logits(
+                logits,
+                candidates,
+                factorized_prefix=factorized_prefix,
+                factorized_stage_index=factorized_stage_index,
+            )
             probs = torch.softmax(logits.float(), dim=-1)
             return [float(v) for v in probs.cpu().tolist()]
 
@@ -1039,7 +1587,13 @@ class PolicyAgent:
             if len(candidates) == 1 and candidates[0] == prefix:
                 selected = list(prefix)
                 break
-            policy = score(candidates)
+            factorized_stage_index = len(factorized_stages)
+            trace_count_before_score = len(checklist_stage_traces)
+            policy = score(
+                candidates,
+                factorized_prefix=prefix,
+                factorized_stage_index=factorized_stage_index,
+            )
             if self.sample_actions:
                 temp = float(self.action_temperature)
                 if temp > 0.0 and abs(temp - 1.0) > 1e-6:
@@ -1058,6 +1612,55 @@ class PolicyAgent:
             else:
                 idx = max(range(len(candidates)), key=lambda i: policy[i])
             selected = list(candidates[idx])
+            if (
+                checklist_enabled
+                and len(checklist_stage_traces) == trace_count_before_score + 1
+            ):
+                # The residual trace is created while scores are available;
+                # selection happens immediately afterwards.  Fill in the
+                # exact row it led to without re-running a policy decode.
+                stage_trace = checklist_stage_traces[-1]
+                residuals = stage_trace.get("residuals", [])
+                consumed = 0.0
+                if stage_trace.get("applied") is True:
+                    if (
+                        not isinstance(residuals, list)
+                        or len(residuals) != len(candidates)
+                    ):
+                        raise RuntimeError(
+                            "checklist stage trace residuals are misaligned"
+                        )
+                    try:
+                        selected_residual = float(residuals[idx])
+                    except (TypeError, ValueError, OverflowError) as exc:
+                        raise RuntimeError(
+                            "checklist selected residual is malformed"
+                        ) from exc
+                    if not math.isfinite(selected_residual):
+                        raise RuntimeError("checklist selected residual is non-finite")
+                    consumed = abs(selected_residual)
+                    before = float(
+                        stage_trace.get(
+                            "whole_decision_budget_before",
+                            whole_decision_budget_remaining,
+                        )
+                    )
+                    if consumed > before + 1e-9:
+                        raise RuntimeError(
+                            "checklist stage exceeded whole-decision budget"
+                        )
+                    whole_decision_budget_remaining = max(0.0, before - consumed)
+                stage_trace.update(
+                    {
+                        "selected_candidate_index": int(idx),
+                        "selected_stage_index": int(idx),
+                        "selected_candidate": list(selected),
+                        "whole_decision_budget_consumed": consumed,
+                        "whole_decision_budget_remaining": (
+                            whole_decision_budget_remaining
+                        ),
+                    }
+                )
             factorized_stages.append(
                 {
                     "action_combos": [list(c) for c in candidates],
@@ -1071,6 +1674,31 @@ class PolicyAgent:
         self._previous_action_token = features.build_option_tokens(
             obs_dict, [selected]
         )
+        if checklist_enabled:
+            if not checklist_stage_traces:
+                # A forced singleton factorized stage has no neural score and
+                # therefore no legitimate residual application.  Preserve the
+                # eight-channel audit as explicitly unavailable rather than
+                # emitting an empty successful-looking checklist trace.
+                self._record_turn_checklist_not_evaluated(
+                    selected_action=list(selected),
+                    reason="factorized_greedy_no_scored_stage",
+                    candidate_rows=[list(selected)],
+                    factorized_prefix=list(selected),
+                    factorized_stage_index=len(factorized_stages),
+                    selected_candidate_index=0,
+                )
+            else:
+                self.last_turn_checklist_logit_trace = {
+                    "enabled": True,
+                    "selected_action": list(selected),
+                    "stages": checklist_stage_traces,
+                    "whole_decision_budget_initial": whole_decision_budget_initial,
+                    "whole_decision_budget_consumed": (
+                        whole_decision_budget_initial - whole_decision_budget_remaining
+                    ),
+                    "whole_decision_budget_remaining": whole_decision_budget_remaining,
+                }
         if self.collect_targets:
             diagnostics = {
                 "target_source": target_source,
@@ -1079,6 +1707,10 @@ class PolicyAgent:
             }
             if extra_diagnostics:
                 diagnostics.update(extra_diagnostics)
+            if self.last_turn_checklist_logit_trace is not None:
+                diagnostics["turn_checklist_logit_layer"] = copy.deepcopy(
+                    self.last_turn_checklist_logit_trace
+                )
             self.targets.append(
                 {
                     "observation": obs_dict,
@@ -1095,6 +1727,7 @@ class PolicyAgent:
 
     @torch.no_grad()
     def greedy_select(self, obs_dict: dict) -> list[int]:
+        self.last_turn_checklist_logit_trace = None
         go_first = forced_go_first_action(obs_dict)
         if go_first is not None:
             # Preserve the setup decision in temporal history when the feature
@@ -1592,6 +2225,9 @@ class PolicyAgent:
 
     def __call__(self, obs_dict: dict) -> list[int]:
         """Competition-style agent entry: deck when select is None."""
+        # A deck request is not a decision.  Clear any prior decision audit
+        # before returning so callers cannot mistake it for this turn's trace.
+        self.last_turn_checklist_logit_trace = None
         if obs_dict is None or obs_dict.get("select") is None:
             return list(self.deck)
         # Avoid exposing stale RTP diagnostics after a no-RTP selection.  The
@@ -1622,13 +2258,16 @@ class PolicyAgent:
         try:
             poke_cfg = self.poke_rlm_config
             distill_cfg = self.slowking_distill_config
+            selection_path = "factorized_greedy"
             if self.use_mcts:
+                selection_path = "mcts"
                 action = self.mcts_select(obs_dict)
             elif (
                 poke_cfg is not None
                 and poke_cfg.selects_actions
                 and (self._poke_rlm_bridge is not None or self.model is not None)
             ):
+                selection_path = "poke_rlm"
                 action = self.poke_rlm_select(obs_dict)
             elif (
                 distill_cfg is not None
@@ -1639,10 +2278,12 @@ class PolicyAgent:
                     or bool(distill_cfg.actor_checkpoint)
                 )
             ):
+                selection_path = "slowking_distill"
                 action = self.slowking_distill_select(obs_dict)
             elif self.use_recursive_turn_planner and (
                 self._rtp_bridge is not None or self.model is not None
             ):
+                selection_path = "recursive_turn_planner"
                 action = self.rtp_select(obs_dict)
             else:
                 action = self.greedy_select(obs_dict)
@@ -1686,8 +2327,47 @@ class PolicyAgent:
                 raise RuntimeError(
                     f"policy runtime failed closed: {type(exc).__name__}: {exc}"
                 ) from exc
+            selection_path = "runtime_failure"
+            # A partial factorized audit cannot describe the fallback action.
+            # Clear it so the explicit no-evaluation trace below is tied to
+            # the action that is actually returned.
+            self.last_turn_checklist_logit_trace = None
             action = []
-        return _fail_closed_legal(obs_dict, action, self.rng)
+        final_action = _fail_closed_legal(obs_dict, action, self.rng)
+        if (
+            bool(getattr(self, "turn_checklist_logit_layer_enabled", False))
+            and self.last_turn_checklist_logit_trace is None
+        ):
+            # Do not manufacture a score-space trace for policy paths that did
+            # not call the residual.  The forced parser is queried only to
+            # improve the audit reason; an unexpected parser failure cannot
+            # alter an already chosen legal action.
+            try:
+                forced = forced_go_first_action(obs_dict)
+            except Exception:
+                forced = None
+            if forced is not None:
+                self._record_turn_checklist_not_evaluated(
+                    selected_action=final_action,
+                    reason="forced_go_first_contract",
+                    candidate_rows=[list(forced)],
+                    factorized_prefix=[],
+                    factorized_stage_index=0,
+                    selected_candidate_index=(
+                        0 if list(final_action) == list(forced) else None
+                    ),
+                )
+            else:
+                reason = (
+                    "factorized_greedy_no_scored_stage"
+                    if selection_path == "factorized_greedy"
+                    else f"{selection_path}_selection_did_not_evaluate_checklist"
+                )
+                self._record_turn_checklist_not_evaluated(
+                    selected_action=final_action,
+                    reason=reason,
+                )
+        return final_action
 
 
 AgentFn = Callable[[dict], list[int]]

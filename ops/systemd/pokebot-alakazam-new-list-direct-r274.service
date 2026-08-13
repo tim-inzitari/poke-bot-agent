@@ -1,0 +1,21 @@
+[Unit]
+Description=Alakazam r274 exact 25-epoch GPU-resident expert bootstrap
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=PYTHONUNBUFFERED=1
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/cg-r236
+Environment=OMP_NUM_THREADS=16
+Environment=MKL_NUM_THREADS=16
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_r280_gpu_resident_bootstrap.py --pack /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r279-contiguous-pack/alakazam-expert-r279.pt --pack-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r279-contiguous-pack/receipt.json --base-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r195-r274-zero-safe-successor-v2.pt --base-sha256 sha256:a025604246c0985f42dc680710750f378b8402b086254313aedcac3afc578ed9 --matchup-roster /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-matchup-readiness/candidate-roster.json --matchup-roster-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-matchup-readiness/append-only-receipt.json --router-ready-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-matchup-readiness/PUBLIC_MATCHUP_TREE_READY.json --canary-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r274-prestart-canary-receipt.json --activated-parent /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-bootstrap-parent-v2.pt --activated-parent-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-bootstrap-parent-v2-receipt.json --output /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/checkpoints/r280-expert-bootstrap-epoch-25.pt --result-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-bootstrap-result.json --device cuda:1 --epochs 25 --max-decisions-per-batch 2048 --seed 274
+Restart=no
+TimeoutStopSec=300
+KillMode=control-group
+Nice=0
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=default.target

@@ -64,6 +64,8 @@ class TacticalSearchState:
     visible_tutor_cards: tuple[int, ...] = ()
     previous_action_token: Action | None = None
     raw_observation: Mapping[str, Any] | None = None
+    simulated_action_history: tuple[Action, ...] = ()
+    simulated_observation_history: tuple[Mapping[str, Any], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.observation_fingerprint or not self.semantic_fingerprint:
@@ -86,6 +88,24 @@ class TacticalSearchState:
             object.__setattr__(
                 self, "previous_action_token", _action(self.previous_action_token)
             )
+        actions_history = tuple(
+            _action(action) for action in self.simulated_action_history
+        )
+        observations_history = tuple(self.simulated_observation_history)
+        if len(actions_history) != len(observations_history):
+            raise TacticalSequenceError(
+                "simulated action/observation history lengths disagree"
+            )
+        if observations_history and any(
+            not isinstance(row, Mapping) for row in observations_history
+        ):
+            raise TacticalSequenceError(
+                "simulated observation history must contain mappings"
+            )
+        object.__setattr__(self, "simulated_action_history", actions_history)
+        object.__setattr__(
+            self, "simulated_observation_history", observations_history
+        )
         object.__setattr__(
             self, "visible_tutor_cards", tuple(int(card) for card in self.visible_tutor_cards)
         )
@@ -313,6 +333,10 @@ class TacticalSequencePlanner:
         legal = set(state.legal_actions)
         if any(action not in legal for action in actions):
             raise TacticalSequenceError("policy ranker returned an illegal candidate")
+        if len(actions) != len(state.legal_actions) or set(actions) != legal:
+            raise TacticalSequenceError(
+                "policy ranker must cover the complete ordered legal set"
+            )
         # The typed ranker owns the ordering.  The Alakazam wrapper keeps the
         # r195 principal action first and uses SME scores only among deviations.
         # Neither the ordering nor any score is proof.

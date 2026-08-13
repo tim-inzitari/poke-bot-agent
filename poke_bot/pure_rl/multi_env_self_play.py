@@ -78,6 +78,13 @@ def process_worker_count(sim_workers: int, multi_env_per_worker: int) -> int:
     """Fewer OS processes so ``procs × multi ≈ sim_workers`` games-in-flight."""
     n = max(1, int(sim_workers))
     m = max(1, int(multi_env_per_worker))
+    override = _env_int("PURE_RL_SELF_PLAY_PROCS", 0)
+    if override > 0:
+        # Some production contracts specify simulator *processes* and packed
+        # environments separately (for example 32 workers x 4 envs).  Keep the
+        # historical total-concurrency interpretation as the default, but let
+        # an explicit managed-service value request the full process count.
+        return max(1, int(override))
     if m <= 1:
         return n
     return max(1, n // m)
@@ -240,6 +247,9 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 game_time_budget_s=float(timeout_s),
                 game_watchdog_reserve_s=min(60.0, max(10.0, 0.1 * float(timeout_s))),
                 strict_runtime=True,
+                own_deck_ledger_enabled=bool(
+                    job.get("own_deck_ledger_enabled", False)
+                ),
             )
             them_agent = PolicyAgent(
                 model=them_model,
@@ -256,6 +266,9 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 game_time_budget_s=float(timeout_s),
                 game_watchdog_reserve_s=min(60.0, max(10.0, 0.1 * float(timeout_s))),
                 strict_runtime=True,
+                own_deck_ledger_enabled=bool(
+                    job.get("own_deck_ledger_enabled", False)
+                ),
             )
             us_agent.reset_game()
             them_agent.reset_game()
@@ -721,6 +734,9 @@ def run_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 game_time_budget_s=float(timeout_s),
                 game_watchdog_reserve_s=min(60.0, max(10.0, 0.1 * float(timeout_s))),
                 strict_runtime=True,
+                own_deck_ledger_enabled=bool(
+                    job.get("own_deck_ledger_enabled", False)
+                ),
             )
             them_agent = _CallableSeat(opp_fn)
             us_agent.reset_game()

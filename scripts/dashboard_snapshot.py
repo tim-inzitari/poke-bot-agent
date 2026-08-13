@@ -18,6 +18,11 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    from scripts.fleet_host_snapshot import network_state
+except ModuleNotFoundError:  # direct execution from this scripts directory
+    from fleet_host_snapshot import network_state
+
 
 SERVICE = "pokemon-state-bootstrap.service"
 EXACT_SERVICE = "pokemon-privileged-belief-full-blackwell-v1.service"
@@ -53,6 +58,64 @@ MARNIE_POSTUPLOAD_BOOTSTRAP_SERVICE = (
 )
 STRONG_PUBLIC_GATE_SERVICE = "pokebot-alakazam-strong-public-gate.service"
 ROOT = Path("/home/inzi/poke-bot-agent")
+ALAKAZAM_R274_SERVICE = "pokebot-alakazam-new-list-direct-r274.service"
+ALAKAZAM_R274_RL_SERVICE = "pokebot-alakazam-r274-rl.service"
+ALAKAZAM_R274_DATASET_JOIN_SERVICE = (
+    "pokebot-alakazam-r274-local-dataset-join.service"
+)
+ALAKAZAM_R274_SIDECAR_INDEX_SERVICE = (
+    "pokebot-r274-sidecar-index-build-v4.service"
+)
+ALAKAZAM_R281_ADAPTER_BOOTSTRAP_SERVICE = (
+    "pokebot-alakazam-r281-bootstrap-adapters.service"
+)
+# The typed source and transferred bytes retain r241 in their physical names as
+# immutable design/transport provenance.  All active dashboard identities are
+# r274 under the revision-275 conversion boundary.
+ALAKAZAM_R274_CONTRACT = ROOT / "state/alakazam-new-list-direct-policy-r241.json"
+ALAKAZAM_R274_IMPORTED_RUNTIME = (
+    ROOT / "outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime"
+)
+ALAKAZAM_R274_R260_STAGING = (
+    ALAKAZAM_R274_IMPORTED_RUNTIME
+    / "r260-own-deck-training-dataset-staging-09848f04"
+)
+ALAKAZAM_R274_R260_FINAL = (
+    ALAKAZAM_R274_IMPORTED_RUNTIME / "r260-own-deck-training-dataset"
+)
+ALAKAZAM_R274_RUNTIME = (
+    ROOT / "outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime"
+)
+ALAKAZAM_R274_SIDECAR_INDEX = (
+    ALAKAZAM_R274_RUNTIME / "r274-sidecar-index.sqlite3"
+)
+ALAKAZAM_R274_TACTICAL_OVERLAY = (
+    ALAKAZAM_R274_RUNTIME / "expert-tactical-overlay-v2.json"
+)
+ALAKAZAM_R274_MATCHUP_ROUTER_READY = (
+    ALAKAZAM_R274_RUNTIME
+    / "matchup-router-r276-a7"
+    / "PUBLIC_MATCHUP_TREE_READY.json"
+)
+ALAKAZAM_R274_CANARY_ACTIVATION = (
+    ALAKAZAM_R274_RUNTIME / "r274-canary-activation-receipt.json"
+)
+ALAKAZAM_R281_ADAPTER_BOOTSTRAP_RECEIPT = (
+    ALAKAZAM_R274_RUNTIME
+    / "r281-bootstrap-matchup-adapter-training-receipt.json"
+)
+ALAKAZAM_R281_TACTICAL_ACTIVATION_RECEIPT = (
+    ALAKAZAM_R274_RUNTIME / "r281-tactical-route-activation.json"
+)
+ALAKAZAM_R274_RUN_ROOT = (
+    ROOT / "outputs/pure_rl/alakazam_new_list_direct_policy_r274"
+)
+ALAKAZAM_R274_RL_LOG = ALAKAZAM_R274_RUN_ROOT / "logs/rl.log"
+ALAKAZAM_R259_ELMO_SERVICE = "pokebot-own-deck-rollout-store-r259.service"
+ALAKAZAM_R259_ELMO_DAILY = (
+    "/mnt/Main/main/poke-bot-agent/archive/"
+    "expert-r258-own-deck-ledger-sidecar/2026-07-22_2026-08-10/daily"
+)
 
 
 def _selected_specialist_runtime_root(
@@ -518,10 +581,11 @@ def run(argv: list[str], timeout: float = 3.0) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
+            errors="replace",
             timeout=timeout,
         )
         return result.stdout.strip()
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired, UnicodeError):
         return ""
 
 
@@ -1596,6 +1660,12 @@ def curriculum_worker_state(
         "active": bool(active_units and selected),
         "listening": None,
         "controller_pids": list(active_pids),
+        # This is the exact managed cgroup membership used to distinguish
+        # trainer-owned CUDA clients from unrelated interactive GPU work.
+        # GPU-server topology does not always export the legacy
+        # PURE_RL_LEAF_GPU*_REPLICAS variables, so process ownership is the
+        # authoritative live fallback for dashboard assignment labels.
+        "managed_process_pids": sorted(selected),
         "processes": len(selected),
         "tasks": tasks_current or None,
         "workers": workers,
@@ -7013,6 +7083,7 @@ def system_state() -> dict[str, Any]:
         "swap_total_bytes": swap_total,
         "swap_used_bytes": swap_used,
         "swap_free_bytes": swap_free,
+        "network": network_state(),
     }
 
 
@@ -8594,6 +8665,1209 @@ def read_json(path: Path) -> dict[str, Any]:
         return value if isinstance(value, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def r259_elmo_materialization_state() -> dict[str, Any]:
+    """Read only the managed r259 producer and committed non-dot day truth."""
+
+    command = (
+        "sudo -n systemctl show "
+        + shlex.quote(ALAKAZAM_R259_ELMO_SERVICE)
+        + " -p ActiveState -p SubState -p Result -p NRestarts -p ExecMainStatus; "
+        + "sudo -n find "
+        + shlex.quote(ALAKAZAM_R259_ELMO_DAILY)
+        + " -mindepth 1 -maxdepth 1 -type d -name '2026-*' -printf 'DAY=%f\\n'"
+    )
+    raw = run(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=25",
+            "-o",
+            "ConnectionAttempts=1",
+            "-o",
+            "ServerAliveInterval=10",
+            "-o",
+            "ServerAliveCountMax=3",
+            "-o",
+            "ControlMaster=auto",
+            "-o",
+            "ControlPersist=60",
+            "-o",
+            "ControlPath=/tmp/pokebot-dashboard-elmo-ssh",
+            "elmo",
+            command,
+        ],
+        timeout=40,
+    )
+    values: dict[str, str] = {}
+    days: list[str] = []
+    for line in raw.splitlines():
+        key, separator, value = line.partition("=")
+        if not separator:
+            continue
+        if key == "DAY":
+            if re.fullmatch(r"2026-(?:07-\d{2}|08-\d{2})", value):
+                days.append(value)
+        else:
+            values[key] = value
+    days = sorted(set(days))
+    active_state = values.get("ActiveState", "unknown")
+    return {
+        "available": bool(raw),
+        "service": ALAKAZAM_R259_ELMO_SERVICE,
+        "active_state": active_state,
+        "sub_state": values.get("SubState", "unknown"),
+        "result": values.get("Result", ""),
+        "restart_count": as_number(values.get("NRestarts", "")) or 0,
+        "exit_status": as_number(values.get("ExecMainStatus", "")),
+        "active": active_state in {"active", "activating"},
+        "committed_days": days,
+        "committed_day_count": len(days),
+        "expected_day_count": 20,
+    }
+
+
+def r274_streaming_bootstrap_progress(
+    trainer: dict[str, Any],
+    *,
+    proc_root: Path = Path("/proc"),
+) -> dict[str, Any]:
+    """Observe the active r274 stream without inventing an epoch heartbeat.
+
+    The current bootstrap process predates a durable per-epoch progress file.
+    Its open feature-shard descriptor still provides an exact, read-only cursor
+    within the current corpus pass.  Keep the 25-epoch target visible while
+    stating explicitly that the exact epoch number is not emitted.
+    """
+
+    pid = int(trainer.get("pid") or 0)
+    command = str(trainer.get("exec_start") or trainer.get("command") or "")
+    if not trainer.get("active") or pid <= 0 or "run_r274_streaming_bootstrap.py" not in command:
+        return {"available": False, "active": False}
+    manifest_match = re.search(r"(?:^|\s)--manifest\s+(\S+)", command)
+    epochs_match = re.search(r"(?:^|\s)--epochs\s+(\d+)", command)
+    if not manifest_match:
+        return {
+            "available": False,
+            "active": True,
+            "reason": "active bootstrap manifest is absent from the managed command",
+        }
+    manifest_path = Path(manifest_match.group(1))
+    manifest = read_json(manifest_path)
+    rows = [row for row in manifest.get("shards") or [] if isinstance(row, dict)]
+    shards: list[dict[str, Any]] = []
+    for row in rows:
+        path = Path(str(row.get("path") or ""))
+        if not path.is_absolute():
+            path = manifest_path.parent / path
+        size = int(row.get("bytes") or 0)
+        if path.name and size > 0:
+            shards.append({"path": path, "bytes": size})
+    if not shards:
+        return {
+            "available": False,
+            "active": True,
+            "reason": "bootstrap manifest has no observable feature shards",
+        }
+    total_bytes = sum(int(row["bytes"]) for row in shards)
+    active_index: int | None = None
+    active_position: int | None = None
+    fd_root = proc_root / str(pid) / "fd"
+    try:
+        descriptors = list(fd_root.iterdir())
+    except OSError:
+        descriptors = []
+    by_path = {str(row["path"]): index for index, row in enumerate(shards)}
+    for descriptor in descriptors:
+        try:
+            target = os.readlink(descriptor)
+        except OSError:
+            continue
+        index = by_path.get(target)
+        if index is None:
+            continue
+        try:
+            fdinfo = (proc_root / str(pid) / "fdinfo" / descriptor.name).read_text(
+                encoding="utf-8"
+            )
+            position_match = re.search(r"(?m)^pos:\s*(\d+)\s*$", fdinfo)
+            position = int(position_match.group(1)) if position_match else 0
+        except (OSError, ValueError):
+            position = 0
+        active_index = index
+        active_position = min(max(0, position), int(shards[index]["bytes"]))
+        break
+    elapsed_seconds = None
+    started_monotonic_us = trainer.get("started_monotonic_us")
+    if isinstance(started_monotonic_us, (int, float)) and started_monotonic_us > 0:
+        elapsed_seconds = max(
+            0.0, time.monotonic() - float(started_monotonic_us) / 1_000_000.0
+        )
+    epochs_target = int(epochs_match.group(1)) if epochs_match else 25
+    current = None
+    percent = None
+    shard_number = None
+    shard_percent = None
+    shard_name = None
+    if active_index is not None and active_position is not None:
+        current = sum(int(row["bytes"]) for row in shards[:active_index]) + active_position
+        percent = 100.0 * current / max(1, total_bytes)
+        shard_number = active_index + 1
+        shard_name = Path(shards[active_index]["path"]).name
+        shard_percent = 100.0 * active_position / int(shards[active_index]["bytes"])
+    if shard_number is None:
+        cursor = "optimizing the current batch between shard reads"
+    else:
+        cursor = (
+            f"stream shard {shard_number}/{len(shards)} · "
+            f"{shard_percent:.1f}% of {shard_name}"
+        )
+    return {
+        "available": True,
+        "active": True,
+        "phase": "expert_bootstrap",
+        "epoch": None,
+        "epochs_target": epochs_target,
+        "epoch_status": "not_emitted_by_current_process",
+        "epoch_status_reason": (
+            "the active trainer emits its exact epoch only in the terminal receipt"
+        ),
+        "current": current,
+        "total": total_bytes,
+        "unit": "stream bytes",
+        "percent": percent,
+        "active_shard": shard_number,
+        "shard_count": len(shards),
+        "active_shard_name": shard_name,
+        "active_shard_percent": shard_percent,
+        "elapsed_seconds": elapsed_seconds,
+        "latest_line": (
+            f"ALAKAZAM r274 EXPERT BOOTSTRAP · {epochs_target} epochs target · "
+            f"{cursor} · exact epoch heartbeat unavailable for this live process"
+        ),
+        "source": f"{manifest_path} + {proc_root}/{pid}/fd (read-only)",
+    }
+
+
+def r280_gpu_resident_bootstrap_progress(
+    trainer: dict[str, Any],
+) -> dict[str, Any]:
+    """Project the live r280 GPU-resident bootstrap from its journal heartbeat."""
+
+    pid = int(trainer.get("pid") or 0)
+    command = str(trainer.get("exec_start") or trainer.get("command") or "")
+    if (
+        not trainer.get("active")
+        or pid <= 0
+        or "run_r280_gpu_resident_bootstrap.py" not in command
+    ):
+        return {"available": False, "active": False}
+    try:
+        journal = subprocess.run(
+            [
+                "journalctl",
+                "--user",
+                "-u",
+                ALAKAZAM_R274_SERVICE,
+                "-n",
+                "20",
+                "--no-pager",
+                "-o",
+                "cat",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+            check=False,
+        )
+        # tqdm journals contain terminal control bytes.  They are not runtime
+        # data, so replace malformed byte sequences before parsing the ASCII
+        # epoch/batch heartbeat rather than failing the whole dashboard.
+        raw = journal.stdout.decode("utf-8", errors="replace")
+    except (OSError, subprocess.TimeoutExpired):
+        raw = ""
+    heartbeat = re.compile(
+        r"expert rehearsal before iter0 ep(?P<epoch>\d+)/(?P<epochs>\d+):"
+        r".*?\|\s*(?P<batch>\d+)/(?P<batches>\d+)\s*\["
+    )
+    latest: re.Match[str] | None = None
+    latest_text = ""
+    latest_step: int | None = None
+    for line in raw.replace("\r", "\n").splitlines():
+        match = heartbeat.search(line)
+        if match:
+            latest = match
+            latest_text = line.strip()
+            step_match = re.search(r"\bstep=(\d+)\b", line)
+            latest_step = int(step_match.group(1)) if step_match else None
+    elapsed_seconds = None
+    started_monotonic_us = trainer.get("started_monotonic_us")
+    if isinstance(started_monotonic_us, (int, float)) and started_monotonic_us > 0:
+        elapsed_seconds = max(
+            0.0, time.monotonic() - float(started_monotonic_us) / 1_000_000.0
+        )
+    if latest is None:
+        resident = "full numeric corpus copied once to cuda:1"
+        if "[device-corpus] fit-test" not in raw:
+            resident = "validating and copying the immutable pack to cuda:1"
+        return {
+            "available": True,
+            "active": True,
+            "phase": "gpu_resident_bootstrap",
+            "epoch": None,
+            "epochs_target": 25,
+            "epoch_status": "awaiting_first_optimizer_heartbeat",
+            "current": None,
+            "total": None,
+            "unit": "batches",
+            "percent": None,
+            "elapsed_seconds": elapsed_seconds,
+            "latest_line": f"ALAKAZAM r274 GPU-RESIDENT BOOTSTRAP · {resident}",
+            "source": f"systemd journal for {ALAKAZAM_R274_SERVICE}",
+        }
+    epoch = int(latest.group("epoch"))
+    epochs = int(latest.group("epochs"))
+    batch = int(latest.group("batch"))
+    batches = int(latest.group("batches"))
+    # The game-balanced sampler may emit 1,008 or 1,009 batches in different
+    # epochs.  Report exact epoch-equivalent progress instead of pretending the
+    # current epoch's batch count is constant across the whole bootstrap.
+    current = (epoch - 1) + batch / max(1, batches)
+    total = epochs
+    latest_line = (
+        f"ALAKAZAM r274 GPU-RESIDENT BOOTSTRAP · epoch {epoch}/{epochs} · "
+        f"batch {batch}/{batches} · full corpus resident on cuda:1"
+    )
+    if latest_step is not None:
+        latest_line += f" · optimizer step {latest_step}"
+    return {
+        "available": True,
+        "active": True,
+        "phase": "gpu_resident_bootstrap",
+        "epoch": epoch,
+        "epochs_target": epochs,
+        "epoch_status": "optimizer_active",
+        "current": current,
+        "total": total,
+        "unit": "epochs",
+        "percent": 100.0 * current / max(1, total),
+        "batch": batch,
+        "batches_per_epoch": batches,
+        "optimizer_step": latest_step,
+        "elapsed_seconds": elapsed_seconds,
+        "latest_line": latest_line,
+        "heartbeat": latest_text,
+        "source": f"systemd journal for {ALAKAZAM_R274_SERVICE}",
+    }
+
+
+def r281_matchup_adapter_bootstrap_progress(
+    trainer: dict[str, Any],
+) -> dict[str, Any]:
+    """Project the receipt-gated r281 adapter-only bootstrap."""
+
+    pid = int(trainer.get("pid") or 0)
+    command = str(trainer.get("exec_start") or trainer.get("command") or "")
+    receipt = read_json(ALAKAZAM_R281_ADAPTER_BOOTSTRAP_RECEIPT)
+    completed = bool(
+        receipt.get("schema")
+        == "poke_bot.r281_bootstrap_matchup_adapter_training/v1"
+        and receipt.get("status") == "passed"
+        and int(receipt.get("epochs") or 0) == 25
+        and int(receipt.get("steps") or 0) > 0
+        and int(receipt.get("rows") or 0) > 0
+        and receipt.get("all_non_adapter_tensors_bit_identical") is True
+    )
+    active = bool(
+        trainer.get("active")
+        and pid > 0
+        and "train_r281_bootstrap_matchup_adapters.py" in command
+    )
+    if not active and not completed:
+        return {"available": False, "active": False}
+    epoch = 25 if completed else 0
+    steps = int(receipt.get("steps") or 0) if completed else 0
+    rows = int(receipt.get("rows") or 0) if completed else 0
+    latest_loss: float | None = None
+    if active:
+        try:
+            journal = subprocess.run(
+                [
+                    "journalctl",
+                    "--user",
+                    "-u",
+                    ALAKAZAM_R281_ADAPTER_BOOTSTRAP_SERVICE,
+                    "-n",
+                    "80",
+                    "--no-pager",
+                    "-o",
+                    "cat",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+                check=False,
+            ).stdout.decode("utf-8", errors="replace")
+        except (OSError, subprocess.TimeoutExpired):
+            journal = ""
+        heartbeat = re.compile(
+            r"\[r281-adapters\]\s+epoch=(\d+)/25\s+steps=(\d+)\s+"
+            r"rows=(\d+)\s+loss=([0-9.eE+-]+)"
+        )
+        for match in heartbeat.finditer(journal):
+            epoch = int(match.group(1))
+            steps = int(match.group(2))
+            rows = int(match.group(3))
+            latest_loss = float(match.group(4))
+    elapsed_seconds = None
+    started_monotonic_us = trainer.get("started_monotonic_us")
+    if isinstance(started_monotonic_us, (int, float)) and started_monotonic_us > 0:
+        elapsed_seconds = max(
+            0.0, time.monotonic() - float(started_monotonic_us) / 1_000_000.0
+        )
+    status = "receipt passed" if completed else "optimizer active"
+    latest_line = (
+        f"ALAKAZAM r281 MATCHUP ADAPTER BOOTSTRAP · epoch {epoch}/25 · "
+        f"{steps:,} steps · {rows:,} routed decisions · {status}"
+    )
+    if latest_loss is not None:
+        latest_line += f" · loss {latest_loss:.6f}"
+    return {
+        "available": True,
+        "active": active,
+        "completed": completed,
+        "phase": "matchup_adapter_bootstrap",
+        "epoch": epoch,
+        "epochs_target": 25,
+        "epoch_status": "receipt_passed" if completed else "optimizer_active",
+        "current": epoch,
+        "total": 25,
+        "unit": "epochs",
+        "percent": 4.0 * epoch,
+        "optimizer_steps_latest_epoch": steps,
+        "routed_decisions_latest_epoch": rows,
+        "latest_loss": latest_loss,
+        "elapsed_seconds": elapsed_seconds,
+        "latest_line": latest_line,
+        "source": (
+            str(ALAKAZAM_R281_ADAPTER_BOOTSTRAP_RECEIPT)
+            if completed
+            else f"systemd journal for {ALAKAZAM_R281_ADAPTER_BOOTSTRAP_SERVICE}"
+        ),
+    }
+
+
+def r274_resident_bootstrap_progress(
+    trainer: dict[str, Any],
+    *,
+    proc_root: Path = Path("/proc"),
+) -> dict[str, Any]:
+    """Project the resident r274 loader and GPU bootstrap without guessing.
+
+    The resident launcher parallel-decodes the immutable daily feature shards,
+    joins the OwnDeck and tactical overlays in its owned worker processes, and
+    only then begins the 25-epoch GPU bootstrap.  It does not currently emit a
+    durable per-epoch heartbeat, so report the exact phase and worker count but
+    leave epoch/percent unknown until the terminal receipt exists.
+    """
+
+    pid = int(trainer.get("pid") or 0)
+    command = str(trainer.get("exec_start") or trainer.get("command") or "")
+    if (
+        not trainer.get("active")
+        or pid <= 0
+        or "run_r274_resident_bootstrap.py" not in command
+    ):
+        return {"available": False, "active": False}
+    manifest_match = re.search(r"(?:^|\s)--manifest\s+(\S+)", command)
+    epochs_match = re.search(r"(?:^|\s)--epochs\s+(\d+)", command)
+    workers_match = re.search(r"(?:^|\s)--loader-workers\s+(\d+)", command)
+    epochs_target = int(epochs_match.group(1)) if epochs_match else 25
+    workers_requested = int(workers_match.group(1)) if workers_match else None
+    manifest_path = Path(manifest_match.group(1)) if manifest_match else None
+    manifest = read_json(manifest_path) if manifest_path is not None else {}
+    shards = [row for row in manifest.get("shards") or [] if isinstance(row, dict)]
+    shard_count = len(shards) or None
+
+    children: list[int] = []
+    children_path = proc_root / str(pid) / "task" / str(pid) / "children"
+    try:
+        children = [int(value) for value in children_path.read_text().split()]
+    except (OSError, ValueError):
+        children = []
+    decode_workers = 0
+    for child in children:
+        try:
+            cmdline = (proc_root / str(child) / "cmdline").read_bytes().replace(
+                b"\0", b" "
+            )
+        except OSError:
+            continue
+        if b"multiprocessing.spawn" in cmdline and b"spawn_main" in cmdline:
+            decode_workers += 1
+
+    elapsed_seconds = None
+    started_monotonic_us = trainer.get("started_monotonic_us")
+    if isinstance(started_monotonic_us, (int, float)) and started_monotonic_us > 0:
+        elapsed_seconds = max(
+            0.0, time.monotonic() - float(started_monotonic_us) / 1_000_000.0
+        )
+    if decode_workers:
+        phase = "resident_corpus_decode_and_join"
+        latest_line = (
+            "ALAKAZAM r274 EXPERT BOOTSTRAP · resident CPU decode + "
+            f"OwnDeck/tactical join · {decode_workers} active workers"
+        )
+        if shard_count is not None:
+            latest_line += f" across {shard_count} Alakazam daily shards"
+        latest_line += f" · GPU epochs begin after RAM corpus is ready ({epochs_target} target)"
+    else:
+        phase = "expert_bootstrap_gpu"
+        latest_line = (
+            f"ALAKAZAM r274 EXPERT BOOTSTRAP · RAM corpus joined · GPU training active · "
+            f"{epochs_target} epochs target · exact epoch heartbeat unavailable"
+        )
+    return {
+        "available": True,
+        "active": True,
+        "phase": phase,
+        "epoch": None,
+        "epochs_target": epochs_target,
+        "epoch_status": "not_emitted_by_current_process",
+        "epoch_status_reason": (
+            "the active resident trainer emits exact completion in its terminal receipt"
+        ),
+        "current": None,
+        "total": None,
+        "unit": "resident corpus" if decode_workers else "epochs",
+        "percent": None,
+        "loader_workers_requested": workers_requested,
+        "loader_workers_active": decode_workers,
+        "shard_count": shard_count,
+        "elapsed_seconds": elapsed_seconds,
+        "latest_line": latest_line,
+        "source": (
+            f"{manifest_path} + {proc_root}/{pid}/task/{pid}/children (read-only)"
+            if manifest_path is not None
+            else f"{proc_root}/{pid}/task/{pid}/children (read-only)"
+        ),
+    }
+
+
+def r274_bootstrap_progress(
+    trainer: dict[str, Any],
+    *,
+    proc_root: Path = Path("/proc"),
+) -> dict[str, Any]:
+    gpu_resident = r280_gpu_resident_bootstrap_progress(trainer)
+    if gpu_resident.get("available"):
+        return gpu_resident
+    resident = r274_resident_bootstrap_progress(trainer, proc_root=proc_root)
+    if resident.get("available"):
+        return resident
+    return r274_streaming_bootstrap_progress(trainer, proc_root=proc_root)
+
+
+def _latest_r274_formal_evaluation_progress(
+    log_text: str, *, iteration: int
+) -> dict[str, int | float] | None:
+    """Project the newest complete formal-gate tqdm sample from trainer logs."""
+
+    pattern = re.compile(
+        rf"pure_rl heldout:strong_public_gate iter={int(iteration)}:"
+        r"[^\r\n]*?\b(\d+)/(\d+)\s+\["
+        r"[^\r\n]*?\bwr=([0-9]+(?:\.[0-9]+)?)%/(\d+)g "
+        r"\(gate ([0-9]+(?:\.[0-9]+)?)%\)"
+    )
+    matches = list(pattern.finditer(str(log_text or "")))
+    if not matches:
+        return None
+    match = matches[-1]
+    bar_current = int(match.group(1))
+    total = int(match.group(2))
+    win_rate = float(match.group(3))
+    completed = int(match.group(4))
+    gate = float(match.group(5))
+    if (
+        total <= 0
+        or bar_current < 0
+        or bar_current > total
+        or completed < 0
+        or completed > total
+        or not 0.0 <= win_rate <= 100.0
+        or not 0.0 <= gate <= 100.0
+    ):
+        return None
+    current = max(bar_current, completed)
+    return {
+        "current": current,
+        "total": total,
+        "percent": 100.0 * current / total,
+        "win_rate_percent": win_rate,
+        "win_rate_games": completed,
+        "gate_percent": gate,
+    }
+
+
+def alakazam_r241_prestart_progress(
+    *,
+    contract_path: Path = ALAKAZAM_R274_CONTRACT,
+    staging_root: Path = ALAKAZAM_R274_R260_STAGING,
+    final_root: Path = ALAKAZAM_R274_R260_FINAL,
+    source_materialization: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Project r274 pre-start state strictly from contract and runtime truth."""
+
+    contract = read_json(contract_path)
+    if (
+        contract.get("schema")
+        != "poke_bot.alakazam_new_list_direct_policy_r274/v1"
+        or contract.get("candidate_id") != "alakazam-new-list-direct-policy-r274"
+        or int(contract.get("latest_owner_clarification_revision") or 0) < 275
+    ):
+        return {"available": False, "current": False}
+    horizon = (
+        dict(contract.get("twenty_update_horizon_override") or {})
+        if isinstance(contract.get("twenty_update_horizon_override"), dict)
+        else {}
+    )
+    horizon_current = bool(
+        int(horizon.get("owner_revision") or 0) >= 285
+        and int(horizon.get("rl_updates_exact") or 0) == 20
+        and int(horizon.get("next_iteration_after_loop") or -1) == 20
+        and horizon.get("iteration_20_collection_allowed") is False
+    )
+    total_updates = 20 if horizon_current else 25
+    refresh_boundaries = (
+        [int(value) for value in horizon.get("expert_refresh_and_submission_boundaries") or []]
+        if horizon_current
+        else [5, 10, 15, 20, 25]
+    )
+    submission_count = (
+        int(horizon.get("total_submission_count_including_bootstrap") or 0)
+        if horizon_current
+        else 6
+    )
+    iteration_one_boundary = (
+        dict(contract.get("iteration_1_holdout_and_combo_boundary") or {})
+        if isinstance(contract.get("iteration_1_holdout_and_combo_boundary"), dict)
+        else {}
+    )
+    formal_holdout_contract = dict(
+        iteration_one_boundary.get("future_formal_holdout") or {}
+    )
+    formal_holdout_contract_current = bool(
+        int(iteration_one_boundary.get("owner_revision") or 0) >= 284
+        and int(formal_holdout_contract.get("first_evaluated_after_iteration") or -1)
+        == 1
+        and int(formal_holdout_contract.get("opponent_count") or 0) == 2
+        and int(formal_holdout_contract.get("games_per_opponent") or 0) == 250
+        and int(formal_holdout_contract.get("games_total") or 0) == 500
+        and formal_holdout_contract.get("other_opponents_allowed") is False
+        and len(formal_holdout_contract.get("opponents") or []) == 2
+    )
+    expected_days = [
+        (date(2026, 7, 22) + timedelta(days=offset)).isoformat()
+        for offset in range(20)
+    ]
+    accepted: list[dict[str, Any]] = []
+    final_exists = final_root.exists() or final_root.is_symlink()
+    material_root = final_root if final_exists else staging_root
+    receipt_root = material_root / "receipts"
+    daily_root = material_root / "daily"
+    for day in expected_days:
+        receipt_path = receipt_root / f"{day}.json"
+        receipt = read_json(receipt_path)
+        unsigned = dict(receipt)
+        claimed_digest = unsigned.pop("receipt_sha256", None)
+        body = (
+            json.dumps(
+                unsigned,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+        actual_digest = "sha256:" + hashlib.sha256(body).hexdigest()
+        day_root = daily_root / day
+        meta = day_root / "meta.json"
+        shard = day_root / "own_deck_rollouts.jsonl.gz"
+        destination = receipt.get("destination_files") or {}
+        meta_identity = destination.get("meta") or {}
+        shard_identity = destination.get("shard") or {}
+        try:
+            modes_valid = (
+                (day_root.stat().st_mode & 0o777) == 0o555
+                and (meta.stat().st_mode & 0o777) == 0o444
+                and (shard.stat().st_mode & 0o777) == 0o444
+            )
+            sizes_valid = (
+                meta.stat().st_size == int(meta_identity.get("size_bytes") or -1)
+                and shard.stat().st_size == int(shard_identity.get("size_bytes") or -1)
+            )
+        except OSError:
+            modes_valid = False
+            sizes_valid = False
+        if not (
+            receipt.get("schema")
+            == "poke_bot.r260_own_deck_prefix_transport_receipt/v1"
+            and receipt.get("status") == "staged_non_eligible"
+            and receipt.get("day") == day
+            and receipt.get("staging_training_eligible") is False
+            and receipt.get("joined_dataset_created") is False
+            and receipt.get("final_binding_created") is False
+            and receipt.get("canonical_root_exists") is False
+            and claimed_digest == actual_digest
+            and modes_valid
+            and sizes_valid
+        ):
+            break
+        accepted.append(
+            {
+                "day": day,
+                "receipt": str(receipt_path),
+                "receipt_sha256": claimed_digest,
+                "bytes": int(meta_identity["size_bytes"])
+                + int(shard_identity["size_bytes"]),
+            }
+        )
+    source = dict(source_materialization or {})
+    transfer_count = len(accepted)
+    source_count = int(source.get("committed_day_count") or transfer_count)
+    binding_path = (
+        final_root
+        / "r260-sidecar-evidence-v1"
+        / "r260-inzi-dataset-binding.json"
+    )
+    binding = read_json(binding_path)
+    dataset_bound = bool(
+        final_exists
+        and binding.get("schema")
+        == "poke_bot.r241_own_deck_inzi_dataset_binding/v2"
+        and binding.get("status") == "complete_transport_ready"
+        and int(binding.get("day_count") or 0) == 20
+        and str(binding.get("inzi_sidecar_root") or "") == str(final_root)
+    )
+    trainer = unit_state(ALAKAZAM_R274_SERVICE, user=True)
+    rl_trainer = unit_state(ALAKAZAM_R274_RL_SERVICE, user=True)
+    adapter_trainer = unit_state(
+        ALAKAZAM_R281_ADAPTER_BOOTSTRAP_SERVICE, user=True
+    )
+    dataset_join = unit_state(ALAKAZAM_R274_DATASET_JOIN_SERVICE, user=True)
+    sidecar_index_build = unit_state(
+        ALAKAZAM_R274_SIDECAR_INDEX_SERVICE, user=True
+    )
+    bootstrap_progress = r274_bootstrap_progress(trainer)
+    adapter_bootstrap_progress = r281_matchup_adapter_bootstrap_progress(
+        adapter_trainer
+    )
+
+    loop_state = read_json(ALAKAZAM_R274_RUN_ROOT / "loop_state.json")
+    next_update = int(loop_state.get("next_iteration") or 0)
+    learner_identity = (
+        dict(loop_state.get("learner") or {})
+        if isinstance(loop_state.get("learner"), dict)
+        else {}
+    )
+    checkpoint_structure = checkpoint_structure_telemetry(
+        str(learner_identity.get("path") or ""),
+        str(learner_identity.get("digest") or ""),
+    )
+    iteration_runtime = read_json(ALAKAZAM_R274_RUN_ROOT / "iteration_runtime.json")
+    collection_receipt = read_json(
+        ALAKAZAM_R274_RUN_ROOT
+        / "collection_receipts"
+        / f"iter_{next_update:05d}.json"
+    )
+    collection_sealed = bool(
+        collection_receipt.get("schema") == "poke_bot.completed_collection/v1"
+        and int(collection_receipt.get("iteration", -1)) == next_update
+        and int(collection_receipt.get("source_games", -1)) == 8196
+    )
+    shard_path = ALAKAZAM_R274_RUN_ROOT / "shards" / f"iter_{next_update:05d}.jsonl"
+    retained_trajectories = 0
+    try:
+        with shard_path.open("rb") as handle:
+            retained_trajectories = sum(1 for _line in handle)
+    except OSError:
+        pass
+    rl_active = bool(rl_trainer.get("active") and int(rl_trainer.get("pid") or 0) > 0)
+    rl_log_tail = read_tail(ALAKAZAM_R274_RL_LOG, 512 * 1024)
+    latest_launch_log = rl_log_tail.rsplit(
+        '{"games_per_update":', 1
+    )[-1]
+    rl_inner_progress = (
+        parse_curriculum_progress(
+            "", latest_launch_log, iteration_hint=next_update
+        )
+        if rl_active
+        else {}
+    )
+    optimizer_active = bool(
+        rl_active
+        and (
+            "rl-train ep" in latest_launch_log
+            or "[train] OPTIMIZER_PARAMETER_REMOVAL_MIGRATION" in latest_launch_log
+            and "rl-agreement parent" in latest_launch_log
+        )
+    )
+    formal_evaluation_progress = _latest_r274_formal_evaluation_progress(
+        latest_launch_log, iteration=next_update
+    )
+    formal_evaluation_active = bool(
+        rl_active
+        and (
+            formal_evaluation_progress is not None
+            or f"heldout iter={next_update}" in latest_launch_log
+        )
+    )
+    promotion_active = bool(
+        rl_active
+        and not formal_evaluation_active
+        and f"[pure_rl] promotion begin iter={next_update}" in latest_launch_log
+    )
+    promotion_rejected = bool(
+        promotion_active
+        and latest_launch_log.rfind(f"[pure_rl] REJECTED iter={next_update}")
+        > latest_launch_log.rfind(f"[pure_rl] promotion begin iter={next_update}")
+        and latest_launch_log.rfind(
+            f"[pure_rl] FORMAL_HOLDOUT_OWNER_DEFERRED iter={next_update}"
+        )
+        < latest_launch_log.rfind(f"[pure_rl] REJECTED iter={next_update}")
+    )
+    owner_deferred_finalizing = bool(
+        promotion_active
+        and latest_launch_log.rfind(
+            f"[pure_rl] FORMAL_HOLDOUT_OWNER_DEFERRED iter={next_update}"
+        )
+        > latest_launch_log.rfind(f"[pure_rl] promotion begin iter={next_update}")
+    )
+    live_activity = {
+        "kind": "iteration_collection",
+        "current_action": "collecting the fixed self-play/public-mix corpus",
+        "reason": "build the next receipt-bound RL training set",
+        "next_action": "seal the exact 8,196-game corpus and begin optimization",
+        "expert_refresh_active": False,
+        "rollout_collection_active": True,
+    }
+
+    def _sealed_file(path: Path) -> bool:
+        try:
+            return (
+                path.is_file()
+                and not path.is_symlink()
+                and path.stat().st_size > 0
+                and (path.stat().st_mode & 0o222) == 0
+            )
+        except OSError:
+            return False
+
+    tactical_labels_ready = _sealed_file(ALAKAZAM_R274_TACTICAL_OVERLAY)
+    matchup_router_ready = _sealed_file(ALAKAZAM_R274_MATCHUP_ROUTER_READY)
+    sidecar_index_ready = _sealed_file(ALAKAZAM_R274_SIDECAR_INDEX)
+    canary_activation_ready = _sealed_file(ALAKAZAM_R274_CANARY_ACTIVATION)
+    trainer_started = bool(
+        trainer.get("active")
+        or int(trainer.get("pid") or 0) > 0
+        or trainer.get("started")
+        or adapter_trainer.get("active")
+        or int(adapter_trainer.get("pid") or 0) > 0
+        or adapter_trainer.get("started")
+        or rl_active
+    )
+    selected = bool(
+        transfer_count
+        or source.get("active")
+        or final_exists
+        or trainer_started
+        or dataset_join.get("active")
+    )
+    if rl_active:
+        status = "running"
+        runtime_phase = str(iteration_runtime.get("phase") or "")
+        if formal_evaluation_active:
+            phase = f"rl_update_{next_update}_formal_evaluation"
+            live_activity = {
+                "kind": "formal_holdout",
+                "current_action": "running the frozen r195 plus H10 Marnie formal holdout",
+                "reason": "measure the trained candidate on the exact 500-game owner gate",
+                "next_action": "commit the iteration and publish the selected learner",
+                "expert_refresh_active": False,
+                "rollout_collection_active": False,
+            }
+        elif owner_deferred_finalizing:
+            phase = f"rl_update_{next_update}_owner_deferred_commit"
+            live_activity = {
+                "kind": "owner_deferred_commit",
+                "current_action": "finalizing the receipt-backed iteration-0 carry",
+                "reason": "the owner moved the formal holdout to iteration 1",
+                "next_action": "commit iteration 0, activate the combo-off boundary, and collect iteration 1",
+                "expert_refresh_active": False,
+                "rollout_collection_active": False,
+            }
+        elif promotion_rejected:
+            phase = f"rl_update_{next_update}_candidate_safety_audit"
+            live_activity = {
+                "kind": "candidate_fleet_publication_and_safety_audit",
+                "current_action": "temporarily publishing the trained candidate to every required worker for the safety audit",
+                "reason": "a confidence promotion rejection still requires candidate safety evidence before the continuous learner can carry",
+                "next_action": "restore the protected fleet checkpoint, apply the owner-deferred holdout receipt, and commit iteration 0",
+                "expert_refresh_active": False,
+                "rollout_collection_active": False,
+            }
+        elif promotion_active:
+            phase = f"rl_update_{next_update}_promotion"
+            live_activity = {
+                "kind": "candidate_promotion",
+                "current_action": "comparing the trained candidate with the protected incumbent",
+                "reason": "select the safe behavior policy before the next iteration",
+                "next_action": "run the applicable formal holdout and commit the iteration",
+                "expert_refresh_active": False,
+                "rollout_collection_active": False,
+            }
+        elif runtime_phase == "train" or optimizer_active:
+            phase = f"rl_update_{next_update}_training"
+            live_activity = {
+                "kind": "rl_optimizer",
+                "current_action": "training the full active learner on the sealed iteration corpus",
+                "reason": "apply the iteration's direct-policy RL gradient update",
+                "next_action": "run candidate promotion and safety evaluation",
+                "expert_refresh_active": False,
+                "rollout_collection_active": False,
+            }
+        elif collection_sealed:
+            phase = f"rl_update_{next_update}_preparing_optimizer"
+            live_activity = {
+                "kind": "optimizer_preparation",
+                "current_action": "loading the sealed iteration corpus into the resident replay path",
+                "reason": "prepare exact tensors for the RL optimizer",
+                "next_action": "train the iteration candidate",
+                "expert_refresh_active": False,
+                "rollout_collection_active": False,
+            }
+        else:
+            phase = f"rl_update_{next_update}_collecting"
+    elif adapter_bootstrap_progress.get("active"):
+        status = "running"
+        phase = "train:matchup-adapters"
+    elif adapter_bootstrap_progress.get("completed"):
+        status = "prestart"
+        phase = "matchup_adapter_bootstrap_receipt_passed"
+    elif trainer.get("active") and bootstrap_progress.get("available"):
+        status = "running"
+        phase = "train:expert_bootstrap"
+    elif trainer_started:
+        status = "running"
+        phase = "managed_training"
+    elif dataset_join.get("active"):
+        status = "materializing"
+        phase = "local_dataset_join_running"
+    elif dataset_bound and sidecar_index_build.get("active"):
+        status = "materializing"
+        phase = "sidecar_streaming_index_building"
+    elif dataset_bound and not tactical_labels_ready:
+        status = "prestart"
+        phase = "tactical_label_sidecar_pending"
+    elif dataset_bound and not matchup_router_ready:
+        status = "prestart"
+        phase = "expanded_matchup_router_pending"
+    elif dataset_bound and not sidecar_index_ready:
+        status = "prestart"
+        phase = "sidecar_streaming_index_seal_pending"
+    elif dataset_bound and not canary_activation_ready:
+        status = "prestart"
+        phase = "bounded_canary_and_activation_pending"
+    elif dataset_bound:
+        status = "prestart"
+        phase = "prestart_gates_ready_managed_training_pending"
+    elif final_exists:
+        status = "prestart"
+        phase = "final_dataset_promoted_binding_pending"
+    elif transfer_count >= 20:
+        status = "prestart"
+        phase = "transfer_complete_join_and_receipts_pending"
+    else:
+        status = "materializing"
+        phase = f"prefix_transfer_{transfer_count:02d}_of_20"
+    percent = min(100.0, transfer_count * 5.0)
+    current: int | float | None = transfer_count
+    total: int | float | None = 20
+    latest_line = (
+        f"ALAKAZAM r274 PRE-START · Elmo {source_count}/20 committed · "
+        f"Inzi {transfer_count}/20 sealed receipts · final dataset "
+        f"{'bound' if dataset_bound else ('present' if final_exists else 'absent')} · local join "
+        f"{'active' if dataset_join.get('active') else 'inactive'} · "
+        f"sidecar index {'sealed' if sidecar_index_ready else ('building' if sidecar_index_build.get('active') else 'pending')} · trainer "
+        f"{'started' if trainer_started else 'not started'}"
+    )
+    active_training_progress = (
+        adapter_bootstrap_progress
+        if phase in {
+            "train:matchup-adapters",
+            "matchup_adapter_bootstrap_receipt_passed",
+        }
+        else bootstrap_progress
+    )
+    if rl_active:
+        current = next_update
+        total = total_updates
+        percent = 100.0 * next_update / max(1, total_updates)
+        if collection_sealed:
+            source_games = int(collection_receipt.get("source_games") or 0)
+            decisions = int(
+                dict(collection_receipt.get("shard") or {}).get("decisions") or 0
+            )
+            action = (
+                "promoted candidate in formal evaluation"
+                if phase.endswith("_formal_evaluation")
+                else (
+                    "confidence promotion rejected; continuous-learner safety audit active"
+                    if phase.endswith("_candidate_safety_audit")
+                    else "owner-deferred update-0 boundary finalizing"
+                    if phase.endswith("_owner_deferred_commit")
+                    else "candidate promotion gate active"
+                    if phase.endswith("_promotion")
+                    else (
+                        "full-model optimizer active"
+                        if phase.endswith("_training")
+                        else "sealed corpus preparing full-model optimizer"
+                    )
+                )
+            )
+            latest_line = (
+                f"ALAKAZAM r281→r274 RL · iter {next_update}/{total_updates - 1} "
+                f"({total_updates} total) · "
+                f"{source_games:,} games / {retained_trajectories:,} trajectories / "
+                f"{decisions:,} decisions sealed · {action}"
+                + (
+                    f" {int(formal_evaluation_progress['current']):,}/"
+                    f"{int(formal_evaluation_progress['total']):,} · "
+                    f"{float(formal_evaluation_progress['win_rate_percent']):.2f}% "
+                    f"vs {float(formal_evaluation_progress['gate_percent']):g}% gate"
+                    if phase.endswith("_formal_evaluation")
+                    and formal_evaluation_progress is not None
+                    else ""
+                )
+                + " · RTP off · search off · MCTS off"
+            )
+        else:
+            inner_stage = str(rl_inner_progress.get("stage") or "")
+            stage_label = inner_stage.replace("_", " ").replace(":", " · ")
+            inner_current = rl_inner_progress.get("current")
+            inner_total = rl_inner_progress.get("total")
+            inner_rate = rl_inner_progress.get("rate")
+            inner_rate_unit = str(rl_inner_progress.get("rate_unit") or "")
+            remote_slots = int(rl_inner_progress.get("remotes") or 0)
+            if (
+                stage_label
+                and isinstance(inner_current, (int, float))
+                and isinstance(inner_total, (int, float))
+            ):
+                latest_line = (
+                    f"ALAKAZAM r281→r274 RL · iter {next_update}/{total_updates - 1} "
+                    f"({total_updates} total) · {stage_label.upper()} · "
+                    f"{int(inner_current):,}/{int(inner_total):,} "
+                    f"{str(rl_inner_progress.get('unit') or 'items')}"
+                    + (
+                        f" · {float(inner_rate):.2f} {inner_rate_unit}"
+                        if isinstance(inner_rate, (int, float)) and inner_rate_unit
+                        else ""
+                    )
+                    + (f" · {remote_slots} remote slots" if remote_slots else "")
+                    + " · 4 environments/worker · RTP off · search off · MCTS off"
+                )
+                current = inner_current
+                total = inner_total
+                percent = rl_inner_progress.get("percent")
+                live_activity["progress"] = dict(rl_inner_progress)
+            else:
+                latest_line = (
+                    f"ALAKAZAM r281→r274 RL · iter {next_update}/{total_updates - 1} "
+                    f"({total_updates} total) · "
+                    f"{retained_trajectories:,} retained trajectories written · "
+                    "4 environments/worker · RTP off · search off · MCTS off"
+                )
+    if active_training_progress.get("available") and phase in {
+        "train:expert_bootstrap",
+        "train:matchup-adapters",
+        "matchup_adapter_bootstrap_receipt_passed",
+    }:
+        current = active_training_progress.get("current")
+        total = active_training_progress.get("total")
+        percent = active_training_progress.get("percent")
+        latest_line = str(active_training_progress.get("latest_line") or latest_line)
+    pure_rl_progress: dict[str, Any] = {"available": False}
+    if rl_active:
+        inner_stage = str(rl_inner_progress.get("stage") or "")
+        if inner_stage.startswith("collect:self_play"):
+            active_step = 0
+        elif inner_stage.startswith("collect:public_mix"):
+            active_step = 1
+        elif inner_stage.startswith("drain:"):
+            active_step = 2
+        elif phase.endswith("_preparing_optimizer") or inner_stage.startswith(
+            ("train:preparing", "train:prep", "train:agreement")
+        ):
+            active_step = 3
+        elif phase.endswith("_training") or inner_stage.startswith("train:"):
+            active_step = 4
+        elif phase.endswith(("_promotion", "_candidate_safety_audit")):
+            active_step = 5
+        elif phase.endswith("_formal_evaluation"):
+            active_step = 6
+        elif phase.endswith("_owner_deferred_commit"):
+            active_step = 7
+        else:
+            active_step = 0
+        step_names = [
+            "self-play collection",
+            "public-mix collection",
+            "seal + result drain",
+            "optimizer preparation",
+            "policy optimization",
+            "promotion + safety",
+            "formal holdout",
+            "receipt commit",
+        ]
+        pure_rl_progress = {
+            "available": True,
+            "run": "alakazam_new_list_direct_policy_r274",
+            "outer": {
+                "completed_iterations": next_update,
+                "active_iteration": next_update,
+                "last_iteration_index": total_updates - 1,
+                "total_iterations": total_updates,
+                "percent": 100.0 * next_update / max(1, total_updates),
+            },
+            "inner": {
+                **dict(rl_inner_progress),
+                "available": bool(rl_inner_progress.get("stage")),
+            },
+            "active_step_index": active_step,
+            "steps": [
+                {
+                    "index": index,
+                    "name": name,
+                    "status": (
+                        "complete"
+                        if index < active_step
+                        else "active"
+                        if index == active_step
+                        else "pending"
+                    ),
+                }
+                for index, name in enumerate(step_names)
+            ],
+            "summary": latest_line,
+            "source": str(ALAKAZAM_R274_RL_LOG),
+            "read_only": True,
+        }
+    return {
+        "available": True,
+        "authoritative": True,
+        "selected": selected,
+        "status": status,
+        "mode": (
+            "alakazam_new_list_direct_r274_rl"
+            if rl_active
+            else "alakazam_new_list_direct_r274_prestart"
+        ),
+        "phase": phase,
+        "run": "alakazam_new_list_direct_policy_r274",
+        "specialist_id": "alakazam",
+        "goal_revision": int(contract["latest_owner_clarification_revision"]),
+        "source": str(contract_path),
+        "fresh": True,
+        "current": current,
+        "total": total,
+        "percent": percent,
+        "latest_line": latest_line,
+        "live_activity": live_activity,
+        "epoch": None if rl_active else active_training_progress.get("epoch"),
+        "epochs": None if rl_active else active_training_progress.get("epochs_target"),
+        "unit": (
+            str(rl_inner_progress.get("unit") or "iterations")
+            if rl_active
+            else active_training_progress.get("unit")
+            if active_training_progress.get("available")
+            else "days"
+        ),
+        "elapsed_seconds": active_training_progress.get("elapsed_seconds"),
+        "bootstrap_progress": bootstrap_progress,
+        "pure_rl_progress": pure_rl_progress,
+        "matchup_adapter_bootstrap_progress": adapter_bootstrap_progress,
+        "source_materialization": source,
+        "transfer": {
+            "staging_root": str(staging_root),
+            "final_root": str(final_root),
+            "committed_source_days": source_count,
+            "sealed_inzi_days": transfer_count,
+            "expected_days": 20,
+            "days": accepted,
+            "materialization_complete": dataset_bound,
+            "training_eligible": dataset_bound,
+            "binding": str(binding_path) if dataset_bound else None,
+        },
+        "schedule": {
+            "initial_expert_bootstrap_epochs": 25,
+            "rl_updates": total_updates,
+            "soft_refresh_boundaries": refresh_boundaries,
+            "soft_refresh_epochs": 5,
+            "submission_count": submission_count,
+            "games_per_update": 8196,
+            "self_play_games": 1024,
+            "public_mix_games": 7172,
+            "h10_marnie_minimum": 1024,
+            "r195_submission_55378392_minimum": 128,
+        },
+        "formal_holdout_contract": {
+            **formal_holdout_contract,
+            "verified": formal_holdout_contract_current,
+            "source": str(contract_path),
+        },
+        "model_plan": {
+            "parent_submission_id": 55378392,
+            "parent_bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+            "heads_training_active": 21,
+            "bootstrap_fusion_routes_active": 21,
+            "post_bootstrap_fusion_routes_active": 21,
+            "tactical_sequence_route": "removed_before_rl_update_0",
+            "tactical_sequence_head_present": False,
+            "old_strategic_tactical_outcome_fusion_preserved": True,
+            "combo_state_loss_weight": (
+                0.0 if next_update >= 1 else 0.025
+            ),
+            "combo_state_loss_weight_from_update_1": 0.0,
+            "combo_state_fusion_route_enabled_from_update_1": False,
+            "tactical_route_active": False,
+            "tactical_impact_receipts": "retired_owner_revision_283",
+            "checkpoint_structure": checkpoint_structure,
+        },
+        "prestart_materialization": {
+            "tactical_label_sidecar_ready": tactical_labels_ready,
+            "expanded_matchup_router_ready": matchup_router_ready,
+            "sidecar_streaming_index_ready": sidecar_index_ready,
+            "bounded_canary_activation_ready": canary_activation_ready,
+            "sidecar_index_service": sidecar_index_build,
+        },
+        "service": rl_trainer if rl_active else (trainer if trainer_started else dataset_join),
+        "trainer_service": rl_trainer if rl_active else trainer,
+        "rl_progress": {
+            "active": rl_active,
+            "completed_updates": next_update,
+            "total_updates": total_updates,
+            "current_update": next_update,
+            "retained_trajectories": retained_trajectories,
+            "shard": str(shard_path),
+            "formal_evaluation": formal_evaluation_progress,
+        },
+        "dataset_join_service": dataset_join,
+    }
 
 
 def _r216_number(value: object) -> int | float | None:
@@ -12173,6 +13447,11 @@ def _tqdm_eta(timing: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
+def _tqdm_elapsed(timing: str) -> str | None:
+    match = re.search(r"\[(\d+(?::\d+){1,2})<", timing)
+    return match.group(1).strip() if match else None
+
+
 def annotate_expert_optimizer_sps(
     progress: dict[str, Any],
     raw_training_log: str,
@@ -12285,7 +13564,7 @@ def parse_curriculum_progress(
             percent, current, total, timing = resident_pack.groups()
             rate, rate_unit = _tqdm_rate(timing, ("game/s", "s/game"))
             progress.update(
-                line=line,
+                line=resident_pack.group(0).strip(),
                 stage="train:packing",
                 iteration=iteration_hint,
                 epoch=0,
@@ -12311,7 +13590,7 @@ def parse_curriculum_progress(
             shard_name, percent, current, total, timing = replay_cache.groups()
             rate, rate_unit = _tqdm_rate(timing, ("part/s", "s/part"))
             progress.update(
-                line=line,
+                line=replay_cache.group(0).strip(),
                 stage="train:preparing",
                 iteration=iteration_hint,
                 epoch=0,
@@ -12337,7 +13616,7 @@ def parse_curriculum_progress(
             stage, iteration, percent, current, total, timing = collect.groups()
             if stage == "train:expert":
                 progress.update(
-                    line=line,
+                    line=collect.group(0).strip(),
                     stage="train:expert:loading",
                     iteration=int(iteration),
                     epoch=0,
@@ -12387,7 +13666,7 @@ def parse_curriculum_progress(
             )
             sps = parse_metric(timing, "sps")
             progress.update(
-                line=line,
+                line=collect.group(0).strip(),
                 stage=stage,
                 iteration=int(iteration),
                 epoch=None,
@@ -12440,7 +13719,7 @@ def parse_curriculum_progress(
         if expert_loading:
             iteration, percent, current, total, timing = expert_loading.groups()
             progress.update(
-                line=line,
+                line=expert_loading.group(0).strip(),
                 stage="train:expert:loading",
                 iteration=int(iteration),
                 epoch=0,
@@ -12495,7 +13774,7 @@ def parse_curriculum_progress(
                 key: value for key, value in metrics.items() if value is not None
             }
             progress.update(
-                line=line,
+                line=expert_batch.group(0).strip(),
                 stage="train:expert",
                 iteration=int(iteration),
                 epoch=int(epoch),
@@ -12523,7 +13802,7 @@ def parse_curriculum_progress(
             iteration, percent, current, total, timing = expert_validation.groups()
             rate, rate_unit = _tqdm_rate(timing, ("batch/s", "s/batch"))
             progress.update(
-                line=line,
+                line=expert_validation.group(0).strip(),
                 stage="train:expert:validation",
                 iteration=int(iteration),
                 epoch=None,
@@ -12569,7 +13848,7 @@ def parse_curriculum_progress(
             if metrics:
                 last_train_metrics = metrics
             progress.update(
-                line=line,
+                line=training_batch.group(0).strip(),
                 stage="train:policy",
                 iteration=iteration_hint,
                 epoch=int(epoch) + 1,
@@ -12595,7 +13874,7 @@ def parse_curriculum_progress(
             epoch, percent, current, total, timing = adapter_batch.groups()
             rate, rate_unit = _tqdm_rate(timing, ("batch/s", "s/batch"))
             progress.update(
-                line=line,
+                line=adapter_batch.group(0).strip(),
                 stage="train:matchup-adapters:shadow",
                 iteration=iteration_hint,
                 epoch=int(epoch) + 1,
@@ -12628,7 +13907,7 @@ def parse_curriculum_progress(
             family, phase, percent, current, total, timing = preparation.groups()
             rate, rate_unit = _tqdm_rate(timing, ("batch/s", "s/batch"))
             progress.update(
-                line=line,
+                line=preparation.group(0).strip(),
                 stage=f"train:{family}:{phase}",
                 iteration=iteration_hint,
                 epoch=0,
@@ -12674,7 +13953,7 @@ def parse_curriculum_progress(
             if metrics:
                 last_train_metrics = metrics
             progress.update(
-                line=line,
+                line=train.group(0).strip(),
                 stage="train:policy",
                 iteration=iteration_hint,
                 epoch=int(current),
@@ -12700,7 +13979,7 @@ def parse_curriculum_progress(
             epoch, percent, current, total, timing = validation.groups()
             rate, rate_unit = _tqdm_rate(timing, ("batch/s", "s/batch"))
             progress.update(
-                line=line,
+                line=validation.group(0).strip(),
                 stage="train:validation",
                 iteration=iteration_hint,
                 epoch=int(epoch) + 1,
@@ -12716,6 +13995,7 @@ def parse_curriculum_progress(
                 remotes=0,
                 metrics=dict(last_train_metrics),
             )
+    progress["elapsed"] = _tqdm_elapsed(str(progress.get("line") or ""))
     return progress
 
 
@@ -13316,6 +14596,8 @@ def _is_curriculum_service_unit(unit: str) -> bool:
     """Return whether an active managed unit owns live curriculum work."""
 
     lowered = str(unit).lower()
+    if lowered == ALAKAZAM_R274_RL_SERVICE:
+        return True
     if "pure-rl" in lowered or "curriculum" in lowered:
         return True
     # Owner hard-swap r175 unit is final-format-alakazam-rtp-r175-rl (not *-h10*).
@@ -14590,6 +15872,7 @@ def elmo_state() -> dict[str, Any]:
             "-o",
             "ControlPath=/tmp/pokebot-dashboard-elmo-ssh",
             "elmo",
+            "python3",
             "/mnt/Main/Elmo/poke-bot-agent/dashboard/fleet_host_snapshot.py",
             "--role",
             "simulator",
@@ -18554,40 +19837,88 @@ def annotate_gpu_production_assignments(
     )
     gpu0_replicas = int(worker.get("leaf_gpu0_replicas") or 0)
     gpu1_replicas = int(worker.get("leaf_gpu1_replicas") or 0)
+    managed_pids = {
+        int(pid)
+        for pid in (worker.get("managed_process_pids") or [])
+        if str(pid).isdigit()
+    }
+    gpu_server_topology = "--leaf-eval gpu-server" in str(
+        worker.get("command") or ""
+    )
     for gpu in gpus:
         index = int(gpu.get("index") or 0)
+        compute_pids = {
+            int(pid)
+            for pid in (gpu.get("compute_process_pids") or [])
+            if str(pid).isdigit()
+        }
+        owned_gpu_pids = sorted(compute_pids & managed_pids)
+        gpu["production_gpu_processes"] = len(owned_gpu_pids)
+        gpu["production_gpu_process_pids"] = owned_gpu_pids
+        owned_process_source = (
+            "nvidia-smi compute PID intersection with active managed trainer cgroup"
+        )
         if index == 0 and curriculum_active:
-            gpu["production_active"] = gpu0_replicas > 0
-            gpu["assignment"] = (
-                f"PRODUCTION · {gpu0_replicas} policy leaf replicas"
-                if gpu0_replicas > 0
-                else "OUT OF FLEET · no active trainer leaf replicas"
-            )
-            gpu["assignment_source"] = topology_source
-            gpu["production_leaf_replicas"] = gpu0_replicas
+            if gpu0_replicas > 0:
+                gpu["production_active"] = True
+                gpu["assignment"] = (
+                    f"PRODUCTION · {gpu0_replicas} policy leaf replicas"
+                )
+                gpu["assignment_source"] = topology_source
+                gpu["production_leaf_replicas"] = gpu0_replicas
+            elif gpu_server_topology and owned_gpu_pids:
+                gpu["production_active"] = True
+                gpu["assignment"] = (
+                    "PRODUCTION · "
+                    f"{len(owned_gpu_pids)} trainer-owned GPU processes"
+                )
+                gpu["assignment_source"] = owned_process_source
+                gpu["production_leaf_replicas"] = None
+            else:
+                gpu["production_active"] = False
+                gpu["assignment"] = (
+                    "OUT OF FLEET · no active trainer leaf replicas"
+                )
+                gpu["assignment_source"] = topology_source
+                gpu["production_leaf_replicas"] = 0
         elif index == 1 and (
             curriculum_active or specialist_handoff.get("active")
         ):
             gpu["production_active"] = True
-            gpu["assignment"] = (
-                "PRODUCTION · core/specialist trainer"
-                if specialist_handoff.get("active")
-                else "PRODUCTION · policy leaves + trainer"
+            if specialist_handoff.get("active"):
+                gpu["assignment"] = "PRODUCTION · core/specialist trainer"
+            elif gpu1_replicas > 0:
+                gpu["assignment"] = "PRODUCTION · policy leaves + trainer"
+            elif gpu_server_topology and owned_gpu_pids:
+                gpu["assignment"] = (
+                    "PRODUCTION · policy workers + trainer · "
+                    f"{len(owned_gpu_pids)} GPU processes"
+                )
+            else:
+                gpu["assignment"] = "PRODUCTION · trainer"
+            gpu["assignment_source"] = (
+                owned_process_source
+                if gpu_server_topology and owned_gpu_pids and gpu1_replicas <= 0
+                else topology_source
             )
-            gpu["assignment_source"] = topology_source
-            gpu["production_leaf_replicas"] = gpu1_replicas
+            gpu["production_leaf_replicas"] = (
+                gpu1_replicas if gpu1_replicas > 0 else None
+            )
 
 
 def main() -> None:
     # Elmo is an independent host. Fetch its three views concurrently so a
     # slow SSH handshake cannot serialize into the outer Bert→Inzi timeout.
-    with ThreadPoolExecutor(max_workers=5) as remote_pool:
+    with ThreadPoolExecutor(max_workers=6) as remote_pool:
         elmo_future = remote_pool.submit(elmo_state)
         latest10_future = remote_pool.submit(latest10_state)
         expert_refresh_future = remote_pool.submit(expert_refresh_state)
         matchup_pipeline_future = remote_pool.submit(matchup_pipeline_state)
         guide_prestage_future = remote_pool.submit(
             current_deck_guide_prestage_state
+        )
+        r241_materialization_future = remote_pool.submit(
+            r259_elmo_materialization_state
         )
         system = system_state()
         service = service_state()
@@ -18604,10 +19935,16 @@ def main() -> None:
             if postupload_bootstrap.get("current") is True
             else postupload_family
         )
+        r241_source_materialization = r241_materialization_future.result()
+        r274_prestart = alakazam_r241_prestart_progress(
+            source_materialization=r241_source_materialization
+        )
         # Prefer an authoritative Crustle projection whenever it is available.
         # Historical stopped Marnie RL must not mask the active Crustle selector
         # during brief systemd transitions or after Marnie completion.
-        if final_crustle.get("status") in {"running", "stopped", "complete"}:
+        if r274_prestart.get("selected") is True:
+            active_final_refresh = r274_prestart
+        elif final_crustle.get("status") in {"running", "stopped", "complete"}:
             active_final_refresh = final_crustle
         elif final_marnie.get("status") in {"running", "complete", "stopped"}:
             active_final_refresh = final_marnie
@@ -18618,6 +19955,8 @@ def main() -> None:
             "running",
             "complete",
             "stopped",
+            "materializing",
+            "prestart",
         }:
             final_service = active_final_refresh.get("service") or {}
             final_stage = (
@@ -18632,7 +19971,11 @@ def main() -> None:
                 final_service.get("name")
                 or FINAL_FORMAT_ALAKAZAM_SERVICE
             )
-            if active_final_refresh.get("status") in {"running", "stopped"}:
+            if active_final_refresh.get("status") in {
+                "running",
+                "stopped",
+                "materializing",
+            }:
                 service = final_service
             curriculum = {
                 **curriculum,
@@ -18657,9 +20000,12 @@ def main() -> None:
                     "stage": final_stage,
                     "iteration": active_final_refresh.get("iteration"),
                     "epoch": active_final_refresh.get("epoch"),
+                    "epochs": active_final_refresh.get("epochs"),
                     "current": active_final_refresh.get("current"),
                     "total": active_final_refresh.get("total"),
+                    "unit": active_final_refresh.get("unit"),
                     "percent": active_final_refresh.get("percent"),
+                    "elapsed_seconds": active_final_refresh.get("elapsed_seconds"),
                     "rate": active_final_refresh.get("rate"),
                     "rate_unit": active_final_refresh.get("rate_unit"),
                     "gps": active_final_refresh.get("games_per_second"),
@@ -18854,6 +20200,8 @@ def main() -> None:
         "running",
         "complete",
         "stopped",
+        "materializing",
+        "prestart",
     }:
         training = active_final_refresh
     terminal_completion = (
@@ -19412,6 +20760,107 @@ def main() -> None:
                 "current_deck_guide": marnie_guide_state,
             },
         }
+    if active_final_refresh.get("mode") in {
+        "alakazam_new_list_direct_r274_prestart",
+        "alakazam_new_list_direct_r274_rl",
+    }:
+        r274_model_plan = dict(active_final_refresh.get("model_plan") or {})
+        r274_structure = dict(r274_model_plan.get("checkpoint_structure") or {})
+        r274_parameters = int(r274_structure.get("model_parameters") or 0)
+        r274_adapter_parameters = int(r274_structure.get("adapter_parameters") or 0)
+        r274_checkpoint = r274_structure.get("checkpoint")
+        r274_checkpoint_digest = r274_structure.get("checkpoint_digest")
+        final_model_override = {
+            "implementation": "TemporalCabtTransformer",
+            "architecture": "Alakazam r274 retained-head direct-policy successor",
+            "run": active_final_refresh.get("run"),
+            "profile_id": "H10-I/v1+r260+r263",
+            "trainable_parameters": r274_parameters or None,
+            "active_checkpoint": r274_checkpoint,
+            "active_checkpoint_digest": r274_checkpoint_digest,
+            "parameter_source": r274_structure.get("source"),
+            "checkpoint_structure": r274_structure,
+            "parameter_breakdown": {
+                "optimizer_active_current": r274_parameters or None,
+                "matchup_adapter_bank": r274_adapter_parameters or None,
+                "current_checkpoint_total": r274_parameters or None,
+                "historical_cached_count": r274_structure.get(
+                    "cached_parameter_count"
+                ),
+                "historical_cache_matches_state": r274_structure.get(
+                    "cached_parameter_count_matches_state"
+                ),
+            },
+            "matchup_adapter_runtime": {
+                "verified": r274_structure.get("adapter_registry_verified") is True,
+                "format": r274_structure.get("adapter_format"),
+                "physical_slot_capacity": r274_structure.get("adapter_slot_capacity"),
+                "routable_expert_count": len(
+                    r274_structure.get("adapter_expert_ids") or []
+                ),
+                "routable_expert_ids": r274_structure.get("adapter_expert_ids") or [],
+                "parameters": r274_adapter_parameters or None,
+                "slot_registry_digest": r274_structure.get(
+                    "adapter_slot_registry_digest"
+                ),
+                "source": r274_structure.get("source"),
+            },
+            "heads": {
+                "architecture_present": 21,
+                "training_active": 21,
+                "fusion_routes_active": 21,
+                "combo_state": {
+                    "enabled": True,
+                    "loss_weight": r274_model_plan.get(
+                        "combo_state_loss_weight", 0.025
+                    ),
+                },
+                "visible_tutor_completion": {"enabled": True},
+                "terminal_conversion": {"enabled": True},
+                "tactical_sequence_outcome": {
+                    "enabled": False,
+                    "removed_before_rl_update_0": True,
+                    "bootstrap_training_enabled": False,
+                    "bootstrap_fusion_route_enabled": False,
+                    "post_bootstrap_fusion_route_enabled": False,
+                    "bounded_search_planner_shadow_only": True,
+                },
+                "tactical_outcome": {
+                    "enabled": True,
+                    "fusion_route_enabled": True,
+                    "role": "preserved_old_strategic_head",
+                },
+            },
+            "training_schedule": dict(active_final_refresh.get("schedule") or {}),
+            "decision_fusion": {
+                **dict(r274_structure.get("decision_fusion") or {}),
+                "training_enabled": True,
+                "runtime_enabled": True,
+                "tactical_sequence_route": "removed_owner_revision_283",
+                "combo_state_route_from_update_1": "disabled_owner_revision_284",
+            },
+            "runtime_identity": {
+                "active_learner": "alakazam-new-list-direct-r274",
+                "runtime_build": "r274-revision-285",
+                "runtime_root": str(ALAKAZAM_R274_IMPORTED_RUNTIME),
+                "service_active": (
+                    active_final_refresh.get("status") == "running"
+                ),
+                "service_state": (
+                    f"{(active_final_refresh.get('service') or {}).get('active_state')}/"
+                    f"{(active_final_refresh.get('service') or {}).get('sub_state')}"
+                ),
+                "frozen_inference_opponents": [
+                    {
+                        "submission_id": 55378392,
+                        "bundle_sha256": r274_model_plan.get(
+                            "parent_bundle_sha256"
+                        ),
+                        "minimum_games_each_update": 128,
+                    }
+                ],
+            },
+        }
     baseline_eval = baseline_eval_state()
     # Retain compatibility payloads for old dashboard clients, but label every
     # superseded or aliased view so it cannot masquerade as current evidence.
@@ -19476,6 +20925,14 @@ def main() -> None:
                 "specialist_protocol": specialist_protocol,
                 "specialist_handoff": specialist_handoff,
                 "managed_boundary": postupload_boundary,
+                "alakazam_r274_prestart": r274_prestart,
+                "alakazam_r241_prestart": {
+                    "available": False,
+                    "current": False,
+                    "historical": True,
+                    "compatibility_alias": True,
+                    "alias_of": "alakazam_r274_prestart",
+                },
                 "curriculum": curriculum,
                 "evaluation_tracker": local_mcts_evaluation,
                 "gpus": gpus,
@@ -19537,7 +20994,13 @@ def main() -> None:
                     ),
                 },
                 "pure_rl_status": (
-                    curriculum.get("progress", {}).get("line", "")
+                    active_final_refresh.get("latest_line", "")
+                    if active_final_refresh.get("mode")
+                    in {
+                        "alakazam_new_list_direct_r274_prestart",
+                        "alakazam_new_list_direct_r274_rl",
+                    }
+                    else curriculum.get("progress", {}).get("line", "")
                     if curriculum.get("active")
                     else (
                         "STOPPED AT COMMITTED ITERATION "

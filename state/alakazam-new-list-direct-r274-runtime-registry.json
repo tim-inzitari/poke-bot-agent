@@ -1,0 +1,310 @@
+{
+  "schema": "poke_bot.alakazam_new_list_direct_policy_r274_runtime_registry/v1",
+  "revision": 274,
+  "owner_clarification_revision": 277,
+  "status": "immutable_pending_external_activation_overlay",
+  "owner_contract": {
+    "path": "state/alakazam-new-list-direct-policy-r241.json",
+    "sha256": "sha256:8927d7c8a9a9159480793b23668b7c2606988e6bc1c14ed51126885821752644"
+  },
+  "run": {
+    "name": "alakazam_new_list_direct_policy_r274",
+    "inzi_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274",
+    "elmo_root": "/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274",
+    "external_activation_overlay_required": true,
+    "activation_overlay_schema": "poke_bot.alakazam_new_list_direct_r274_activation_overlay/v1",
+    "managed_service_start_authorized": false,
+    "submission_authorized": false
+  },
+  "parent": {
+    "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_terminal_expert_bootstrap_no_rtp_r195/checkpoints/expert_before_iter_00021.pt",
+    "sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "size_bytes": 127914385,
+    "immutable": true
+  },
+  "deck": {
+    "path": "decks/archetype-samples/alakazam-new-list-direct-r241.csv",
+    "sha256": "sha256:d834c66c5a3629dd79c8533a04fde770a22ca8590ac55c9868440121b6df5fba",
+    "multiset_sha256": "sha256:a42e047c45c419a599a31f2e20a6209d324558082f27e12091ade8918376d182",
+    "card_count": 60
+  },
+  "guide": {
+    "selector": "alakazam",
+    "version": "powerful-hand-new-list-r241-v1",
+    "contract": "config/deck_guides/alakazam-new-list-direct-r241.yaml",
+    "contract_sha256": "sha256:b5cb827e46ab40d14a544a5df53a1cfb8b719250f852e81430e8b7e57efc6d5a",
+    "ordinary_rl_loss_weight": 0.05,
+    "expert_refresh_loss_weight": 0.0,
+    "training_mode": "strategic_directional_v2",
+    "curriculum_spec": "state/alakazam-new-list-direct-r241-strategic-curriculum.json",
+    "curriculum_spec_sha256": "sha256:68fda72611d1ff4fc3b4f55dbd5d16fcc9ac1e7b43c0e0abffd2bc722d63fd58",
+    "head_role_map": "state/alakazam-new-list-direct-r241-strategic-head-roles.json",
+    "head_role_map_sha256": "sha256:5b331159ab6e6bced77209f4d8b67a77ebebc78728c7a671384363dc0faaa356",
+    "validation_receipt": "state/alakazam-new-list-direct-r241-strategic-curriculum-validation.json",
+    "validation_receipt_sha256": "sha256:39e2740ab3058321423024a75a36295d95f66d010498ab7f1e27254a9155fd13"
+  },
+  "official_libcg": {
+    "staging_receipt": "state/alakazam-new-list-direct-r241-official-libcg-staging.json",
+    "staging_receipt_sha256": "sha256:894fa309471dcc794dc8e65be69dbceb1bd914bb4b68e141f6794a2b2c6756a0",
+    "receipt_schema": "poke_bot.r241_official_libcg_direct_policy_preflight/v1",
+    "receipt_filename": "r241_official_libcg_direct_policy_preflight.json",
+    "linux_member": "cg/libcg.so",
+    "linux_sha256": "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7",
+    "linux_size_bytes": 1342400,
+    "hosts": {
+      "inzi": {
+        "runtime_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/cg-r236",
+        "receipt_sha256": "sha256:165af79e33b9851d36c972503012654ed9db86222b7f79e7fac9b8bd00a38965"
+      },
+      "elmo": {
+        "runtime_root": "/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/cg-r236",
+        "receipt_sha256": "sha256:91506428871349a47cd4fa4af76e45aaafde779a8e462e1b08e3c631d908973b"
+      }
+    }
+  },
+  "source_snapshot": {
+    "schema": "poke_bot.alakazam_new_list_direct_r274_source_snapshot/v1",
+    "candidate_id": "alakazam-new-list-direct-policy-r274",
+    "owner_contract_sha256": "sha256:8927d7c8a9a9159480793b23668b7c2606988e6bc1c14ed51126885821752644",
+    "status": "pending_immutable_source_snapshot",
+    "manifest_sha256": "",
+    "source_tree_sha256": "",
+    "hosts": {
+      "inzi": {
+        "root": "",
+        "manifest": "",
+        "outputs_root": "/home/inzi/poke-bot-agent/outputs"
+      },
+      "elmo": {
+        "root": "",
+        "manifest": "",
+        "outputs_root": "/mnt/Main/main/poke-bot-agent/outputs"
+      }
+    }
+  },
+  "baseline_payloads": {
+    "schema": "poke_bot.alakazam_new_list_direct_r274_baseline_payload_registry/v1",
+    "candidate_id": "alakazam-new-list-direct-policy-r274",
+    "status": "pending_external_baseline_payload_snapshot",
+    "separately_mounted_and_receipted": true,
+    "source_snapshot_fallback_allowed": false,
+    "canonical_roster_receipt": "",
+    "canonical_roster_receipt_sha256": "",
+    "canonical_baseline_manifest_sha256": "",
+    "canonical_baseline_roster_sha256": "",
+    "hosts": {
+      "inzi": {
+        "root": "",
+        "manifest": "",
+        "manifest_sha256": "",
+        "baseline_tree_sha256": "",
+        "staging_receipt": "",
+        "staging_receipt_sha256": ""
+      },
+      "elmo": {
+        "root": "",
+        "manifest": "",
+        "manifest_sha256": "",
+        "baseline_tree_sha256": "",
+        "staging_receipt": "",
+        "staging_receipt_sha256": ""
+      }
+    }
+  },
+  "remote_collection": {
+    "schema": "poke_bot.alakazam_new_list_direct_policy_r274_remote_endpoint_registry/v1",
+    "revision": 274,
+    "require_explicit_eligible_endpoints": true,
+    "legacy_or_default_endpoint_fallback_allowed": false,
+    "pure_rl_public_mix_local_only": "0",
+    "checkpoint_transport": {
+      "schema": "poke_bot.alakazam_new_list_direct_r274_elmo_checkpoint_transport/v1",
+      "status": "pending_external_checkpoint_transport",
+      "endpoint_id": "elmo-r274-official-r236-direct-policy-8767",
+      "host_role": "elmo",
+      "verification_endpoint": "192.168.1.143:8767",
+      "verification_port": 8767,
+      "host_root": "",
+      "trainer_visible_root": "",
+      "container_root": "/workspace/checkpoint",
+      "environment_key": "POKEBOT_REMOTE_CHECKPOINT_ROOT",
+      "remote_path_prefix": "/workspace/checkpoint/",
+      "content_addressing": {
+        "algorithm": "sha256",
+        "filename_scheme": "poke_bot.remote_jobs.digest_addressed_basename/v1"
+      },
+      "read_only_container_mount": true,
+      "same_absolute_source_and_baseline_paths_preserved": true,
+      "staging_receipt": "",
+      "staging_receipt_sha256": "",
+      "initial_checkpoint": {
+        "container_path": "",
+        "sha256": ""
+      }
+    },
+    "eligible_endpoints": [
+      {
+        "id": "elmo-r274-official-r236-direct-policy-8767",
+        "endpoint": "192.168.1.143:8767",
+        "host_role": "elmo",
+        "capability": "r274_direct_policy_collection_v1",
+        "manifest_path": "/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/elmo-8767/preflight-manifest.json",
+        "manifest_sha256": "",
+        "host_receipt_path": "/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/elmo-8767/host-preflight.json",
+        "host_receipt_sha256": "",
+        "runtime_receipt_path": "/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/elmo-8767/runtime-preflight.json",
+        "runtime_receipt_sha256": "",
+        "gameplay_receipt_path": "/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/elmo-8767/gameplay-preflight.json",
+        "gameplay_receipt_sha256": "",
+        "allowed_job_kinds": [
+          "play",
+          "self_play",
+          "self_play_multi",
+          "runtime_probe"
+        ],
+        "r236_linux_sha256": "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7",
+        "learner_matchup_tree_sha256": "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe0194c9049",
+        "h10_matchup_tree_sha256": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588"
+      }
+    ]
+  },
+  "matchup_archetype_refresh": {
+    "status": "expanded_exact_id_router_fit_and_readiness_required_prestart",
+    "required_for_r274_activation": true,
+    "source_snapshot": "state/ptcgreplay-matchup-meta-snapshot-r272.json",
+    "candidate_roster_sha256": "sha256:7ec69d97554f1338965c3056205f82f67cfd96780373a2b09e90785a94845271",
+    "append_only_receipt_sha256": "sha256:fb962715d7e1e271d4a0fa4ef7a7ed142919a369aeafd8783f8bfb8bddead1b3",
+    "slot_change_status": "append_only_slots_20_through_39_pending_fit_receipts",
+    "baseline_slot_registry": "state/matchup_adapter_roster.json",
+    "baseline_slot_registry_sha256": "sha256:08322efe30c0f8b75d922aae8b882b4e78a20df03a63ed997ec8288165bfd1bc",
+    "immutable_existing_slot_prefix_count": 20,
+    "existing_slot_ids_must_remain_bit_identical": true,
+    "new_slots": [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+    "exact_numeric_source_id_keying_required": true,
+    "submission_55378392_separate_package_namespace": true,
+    "runtime_activation_receipt_required": true
+  },
+  "peak_r195_preservation": {
+    "receipt_schema": "poke_bot.alakazam_new_list_direct_policy_r274_peak_r195_preservation/v2",
+    "receipt_inzi": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/peak-r195-preservation-v6.json",
+    "receipt_elmo": "/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/peak-r195-preservation-v6.json",
+    "receipt_sha256_inzi": "",
+    "receipt_sha256_elmo": "",
+    "architecture_present_head_count": 22,
+    "every_non_combo_head_trainable": true,
+    "every_non_combo_fusion_route_enabled_after_bootstrap": true,
+    "tactical_sequence_route_enabled_during_bootstrap": false,
+    "tactical_sequence_route_enabled_after_bootstrap": true,
+    "combo_state_head_present": true,
+    "combo_state_loss_weight": 0.025,
+    "combo_state_fusion_route_enabled": true,
+    "matchup_adapter_bank_preserved": true,
+    "matchup_adapter_training_enabled": true,
+    "matchup_adapter_runtime_enabled": true,
+    "matchup_adapter_checkpoint_runtime_enabled": false,
+    "matchup_adapter_checkpoint_training_enabled": false,
+    "matchup_adapter_checkpoint_main_optimizer_included": false,
+    "matchup_adapter_isolated_bank_only_optimizer": true,
+    "matchup_adapter_isolated_fit_continuation_required": true,
+    "matchup_adapter_external_collection_runtime_enabled": true,
+    "matchup_adapter_external_terminal_runtime_enabled": true,
+    "learner_matchup_tree_sha256": "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe0194c9049",
+    "baseline_adapter_roster": "state/matchup_adapter_roster.json",
+    "baseline_adapter_roster_sha256": "sha256:08322efe30c0f8b75d922aae8b882b4e78a20df03a63ed997ec8288165bfd1bc",
+    "immutable_adapter_slot_prefix": 20,
+    "total_active_fusion_route_count": 22,
+    "own_deck_ledger_live_cotrain_required": true,
+    "tactical_outlook_head_live_cotrain_required": true,
+    "tactical_search_planner_shadow_only": true,
+    "established_diverse_public_mix_preserved": true,
+    "research_control_phase_preserved": true
+  },
+  "direct_policy": {
+    "action_selector": "direct_policy_only",
+    "mcts": "forbidden_for_scoped_direct_roles",
+    "recursive_turn_planner": "forbidden_for_scoped_direct_roles",
+    "search_target_generation": "forbidden_for_scoped_direct_roles",
+    "public_opponent_selector_change": "forbidden",
+    "public_search_firewall": "not_introduced",
+    "package_main_import_allowed": false,
+    "embedded_cg_runtime_allowed": false,
+    "matchup_adapters_allowed_and_required": true,
+    "adapter_receipt_environment": "POKEBOT_R274_DIRECT_POLICY_ADAPTER_RECEIPT",
+    "adapter_receipt_schema": "poke_bot.alakazam_new_list_direct_policy_r274_marnie_adapter/v1",
+    "adapter_receipt_inzi": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/marnie-h10-direct-policy-adapter-r251-v8.json",
+    "adapter_receipt_elmo": "/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/marnie-h10-direct-policy-adapter-r251-v8.json",
+    "forbidden_environment": [
+      "POKEBOT_LIBCG_PATH",
+      "POKEBOT_BATCH_LIBCG",
+      "POKEBOT_ALLOW_ORACLE_DECK"
+    ]
+  },
+  "marnie_h10": {
+    "opponent_id": "specialist-marnie-final-format-h10-f20efb20f5c3",
+    "baseline_group": "specialists",
+    "baseline_dir": "marnie-final-format-h10-f20efb20f5c3",
+    "model_relative_path": "model.pt",
+    "model_sha256": "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381",
+    "model_size_bytes": 132425453,
+    "deck_relative_path": "deck.csv",
+    "content_sha256": "sha256:f7c25cfd0bba674ceb4c2156a6e2fef87a3ff9effc74ed41b33fbb17fd627787",
+    "matchup_tree_relative_path": "matchup_tree.json",
+    "matchup_tree_sha256": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588",
+    "matchup_tree_size_bytes": 2509756,
+    "old_embedded_libcg_sha256": "sha256:ffd89bf923525a3e6feb5e6201e96a866c0f456895499ed5c4a566303caae67c"
+  },
+  "training_cycle": {
+    "updates_exact": 25,
+    "commits_exact": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+    "iteration_25_collection_allowed": false,
+    "games_per_update": 8196,
+    "self_play_games_exact": 1024,
+    "self_play_fraction": "0.12493899463152758",
+    "public_mix_games_exact": 7172,
+    "marnie_h10_games_minimum": 1024,
+    "frozen_submission_55378392_games_minimum": 128,
+    "frozen_submission_55378392_each_seat_minimum": 64,
+    "established_diverse_public_mix_preserved": true,
+    "research_control_phase_preserved": true,
+    "training_seats": {
+      "first": 4098,
+      "second": 4098
+    },
+    "initial_expert_bootstrap_epochs": 25,
+    "initial_submission_required": true,
+    "expert_refresh_boundaries": [5, 10, 15, 20, 25],
+    "expert_refresh_epochs": 5,
+    "terminal_checkpoint": "expert_before_iter_00025.pt",
+    "submission_boundaries": [0, 5, 10, 15, 20, 25],
+    "submission_count_exact": 6,
+    "continue_after_gate_argument_allowed": false,
+    "minimum_terminal_iteration_argument_allowed": false,
+    "population_mode_allowed": false,
+    "multi_env": {
+      "transport": "LibcgMultiEnv",
+      "environments_per_pack": 4,
+      "trainer_argument": ["--multi-env-per-worker", "4"],
+      "remote_self_play_multi_games": 4,
+      "public_safety_contract": "state/alakazam-public-multi-env-split-r182.json",
+      "public_default_deny": true,
+      "unverified_or_research_public_transport": "singleton_play",
+      "independent_child_accounting_required": true,
+      "remote_farms_remain_engaged": true
+    }
+  },
+  "expert_window": {
+    "staging_receipt": "state/alakazam-new-list-direct-r241-expert-window-staging.json",
+    "staging_receipt_sha256": "sha256:508249e6ebc256d8baeacb918e914d309b5afc21a0cbbdb38cf561bc281e8733",
+    "canonical_receipt": {
+      "inzi_path": "/home/inzi/poke-bot-agent/outputs/state/expert-r241-20260722-20260810-current.json",
+      "elmo_path": "/mnt/Main/main/poke-bot-agent/archive/expert-r241-20260722-20260810/current.json",
+      "sha256": "sha256:09848f04a6c863a02c517fdcd5b7a61a139eceafd3348aa2a08705fd6e971a16"
+    },
+    "protected_feature_pointer_inzi": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/expert/PROTECTED_EXPERT_CORPUS.json",
+    "protected_feature_pointer_elmo": "/mnt/Main/main/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/expert/PROTECTED_EXPERT_CORPUS.json",
+    "start": "2026-07-22",
+    "end": "2026-08-10",
+    "days": 20,
+    "strict_date_pinning": true
+  }
+}

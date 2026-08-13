@@ -1,0 +1,168 @@
+{
+  "schema": "poke_bot.alakazam_turn_checklist_diagnostic_bo250_r289_config/v1",
+  "diagnostic_revision": 289,
+  "evaluation_id": "alakazam-r289-rule-derivative-three-cohort-bo250",
+  "status": "staged_elmo_only_create_only_diagnostic",
+  "host_scope": "elmo_only",
+  "goal_contract": {
+    "schema": "poke_bot.alakazam_elmo_rule_derivative_goal/v1",
+    "path": "goals/alakazam-elmo-rule-derivative/contract.json",
+    "sha256": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+    "source_attachment_sha256": "sha256:0f440fc71043b4352e6401a3187c9d582c1c5614d76e186095e0eef51017af6f",
+    "mechanics_attachment_sha256": "sha256:d3f06071663dde2ae7012da72b407b410c7facd06d09ab723cad05af44ddb2cb"
+  },
+  "training_eligible": false,
+  "replay_eligible": false,
+  "promotion_authority": false,
+  "production_authority": false,
+  "production_selector_authority": false,
+  "kaggle_authority": false,
+  "submission_authority": false,
+  "elmo_production_readmission_authority": false,
+  "managed_service_authority": false,
+  "service_start_authority": false,
+  "service_stop_authority": false,
+  "inzi_authority": false,
+  "candidate": {
+    "arm": "r298_frozen_public_rule_derivative",
+    "identity_source": "required_r298_validation_receipt",
+    "checklist_layer_enabled": true,
+    "strict_r298_stage_wrapper_required": true,
+    "legacy_r288_action_or_logit_authority": false,
+    "direct_policy_only": true,
+    "frozen_backbone_required": true,
+    "zero_gated_layer_off_baseline_parity_required": true
+  },
+  "decks": {
+    "exact_new_list": {
+      "deck_id": "alakazam-new-list-direct-r241",
+      "canonical_multiset_sha256": "sha256:a42e047c45c419a599a31f2e20a6209d324558082f27e12091ade8918376d182"
+    },
+    "r195_native_operational": {
+      "deck_id": "alakazam-owner-rtp-pilot-r175",
+      "file_sha256": "sha256:1705f0f4db0c54b32f297fc9292a417b0c3abc9fdb6edf6a5370af6a635efe65",
+      "ordered_cards_sha256": "sha256:660c1274aac19d88c40fd2bb52187f53dc639d944506760e386f2686b91cc247",
+      "canonical_multiset_sha256": "sha256:803d00583b98f81bc3908dab22974a6d65f3d35724e95874bda1eb5ea76ac9ea"
+    }
+  },
+  "comparisons": [
+    {
+      "id": "A",
+      "candidate_arm": "r298_frozen_public_rule_derivative",
+      "control_arm": "unchanged_receipt_bound_r241_r274",
+      "candidate_deck": "exact_new_list",
+      "control_deck": "exact_new_list",
+      "interpretation": "same_architecture_primary_comparison",
+      "deck_shift_confound": false
+    },
+    {
+      "id": "B",
+      "candidate_arm": "r298_frozen_public_rule_derivative",
+      "control_arm": "immutable_r195_native_operational_reference",
+      "candidate_deck": "exact_new_list",
+      "control_deck": "r195_native_operational",
+      "interpretation": "operational_reference_comparison",
+      "deck_shift_confound": true
+    },
+    {
+      "id": "C",
+      "candidate_arm": "r298_frozen_public_rule_derivative",
+      "control_arm": "immutable_r195_weights_exact_new_list_deck_shift_confound",
+      "candidate_deck": "exact_new_list",
+      "control_deck": "exact_new_list",
+      "interpretation": "exploratory_deck_shift_confound",
+      "deck_shift_confound": true
+    }
+  ],
+  "pairing": {
+    "pair_count_per_comparison": 125,
+    "games_per_pair": 2,
+    "game_count_per_comparison": 250,
+    "comparison_count": 3,
+    "total_game_count": 750,
+    "seed_matched_within_comparison": true,
+    "seat_swapped_within_comparison": true,
+    "candidate_seat_0_games_per_comparison": 125,
+    "candidate_seat_1_games_per_comparison": 125,
+    "candidate_actual_first_games_per_comparison": 125,
+    "candidate_actual_second_games_per_comparison": 125,
+    "conclusive_by_itself": false
+  },
+  "checklist_channels": [
+    "ko_hand_threshold",
+    "safe_spend_above_threshold",
+    "replacement_alakazam_line",
+    "unavoidable_draws_before_attack",
+    "bench_prize_exposure",
+    "immediate_disruption_outcome",
+    "unknown_prize_robust_line",
+    "terminal_before_forced_draw"
+  ],
+  "direct_policy_boundary": {
+    "rtp": false,
+    "search": false,
+    "mcts": false,
+    "rollout": false,
+    "hidden_information_inference": false
+  },
+  "seeded_engine": {
+    "required": true,
+    "receipt_required": true,
+    "unseeded_fallback_allowed": false,
+    "same_engine_and_deck_order_seed_within_pair": true,
+    "first_player_seal_required_before_pair_credit": true
+  },
+  "calibration": {
+    "required_before_benchmark": true,
+    "all_neural_checkpoint_tensors_frozen": true,
+    "source_disjoint_exact_new_list_data_required": true,
+    "bo250_seed_identity_exclusion_required": true,
+    "calibration_data_training_eligible": false,
+    "eligible_gate_order": [
+      "ko_hand_threshold_gate",
+      "safe_spend_above_threshold_gate",
+      "replacement_alakazam_line_gate",
+      "unavoidable_draws_before_attack_gate",
+      "unknown_prize_robust_line_gate",
+      "terminal_before_forced_draw_gate"
+    ],
+    "fixed_trace_only_gates": {
+      "bench_prize_exposure_gate": 0.0,
+      "immediate_disruption_outcome_gate": 0.0,
+      "separate_guide_gate": 0.0
+    }
+  },
+  "legacy_r293_r295_trace_evidence": {
+    "may_be_staged_for_historical_trace_only": true,
+    "runtime_action_or_logit_authority": false,
+    "legacy_broad_guide_runtime_residual": 0.0,
+    "r295_corrected_attachment_sha256": "sha256:5cc092c9ed93b3e0e4ecae9fca9d50409bea6979e8d92e358f684091e0cdff8b"
+  },
+  "r298_validation": {
+    "required_before_benchmark": true,
+    "receipt_schema": "poke_bot.alakazam_simulator_rules_r298_validation_receipt/v1",
+    "host": "elmo",
+    "source_attachment_sha256": "sha256:0f440fc71043b4352e6401a3187c9d582c1c5614d76e186095e0eef51017af6f",
+    "mechanics_attachment_sha256": "sha256:d3f06071663dde2ae7012da72b407b410c7facd06d09ab723cad05af44ddb2cb"
+  },
+  "rev4_evidence": {
+    "required_before_benchmark": true,
+    "raw_corpus_receipt_schema": "poke_bot.alakazam_collision_census_r298_raw_expert_corpus_receipt/v1",
+    "collision_census_receipt_schema": "poke_bot.alakazam_collision_census_r298_receipt/v1",
+    "frozen_schema_and_zero_bypass_receipt_required": true,
+    "census_supported_candidate_training_receipt_required": true,
+    "quarantined_create_only_transfer_predecessor_required": true,
+    "transfer_is_not_runtime_or_training_authority": true,
+    "strict_r298_checklist_runtime_receipt_required": true,
+    "legacy_r288_guide_or_csv_derived_runtime_authority": false
+  },
+  "output": {
+    "content_addressed": true,
+    "game_receipts": "create_only",
+    "resume": "validate_existing_exact_receipts_and_never_double_credit",
+    "partial_report_credit": false,
+    "report_requires_all_750_completed_game_receipts": true,
+    "separate_report_per_comparison": true,
+    "combined_report_required": true
+  }
+}

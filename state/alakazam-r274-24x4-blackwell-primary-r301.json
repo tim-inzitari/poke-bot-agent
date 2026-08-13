@@ -1,0 +1,40 @@
+{
+  "schema": "poke_bot.alakazam_r274_24x4_blackwell_primary/v1",
+  "status": "managed_restart_authorized_and_partial_collection_sealed",
+  "recorded_at_utc": "2026-08-12T18:10:00Z",
+  "service": "pokebot-alakazam-r274-rl.service",
+  "iteration": 1,
+  "topology": {
+    "simulator_processes": 24,
+    "environments_per_process": 4,
+    "concurrent_environments": 96,
+    "leaf_replicas": {
+      "cuda_0_rtx_3080_ti": 12,
+      "cuda_1_blackwell": 30
+    },
+    "gpu0_client_fraction": 0.2,
+    "expected_sticky_process_split": {
+      "cuda_0_rtx_3080_ti": 5,
+      "cuda_1_blackwell": 19
+    },
+    "expected_environment_split": {
+      "cuda_0_rtx_3080_ti": 20,
+      "cuda_1_blackwell": 76
+    },
+    "least_queue_spillover_enabled": true
+  },
+  "partial_resume": {
+    "sidecar": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r301-iter1-24x4-partial-resume.json",
+    "sidecar_sha256": "sha256:75f0006351beca5ffa73be82dc58b17e7380760efa020052f1adc3f734e03475",
+    "shard_sha256": "sha256:b748fc5c1bc1013ea61b10a670f5daf3c51c52e80d8f01f38ee25df38b1333bc",
+    "retained_source_games": 4624,
+    "retained_self_play_source_games": 1024,
+    "retained_public_source_games": 3600,
+    "trajectory_records": 4624,
+    "decisions": 324044,
+    "missing_source_games": 3572,
+    "collect_only_missing_job_identities": true
+  },
+  "remote_workers": 0,
+  "rtp_search_mcts_off": true
+}

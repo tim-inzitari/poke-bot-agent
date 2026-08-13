@@ -1,0 +1,17 @@
+[Unit]
+Description=Build immutable r279 contiguous Alakazam expert pack on Inzi
+After=default.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=OMP_NUM_THREADS=1
+Environment=MKL_NUM_THREADS=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/build_r279_contiguous_expert_pack.py --manifest /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/expert-elmo-d23e-v4/manifest.json --sidecar-binding /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r274-sidecar-binding.json --index /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/r260-own-deck-training-dataset/r274-sidecar-index.sqlite3 --tactical-overlay /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/expert-tactical-overlay-inzi-v3-compact.json --fragment-root /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r279-contiguous-pack/fragments --output /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r279-contiguous-pack/alakazam-expert-r279.pt --receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r279-contiguous-pack/receipt.json --card-vocab 1268 --workers 20 --validation-days 2
+Restart=no
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target

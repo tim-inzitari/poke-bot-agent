@@ -3044,6 +3044,66 @@ def test_initial_collection_resume_preserves_verified_iteration_zero_shard(
     assert migration["preserved_completed_collection"]["iteration"] == 0
 
 
+def test_partial_collection_allows_receipted_remote_endpoint_quarantine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stored = {
+        "learner": {"games_per_batch": 96, "max_decisions_per_batch": 2048},
+        "remotes": {"endpoints": ["elmo", "bert"]},
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 1,
+        "last_completed_iteration": 0,
+    }
+    manifest = {"design_fingerprint": stored_digest, "design_contract": stored}
+    (tmp_path / "commits").mkdir()
+    (tmp_path / "commits" / "iter_00000.json").write_text(
+        json.dumps({**state, "next_iteration": 1}), encoding="utf-8"
+    )
+    (tmp_path / "shards").mkdir()
+    shard = tmp_path / "shards" / "iter_00001.jsonl"
+    shard.write_text("{}\n", encoding="utf-8")
+    sidecar = tmp_path / "partial.json"
+    sidecar.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_completed_collection_across_design_chain",
+        lambda *_args, **_kwargs: (None, None),
+    )
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_partial_collection_resume",
+        lambda *_args, **_kwargs: {
+            "sidecar_path": str(sidecar),
+            "iteration": 1,
+            "retained_source_games": 10,
+            "missing_job_indices": [10],
+            "shard_sha256": "sha256:sealed",
+        },
+    )
+    current = json.loads(json.dumps(stored))
+    current["remotes"]["endpoints"] = ["bert"]
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="receipt_backed_completed_collection_resume_v1",
+        owner_r284_iteration1_boundary=False,
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    receipt = json.loads(
+        next((tmp_path / "design_migrations").glob("migration_*.json")).read_text()
+    )
+    assert receipt["changed_paths"] == ["remotes.endpoints"]
+    assert receipt["preserved_partial_collection"]["retained_source_games"] == 10
+
+
 def test_clean_boundary_migration_audits_operational_batch_update(
     tmp_path: Path,
 ) -> None:

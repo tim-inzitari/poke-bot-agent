@@ -1,0 +1,79 @@
+{
+  "schema": "poke_bot.ptcgreplay_matchup_meta_snapshot_receipt_r272/v1",
+  "goal_revision": 272,
+  "status": "sealed_completed_meta_snapshot",
+  "source_page": "https://ptcgreplay.netlify.app/",
+  "source_view": "Meta snapshot",
+  "remote_snapshot": {
+    "host": "elmo",
+    "path": "/mnt/Main/main/poke-bot-agent/archive/ptcgreplay-matchup-snapshot-r272/ingest-31/meta-snapshot.json",
+    "sha256": "sha256:5d392e6f593aaaab43fd6738586c93d7c1303ee08d1dd2223977812ea1fac5a5",
+    "size_bytes": 163130,
+    "mode": "0444"
+  },
+  "managed_collection": {
+    "unit": "pokebot-ptcgreplay-matchup-snapshot-r272-v2.service",
+    "active_state": "inactive",
+    "sub_state": "dead",
+    "result": "success",
+    "exit_status": 0,
+    "restart_count": 0,
+    "failed_predecessor_unit": "pokebot-ptcgreplay-matchup-snapshot-r272.service",
+    "failed_predecessor_output_created": false
+  },
+  "info": {
+    "ingest_id": 31,
+    "window_start": "2026-07-10",
+    "window_end": "2026-08-10",
+    "days": 32,
+    "last_updated_utc": "2026-08-11T02:37:58.931384+00:00",
+    "matches_analyzed": 148997,
+    "real_archetypes": 31,
+    "pooled_non_archetype_rows_excluded": 1
+  },
+  "baseline": {
+    "roster": "state/matchup_adapter_roster.json",
+    "roster_sha256": "sha256:08322efe30c0f8b75d922aae8b882b4e78a20df03a63ed997ec8288165bfd1bc",
+    "immutable_slots": [0, 19]
+  },
+  "unseen_source_id_allocations": [
+    {"slot": 20, "source_id": 50, "exact_name": "Barbaracle", "appearances": 303},
+    {"slot": 21, "source_id": 51, "exact_name": "Brambleghast", "appearances": 950},
+    {"slot": 22, "source_id": 52, "exact_name": "Chandelure", "appearances": 178},
+    {"slot": 23, "source_id": 53, "exact_name": "Cinderace", "appearances": 2919},
+    {"slot": 24, "source_id": 54, "exact_name": "Comfey", "appearances": 50},
+    {"slot": 25, "source_id": 56, "exact_name": "Cubchoo", "appearances": 153},
+    {"slot": 26, "source_id": 60, "exact_name": "Dusknoir", "appearances": 2220},
+    {"slot": 27, "source_id": 65, "exact_name": "Mega Froslass ex", "appearances": 275},
+    {"slot": 28, "source_id": 66, "exact_name": "Mega Gardevoir ex", "appearances": 160},
+    {"slot": 29, "source_id": 67, "exact_name": "Slop Box", "appearances": 4244},
+    {"slot": 30, "source_id": 69, "exact_name": "Mega Sharpedo ex", "appearances": 81},
+    {"slot": 31, "source_id": 71, "exact_name": "N’s Zoroark ex", "appearances": 622},
+    {"slot": 32, "source_id": 165, "exact_name": "Hydrapple ex", "appearances": 1519},
+    {"slot": 33, "source_id": 167, "exact_name": "Teal Mask Ogerpon ex", "appearances": 5978},
+    {"slot": 34, "source_id": 175, "exact_name": "Mega Venusaur ex", "appearances": 107},
+    {"slot": 35, "source_id": 182, "exact_name": "Arboliva ex", "appearances": 501},
+    {"slot": 36, "source_id": 189, "exact_name": "Mega Lopunny ex", "appearances": 591},
+    {"slot": 37, "source_id": 207, "exact_name": "Ethan's Typhlosion", "appearances": 44},
+    {"slot": 38, "source_id": 218, "exact_name": "Galvantula", "appearances": 53}
+  ],
+  "frozen_research_opponent_allocation": {
+    "slot": 39,
+    "identity": "kaggle-submission-55378392",
+    "submission_id": 55378392,
+    "bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "initial_status": "exact_zero_dormant",
+    "must_not_alias_source_id_48_or_learner_route": true
+  },
+  "preserved_source_identities_not_in_current_snapshot": [61, 147, 151],
+  "new_slot_initialization": "exact_zero_dormant_without_optimizer_state",
+  "decklists": {
+    "included_in_remote_snapshot": true,
+    "variants": ["most_popular", "highest_win_rate_minimum_20_games"],
+    "role": "guide_reference_only",
+    "hard_requirement_or_label_or_gate_authority": false,
+    "independent_checksum_backed_replay_support_required": true
+  },
+  "credential_or_session_material_included": false,
+  "receipt_sha256": "sha256:804b39d1100bf6d19b83162e970c4741086f61f914d95727ec5bfec7410a988e"
+}

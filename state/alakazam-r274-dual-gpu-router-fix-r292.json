@@ -1,0 +1,51 @@
+{
+  "schema": "poke_bot.alakazam_r274_dual_gpu_router_fix/v1",
+  "status": "managed_restart_authorized_and_partial_collection_sealed",
+  "recorded_at_utc": "2026-08-12T17:22:00Z",
+  "service": "pokebot-alakazam-r274-rl.service",
+  "iteration": 1,
+  "previous_design_fingerprint": "sha256:31593b1df7f23bdf5dc62d9f1ac9b52931664edd27ca2549f31289bcc222fe80",
+  "current_design_fingerprint": "sha256:db993fb3e632249ed06489b8981d2b4364668fb10476c95d1707e733448c6e19",
+  "behavior_checkpoint_digest": "sha256:645f8e6a0bc5e0cb98695e5a65151f38eef2e5011ca63f3ea4eded42cf4a11a2",
+  "diagnosis": {
+    "simulator_workers_declared": 32,
+    "multi_env_per_process": 4,
+    "simulator_processes_actual": 8,
+    "prior_early_slot_gpu_assignment": {
+      "cuda_0": 8,
+      "cuda_1": 0
+    },
+    "observed_cuda_0_utilization_percent": 99,
+    "observed_cuda_1_utilization_percent": 0,
+    "cause": "contiguous early-slot GPU0 sticky threshold"
+  },
+  "repair": {
+    "early_slot_assignment_after": {
+      "cuda_0": 3,
+      "cuda_1": 5
+    },
+    "multi_env_per_process_unchanged": 4,
+    "simulator_workers_unchanged": 32,
+    "remote_workers_unchanged": 0,
+    "rtp_search_mcts_unchanged_off": true,
+    "hardware_source_sha256": "sha256:2dcce451cbc286bbad633c81b1edb2df0a386c2dac5a779b62dbb94f09081412",
+    "trainer_source_sha256": "sha256:d344440cf091e51901d8bbd1cdb053978e8d3206b888934830ff6dfd48ff450d"
+  },
+  "partial_resume": {
+    "sidecar": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r292-iter1-dual-gpu-router-partial-resume.json",
+    "sidecar_sha256": "sha256:d6245e8331b9428c95eac7cbb1e0d0cf7b9f6fed828dd591dadd7890dc83c6e5",
+    "shard_sha256": "sha256:78ad7f20f74f4406b4f3d77d1b8d74d68d9317fda3d88e5ebddb46221d302125",
+    "retained_source_games": 3802,
+    "retained_self_play_source_games": 204,
+    "retained_public_source_games": 3598,
+    "trajectory_records": 3802,
+    "decisions": 255763,
+    "collect_only_missing_job_identities": true
+  },
+  "self_play_cardinality_correction": {
+    "learner_vs_prior_checkpoint_rows_per_job": 1,
+    "exact_same_checkpoint_rows_per_job": 2,
+    "seat_balance_for_learner_vs_prior": "alternating scheduled jobs",
+    "completed_self_play_deleted": false
+  }
+}

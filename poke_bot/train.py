@@ -101,6 +101,10 @@ from .own_deck_supervision import (
     visible_tutor_completion_target_mask,
     visible_tutor_completion_target_vector,
 )
+from .tactical_sequence_supervision import (
+    TACTICAL_SEQUENCE_OUTCOME_LABELS,
+    TACTICAL_SEQUENCE_OUTCOME_TARGET_SCHEMA,
+)
 from .strategic_losses import (
     GUIDE_OUTCOME_BACKED_HEAD_IDS,
     canonical_expanded_loss_weights,
@@ -778,6 +782,7 @@ class TrainConfig:
     #: ``aux_labels`` or the r241 configuration surface.
     visible_tutor_completion_loss_weight: float = 0.0
     terminal_conversion_loss_weight: float = 0.0
+    tactical_sequence_outcome_loss_weight: float = 0.0
     #: Explicit offline/shadow telemetry collection for the staged successor.
     #: This never enables a loss, an optimizer route, or serving authority.
     collect_own_deck_promotion_metrics: bool = False
@@ -894,6 +899,7 @@ class TrainConfig:
             alakazam_guide_loss_weight=0.0,
             visible_tutor_completion_loss_weight=0.0,
             terminal_conversion_loss_weight=0.0,
+            tactical_sequence_outcome_loss_weight=0.0,
             lethal_threat_loss_weight=0.0,
             prize_race_loss_weight=0.0,
             early_stop_patience=3,
@@ -931,6 +937,7 @@ class BatchMetrics:
     combo_state_loss: float = 0.0
     visible_tutor_completion_loss: float = 0.0
     terminal_conversion_loss: float = 0.0
+    tactical_sequence_outcome_loss: float = 0.0
     lethal_threat_loss: float = 0.0
     prize_race_loss: float = 0.0
     history_identity_loss: float = 0.0
@@ -949,6 +956,7 @@ class BatchMetrics:
     n_prize_race_rows: int = 0
     n_visible_tutor_completion_rows: int = 0
     n_terminal_conversion_rows: int = 0
+    n_tactical_sequence_outcome_rows: int = 0
     n_matchup_adapter_rows: int = 0
     n_teacher_policy_rows: int = 0
     expanded_head_metrics: dict[str, Any] = field(default_factory=dict)
@@ -958,6 +966,7 @@ class BatchMetrics:
     #: Target coverage and the exact bounded imbalance configuration used for
     #: dormant successor heads.  It is absent/empty on historical paths.
     own_deck_supervision_metrics: dict[str, Any] = field(default_factory=dict)
+    tactical_sequence_outcome_metrics: dict[str, Any] = field(default_factory=dict)
     #: Factual, selected-expert-action promotion telemetry.  It is populated
     #: only by the explicit offline/shadow collection flag.
     own_deck_promotion_metrics: dict[str, Any] = field(default_factory=dict)
@@ -1462,7 +1471,11 @@ def prepare_matchup_adapter_route_isolation_guard(
 ) -> MatchupAdapterIsolationGuard:
     """Snapshot every expert except one constant resident-corpus route."""
 
-    if type(route) is not int or route < 0 or route >= len(EXPERT_IDS):
+    if (
+        type(route) is not int
+        or route < 0
+        or route >= len(model.matchup_adapter_bank.experts)
+    ):
         raise RuntimeError("resident adapter batch has no valid route")
     inactive_parameters: dict[str, torch.Tensor] = {}
     inactive_optimizer_state: dict[str, dict[str, Any]] = {}
@@ -1966,6 +1979,46 @@ def _maybe_own_deck_supervision_training_record(
     }
 
 
+def _maybe_tactical_sequence_training_record(
+    *,
+    cfg: TrainConfig,
+    train_metrics: BatchMetrics,
+    validation_metrics: BatchMetrics,
+) -> dict[str, Any]:
+    """Persist causal coverage for the separately gated tactical objective."""
+
+    weight = float(cfg.tactical_sequence_outcome_loss_weight)
+    if weight <= 0.0:
+        return {}
+    train_rows = int(train_metrics.n_tactical_sequence_outcome_rows)
+    validation_rows = int(validation_metrics.n_tactical_sequence_outcome_rows)
+    if train_rows <= 0 or validation_rows <= 0:
+        raise ValueError(
+            "tactical-sequence training requires nonzero source-disjoint "
+            "train and validation label coverage"
+        )
+    return {
+        "schema": "poke_bot.tactical_sequence_outcome_training/v1",
+        "target_schema": TACTICAL_SEQUENCE_OUTCOME_TARGET_SCHEMA,
+        "labels": list(TACTICAL_SEQUENCE_OUTCOME_LABELS),
+        "loss_weight": weight,
+        "training_only": True,
+        "shadow_planner_dispatch_authority": False,
+        "train_rows": train_rows,
+        "validation_rows": validation_rows,
+        "train_loss": float(train_metrics.tactical_sequence_outcome_loss),
+        "validation_loss": float(
+            validation_metrics.tactical_sequence_outcome_loss
+        ),
+        "train_coverage": copy.deepcopy(
+            train_metrics.tactical_sequence_outcome_metrics
+        ),
+        "validation_coverage": copy.deepcopy(
+            validation_metrics.tactical_sequence_outcome_metrics
+        ),
+    }
+
+
 def _maybe_own_deck_promotion_metrics_record(
     *,
     cfg: TrainConfig,
@@ -2283,6 +2336,86 @@ def _own_deck_supervision_for_stage(
     return None
 
 
+def _tactical_sequence_supervision_for_stage(
+    decision: object,
+    *,
+    stage_index: int,
+    stage_count: int,
+    option_count: int,
+) -> object | None:
+    """Return target-only tactical rows only at their exact complete stage."""
+
+    value = getattr(decision, "tactical_sequence_supervision", None)
+    if not isinstance(value, Mapping):
+        return None
+    aligned = int(
+        getattr(decision, "tactical_sequence_supervision_stage_index", -1)
+    )
+    if aligned < 0:
+        aligned = int(stage_count) - 1
+    if aligned < 0 or aligned >= int(stage_count):
+        raise ValueError("tactical supervision stage index is out of bounds")
+    if int(stage_index) != aligned:
+        return None
+    if value.get("schema") != TACTICAL_SEQUENCE_OUTCOME_TARGET_SCHEMA:
+        raise ValueError("tactical supervision target schema mismatch")
+    if value.get("target_only") is not True or value.get("model_input") is not False:
+        raise ValueError("tactical supervision is not target-only")
+    rows = value.get("rows")
+    if not isinstance(rows, list) or len(rows) != int(option_count):
+        raise ValueError("tactical supervision rows lost legal-option alignment")
+    return value
+
+
+def _tactical_sequence_target_tensors(
+    supervision_rows: Sequence[object],
+    *,
+    max_options: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Build padded `[rows, options, 4]` masked causal targets."""
+
+    width = len(TACTICAL_SEQUENCE_OUTCOME_LABELS)
+    targets = torch.zeros(
+        len(supervision_rows), max_options, width, device=device, dtype=dtype
+    )
+    masks = torch.zeros(
+        len(supervision_rows), max_options, width, device=device, dtype=torch.bool
+    )
+    for row_index, supervision in enumerate(supervision_rows):
+        if supervision is None:
+            continue
+        if not isinstance(supervision, Mapping):
+            raise ValueError("tactical supervision row is not a mapping")
+        rows = supervision.get("rows")
+        if not isinstance(rows, list) or len(rows) > max_options:
+            raise ValueError("tactical supervision option rows are malformed")
+        for option_index, row in enumerate(rows):
+            if not isinstance(row, Mapping):
+                raise ValueError("tactical supervision option row is malformed")
+            values = row.get("values")
+            mask = row.get("mask")
+            if (
+                not isinstance(values, list)
+                or not isinstance(mask, list)
+                or len(values) != width
+                or len(mask) != width
+                or any(type(value) is not bool for value in mask)
+            ):
+                raise ValueError("tactical supervision output width changed")
+            parsed = torch.tensor(values, device=device, dtype=dtype)
+            if not torch.isfinite(parsed).all() or bool(
+                ((parsed < 0.0) | (parsed > 1.0)).any().item()
+            ):
+                raise ValueError("tactical supervision target is outside [0, 1]")
+            targets[row_index, option_index] = parsed
+            masks[row_index, option_index] = torch.tensor(
+                mask, device=device, dtype=torch.bool
+            )
+    return targets, masks
+
+
 def _own_deck_target_tensors(
     supervision_rows: Sequence[object],
     *,
@@ -2494,6 +2627,7 @@ def sequence_losses(
     combo_state_loss_weight: float = 0.0,
     visible_tutor_completion_loss_weight: float = 0.0,
     terminal_conversion_loss_weight: float = 0.0,
+    tactical_sequence_outcome_loss_weight: float = 0.0,
     collect_own_deck_promotion_metrics: bool = False,
     own_deck_promotion_metrics_closeout_threshold: float = (
         DEFAULT_CLOSEOUT_THRESHOLD
@@ -2527,6 +2661,9 @@ def sequence_losses(
         combo_state_loss_weight=combo_state_loss_weight,
         visible_tutor_completion_loss_weight=visible_tutor_completion_loss_weight,
         terminal_conversion_loss_weight=terminal_conversion_loss_weight,
+        tactical_sequence_outcome_loss_weight=(
+            tactical_sequence_outcome_loss_weight
+        ),
         collect_own_deck_promotion_metrics=(
             collect_own_deck_promotion_metrics
         ),
@@ -2570,6 +2707,7 @@ def batch_losses(
     combo_state_loss_weight: float = 0.0,
     visible_tutor_completion_loss_weight: float = 0.0,
     terminal_conversion_loss_weight: float = 0.0,
+    tactical_sequence_outcome_loss_weight: float = 0.0,
     collect_own_deck_promotion_metrics: bool = False,
     own_deck_promotion_metrics_closeout_threshold: float = (
         DEFAULT_CLOSEOUT_THRESHOLD
@@ -2597,10 +2735,13 @@ def batch_losses(
     awr_weight_sink: Optional[list[float]] = None,
     prediction_sink: Optional[list[int]] = None,
     policy_log_prob_sink: Optional[list[list[float]]] = None,
+    value_prediction_sink: Optional[list[float]] = None,
+    tactical_route_delta_sink: Optional[list[list[float]]] = None,
     prediction_only: bool = False,
     history_identity_weight: float = 0.0,
     matchup_adapter_training: bool = False,
     pack_temporal_games: bool = False,
+    allow_masked_own_deck_ledger_rows: bool = False,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Causal history forward over all valid decisions.
 
@@ -2681,6 +2822,7 @@ def batch_losses(
     for name, weight in (
         ("visible_tutor_completion", visible_tutor_completion_loss_weight),
         ("terminal_conversion", terminal_conversion_loss_weight),
+        ("tactical_sequence_outcome", tactical_sequence_outcome_loss_weight),
     ):
         if not math.isfinite(float(weight)) or float(weight) < 0.0:
             raise ValueError(f"{name} loss weight must be finite and nonnegative")
@@ -2745,9 +2887,13 @@ def batch_losses(
     )
     use_visible_tutor_completion = float(visible_tutor_completion_loss_weight) > 0.0
     use_terminal_conversion = float(terminal_conversion_loss_weight) > 0.0
+    use_tactical_sequence_outcome = (
+        float(tactical_sequence_outcome_loss_weight) > 0.0
+    )
     use_own_deck_option_heads = bool(
         use_visible_tutor_completion
         or use_terminal_conversion
+        or use_tactical_sequence_outcome
         or collect_own_deck_promotion_metrics
     )
     if use_visible_tutor_completion and not bool(
@@ -2761,6 +2907,12 @@ def batch_losses(
     ):
         raise ValueError(
             "nonzero terminal-conversion loss requires its physical head"
+        )
+    if use_tactical_sequence_outcome and not bool(
+        getattr(model, "tactical_sequence_outcome_head_enabled", False)
+    ):
+        raise ValueError(
+            "nonzero tactical-sequence outcome loss requires its physical head"
         )
     ledger_model_enabled = bool(getattr(model, "own_deck_ledger_enabled", False))
     if use_own_deck_option_heads and not ledger_model_enabled:
@@ -2810,13 +2962,30 @@ def batch_losses(
                 )
             )
         )
+        or (
+            bool(
+                getattr(
+                    model, "tactical_sequence_outcome_route_enabled", False
+                )
+            )
+            and (
+                bool(model.training)
+                or bool(
+                    getattr(
+                        model,
+                        "tactical_sequence_outcome_route_runtime_enabled",
+                        False,
+                    )
+                )
+            )
+        )
     )
     use_option_aux_heads = (
         use_expanded_heads
         or use_combo_state
         or use_own_deck_option_heads
         or own_deck_route_active_here
-    ) and not prediction_only
+    ) and (not prediction_only or tactical_route_delta_sink is not None)
     if use_expanded_heads and not bool(
         getattr(model, "expanded_heads_enabled", False)
     ):
@@ -2835,10 +3004,26 @@ def batch_losses(
         getattr(d, "ledger_snapshot", None) for g in games for d in g.decisions
     ]
     if ledger_model_enabled:
-        all_ledger_snapshots = [
-            _validate_own_deck_snapshot(snapshot)
-            for snapshot in all_ledger_snapshots
-        ]
+        validated_snapshots: list[OwnDeckLedgerSnapshot | None] = []
+        flat_decisions = [decision for game in games for decision in game.decisions]
+        for decision, snapshot in zip(
+            flat_decisions, all_ledger_snapshots, strict=True
+        ):
+            if snapshot is None and allow_masked_own_deck_ledger_rows:
+                if (
+                    decision.own_deck_supervision is not None
+                    or any(
+                        stage.ledger_option_features is not None
+                        for stage in decision.policy_stages
+                    )
+                ):
+                    raise ValueError(
+                        "masked own-deck ledger row carries target or option facts"
+                    )
+                validated_snapshots.append(None)
+                continue
+            validated_snapshots.append(_validate_own_deck_snapshot(snapshot))
+        all_ledger_snapshots = validated_snapshots
     spatial_all = model.encode_board(all_boards)
     ledger_residual_all = model.own_deck_ledger_residuals(
         all_ledger_snapshots if ledger_model_enabled else None,
@@ -2909,6 +3094,7 @@ def batch_losses(
     decision_aux: list[dict[str, Any]] = []
     visible_tutor_supervision_rows: list[object] = []
     terminal_conversion_supervision_rows: list[object] = []
+    tactical_sequence_supervision_rows: list[object] = []
     expanded_stage_indices: list[int] = []
     expanded_decision_keys: list[tuple[int, int]] = []
     matchup_routes: list[int] = []
@@ -3038,12 +3224,26 @@ def batch_losses(
                 valid_identity_states.append(game_identity_states[t])
                 valid_options.append(stage.options)
                 if ledger_model_enabled:
-                    ledger_option_feature_rows.append(
-                        _validated_ledger_option_features(
-                            getattr(stage, "ledger_option_features", None),
-                            option_count=n_opt,
-                        )
+                    ledger_option_features = getattr(
+                        stage, "ledger_option_features", None
                     )
+                    if (
+                        ledger_option_features is None
+                        and allow_masked_own_deck_ledger_rows
+                        and d.ledger_snapshot is None
+                    ):
+                        # The model's option adapter treats a None row inside a
+                        # mixed batch as the exact-zero residual.  This is the
+                        # option-level counterpart of the explicitly masked
+                        # core ledger snapshot above.
+                        ledger_option_feature_rows.append(None)
+                    else:
+                        ledger_option_feature_rows.append(
+                            _validated_ledger_option_features(
+                                ledger_option_features,
+                                option_count=n_opt,
+                            )
+                        )
                 else:
                     ledger_option_feature_rows.append(None)
                 valid_n.append(n_opt)
@@ -3066,6 +3266,14 @@ def batch_losses(
                         family="terminal_conversion",
                         stage_index=stage_i,
                         stage_count=len(stages),
+                    )
+                )
+                tactical_sequence_supervision_rows.append(
+                    _tactical_sequence_supervision_for_stage(
+                        d,
+                        stage_index=stage_i,
+                        stage_count=len(stages),
+                        option_count=n_opt,
                     )
                 )
                 expanded_stage_indices.append(stage_i)
@@ -3102,6 +3310,7 @@ def batch_losses(
         len(ledger_option_feature_rows)
         == len(visible_tutor_supervision_rows)
         == len(terminal_conversion_supervision_rows)
+        == len(tactical_sequence_supervision_rows)
         == len(valid_options)
     ):
         raise AssertionError("own-deck option metadata lost policy-row alignment")
@@ -3144,7 +3353,11 @@ def batch_losses(
             expanded_option_outputs = {}
             expanded_state_outputs = {}
         if use_own_deck_option_heads:
-            if use_visible_tutor_completion or use_terminal_conversion:
+            if (
+                use_visible_tutor_completion
+                or use_terminal_conversion
+                or use_tactical_sequence_outcome
+            ):
                 own_deck_option_outputs = model.own_deck_option_head_logits(
                     option_hidden
                 )
@@ -3177,6 +3390,36 @@ def batch_losses(
                     [
                         float(value)
                         for value in prediction_log_p[
+                            row_index, : int(option_count)
+                        ]
+                        .detach()
+                        .cpu()
+                        .tolist()
+                    ]
+                )
+        if value_prediction_sink is not None:
+            value_predictions = torch.tanh(
+                model.value_head(policy_value_state)
+            ).squeeze(-1)
+            value_prediction_sink.extend(
+                float(value)
+                for value in value_predictions.detach().cpu().tolist()
+            )
+        if tactical_route_delta_sink is not None:
+            if not use_option_aux_heads or not isinstance(decoded, tuple):
+                raise ValueError(
+                    "tactical route delta capture requires decoder hidden states"
+                )
+            route_deltas = model.own_deck_option_route_deltas(option_hidden).get(
+                "tactical_sequence_outcome"
+            )
+            if route_deltas is None:
+                raise ValueError("tactical route delta capture requires an active route")
+            for row_index, option_count in enumerate(valid_n):
+                tactical_route_delta_sink.append(
+                    [
+                        float(value)
+                        for value in route_deltas[
                             row_index, : int(option_count)
                         ]
                         .detach()
@@ -3492,8 +3735,10 @@ def batch_losses(
     )
     visible_tutor_completion_loss = total.sum() * 0.0
     terminal_conversion_loss = total.sum() * 0.0
+    tactical_sequence_outcome_loss = total.sum() * 0.0
     n_visible_tutor_completion_rows = 0
     n_terminal_conversion_rows = 0
+    n_tactical_sequence_outcome_rows = 0
     own_deck_supervision_metrics: dict[str, Any] = {}
     own_deck_promotion_metrics: dict[str, Any] = {}
     if use_visible_tutor_completion:
@@ -3572,6 +3817,87 @@ def batch_losses(
         }
         total = total + float(terminal_conversion_loss_weight) * (
             terminal_conversion_loss
+        )
+    tactical_sequence_outcome_metrics: dict[str, Any] = {}
+    if use_tactical_sequence_outcome:
+        tactical_logits = own_deck_option_outputs.get(
+            "tactical_sequence_outcome_logits"
+        )
+        if tactical_logits is None:
+            raise ValueError("tactical-sequence outcome head output is unavailable")
+        tactical_target, tactical_mask = _tactical_sequence_target_tensors(
+            tactical_sequence_supervision_rows,
+            max_options=int(tactical_logits.size(1)),
+            device=device,
+            dtype=tactical_logits.dtype,
+        )
+        if tactical_target.shape != tactical_logits.shape:
+            raise ValueError("tactical-sequence target/logit shape changed")
+        element_loss = F.binary_cross_entropy_with_logits(
+            tactical_logits,
+            tactical_target,
+            reduction="none",
+        )
+        masked = element_loss.masked_select(tactical_mask)
+        tactical_sequence_outcome_loss = (
+            masked.mean() if masked.numel() else tactical_logits.sum() * 0.0
+        )
+        tactical_route_shadow_loss = tactical_logits.sum() * 0.0
+        tactical_route = getattr(
+            model, "tactical_sequence_outcome_route", None
+        )
+        if tactical_route is not None:
+            route_logits = tactical_route(option_hidden, tactical_logits)
+            route_mask = tactical_mask.any(dim=-1)
+            route_positive = (
+                tactical_target[..., 1].gt(0.5)
+                | tactical_target[..., 2].gt(0.5)
+            ).to(dtype=route_logits.dtype)
+            selected_route_logits = route_logits.masked_select(route_mask)
+            selected_route_targets = route_positive.masked_select(route_mask)
+            tactical_route_shadow_loss = (
+                F.binary_cross_entropy_with_logits(
+                    selected_route_logits,
+                    selected_route_targets,
+                )
+                if selected_route_logits.numel()
+                else route_logits.sum() * 0.0
+            )
+            tactical_sequence_outcome_loss = 0.5 * (
+                tactical_sequence_outcome_loss + tactical_route_shadow_loss
+            )
+        labeled_options = tactical_mask.any(dim=-1)
+        n_tactical_sequence_outcome_rows = int(
+            labeled_options.sum().item()
+        )
+        label_counts = [
+            int(
+                (
+                    tactical_target[..., index].gt(0.5)
+                    & tactical_mask[..., index]
+                ).sum().item()
+            )
+            for index in range(len(TACTICAL_SEQUENCE_OUTCOME_LABELS))
+        ]
+        tactical_sequence_outcome_metrics = {
+            "schema": "poke_bot.tactical_sequence_outcome_training_metrics/v1",
+            "loss_weight": float(tactical_sequence_outcome_loss_weight),
+            "labeled_options": n_tactical_sequence_outcome_rows,
+            "masked_options": int(labeled_options.numel())
+            - n_tactical_sequence_outcome_rows,
+            "label_counts": dict(
+                zip(TACTICAL_SEQUENCE_OUTCOME_LABELS, label_counts)
+            ),
+            "planner_dispatch_authority": False,
+            "fusion_route_enabled_for_policy": bool(
+                getattr(model, "tactical_sequence_outcome_route_enabled", False)
+            ),
+            "shadow_route_loss": float(
+                tactical_route_shadow_loss.detach().item()
+            ),
+        }
+        total = total + float(tactical_sequence_outcome_loss_weight) * (
+            tactical_sequence_outcome_loss
         )
     if collect_own_deck_promotion_metrics:
         terminal_logits = own_deck_option_outputs.get("terminal_conversion_logits")
@@ -3779,6 +4105,9 @@ def batch_losses(
             visible_tutor_completion_loss.detach().item()
         ),
         terminal_conversion_loss=float(terminal_conversion_loss.detach().item()),
+        tactical_sequence_outcome_loss=float(
+            tactical_sequence_outcome_loss.detach().item()
+        ),
         opp_hand_loss=float(opp_hand_loss.detach().item()),
         opp_remainder_loss=float(opp_remainder_loss.detach().item()),
         lethal_threat_loss=float(lethal_threat_loss.detach().item()),
@@ -3799,6 +4128,9 @@ def batch_losses(
         n_prize_race_rows=len(race_rows),
         n_visible_tutor_completion_rows=int(n_visible_tutor_completion_rows),
         n_terminal_conversion_rows=int(n_terminal_conversion_rows),
+        n_tactical_sequence_outcome_rows=int(
+            n_tactical_sequence_outcome_rows
+        ),
         n_matchup_adapter_rows=(
             sum(route != UNKNOWN_ROUTE for route in matchup_routes)
             if matchup_adapter_training
@@ -3809,6 +4141,9 @@ def batch_losses(
         setup_board_outcome_metrics=setup_metrics,
         combo_state_metrics=combo_metrics,
         own_deck_supervision_metrics=own_deck_supervision_metrics,
+        tactical_sequence_outcome_metrics=(
+            tactical_sequence_outcome_metrics
+        ),
         own_deck_promotion_metrics=own_deck_promotion_metrics,
         mean_advantage=awr_mean_adv,
         raw_advantage_mean=raw_adv_mean,
@@ -3996,9 +4331,14 @@ def device_temporal_batch_losses(
         SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
     ),
     combo_state_loss_weight: float = 0.0,
+    visible_tutor_completion_loss_weight: float = 0.0,
+    terminal_conversion_loss_weight: float = 0.0,
+    tactical_sequence_outcome_loss_weight: float = 0.0,
+    r279_side_tensors: Optional[Mapping[str, torch.Tensor]] = None,
     expanded_head_weights: Optional[dict[str, float]] = None,
     archetype_residual_weights: Optional[dict[str, float]] = None,
     matchup_adapter_route: int | None = None,
+    resident_matchup_adapter_isolation: bool = False,
     teacher_policy_targets: Optional[torch.Tensor] = None,
     teacher_policy_weight: float = 0.0,
     allow_repeated_games: bool = False,
@@ -4010,7 +4350,18 @@ def device_temporal_batch_losses(
     masks are valid.  In particular, an absent exact opponent hand is not
     interpreted as an observed empty hand.
     """
-    _reject_own_deck_ledger_resident_path(model, path="device-resident temporal")
+    if (
+        r279_side_tensors is not None
+        and int(r279_side_tensors["ledger_present"].numel())
+        == int(corpus.decisions)
+    ):
+        from .r279_contiguous_expert_pack import device_game_side_batch
+
+        r279_side_tensors = device_game_side_batch(
+            corpus, r279_side_tensors, game_ids
+        )
+    if r279_side_tensors is None:
+        _reject_own_deck_ledger_resident_path(model, path="device-resident temporal")
     if model.decision_context != "history":
         raise ValueError("temporal resident loss requires history context")
     guide_training_mode = canonical_guide_training_mode(
@@ -4047,6 +4398,16 @@ def device_temporal_batch_losses(
     ) < 0.0:
         raise ValueError("resident combo-state weight must be finite and nonnegative")
     use_combo_state = float(combo_state_loss_weight) > 0.0
+    use_visible_tutor_completion = float(visible_tutor_completion_loss_weight) > 0.0
+    use_terminal_conversion = float(terminal_conversion_loss_weight) > 0.0
+    use_tactical_sequence_outcome = float(tactical_sequence_outcome_loss_weight) > 0.0
+    use_r279_option_heads = bool(
+        use_visible_tutor_completion
+        or use_terminal_conversion
+        or use_tactical_sequence_outcome
+    )
+    if use_r279_option_heads and r279_side_tensors is None:
+        raise ValueError("resident OwnDeck/tactical losses require r279 side tensors")
     if use_combo_state:
         if not bool(getattr(model, "combo_state_head_enabled", False)):
             raise ValueError(
@@ -4059,7 +4420,7 @@ def device_temporal_batch_losses(
     use_expanded_heads = strategic_curriculum or any(
         weight > 0.0 for weight in expanded_weights.values()
     )
-    use_option_aux_heads = use_expanded_heads or use_combo_state
+    use_option_aux_heads = use_expanded_heads or use_combo_state or use_r279_option_heads
     if use_expanded_heads:
         if not bool(getattr(model, "expanded_heads_enabled", False)):
             raise ValueError(
@@ -4080,10 +4441,36 @@ def device_temporal_batch_losses(
     if matchup_adapter_route is not None:
         if not (
             type(matchup_adapter_route) is int
-            and 0 <= matchup_adapter_route < len(EXPERT_IDS)
+            and 0
+            <= matchup_adapter_route
+            < len(model.matchup_adapter_bank.experts)
         ):
             raise ValueError("invalid resident matchup-adapter route")
-        assert_matchup_adapter_training_contract(model)
+        if resident_matchup_adapter_isolation:
+            non_adapter = [
+                parameter
+                for name, parameter in model.named_parameters()
+                if not name.startswith(MATCHUP_ADAPTER_PARAMETER_PREFIX)
+            ]
+            selected_adapter = list(
+                model.matchup_adapter_bank.experts[
+                    matchup_adapter_route
+                ].parameters()
+            )
+            if (
+                any(parameter.requires_grad for parameter in non_adapter)
+                or any(parameter.grad is not None for parameter in non_adapter)
+                or not selected_adapter
+                or not all(
+                    parameter.requires_grad
+                    for parameter in selected_adapter
+                )
+            ):
+                raise AssertionError(
+                    "resident matchup-adapter isolation contract is invalid"
+                )
+        else:
+            assert_matchup_adapter_training_contract(model)
     if float(teacher_policy_weight) < 0.0:
         raise ValueError("teacher policy weight cannot be negative")
     if float(teacher_policy_weight) > 0.0:
@@ -4136,7 +4523,26 @@ def device_temporal_batch_losses(
     action_state = model.encode_previous_actions_packed(
         previous_actions, batch_size=decisions
     )
+    ledger_residual = None
+    if r279_side_tensors is not None:
+        ledger_residual = model.own_deck_ledger_packed_residuals(
+            present=r279_side_tensors["ledger_present"],
+            availability_card_ids=r279_side_tensors["ledger_availability_card_id"],
+            availability_stats=r279_side_tensors["ledger_availability_stats"],
+            availability_offsets=r279_side_tensors["ledger_availability_offset"],
+            scalar_vectors=r279_side_tensors["ledger_scalar"],
+            select_card_ids=r279_side_tensors["ledger_select_card_id"],
+            select_counts=r279_side_tensors["ledger_select_count"],
+            select_offsets=r279_side_tensors["ledger_select_offset"],
+            looking_card_ids=r279_side_tensors["ledger_looking_card_id"],
+            looking_counts=r279_side_tensors["ledger_looking_count"],
+            looking_offsets=r279_side_tensors["ledger_looking_offset"],
+            dtype=spatial.dtype,
+            offline_training_path=True,
+        )
     cls = model.pool_cls(spatial) + float(model.cfg.history_action_scale) * action_state
+    if ledger_residual is not None:
+        cls = cls + ledger_residual
 
     # Games of equal length can share one temporal call: the batch dimension is
     # isolated by attention, while avoiding one Python/model launch per game.
@@ -4198,9 +4604,16 @@ def device_temporal_batch_losses(
         batch_size=samples,
         return_hidden=use_option_aux_heads,
         decision_fusion_state_vec=state,
+        ledger_option_features=(
+            None
+            if r279_side_tensors is None
+            else r279_side_tensors["ledger_option_features"]
+        ),
+        offline_training_path=r279_side_tensors is not None,
     )
     expanded_option_outputs: dict[str, torch.Tensor] = {}
     expanded_state_outputs: dict[str, torch.Tensor] = {}
+    own_deck_option_outputs: dict[str, torch.Tensor] = {}
     if use_option_aux_heads:
         if not isinstance(decoded, tuple):
             raise AssertionError(
@@ -4212,6 +4625,8 @@ def device_temporal_batch_losses(
             # State targets are decision-aligned, so they are evaluated exactly
             # once per real decision rather than once per factorized policy stage.
             expanded_state_outputs = model.expanded_state_logits(state_by_decision)
+        if use_r279_option_heads:
+            own_deck_option_outputs = model.own_deck_option_head_logits(option_hidden)
     else:
         if isinstance(decoded, tuple):
             raise AssertionError(
@@ -4299,7 +4714,7 @@ def device_temporal_batch_losses(
             alakazam_guide_weight,
         )
     )
-    if not auxiliary_targets_enabled and not use_expanded_heads and not use_combo_state:
+    if not auxiliary_targets_enabled and not use_expanded_heads and not use_combo_state and not use_r279_option_heads:
         # Retain the historical policy/value-only path exactly, including RNG
         # consumption (``aux_head`` contains dropout on nonzero-dropout models).
         return total, metrics
@@ -4562,6 +4977,81 @@ def device_temporal_batch_losses(
         metrics.combo_state_loss = float(combo_loss.detach().item())
         metrics.combo_state_metrics = combo_metric_record.as_dict()
         metrics.total_loss = float(total.detach().item())
+    if use_visible_tutor_completion:
+        tutor_logits = own_deck_option_outputs.get("visible_tutor_completion_logits")
+        if tutor_logits is None or r279_side_tensors is None:
+            raise ValueError("resident visible-tutor head output is unavailable")
+        tutor_loss, tutor_rows = _masked_own_deck_typed_option_loss(
+            tutor_logits,
+            selected_indices=target_idx,
+            targets=r279_side_tensors["visible_tutor_target"].to(tutor_logits.dtype),
+            masks=r279_side_tensors["visible_tutor_mask"].to(torch.bool),
+            categorical_slice=VISIBLE_TUTOR_COMPLETION_TERMINAL_CLASS_SLICE,
+            class_weights=(1.0, 1.0, 1.0, 1.0),
+            positive_weight=1.0,
+        )
+        total = total + float(visible_tutor_completion_loss_weight) * tutor_loss
+        metrics.visible_tutor_completion_loss = float(tutor_loss.detach().item())
+        metrics.n_visible_tutor_completion_rows = int(tutor_rows)
+    if use_terminal_conversion:
+        terminal_logits = own_deck_option_outputs.get("terminal_conversion_logits")
+        if terminal_logits is None or r279_side_tensors is None:
+            raise ValueError("resident terminal-conversion head output is unavailable")
+        terminal_loss, terminal_rows = _masked_own_deck_typed_option_loss(
+            terminal_logits,
+            selected_indices=target_idx,
+            targets=r279_side_tensors["terminal_conversion_target"].to(terminal_logits.dtype),
+            masks=r279_side_tensors["terminal_conversion_mask"].to(torch.bool),
+            categorical_slice=TERMINAL_CONVERSION_CLASS_SLICE,
+            class_weights=(1.0, 1.0, 1.0, 1.0),
+            positive_weight=1.0,
+        )
+        total = total + float(terminal_conversion_loss_weight) * terminal_loss
+        metrics.terminal_conversion_loss = float(terminal_loss.detach().item())
+        metrics.n_terminal_conversion_rows = int(terminal_rows)
+    if use_tactical_sequence_outcome:
+        tactical_logits = own_deck_option_outputs.get("tactical_sequence_outcome_logits")
+        if tactical_logits is None or r279_side_tensors is None:
+            raise ValueError("resident tactical-sequence head output is unavailable")
+        tactical_target = r279_side_tensors["tactical_sequence_target"].to(tactical_logits.dtype)
+        tactical_mask = r279_side_tensors["tactical_sequence_mask"].to(torch.bool)
+        if tactical_target.shape != tactical_logits.shape or tactical_mask.shape != tactical_logits.shape:
+            raise ValueError("resident tactical target/logit shape changed")
+        element_loss = F.binary_cross_entropy_with_logits(
+            tactical_logits, tactical_target, reduction="none"
+        )
+        selected = element_loss.masked_select(tactical_mask)
+        tactical_loss = selected.mean() if selected.numel() else tactical_logits.sum() * 0.0
+        route_shadow_loss = tactical_logits.sum() * 0.0
+        tactical_route = getattr(model, "tactical_sequence_outcome_route", None)
+        if tactical_route is not None:
+            route_logits = tactical_route(option_hidden, tactical_logits)
+            route_mask = tactical_mask.any(dim=-1)
+            route_target = (
+                tactical_target[..., 1].gt(0.5)
+                | tactical_target[..., 2].gt(0.5)
+            ).to(route_logits.dtype)
+            selected_logits = route_logits.masked_select(route_mask)
+            selected_targets = route_target.masked_select(route_mask)
+            if selected_logits.numel():
+                route_shadow_loss = F.binary_cross_entropy_with_logits(
+                    selected_logits, selected_targets
+                )
+            tactical_loss = 0.5 * (tactical_loss + route_shadow_loss)
+        total = total + float(tactical_sequence_outcome_loss_weight) * tactical_loss
+        metrics.tactical_sequence_outcome_loss = float(tactical_loss.detach().item())
+        metrics.n_tactical_sequence_outcome_rows = int(tactical_mask.any(dim=-1).sum().item())
+        metrics.tactical_sequence_outcome_metrics = {
+            "schema": "poke_bot.tactical_sequence_outcome_training_metrics/v1",
+            "loss_weight": float(tactical_sequence_outcome_loss_weight),
+            "labeled_options": int(tactical_mask.any(dim=-1).sum().item()),
+            "planner_dispatch_authority": False,
+            "fusion_route_enabled_for_policy": bool(
+                getattr(model, "tactical_sequence_outcome_route_enabled", False)
+            ),
+            "shadow_route_loss": float(route_shadow_loss.detach().item()),
+        }
+    metrics.total_loss = float(total.detach().item())
     if not auxiliary_targets_enabled:
         return total, metrics
 
@@ -5178,6 +5668,9 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
     terminal_conversion_rows = sum(
         int(p.n_terminal_conversion_rows) for p in parts
     )
+    tactical_sequence_rows = sum(
+        int(p.n_tactical_sequence_outcome_rows) for p in parts
+    )
     matchup_adapter_rows = sum(int(p.n_matchup_adapter_rows) for p in parts)
     teacher_policy_rows = sum(int(p.n_teacher_policy_rows) for p in parts)
     guide_loss = (
@@ -5215,6 +5708,16 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         )
         / terminal_conversion_rows
         if terminal_conversion_rows > 0
+        else 0.0
+    )
+    tactical_sequence_loss = (
+        sum(
+            float(p.tactical_sequence_outcome_loss)
+            * int(p.n_tactical_sequence_outcome_rows)
+            for p in parts
+        )
+        / tactical_sequence_rows
+        if tactical_sequence_rows > 0
         else 0.0
     )
     expanded_parts = [
@@ -5542,6 +6045,27 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
     own_deck_promotion_metrics = merge_own_deck_promotion_metrics(
         own_deck_promotion_parts
     )
+    tactical_parts = [
+        dict(part.tactical_sequence_outcome_metrics)
+        for part in parts
+        if part.tactical_sequence_outcome_metrics
+    ]
+    tactical_metrics: dict[str, Any] = {}
+    if tactical_parts:
+        weights = {float(row.get("loss_weight", float("nan"))) for row in tactical_parts}
+        if len(weights) != 1 or not all(math.isfinite(value) for value in weights):
+            raise ValueError("tactical-sequence loss weight changed within a batch")
+        tactical_metrics = {
+            "schema": "poke_bot.tactical_sequence_outcome_training_metrics/v1",
+            "loss_weight": weights.pop(),
+            "labeled_options": sum(int(row.get("labeled_options", 0)) for row in tactical_parts),
+            "masked_options": sum(int(row.get("masked_options", 0)) for row in tactical_parts),
+            "label_counts": {
+                name: sum(int(dict(row.get("label_counts") or {}).get(name, 0)) for row in tactical_parts)
+                for name in TACTICAL_SEQUENCE_OUTCOME_LABELS
+            },
+            "planner_dispatch_authority": False,
+        }
 
     return BatchMetrics(
         policy_loss=wavg("policy_loss"),
@@ -5556,6 +6080,7 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         combo_state_loss=wavg("combo_state_loss"),
         visible_tutor_completion_loss=tutor_completion_loss,
         terminal_conversion_loss=terminal_conversion_loss,
+        tactical_sequence_outcome_loss=tactical_sequence_loss,
         opp_hand_loss=wavg("opp_hand_loss"),
         opp_remainder_loss=wavg("opp_remainder_loss"),
         lethal_threat_loss=wavg("lethal_threat_loss"),
@@ -5576,6 +6101,7 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         n_prize_race_rows=prize_rows,
         n_visible_tutor_completion_rows=tutor_completion_rows,
         n_terminal_conversion_rows=terminal_conversion_rows,
+        n_tactical_sequence_outcome_rows=tactical_sequence_rows,
         n_matchup_adapter_rows=matchup_adapter_rows,
         n_teacher_policy_rows=teacher_policy_rows,
         expanded_head_metrics=expanded_metrics,
@@ -5583,6 +6109,7 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         setup_board_outcome_metrics=setup_metrics,
         combo_state_metrics=combo_metrics,
         own_deck_supervision_metrics=own_deck_metrics,
+        tactical_sequence_outcome_metrics=tactical_metrics,
         own_deck_promotion_metrics=own_deck_promotion_metrics,
         mean_advantage=wavg("mean_advantage"),
         raw_advantage_mean=raw_mean,
@@ -5964,6 +6491,9 @@ def evaluate(
                     cfg.visible_tutor_completion_loss_weight
                 ),
                 terminal_conversion_loss_weight=cfg.terminal_conversion_loss_weight,
+                tactical_sequence_outcome_loss_weight=(
+                    cfg.tactical_sequence_outcome_loss_weight
+                ),
                 collect_own_deck_promotion_metrics=(
                     cfg.collect_own_deck_promotion_metrics
                 ),
@@ -6015,6 +6545,7 @@ def evaluate_device_corpus(
     desc: str = "val",
     teacher_policy_targets: Optional[torch.Tensor] = None,
     teacher_policy_weight: float = 0.0,
+    r279_side_tensors: Optional[Mapping[str, torch.Tensor]] = None,
 ) -> BatchMetrics:
     """Evaluate the validation partition without moving inputs off device."""
     if cfg.collect_own_deck_promotion_metrics:
@@ -6022,7 +6553,8 @@ def evaluate_device_corpus(
             "own-deck promotion metric collection requires host GameSequence "
             "evaluation; resident corpora do not retain stage-aligned labels"
         )
-    _reject_own_deck_ledger_resident_path(model, path="resident validation")
+    if r279_side_tensors is None:
+        _reject_own_deck_ledger_resident_path(model, path="resident validation")
     model.eval()
     parts: list[BatchMetrics] = []
     temporal = model.decision_context == "history"
@@ -6070,6 +6602,10 @@ def evaluate_device_corpus(
                         cfg.setup_board_outcome_loss_weight
                     ),
                     combo_state_loss_weight=cfg.combo_state_loss_weight,
+                    visible_tutor_completion_loss_weight=cfg.visible_tutor_completion_loss_weight,
+                    terminal_conversion_loss_weight=cfg.terminal_conversion_loss_weight,
+                    tactical_sequence_outcome_loss_weight=cfg.tactical_sequence_outcome_loss_weight,
+                    r279_side_tensors=r279_side_tensors,
                     expanded_head_weights=cfg.expanded_head_loss_weights,
                     archetype_residual_weights=cfg.archetype_residual_loss_weights,
                     teacher_policy_targets=teacher_policy_targets,
@@ -6260,9 +6796,11 @@ def _fit_device_batch_size(
     use_amp: bool,
     amp_dtype: torch.dtype,
     min_step_free_gib: float = 2.0,
+    r279_side_tensors: Optional[Mapping[str, torch.Tensor]] = None,
 ) -> int:
     """Prove corpus + forward/backward fit, reducing only after a real OOM."""
-    _reject_own_deck_ledger_resident_path(model, path="resident fit probe")
+    if r279_side_tensors is None:
+        _reject_own_deck_ledger_resident_path(model, path="resident fit probe")
     size = min(max(1, int(requested)), corpus.train_samples)
     if size <= 0:
         raise ValueError("device corpus has no training samples")
@@ -6312,12 +6850,10 @@ def _fit_device_batch_size(
                                 cfg.setup_board_outcome_loss_weight
                             ),
                             combo_state_loss_weight=cfg.combo_state_loss_weight,
-                            visible_tutor_completion_loss_weight=(
-                                cfg.visible_tutor_completion_loss_weight
-                            ),
-                            terminal_conversion_loss_weight=(
-                                cfg.terminal_conversion_loss_weight
-                            ),
+                            visible_tutor_completion_loss_weight=cfg.visible_tutor_completion_loss_weight,
+                            terminal_conversion_loss_weight=cfg.terminal_conversion_loss_weight,
+                            tactical_sequence_outcome_loss_weight=cfg.tactical_sequence_outcome_loss_weight,
+                            r279_side_tensors=r279_side_tensors,
                             expanded_head_weights=(
                                 cfg.expanded_head_loss_weights
                             ),
@@ -6808,6 +7344,7 @@ def train_bootstrap(
     # closure reads this immutable telemetry record but collection itself never
     # contributes a gradient or changes a route.
     latest_own_deck_promotion_metrics_record: dict[str, Any] = {}
+    latest_tactical_sequence_training_record: dict[str, Any] = {}
 
     def build_ckpt() -> dict[str, Any]:
         if cfg.matchup_adapter_training:
@@ -6876,6 +7413,10 @@ def train_bootstrap(
         if latest_own_deck_promotion_metrics_record:
             extra["own_deck_promotion_metrics"] = copy.deepcopy(
                 latest_own_deck_promotion_metrics_record
+            )
+        if latest_tactical_sequence_training_record:
+            extra["tactical_sequence_outcome_training"] = copy.deepcopy(
+                latest_tactical_sequence_training_record
             )
         return checkpoint.build_checkpoint(
             model=model,
@@ -6979,6 +7520,9 @@ def train_bootstrap(
                             ),
                             terminal_conversion_loss_weight=(
                                 cfg.terminal_conversion_loss_weight
+                            ),
+                            tactical_sequence_outcome_loss_weight=(
+                                cfg.tactical_sequence_outcome_loss_weight
                             ),
                             collect_own_deck_promotion_metrics=(
                                 cfg.collect_own_deck_promotion_metrics
@@ -7125,6 +7669,13 @@ def train_bootstrap(
 
             latest_own_deck_promotion_metrics_record = (
                 _maybe_own_deck_promotion_metrics_record(
+                    cfg=cfg,
+                    train_metrics=train_m,
+                    validation_metrics=val_m,
+                )
+            )
+            latest_tactical_sequence_training_record = (
+                _maybe_tactical_sequence_training_record(
                     cfg=cfg,
                     train_metrics=train_m,
                     validation_metrics=val_m,
@@ -7292,6 +7843,10 @@ def supervised_rehearsal_step(
     training_game_sampling_weights: Optional[torch.Tensor] = None,
     training_game_importance_contract: Optional[dict[str, Any]] = None,
     r241_peak_r195_training_contract: Optional[Mapping[str, Any]] = None,
+    r279_side_tensors: Optional[Mapping[str, torch.Tensor]] = None,
+    visible_tutor_completion_loss_weight: float = 0.0,
+    terminal_conversion_loss_weight: float = 0.0,
+    tactical_sequence_outcome_loss_weight: float = 0.0,
 ) -> dict[str, Any]:
     """Run a bounded, resumable expert-policy rehearsal on a resident corpus.
 
@@ -7319,6 +7874,9 @@ def supervised_rehearsal_step(
         ("prize_race", prize_race_loss_weight),
         ("alakazam_guide", alakazam_guide_loss_weight),
         ("combo_state", combo_state_loss_weight),
+        ("visible_tutor_completion", visible_tutor_completion_loss_weight),
+        ("terminal_conversion", terminal_conversion_loss_weight),
+        ("tactical_sequence_outcome", tactical_sequence_outcome_loss_weight),
     ):
         if float(weight) < 0.0:
             raise ValueError(f"rehearsal {name} loss weight cannot be negative")
@@ -7467,6 +8025,9 @@ def supervised_rehearsal_step(
             setup_board_outcome_loss_weight
         ),
         combo_state_loss_weight=float(combo_state_loss_weight),
+        visible_tutor_completion_loss_weight=float(visible_tutor_completion_loss_weight),
+        terminal_conversion_loss_weight=float(terminal_conversion_loss_weight),
+        tactical_sequence_outcome_loss_weight=float(tactical_sequence_outcome_loss_weight),
         current_deck_guide_curriculum_spec=str(
             current_deck_guide_curriculum_spec
         ),
@@ -7614,6 +8175,7 @@ def supervised_rehearsal_step(
         cfg=cfg,
         use_amp=use_amp,
         amp_dtype=amp_dtype,
+        r279_side_tensors=r279_side_tensors,
     )
     step = int(meta.get("step", 0))
     epoch0 = int(meta.get("epoch", 0))
@@ -7678,6 +8240,10 @@ def supervised_rehearsal_step(
                             cfg.setup_board_outcome_loss_weight
                         ),
                         combo_state_loss_weight=cfg.combo_state_loss_weight,
+                        visible_tutor_completion_loss_weight=cfg.visible_tutor_completion_loss_weight,
+                        terminal_conversion_loss_weight=cfg.terminal_conversion_loss_weight,
+                        tactical_sequence_outcome_loss_weight=cfg.tactical_sequence_outcome_loss_weight,
+                        r279_side_tensors=r279_side_tensors,
                         expanded_head_weights=cfg.expanded_head_loss_weights,
                         archetype_residual_weights=cfg.archetype_residual_loss_weights,
                         teacher_policy_targets=teacher_policy_targets,
@@ -7774,6 +8340,7 @@ def supervised_rehearsal_step(
             desc=f"expert validation before iter{int(rehearsal_iteration)}",
             teacher_policy_targets=teacher_policy_targets,
             teacher_policy_weight=float(teacher_policy_weight),
+            r279_side_tensors=r279_side_tensors,
         )
         if corpus.val_samples
         else train_metrics
@@ -8005,6 +8572,9 @@ def supervised_rehearsal_step(
             "prize_race": float(cfg.prize_race_loss_weight),
             "alakazam_guide": float(cfg.alakazam_guide_loss_weight),
             "combo_state": float(cfg.combo_state_loss_weight),
+            "visible_tutor_completion": float(cfg.visible_tutor_completion_loss_weight),
+            "terminal_conversion": float(cfg.terminal_conversion_loss_weight),
+            "tactical_sequence_outcome": float(cfg.tactical_sequence_outcome_loss_weight),
             "expanded_strategic": dict(canonical_expanded_weights),
             "archetype_residuals": dict(canonical_residuals),
         },
@@ -8573,6 +9143,9 @@ def _precompute_awr_baseline_cache_reference(
                         terminal_conversion_loss_weight=(
                             cfg.terminal_conversion_loss_weight
                         ),
+                        tactical_sequence_outcome_loss_weight=(
+                            cfg.tactical_sequence_outcome_loss_weight
+                        ),
                         visible_tutor_completion_class_weights=(
                             cfg.visible_tutor_completion_class_weights
                         ),
@@ -8980,6 +9553,9 @@ def archetype_residual_gradient_diagnostics(
                 cfg.visible_tutor_completion_loss_weight
             ),
             terminal_conversion_loss_weight=cfg.terminal_conversion_loss_weight,
+            tactical_sequence_outcome_loss_weight=(
+                cfg.tactical_sequence_outcome_loss_weight
+            ),
             visible_tutor_completion_class_weights=(
                 cfg.visible_tutor_completion_class_weights
             ),
@@ -9422,7 +9998,9 @@ def streaming_r260_host_rehearsal_step(
     seed: int,
     max_context: Optional[int],
     batch_games: int,
+    manifest_workers: int = 1,
     device: Optional[torch.device] = None,
+    tactical_overlay_path: Optional[Union[str, Path]] = None,
 ) -> dict[str, Any]:
     """Bounded host-only r260 refresh; never packs the full expert window."""
     from .feature_shards import COMPACT_MODE_TEMPORAL_EXPERT
@@ -9430,6 +10008,8 @@ def streaming_r260_host_rehearsal_step(
 
     if int(batch_games) <= 0 or int(epochs) <= 0:
         raise ValueError("r260 streaming batch/epochs must be positive")
+    if int(manifest_workers) <= 0:
+        raise ValueError("r260 manifest workers must be positive")
     if float(cfg.visible_tutor_completion_loss_weight) != 0.025 or float(cfg.terminal_conversion_loss_weight) != 0.025:
         raise ValueError("r260 streaming refresh requires fixed 0.025/0.025 losses")
     base = Path(base_ckpt).expanduser().resolve()
@@ -9437,6 +10017,15 @@ def streaming_r260_host_rehearsal_step(
     if output.exists():
         raise FileExistsError(output)
     model = load_model_from_checkpoint(base, device=torch.device("cpu"))
+    tactical_enabled = bool(
+        getattr(model, "tactical_sequence_outcome_head_enabled", False)
+    )
+    if tactical_enabled and float(cfg.tactical_sequence_outcome_loss_weight) != 0.025:
+        raise ValueError(
+            "r274 tactical bootstrap/refresh requires fixed 0.025 tactical loss"
+        )
+    if tactical_enabled and tactical_overlay_path is None:
+        raise ValueError("r274 tactical bootstrap requires an expert target overlay")
     train_device = device or device_mod.training_device(
         prefer_name=config.HARDWARE.train_gpu_name,
         allow_cpu=False,
@@ -9445,32 +10034,62 @@ def streaming_r260_host_rehearsal_step(
     optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=cfg.lr, weight_decay=cfg.weight_decay)
     parent_payload = checkpoint.load_checkpoint(base, map_location=train_device)
     checkpoint.apply_checkpoint(parent_payload, model=model, optimizer=optimizer, restore_rng=True)
-    seen_keys: list[tuple[str, int, int, str]] = []
+    seen_key_count = 0
+    sidecar_joined_count = 0
+    sidecar_masked_unjoinable_count = 0
+    seen_key_sample: list[tuple[str, int, int, str]] = []
+    seen_tactical_keys: set[tuple[str, int, int, str]] = set()
     losses: list[float] = []
-    prefixes = (
+    prefixes = [
         "own_deck_ledger_adapter.",
         "visible_tutor_completion_head.",
         "terminal_conversion_head.",
         "visible_tutor_completion_route.",
         "terminal_conversion_route.",
         "decision_fusion.",
-    )
+    ]
+    if tactical_enabled:
+        prefixes.append("tactical_sequence_outcome_head.")
+        if bool(
+            getattr(model, "tactical_sequence_outcome_route_present", False)
+        ) and bool(
+            getattr(model, "tactical_sequence_outcome_route_enabled", False)
+        ):
+            prefixes.append("tactical_sequence_outcome_route.")
+    prefixes = tuple(prefixes)
     finite_nonzero_gradients = {prefix: False for prefix in prefixes}
 
     def _attach_and_record(batch_rows: Sequence[GameSequence]) -> None:
         """Attach exactly one host batch and retain only its audit keys."""
 
-        sidecar_index.attach_batch(batch_rows)
+        nonlocal seen_key_count, sidecar_joined_count, sidecar_masked_unjoinable_count
+
+        attachment = sidecar_index.attach_available_batch(batch_rows)
+        sidecar_joined_count += int(attachment["joined_decision_count"])
+        sidecar_masked_unjoinable_count += int(
+            attachment["masked_unjoinable_decision_count"]
+        )
+        if tactical_overlay_path is not None:
+            from .tactical_sequence_materialization import (
+                attach_tactical_target_overlay,
+            )
+
+            attach_tactical_target_overlay(
+                batch_rows, tactical_overlay_path, require_all=False
+            )
         for game in batch_rows:
             for decision in game.decisions:
-                seen_keys.append(
-                    (
-                        str(game.episode_id),
-                        int(game.seat),
-                        int(decision.env_step),
-                        str(decision.observation_fingerprint),
-                    )
+                key = (
+                    str(game.episode_id),
+                    int(game.seat),
+                    int(decision.env_step),
+                    str(decision.observation_fingerprint),
                 )
+                seen_key_count += 1
+                if len(seen_key_sample) < 1024:
+                    seen_key_sample.append(key)
+                if decision.tactical_sequence_supervision is not None:
+                    seen_tactical_keys.add(key)
 
     def _fit(batch_rows: Sequence[GameSequence], *, tail: bool = False) -> None:
         optimizer.zero_grad(set_to_none=True)
@@ -9487,7 +10106,20 @@ def streaming_r260_host_rehearsal_step(
             combo_state_loss_weight=cfg.combo_state_loss_weight,
             visible_tutor_completion_loss_weight=cfg.visible_tutor_completion_loss_weight,
             terminal_conversion_loss_weight=cfg.terminal_conversion_loss_weight,
+            tactical_sequence_outcome_loss_weight=(
+                cfg.tactical_sequence_outcome_loss_weight
+            ),
+            lethal_threat_weight=cfg.lethal_threat_loss_weight,
+            prize_race_weight=cfg.prize_race_loss_weight,
+            expanded_head_weights=cfg.expanded_head_loss_weights,
+            archetype_residual_weights=cfg.archetype_residual_loss_weights,
+            pure_rl=cfg.pure_rl,
+            awr_beta=cfg.awr_beta,
+            awr_weight_max=cfg.awr_weight_max,
+            awr_normalize_advantages=cfg.awr_normalize_advantages,
+            entropy_bonus=cfg.entropy_bonus,
             collect_own_deck_promotion_metrics=cfg.collect_own_deck_promotion_metrics,
+            allow_masked_own_deck_ledger_rows=True,
             visible_tutor_completion_class_weights=cfg.visible_tutor_completion_class_weights,
             visible_tutor_completion_positive_weight=cfg.visible_tutor_completion_positive_weight,
             terminal_conversion_class_weights=cfg.terminal_conversion_class_weights,
@@ -9520,9 +10152,21 @@ def streaming_r260_host_rehearsal_step(
         optimizer.step()
         losses.append(float(loss.detach().cpu()))
 
-    for epoch in range(int(epochs)):
-        plan = EpisodeGroupedFeatureManifest.open(Path(manifest_path), expected_manifest_digest=manifest_digest, val_frac=0.10, seed=int(seed), max_context=max_context, expected_compact_mode=COMPACT_MODE_TEMPORAL_EXPERT, workers=1)
-        try:
+    # The manifest and its split are immutable. Scan/checksum all shards once,
+    # in parallel when requested, then reuse the reiterable split view. The
+    # old placement inside the epoch loop repeated the full metadata decode
+    # and checksum scan for every expert epoch.
+    plan = EpisodeGroupedFeatureManifest.open(
+        Path(manifest_path),
+        expected_manifest_digest=manifest_digest,
+        val_frac=0.10,
+        seed=int(seed),
+        max_context=max_context,
+        expected_compact_mode=COMPACT_MODE_TEMPORAL_EXPERT,
+        workers=int(manifest_workers),
+    )
+    try:
+        for epoch in range(int(epochs)):
             train, _validation = plan.splits()
             batch: list[GameSequence] = []
             for sequence in train:
@@ -9535,8 +10179,8 @@ def streaming_r260_host_rehearsal_step(
             if batch:
                 _attach_and_record(batch)
                 _fit(batch, tail=True)
-        finally:
-            del plan
+    finally:
+        del plan
     child_state = model.state_dict(); parent_state = parent_payload["model_state_dict"]
     changed = {
         prefix: (
@@ -9555,10 +10199,20 @@ def streaming_r260_host_rehearsal_step(
     }
     if not all(changed.values()):
         raise FloatingPointError("r260 streaming rehearsal missing finite gradient reachability")
-    payload = checkpoint.build_checkpoint(model=model, optimizer=optimizer, step=int(parent_payload.get("step", 0)), epoch=int(parent_payload.get("epoch", 0)) + int(epochs), rl_iteration=int(parent_payload.get("rl_iteration", 0)), archetype_id=archetype_id, model_id=str(parent_payload.get("model_id") or "alakazam") + ".r260-expert", model_config=model.cfg, extra={**dict(parent_payload.get("extra") or {}), "pure_rl": True, "r260_streaming_rehearsal": {"schema": "poke_bot.r260_streaming_expert_rehearsal/v1", "loss_weights": {"visible_tutor_completion": 0.025, "terminal_conversion": 0.025}, "max_games_per_batch": int(batch_games), "full_window_device_resident": False, "sampled_key_count": len(seen_keys), "gradient_reachability": changed}})
+    if tactical_enabled and len(seen_tactical_keys) < 1024:
+        raise FloatingPointError(
+            "r274 streaming rehearsal tactical coverage is below 1024 exact roots"
+        )
+    loss_weights = {
+        "visible_tutor_completion": 0.025,
+        "terminal_conversion": 0.025,
+    }
+    if tactical_enabled:
+        loss_weights["tactical_sequence_outcome"] = 0.025
+    payload = checkpoint.build_checkpoint(model=model, optimizer=optimizer, step=int(parent_payload.get("step", 0)), epoch=int(parent_payload.get("epoch", 0)) + int(epochs), rl_iteration=int(parent_payload.get("rl_iteration", 0)), archetype_id=archetype_id, model_id=str(parent_payload.get("model_id") or "alakazam") + ".r260-expert", model_config=model.cfg, extra={**dict(parent_payload.get("extra") or {}), "pure_rl": True, "r260_streaming_rehearsal": {"schema": "poke_bot.r260_streaming_expert_rehearsal/v1", "loss_weights": loss_weights, "max_games_per_batch": int(batch_games), "manifest_workers": int(manifest_workers), "manifest_plan_scans": 1, "manifest_plan_reused_across_epochs": True, "full_window_device_resident": False, "masked_own_deck_ledger_rows_explicitly_authorized": True, "sampled_key_count": int(seen_key_count), "retained_key_sample_count": len(seen_key_sample), "sidecar_joined_decision_count": int(sidecar_joined_count), "sidecar_masked_unjoinable_decision_count": int(sidecar_masked_unjoinable_count), "tactical_exact_root_count": len(seen_tactical_keys), "gradient_reachability": changed}})
     output.parent.mkdir(parents=True, exist_ok=True)
     checkpoint.immutable_torch_save(payload, output)
-    return {"candidate_path": str(output), "candidate_digest": checkpoint.checkpoint_digest(output), "parent_digest": checkpoint.checkpoint_digest(base), "rl_iteration": int(parent_payload.get("rl_iteration", 0)), "sampled_keys": seen_keys[:1024], "max_games_per_batch": int(batch_games), "gradient_reachability": changed, "mean_loss": sum(losses) / max(1, len(losses))}
+    return {"candidate_path": str(output), "candidate_digest": checkpoint.checkpoint_digest(output), "parent_digest": checkpoint.checkpoint_digest(base), "rl_iteration": int(parent_payload.get("rl_iteration", 0)), "sampled_key_count": int(seen_key_count), "sampled_keys": seen_key_sample, "sidecar_joined_decision_count": int(sidecar_joined_count), "sidecar_masked_unjoinable_decision_count": int(sidecar_masked_unjoinable_count), "tactical_exact_root_count": len(seen_tactical_keys), "max_games_per_batch": int(batch_games), "manifest_workers": int(manifest_workers), "manifest_plan_scans": 1, "manifest_plan_reused_across_epochs": True, "gradient_reachability": changed, "mean_loss": sum(losses) / max(1, len(losses))}
 
 
 def supervised_r260_host_rehearsal_step(
@@ -9700,6 +10354,27 @@ def rl_train_step(
     random.seed(seed)
 
     model = load_model_from_checkpoint(base_ckpt, device=device)
+    parent_trainable_parameter_names = tuple(
+        name for name, parameter in model.named_parameters()
+        if parameter.requires_grad
+    )
+    remove_new_tactical_sequence_head = os.environ.get(
+        "POKEBOT_R274_DISABLE_RL_TACTICAL_COTRAIN", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if remove_new_tactical_sequence_head:
+        # Revision 283 removes only the new four-output tactical-sequence
+        # module.  The older expanded strategic tactical_outcome head and its
+        # Fusion route have different names and remain untouched.
+        model.tactical_sequence_outcome_head = None
+        model.tactical_sequence_outcome_route = None
+        model.tactical_sequence_outcome_head_enabled = False
+        model.tactical_sequence_outcome_route_enabled = False
+        model.tactical_sequence_outcome_route_present = False
+        model.tactical_sequence_outcome_route_runtime_enabled = False
+        model.cfg.tactical_sequence_outcome_head_enabled = False
+        model.cfg.tactical_sequence_outcome_route_enabled = False
+        model.cfg.tactical_sequence_outcome_route_present = False
+        model.cfg.tactical_sequence_outcome_route_runtime_enabled = False
     _assert_own_deck_dataset_contract(
         model,
         dataset,
@@ -9773,6 +10448,7 @@ def rl_train_step(
     base_epoch = 0
     base_rl_iteration = 0
     optimizer_state_restored = False
+    optimizer_state_migration: Optional[dict[str, Any]] = None
     learner_ckpt: Optional[dict[str, Any]] = None
     if cfg.pure_rl:
         learner_ckpt = checkpoint.load_checkpoint(base_ckpt, map_location=device)
@@ -9788,10 +10464,86 @@ def rl_train_step(
                     restore_rng=False,
                 )
             except (KeyError, RuntimeError, ValueError) as exc:
-                raise ValueError(
-                    "pure-RL parent optimizer state is incompatible with the "
-                    "loaded model; refusing a silent Adam reset"
-                ) from exc
+                # Revision 283 deliberately removes exactly the new tactical-
+                # sequence head and route at the update-0 gradient boundary.
+                # Preserve Adam moments for every retained parameter by
+                # filtering those exact slots from the parent's single group;
+                # never silently reset the retained learner state.
+                removed_prefixes = (
+                    "tactical_sequence_outcome_head.",
+                    "tactical_sequence_outcome_route.",
+                )
+                current_trainable_names = tuple(
+                    name for name, parameter in model.named_parameters()
+                    if parameter.requires_grad
+                )
+                parent_optimizer = copy.deepcopy(
+                    learner_ckpt["optimizer_state_dict"]
+                )
+                parent_groups = list(parent_optimizer.get("param_groups") or [])
+                parent_ids = [
+                    parameter_id
+                    for group in parent_groups
+                    for parameter_id in list(group.get("params") or [])
+                ]
+                retained_indices = [
+                    index
+                    for index, name in enumerate(parent_trainable_parameter_names)
+                    if not name.startswith(removed_prefixes)
+                ]
+                retained_names = tuple(
+                    parent_trainable_parameter_names[index]
+                    for index in retained_indices
+                )
+                can_filter_exactly = bool(
+                    remove_new_tactical_sequence_head
+                    and int((training_provenance or {}).get("iteration", -1)) == 0
+                    and len(parent_groups) == 1
+                    and len(parent_ids) == len(parent_trainable_parameter_names)
+                    and retained_names == current_trainable_names
+                    and len(retained_indices) < len(parent_ids)
+                )
+                if not can_filter_exactly:
+                    raise ValueError(
+                        "pure-RL parent optimizer state is incompatible with the "
+                        "loaded model; refusing a silent Adam reset"
+                    ) from exc
+                retained_ids = [parent_ids[index] for index in retained_indices]
+                retained_id_set = set(retained_ids)
+                parent_groups[0]["params"] = retained_ids
+                parent_optimizer["param_groups"] = parent_groups
+                parent_optimizer["state"] = {
+                    parameter_id: value
+                    for parameter_id, value in dict(
+                        parent_optimizer.get("state") or {}
+                    ).items()
+                    if parameter_id in retained_id_set
+                }
+                optimizer.load_state_dict(parent_optimizer)
+                if use_amp and "scaler_state_dict" in learner_ckpt:
+                    scaler.load_state_dict(learner_ckpt["scaler_state_dict"])
+                optimizer_state_migration = {
+                    "schema": "poke_bot.optimizer_parameter_removal_migration/v1",
+                    "owner_revision": 283,
+                    "iteration": 0,
+                    "mode": "exact_parameter_slot_filter_preserve_retained_adam",
+                    "removed_parameter_prefixes": list(removed_prefixes),
+                    "parent_parameter_slots": len(parent_ids),
+                    "retained_parameter_slots": len(retained_ids),
+                    "removed_parameter_slots": len(parent_ids) - len(retained_ids),
+                    "retained_optimizer_state_entries": len(
+                        parent_optimizer["state"]
+                    ),
+                    "retained_parameter_order_exact": True,
+                    "adam_reset": False,
+                }
+                print(
+                    "[train] OPTIMIZER_PARAMETER_REMOVAL_MIGRATION "
+                    f"owner_revision=283 removed_slots="
+                    f"{optimizer_state_migration['removed_parameter_slots']} "
+                    f"retained_slots={len(retained_ids)} adam_reset=0",
+                    flush=True,
+                )
             optimizer_state_restored = True
             # The checkpoint supplies moments/counters; the current iteration's
             # explicit config remains authoritative for tunable hyperparameters.
@@ -10085,6 +10837,9 @@ def rl_train_step(
                         ),
                         terminal_conversion_loss_weight=(
                             cfg.terminal_conversion_loss_weight
+                        ),
+                        tactical_sequence_outcome_loss_weight=(
+                            cfg.tactical_sequence_outcome_loss_weight
                         ),
                         collect_own_deck_promotion_metrics=(
                             cfg.collect_own_deck_promotion_metrics
@@ -10601,6 +11356,13 @@ def rl_train_step(
             validation_metrics=validation_metrics,
         )
     )
+    tactical_sequence_training_record = (
+        _maybe_tactical_sequence_training_record(
+            cfg=cfg,
+            train_metrics=last,
+            validation_metrics=validation_metrics,
+        )
+    )
 
     delta_sq = 0.0
     base_sq = 0.0
@@ -10663,6 +11425,7 @@ def rl_train_step(
             "global_step": int(step),
             "optimizer_parent_step": int(base_step),
             "optimizer_state_restored": optimizer_state_restored,
+            "optimizer_state_migration": optimizer_state_migration,
             "awr_baseline_mode": (
                 "frozen_device_resident"
                 if resident_baseline is not None
@@ -10758,6 +11521,15 @@ def rl_train_step(
                 if own_deck_promotion_metrics_record
                 else {}
             ),
+            **(
+                {
+                    "tactical_sequence_outcome_training": (
+                        tactical_sequence_training_record
+                    )
+                }
+                if tactical_sequence_training_record
+                else {}
+            ),
         },
     )
     if output_path is not None:
@@ -10794,6 +11566,15 @@ def rl_train_step(
         **(
             {"own_deck_promotion_metrics": own_deck_promotion_metrics_record}
             if own_deck_promotion_metrics_record
+            else {}
+        ),
+        **(
+            {
+                "tactical_sequence_outcome_training": (
+                    tactical_sequence_training_record
+                )
+            }
+            if tactical_sequence_training_record
             else {}
         ),
         "step": step,

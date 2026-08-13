@@ -272,6 +272,47 @@ def test_pending_copies_are_persistent_idempotent_and_checkpoint_bound(
     assert all(row["queue_status"] == "pending" for row in first)
 
 
+def test_direct_policy_queue_binds_intentional_search_asset_absence(
+    tmp_path: Path,
+) -> None:
+    bundle = tmp_path / "submission.tar.gz"
+    bundle.write_bytes(b"direct only")
+    digest = "sha256:" + "a" * 64
+    rows = handler.queue_submission_copies(
+        queue_path=tmp_path / "r274-queue.json",
+        copies=[
+            {
+                "slot": 1,
+                "path": str(bundle),
+                "sha256": sha256(bundle),
+                "specialist_id": "alakazam",
+                "model_sha256": digest,
+                "deck_sha256": "sha256:" + "b" * 64,
+                "deck_cards_sha256": "sha256:" + "c" * 64,
+                "representatives_sha256": "sha256:" + "d" * 64,
+                "matchup_tree_sha256": "sha256:" + "e" * 64,
+                "search_config_sha256": "",
+                "belief_decks_sha256": "",
+                "search_assets_packaged": False,
+                "rtp_mode": "off",
+            }
+        ],
+        gate_plan={
+            "iteration": 0,
+            "gate_id": "alakazam-r274-bootstrap",
+            "checkpoint_digest": digest,
+            "owner_decision_source": "GOAL.md#/revision-264-TRAINING",
+        },
+        specialist_id="alakazam",
+        competition="pokemon-tcg-ai-battle",
+    )
+    queue = json.loads((tmp_path / "r274-queue.json").read_text())
+    assert queue["standing_owner_decision_source"] == "GOAL.md#/revision-264-TRAINING"
+    assert rows[0]["search_assets_packaged"] is False
+    assert rows[0]["search_config_checksum"] == ""
+    assert rows[0]["belief_decks_checksum"] == ""
+
+
 def test_failed_or_ambiguous_upload_is_never_success(tmp_path: Path) -> None:
     first = _attempt_record(tmp_path, slot=1, returncode=1)
     second = _attempt_record(tmp_path, slot=2)

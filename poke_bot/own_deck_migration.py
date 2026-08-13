@@ -8,8 +8,9 @@ immutable child checkpoint.
 The child is deliberately a direct-policy no-op at materialization time:
 
 * every inherited model tensor is copied byte-for-byte;
-* the OwnDeckLedger adapter, visible-tutor head, terminal-conversion head, and
-  their two policy routes are physically present;
+* the OwnDeckLedger adapter, visible-tutor head, terminal-conversion head,
+  tactical-sequence outcome head, and their three policy routes are physically
+  present;
 * the successor training routes are physically enabled, while every successor
   runtime route remains disabled; and
 * a real model forward is compared for absent and valid public-ledger inputs
@@ -67,22 +68,28 @@ SUCCESSOR_TENSOR_PREFIXES: tuple[str, ...] = (
     "own_deck_ledger_option_adapter.",
     "visible_tutor_completion_head.",
     "terminal_conversion_head.",
+    "tactical_sequence_outcome_head.",
     "visible_tutor_completion_route.",
     "terminal_conversion_route.",
+    "tactical_sequence_outcome_route.",
 )
 
 SUCCESSOR_RUNTIME_CONFIG_FIELDS: tuple[str, ...] = (
     "own_deck_ledger_runtime_enabled",
     "visible_tutor_completion_route_runtime_enabled",
     "terminal_conversion_route_runtime_enabled",
+    "tactical_sequence_outcome_route_enabled",
+    "tactical_sequence_outcome_route_runtime_enabled",
 )
 
 SUCCESSOR_PHYSICAL_CONFIG_FIELDS: tuple[str, ...] = (
     "own_deck_ledger_enabled",
     "visible_tutor_completion_head_enabled",
     "terminal_conversion_head_enabled",
+    "tactical_sequence_outcome_head_enabled",
     "visible_tutor_completion_route_enabled",
     "terminal_conversion_route_enabled",
+    "tactical_sequence_outcome_route_present",
 )
 
 # The final output projections are the mathematical no-op fences.  The heads
@@ -97,6 +104,8 @@ ZERO_SAFE_FINAL_PROJECTION_KEYS: tuple[str, ...] = (
     "visible_tutor_completion_route.network.2.bias",
     "terminal_conversion_route.network.2.weight",
     "terminal_conversion_route.network.2.bias",
+    "tactical_sequence_outcome_route.network.2.weight",
+    "tactical_sequence_outcome_route.network.2.bias",
 )
 
 
@@ -207,10 +216,14 @@ def successor_model_config(
         "own_deck_ledger_option_feature_dim": OPTION_FEATURE_DIM,
         "visible_tutor_completion_head_enabled": False,
         "terminal_conversion_head_enabled": False,
+        "tactical_sequence_outcome_head_enabled": False,
         "visible_tutor_completion_route_enabled": False,
         "visible_tutor_completion_route_runtime_enabled": False,
         "terminal_conversion_route_enabled": False,
         "terminal_conversion_route_runtime_enabled": False,
+        "tactical_sequence_outcome_route_present": False,
+        "tactical_sequence_outcome_route_enabled": False,
+        "tactical_sequence_outcome_route_runtime_enabled": False,
     }
     for field, default in legacy_defaults.items():
         if field not in parent_config:
@@ -234,10 +247,14 @@ def successor_model_config(
             "own_deck_ledger_option_feature_dim": OPTION_FEATURE_DIM,
             "visible_tutor_completion_head_enabled": True,
             "terminal_conversion_head_enabled": True,
+            "tactical_sequence_outcome_head_enabled": True,
             "visible_tutor_completion_route_enabled": True,
             "visible_tutor_completion_route_runtime_enabled": False,
             "terminal_conversion_route_enabled": True,
             "terminal_conversion_route_runtime_enabled": False,
+            "tactical_sequence_outcome_route_present": True,
+            "tactical_sequence_outcome_route_enabled": False,
+            "tactical_sequence_outcome_route_runtime_enabled": False,
         }
     )
     try:
@@ -597,10 +614,14 @@ def _parent_model_config(value: object) -> config.ModelConfig:
         "own_deck_ledger_option_feature_dim": OPTION_FEATURE_DIM,
         "visible_tutor_completion_head_enabled": False,
         "terminal_conversion_head_enabled": False,
+        "tactical_sequence_outcome_head_enabled": False,
         "visible_tutor_completion_route_enabled": False,
         "visible_tutor_completion_route_runtime_enabled": False,
         "terminal_conversion_route_enabled": False,
         "terminal_conversion_route_runtime_enabled": False,
+        "tactical_sequence_outcome_route_present": False,
+        "tactical_sequence_outcome_route_enabled": False,
+        "tactical_sequence_outcome_route_runtime_enabled": False,
     }.items():
         if field not in raw:
             values[field] = default
@@ -735,8 +756,10 @@ def _assert_successor_physical_contract(
         "own_deck_ledger_option_adapter",
         "visible_tutor_completion_head",
         "terminal_conversion_head",
+        "tactical_sequence_outcome_head",
         "visible_tutor_completion_route",
         "terminal_conversion_route",
+        "tactical_sequence_outcome_route",
     )
     for name in required_modules:
         if getattr(model, name, None) is None:

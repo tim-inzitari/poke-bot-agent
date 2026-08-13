@@ -308,6 +308,30 @@ def test_full_materialization_transport_parity_and_final_bind(tmp_path: Path) ->
     )
 
 
+def test_inzi_staging_join_keeps_receipt_directory_appendable(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path, days=20)
+    staged = stage_r260_sidecar_prefix_to_inzi(
+        source_sidecar_root=fixture.root,
+        source_manifest=fixture.source_manifest,
+        source_window_receipt=fixture.source_window,
+        inzi_staging_root=fixture.contract.inzi_prefix_staging_root,
+        expected_elmo_sidecar_root=fixture.root,
+        owner_contract=fixture.contract,
+    )
+    materialized = materialize_r260_sidecar(
+        sidecar_root=staged.inzi_staging_root,
+        source_manifest=fixture.source_manifest,
+        source_window_receipt=fixture.source_window,
+        evidence_root=staged.inzi_staging_root / EVIDENCE_DIRECTORY_NAME,
+        owner_contract=fixture.contract,
+        receipt_identity_root=fixture.contract.inzi_training_root,
+    )
+
+    receipts = materialized.evidence_root / "receipts"
+    assert receipts.stat().st_mode & 0o777 == 0o755
+    assert materialized.join_receipt.path.stat().st_mode & 0o777 == 0o444
+
+
 def test_inzi_destination_cannot_be_an_elmo_sidecar_path(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path, days=1)
     with pytest.raises(R260SidecarMaterializationError, match="Elmo side-store"):

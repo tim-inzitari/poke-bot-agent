@@ -1,0 +1,55 @@
+{
+  "schema": "poke_bot.alakazam_r274_inzi_only_production/v1",
+  "status": "active_verified",
+  "owner_revision": 287,
+  "activated_at_utc": "2026-08-12T17:12:13.952284+00:00",
+  "managed_service": {
+    "host": "inzi",
+    "unit": "pokebot-alakazam-r274-rl.service",
+    "service_manager": "systemd_user",
+    "main_pid_at_verification": 1482566,
+    "direct_process_signals_used": false
+  },
+  "iteration": {
+    "last_completed": 0,
+    "active": 1,
+    "checkpoint_sha256": "sha256:645f8e6a0bc5e0cb98695e5a65151f38eef2e5011ca63f3ea4eded42cf4a11a2",
+    "partial_resume_sidecar": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r286-iter1-elmo-quarantine-partial-resume.json",
+    "partial_resume_sidecar_sha256": "sha256:b496818cd6fb07b5f5f688ac5330f2eb7e6df7135ede0966d70a905b3691826b",
+    "sealed_prefix_sha256": "sha256:b9a779205da73fadc6b49e5916bf652a73a4cc4f300bc6a3838053f9fea7709d",
+    "retained_source_games": 3598,
+    "missing_source_games_at_resume": 4598,
+    "resume_policy": "append_only_missing_job_indices_then_full_reaudit"
+  },
+  "execution": {
+    "local_simulator_workers": 32,
+    "environments_per_worker": 4,
+    "active_remote_worker_endpoints": [],
+    "elmo_quarantined": true,
+    "bert_intentionally_excluded": true,
+    "rtp_enabled": false,
+    "search_mode": "policy",
+    "submission_search_disabled": true,
+    "mcts_enabled": false
+  },
+  "design_migration": {
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/design_migrations/migration_0016.json",
+    "sha256": "sha256:ecaf8cc4aecdbd78b2b17491b2396536086664a69136b657fe8eaa73b64f583c",
+    "previous_fingerprint": "sha256:187c58ca0a780b709267579b4c4b553911d3be489c821ff863b074cdae529363",
+    "current_fingerprint": "sha256:31593b1df7f23bdf5dc62d9f1ac9b52931664edd27ca2549f31289bcc222fe80",
+    "changed_paths": [
+      "games.heldout_additive_remotes",
+      "remotes.disabled",
+      "remotes.endpoints",
+      "source.source_tree_sha256"
+    ]
+  },
+  "invariants_unchanged": [
+    "exact_8196_games_and_balanced_seats",
+    "r195_and_marnie_opponent_floors",
+    "matchup_adapter_learning",
+    "formal_r195_plus_marnie_holdout",
+    "twenty_update_horizon",
+    "five_update_refresh_and_submission_cadence"
+  ]
+}

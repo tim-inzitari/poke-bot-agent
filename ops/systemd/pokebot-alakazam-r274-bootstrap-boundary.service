@@ -1,0 +1,53 @@
+[Unit]
+Description=Advance Alakazam r274 bootstrap through upload and tactical activation
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/cg-r236
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_r274_bootstrap_boundary.py \
+  --runtime-root /home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1 \
+  --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python \
+  --kaggle /home/inzi/miniconda3/envs/poke-bot-agent/bin/kaggle \
+  --authorization /home/inzi/.config/pokebot/kaggle-submission-authorization.json \
+  --attempt-receipts /home/inzi/.local/state/pokebot/kaggle-submission-attempts \
+  --contract /home/inzi/poke-bot-agent-deployments/alakazam-r274-r277-code-v1/state/alakazam-new-list-direct-policy-r241.json \
+  --activated-parent /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-bootstrap-parent-v2.pt \
+  --bootstrap-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/checkpoints/r281-expert-bootstrap-adapter-trained.pt \
+  --gpu-bootstrap-result /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-bootstrap-result.json \
+  --tactical-repair-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-tactical-train-repair/repair-receipt.json \
+  --adapter-training-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r281-bootstrap-matchup-adapter-training-receipt.json \
+  --expert-manifest /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/expert-elmo-d23e-v4/manifest.json \
+  --tactical-overlay /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/expert-tactical-overlay-inzi-v3-compact.json \
+  --sidecar-binding /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r274-sidecar-binding.json \
+  --sidecar-index /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/r260-own-deck-training-dataset/r274-sidecar-index.sqlite3 \
+  --bootstrap-submission-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/checkpoints/r281-expert-bootstrap-submission-route-off-v3.pt \
+  --bootstrap-submission-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r281-bootstrap-submission-checkpoint-receipt-v3.json \
+  --inactive-matchup-tree /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/matchup-router-r276-a7/public-matchup-tree.json \
+  --matchup-roster /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r280-matchup-readiness/candidate-roster.json \
+  --cg-root /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/cg-r236/cg \
+  --submission-root /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/submissions/bootstrap-r281-v3 \
+  --queue /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r281-bootstrap-submission-queue.json \
+  --stage-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r281-bootstrap-submission-stage.json \
+  --upload-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r281-bootstrap-upload.json \
+  --tactical-activation-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/checkpoints/r281-bootstrap-tactical-route-active.pt \
+  --tactical-activation-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/r281-tactical-route-activation.json \
+  --device cuda:1 \
+  --poll-seconds 60
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=30
+KillMode=control-group
+MemoryHigh=24G
+MemoryMax=36G
+LimitNOFILE=4096
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/logs/bootstrap-boundary.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/logs/bootstrap-boundary.log
+
+[Install]
+WantedBy=default.target

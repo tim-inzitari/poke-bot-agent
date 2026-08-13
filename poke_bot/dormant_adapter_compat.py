@@ -191,6 +191,17 @@ def validate_zero_dormant_checkpoint(
         saved_config=saved_config,
         fit=fit,
     )
+    r281_reset = dict(extra.get("r281_matchup_adapter_optimizer_reset") or {})
+    audited_r281_optimizer_reset = bool(
+        r281_reset.get("schema")
+        == "poke_bot.r281_bootstrap_matchup_adapter_training/v1"
+        and r281_reset.get("optimizer_scope") == "matchup_adapter_bank_only"
+        and r281_reset.get("base_frozen") is True
+        and int(r281_reset.get("steps", 0)) > 0
+        and int(r281_reset.get("rows", 0)) > 0
+        and r281_reset.get("continuation_behavior")
+        == "fresh_adam_state_on_next_isolated_rl_phase"
+    )
     trained_contract_ok = bool(
         allow_trained
         and trained
@@ -202,7 +213,11 @@ def validate_zero_dormant_checkpoint(
         and fit.get("optimizer_scope") == "matchup_adapter_bank_only"
         and int(fit.get("steps", 0)) > 0
         and int(fit.get("rows", 0)) > 0
-        and (continuation_optimizer_present or audited_optimizer_reset)
+        and (
+            continuation_optimizer_present
+            or audited_optimizer_reset
+            or audited_r281_optimizer_reset
+        )
     )
     zero_contract_ok = bool(
         dormant.get("schema") == ZERO_DORMANT_CHECKPOINT_SCHEMA

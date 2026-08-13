@@ -126,10 +126,20 @@ def sticky_leaf_server_index(
     thresh = max(1, min(period - 1, int(round(period * frac))))
     within = slot % period
     block = slot // period
-    if within < thresh:
-        rank = block * thresh + within
+    # Interleave the GPU0 share across the entire period.  The previous
+    # ``within < thresh`` rule put every early slot on GPU0; with four-env
+    # packing an eight-process pool therefore sent all inference to the 3080
+    # Ti while the Blackwell leaf farm sat idle.  Multiplication by ``thresh``
+    # gives a deterministic, evenly distributed pattern while preserving the
+    # exact requested count over each 100-slot period.
+    def _uses_gpu0(position: int) -> bool:
+        return ((int(position) * thresh) % period) < thresh
+
+    gpu0_before = sum(1 for position in range(within) if _uses_gpu0(position))
+    if _uses_gpu0(within):
+        rank = block * thresh + gpu0_before
         return g0[rank % len(g0)]
-    rank = block * (period - thresh) + (within - thresh)
+    rank = block * (period - thresh) + (within - gpu0_before)
     return g1[rank % len(g1)]
 
 

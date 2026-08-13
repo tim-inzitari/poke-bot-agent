@@ -239,11 +239,18 @@ def resolve_baseline_spec_payload(
         raise ValueError(f"baseline group escapes local library: {group_path}")
     lexical_path = group_path / dir_name
     manifest_path = Path(manifest_spec.path)
-    if lexical_path.absolute() != manifest_path.absolute():
+    external_manifest_path = lexical_path.absolute() != manifest_path.absolute()
+    if external_manifest_path and not (
+        require_content_identity and expected_digest
+    ):
         raise ValueError(
             f"baseline manifest path mismatch for {baseline_id}: {manifest_path}"
         )
-    local_path = lexical_path.resolve()
+    local_path = (
+        manifest_path.expanduser().resolve()
+        if external_manifest_path
+        else lexical_path.resolve()
+    )
     if base not in local_path.parents:
         # Frozen specialist packages may be installed as manifest-owned leaf
         # symlinks into an immutable deployment tree. Admit only that exact
@@ -251,7 +258,7 @@ def resolve_baseline_spec_payload(
         # bytes; arbitrary traversal and unbound external symlinks stay closed.
         if (
             not require_content_identity
-            or not lexical_path.is_symlink()
+            or not (lexical_path.is_symlink() or external_manifest_path)
             or not expected_digest
         ):
             raise ValueError(f"baseline path escapes local library: {local_path}")
@@ -274,14 +281,31 @@ def resolve_baseline_spec_payload(
 
 
 def load_manifest(manifest: Optional[Path] = None) -> list[BaselineSpec]:
-    manifest = Path(manifest) if manifest else paths.BASELINES_MANIFEST
+    if manifest is None:
+        configured = os.environ.get("POKEBOT_BASELINES_MANIFEST_PATH", "").strip()
+        manifest = Path(configured).expanduser() if configured else paths.BASELINES_MANIFEST
+    else:
+        manifest = Path(manifest)
     data = json.loads(manifest.read_text(encoding="utf-8"))
     specs: list[BaselineSpec] = []
     for a in data.get("agents", []):
         group = a.get("group", "community")
         parent = paths.BASELINES_DIR / group
         # Manifest uses group dirs: official / community / roster
-        path = parent / a["dir"]
+        external_path = str(a.get("external_path") or "").strip()
+        external_digest = str(a.get("external_content_sha256") or "").strip()
+        if external_path:
+            path = Path(external_path).expanduser()
+            if not path.is_absolute() or not external_digest.startswith("sha256:"):
+                raise ValueError(
+                    f"baseline {a.get('id')!r} has an invalid external manifest binding"
+                )
+            if baseline_content_digest(path) != external_digest:
+                raise ValueError(
+                    f"baseline {a.get('id')!r} external manifest content changed"
+                )
+        else:
+            path = parent / a["dir"]
         specs.append(
             BaselineSpec(
                 id=a["id"],

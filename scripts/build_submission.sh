@@ -13,9 +13,10 @@ TARBALL="$OUT_DIR/submission.tar.gz"
 ARCH="${POKEBOT_PRIMARY_ARCHETYPE:-dragapult}"
 DECK_SRC="${POKEBOT_SUBMISSION_DECK:-$ROOT/submission/deck.csv}"
 MATCHUP_TREE_SRC="${POKEBOT_SUBMISSION_MATCHUP_TREE:-}"
-MATCHUP_ROSTER_SRC="$ROOT/state/matchup_adapter_roster.json"
+MATCHUP_ROSTER_SRC="${POKEBOT_SUBMISSION_MATCHUP_ROSTER:-$ROOT/state/matchup_adapter_roster.json}"
 TURN_ORDER_PREFERENCE="${POKEBOT_SUBMISSION_TURN_ORDER:-first_if_allowed}"
 RTP_MODE="${POKEBOT_SUBMISSION_RTP_MODE:-default_off}"
+DIRECT_NO_SEARCH_ASSETS="${POKEBOT_SUBMISSION_DIRECT_NO_SEARCH_ASSETS:-0}"
 SEARCH_CONFIG_SRC="$ROOT/submission/search_config.json"
 BELIEF_PRIOR_BUILDER="$ROOT/scripts/build_submission_belief_posterior.py"
 BELIEF_PRIOR_SOURCES=(
@@ -55,16 +56,26 @@ case "$RTP_MODE" in
     exit 1
     ;;
 esac
-if [[ ! -f "$SEARCH_CONFIG_SRC" || ! -f "$BELIEF_PRIOR_BUILDER" ]]; then
-  echo "ERROR: default belief-MCTS submission assets are missing" >&2
+if [[ "$DIRECT_NO_SEARCH_ASSETS" != "0" && "$DIRECT_NO_SEARCH_ASSETS" != "1" ]]; then
+  echo "ERROR: POKEBOT_SUBMISSION_DIRECT_NO_SEARCH_ASSETS must be 0 or 1" >&2
   exit 1
 fi
-for source in "${BELIEF_PRIOR_SOURCES[@]}"; do
-  if [[ ! -f "$source" ]]; then
-    echo "ERROR: public belief-prior source does not exist: $source" >&2
+if [[ "$DIRECT_NO_SEARCH_ASSETS" == "1" && "$RTP_MODE" != "off" ]]; then
+  echo "ERROR: search-asset-free packaging requires explicit RTP mode off" >&2
+  exit 1
+fi
+if [[ "$DIRECT_NO_SEARCH_ASSETS" == "0" ]]; then
+  if [[ ! -f "$SEARCH_CONFIG_SRC" || ! -f "$BELIEF_PRIOR_BUILDER" ]]; then
+    echo "ERROR: default belief-MCTS submission assets are missing" >&2
     exit 1
   fi
-done
+  for source in "${BELIEF_PRIOR_SOURCES[@]}"; do
+    if [[ ! -f "$source" ]]; then
+      echo "ERROR: public belief-prior source does not exist: $source" >&2
+      exit 1
+    fi
+  done
+fi
 
 # Deployment is policy-first/history-only. Privileged single-world search must
 # never be packaged accidentally, even if enabled in the caller's environment.
@@ -181,15 +192,17 @@ if trained_adapter_bank:
 print("OK: trusted history-policy checkpoint")
 PY
 
-CG_SRC=""
-for cand in \
-  "$ROOT/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission/cg" \
-  "$ROOT/kaggle/input/cg-lib/cg"; do
-  if [[ -d "$cand" ]]; then
-    CG_SRC="$cand"
-    break
-  fi
-done
+CG_SRC="${POKEBOT_SUBMISSION_CG_ROOT:-}"
+if [[ -z "$CG_SRC" ]]; then
+  for cand in \
+    "$ROOT/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission/cg" \
+    "$ROOT/kaggle/input/cg-lib/cg"; do
+    if [[ -d "$cand" ]]; then
+      CG_SRC="$cand"
+      break
+    fi
+  done
+fi
 if [[ -z "$CG_SRC" ]]; then
   echo "ERROR: competition cg/ not found" >&2
   exit 1
@@ -203,6 +216,7 @@ echo "   ckpt=$CKPT"
 echo "   deck=$DECK_SRC"
 echo "   turn_order=$TURN_ORDER_PREFERENCE"
 echo "   rtp_mode=$RTP_MODE"
+echo "   direct_no_search_assets=$DIRECT_NO_SEARCH_ASSETS"
 echo "   cg=$CG_SRC"
 echo "   out=$TARBALL"
 
@@ -211,11 +225,13 @@ printf '{"schema":"poke_bot.submission_turn_order_profile/v1","turn_order_prefer
   "$TURN_ORDER_PREFERENCE" >"$STAGE/turn_order_profile.json"
 cp "$DECK_SRC" "$STAGE/deck.csv"
 cp "$CKPT" "$STAGE/model.pt"
-cp "$SEARCH_CONFIG_SRC" "$STAGE/search_config.json"
-"$PYTHON" "$BELIEF_PRIOR_BUILDER" \
-  --output "$STAGE/belief_decks.json" \
-  --source "${BELIEF_PRIOR_SOURCES[0]}" \
-  --source "${BELIEF_PRIOR_SOURCES[1]}"
+if [[ "$DIRECT_NO_SEARCH_ASSETS" == "0" ]]; then
+  cp "$SEARCH_CONFIG_SRC" "$STAGE/search_config.json"
+  "$PYTHON" "$BELIEF_PRIOR_BUILDER" \
+    --output "$STAGE/belief_decks.json" \
+    --source "${BELIEF_PRIOR_SOURCES[0]}" \
+    --source "${BELIEF_PRIOR_SOURCES[1]}"
+fi
 cp -a "$CG_SRC" "$STAGE/cg"
 if [[ -n "$MATCHUP_TREE_SRC" ]]; then
   if [[ ! -f "$MATCHUP_TREE_SRC" ]]; then
@@ -563,6 +579,7 @@ print("OK: packaged", mode, "RTP profile binding")
 PY
 fi
 
+if [[ "$DIRECT_NO_SEARCH_ASSETS" == "0" ]]; then
 "$PYTHON" - "$STAGE" <<'PY'
 import json
 from pathlib import Path
@@ -605,6 +622,12 @@ print(
     f"decks={len(decks)}",
 )
 PY
+else
+  if [[ -e "$STAGE/search_config.json" || -e "$STAGE/belief_decks.json" ]]; then
+    echo "ERROR: direct-policy package unexpectedly contains search assets" >&2
+    exit 1
+  fi
+fi
 
 # A bank-bearing checkpoint must ship the exact loader implementation that was
 # validated before fleet rollout. Ordinary legacy checkpoints remain unchanged.
@@ -904,11 +927,16 @@ finally:
 
 budget = agent_mod._SEARCH_BUDGET
 policy = agent_mod._POLICY
-assert budget is not None
-assert budget.enabled is False
-assert budget.searches_used == 0
-assert budget.disabled_reason is None, budget.disabled_reason
-assert budget.consecutive_search_failures == 0
+if budget is not None:
+    assert budget.enabled is False
+    assert budget.searches_used == 0
+    assert budget.disabled_reason is None, budget.disabled_reason
+    assert budget.consecutive_search_failures == 0
+else:
+    # Direct-policy archives intentionally omit both search assets.  In that
+    # stricter package shape there is no search budget object to exercise.
+    assert not (stage / "search_config.json").exists()
+    assert not (stage / "belief_decks.json").exists()
 assert policy is not None and policy.use_mcts is False
 assert policy.belief_mcts is False
 assert policy.last_result is None
@@ -918,12 +946,17 @@ assert policy.last_result is None
 assert getattr(policy, "last_search_fallback_reason", None) is None
 assert int(getattr(policy, "fail_closed_count", 0)) == 0
 assert agent_calls > 0
-assert budget.final_greedy_reserve_s == 20.0
+if budget is not None:
+    assert budget.final_greedy_reserve_s == 20.0
 print(
     "OK: packaged policy-only default",
     f"calls={agent_calls}",
     "mcts_calls=0",
-    f"final_reserve={budget.final_greedy_reserve_s:.0f}s",
+    (
+        f"final_reserve={budget.final_greedy_reserve_s:.0f}s"
+        if budget is not None
+        else "search_budget=absent"
+    ),
 )
 PY
 )
@@ -949,6 +982,8 @@ runtime_profile = (
     if runtime_profile_path.is_file()
     else {}
 )
+search_config_path = bundle.parent / "stage" / "search_config.json"
+belief_decks_path = bundle.parent / "stage" / "belief_decks.json"
 payload = {
     "schema": "poke_bot.submission_turn_order_attestation/v1",
     "file_sha256": "sha256:" + digest,
@@ -975,12 +1010,17 @@ payload = {
     "belief_mcts_hard_cap_s": 600.0,
     "belief_mcts_internal_deadline_s": 540.0,
     "belief_mcts_final_greedy_reserve_s": 20.0,
-    "search_config_sha256": "sha256:" + hashlib.sha256(
-        (bundle.parent / "stage" / "search_config.json").read_bytes()
-    ).hexdigest(),
-    "belief_decks_sha256": "sha256:" + hashlib.sha256(
-        (bundle.parent / "stage" / "belief_decks.json").read_bytes()
-    ).hexdigest(),
+    "search_assets_packaged": search_config_path.is_file(),
+    "search_config_sha256": (
+        "sha256:" + hashlib.sha256(search_config_path.read_bytes()).hexdigest()
+        if search_config_path.is_file()
+        else None
+    ),
+    "belief_decks_sha256": (
+        "sha256:" + hashlib.sha256(belief_decks_path.read_bytes()).hexdigest()
+        if belief_decks_path.is_file()
+        else None
+    ),
     "verified_cases": [
         "integer_enum",
         "string_enum_reversed_options",

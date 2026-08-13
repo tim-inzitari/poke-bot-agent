@@ -6,6 +6,7 @@ MODE="${1:---check}"
 PYTHON="/Users/tsinzitari/workspace/poke-bot-agent/.venv/bin/python"
 LIVE_ROOT="/Users/tsinzitari/pokebot-dashboard/v1"
 INZI="inzi@192.168.1.151"
+ELMO="admin@192.168.1.143"
 
 if [[ "${MODE}" != "--check" && "${MODE}" != "--apply" ]]; then
   echo "usage: $0 [--check|--apply]" >&2
@@ -37,14 +38,19 @@ rsync -a scripts/dashboard_snapshot.py \
   "${INZI}:/home/inzi/poke-bot-agent/scripts/dashboard_snapshot.py"
 rsync -a scripts/fleet_host_snapshot.py \
   "${INZI}:/home/inzi/poke-bot-agent/scripts/fleet_host_snapshot.py"
+rsync -a scripts/fleet_host_snapshot.py \
+  "${ELMO}:/mnt/Main/Elmo/poke-bot-agent/dashboard/fleet_host_snapshot.py"
 rsync -a ops/current_goal_requirements.json \
   "${INZI}:/home/inzi/poke-bot-agent/ops/current_goal_requirements.json"
+rsync -a state/alakazam-new-list-direct-policy-r241.json \
+  "${INZI}:/home/inzi/poke-bot-agent/state/alakazam-new-list-direct-policy-r241.json"
 rsync -a scripts/dashboard_snapshot.py \
   "${INZI}:/home/inzi/poke-bot-agent-deployments/state-core-v1/scripts/dashboard_snapshot.py"
 rsync -a scripts/dashboard_snapshot.py \
   "${INZI}:/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/scripts/dashboard_snapshot.py"
 SELECTOR_RUNTIME_ROOT="$(
-  ssh -o BatchMode=yes -o ConnectTimeout=5 "${INZI}" \
+  ssh -o BatchMode=yes -o ConnectTimeout=25 \
+    -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "${INZI}" \
     "sed -n 's/^POKEBOT_SPECIALIST_RUNTIME_ROOT=//p' /home/inzi/.config/pokebot/specialist_runtime.env"
 )"
 case "${SELECTOR_RUNTIME_ROOT}" in
@@ -57,6 +63,8 @@ case "${SELECTOR_RUNTIME_ROOT}" in
 esac
 rsync -a scripts/dashboard_snapshot.py \
   "${INZI}:${SELECTOR_RUNTIME_ROOT}/scripts/dashboard_snapshot.py"
+rsync -a scripts/fleet_host_snapshot.py \
+  "${INZI}:${SELECTOR_RUNTIME_ROOT}/scripts/fleet_host_snapshot.py"
 rsync -a ops/current_goal_requirements.json \
   "${INZI}:${SELECTOR_RUNTIME_ROOT}/ops/current_goal_requirements.json"
 

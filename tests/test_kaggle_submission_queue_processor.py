@@ -197,6 +197,55 @@ def test_bundle_identity_rejects_wrong_deck_even_with_updated_outer_hash(
         processor._verify_queued_bundle_identity(entry)
 
 
+def test_direct_policy_bundle_may_prove_search_assets_are_absent(
+    tmp_path: Path,
+) -> None:
+    queue_path, payload = _queue(tmp_path)
+    del queue_path
+    entry = payload["queue"][0]
+    bundle = Path(entry["file"])
+    cards = list(range(1, 61))
+    members = {
+        "model.pt": b"exact frozen specialist",
+        "deck.csv": "".join(f"{card}\n" for card in cards).encode("utf-8"),
+        "main.py": b"def agent(_): return []\n",
+        "cg/api.py": b"# cg\n",
+        "matchup_tree.json": json.dumps(
+            {
+                "runtime_enabled": True,
+                "runtime_contract": {
+                    "one_route_per_decision": True,
+                    "unknown_route_exact_bypass": True,
+                },
+            }
+        ).encode("utf-8"),
+        "turn_order_profile.json": json.dumps(
+            {
+                "schema": "poke_bot.submission_turn_order_profile/v1",
+                "turn_order_preference": "first_if_allowed",
+            }
+        ).encode("utf-8"),
+    }
+    with tarfile.open(bundle, "w:gz") as archive:
+        for name, body in members.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(body)
+            archive.addfile(member, io.BytesIO(body))
+    entry.update(
+        {
+            "file_sha256": sha256(bundle),
+            "matchup_tree_checksum": "sha256:"
+            + hashlib.sha256(members["matchup_tree.json"]).hexdigest(),
+            "search_assets_packaged": False,
+            "search_config_checksum": "",
+            "belief_decks_checksum": "",
+            "turn_order_preference": "first_if_allowed",
+        }
+    )
+
+    processor._verify_queued_bundle_identity(entry)
+
+
 def test_successful_copy_is_submitted_once_and_later_reconciled(
     tmp_path: Path, monkeypatch
 ) -> None:

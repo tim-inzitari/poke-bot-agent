@@ -1,0 +1,1253 @@
+{
+  "schema": "poke_bot.alakazam_elmo_rule_derivative_goal/v1",
+  "goal_id": "alakazam-elmo-rule-derivative",
+  "goal_revision": 7,
+  "root_handoff_revision": 303,
+  "recorded_at_utc": "2026-08-12T20:04:30Z",
+  "status": "authorized_staged_elmo_to_inzi_blackwell_training_handoff_with_revision_6_acting_seat_corpus_scope_no_immediate_runtime_change",
+  "authority": {
+    "authoritative_goal_gateway": "goals/alakazam-elmo-rule-derivative/GOAL.md",
+    "sole_typed_canonical_source": "goals/alakazam-elmo-rule-derivative/contract.json",
+    "implementation_configs_reports_manifests_and_receipts_are_subordinate": true,
+    "root_goal_owns_production_training_lineage_transition_only": true,
+    "production_r241_state_owns_production_training_lineage_transition_only": true,
+    "isolated_elmo_implementation_and_evaluation": true,
+    "inzi_execution_or_staged_byte_use_authority_before_activation_receipt": false,
+    "future_inzi_blackwell_bootstrap_and_training_after_activation_receipt": true,
+    "future_full_fleet_self_play_after_durable_kaggle_queue_receipt": true,
+    "production_serving_authority": false,
+    "quarantined_create_only_inzi_shard_transfer_authority": true,
+    "quarantined_create_only_inzi_shard_transfer_is_only_inzi_authority_before_handoff": true,
+    "selector_or_serving_activation_authority": false,
+    "future_checksum_exact_single_use_kaggle_queue_authority_after_validated_bootstrap": true,
+    "revision_6_changes_corpus_row_scope_only": true,
+    "revision_7_changes_bootstrap_parent_composition_only": true,
+    "immediate_runtime_service_preemption_training_submission_or_self_play_authority": false
+  },
+  "source_attachment": {
+    "path": "/Users/tsinzitari/.codex/attachments/8100a736-c437-41f2-b559-97f78d2e2f78/pasted-text.txt",
+    "sha256": "sha256:0f440fc71043b4352e6401a3187c9d582c1c5614d76e186095e0eef51017af6f"
+  },
+  "historical_provenance": {
+    "root_owner_revision": 298,
+    "status": "preserved_non_authoritative_history",
+    "source_attachment": {
+      "path": "/Users/tsinzitari/.codex/attachments/7b1d4464-b2f6-4fcc-8a6e-52abc35e3aaf/pasted-text.txt",
+      "sha256": "sha256:d3f06071663dde2ae7012da72b407b410c7facd06d09ab723cad05af44ddb2cb"
+    }
+  },
+  "revision_5_consumer_migration": {
+    "predecessor_goal_revision": 4,
+    "predecessor_gateway_sha256": "sha256:2af67560510ca7ffd9fe0bc6ff37cdbbd74f5a78d6c5237091bb527d49ce4ed8",
+    "predecessor_contract_sha256": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+    "revision_4_transfer_and_schema_receipts_remain_immutable_historical_evidence": true,
+    "blind_goal_or_contract_hash_substitution_allowed": false,
+    "consumer_rebind_requires": [
+      "read_revision_5_gateway_and_contract_completely",
+      "classify_each_consumed_revision_4_receipt_as_immutable_predecessor_evidence_or_replace_it_with_the_exact_revision_5_schema",
+      "migrate_config_goal_revision_authority_and_required_receipt_inventory",
+      "retain_zero_inert_and_layer_off_fail_closed_defaults",
+      "rerun_unit_engine_information_set_layer_off_card2vec_and_contract_binding_tests",
+      "issue_checksum_bound_revision_5_validation_receipt"
+    ],
+    "stale_revision_4_consumer_behavior": "fail_closed_no_training_handoff_kaggle_queue_or_fleet_activation",
+    "revision_4_schema_or_catalog_bytes_may_be_reused_when_checksum_identical": true,
+    "revision_4_schema_or_catalog_receipt_alone_satisfies_revision_5_schema_freeze": false
+  },
+  "revision_6_corpus_scope_and_predecessor_acceptance": {
+    "owner_goal_revision": 6,
+    "semantic_delta": "raw_audit_scans_all_episodes_while_refeaturized_and_train_validation_evaluation_rows_are_acting_seat_decisions_whose_same_seat_setup_deck_contains_card_743",
+    "predecessor_goal_revision": 5,
+    "predecessor_gateway_sha256": "sha256:7a829abebd348d0ffdf0a73c8b559fe9c799af3d3aff49a64efdfa85a08051b6",
+    "predecessor_contract_sha256": "sha256:dbbd4dbcc057b631d61fa867e45c393d594550b3b45f306f465b6ee5b4428891",
+    "raw_audit": {
+      "episode_scope": "every_episode_in_all_30_validated_utc_partitions",
+      "deck_seat_archetype_or_row_eligibility_prefilter_allowed": false,
+      "field_and_collision_census_scans_all_episodes": true,
+      "episodes_that_produce_zero_eligible_rows_remain_in_audit_and_census": true
+    },
+    "row_eligibility": {
+      "applies_to": [
+        "refeaturized_feature_rows",
+        "target_rows",
+        "checklist_provenance_rows",
+        "training_rows",
+        "validation_rows",
+        "evaluation_rows"
+      ],
+      "decision_scope": "actor_visible_decisions_for_the_decision_acting_seat_only",
+      "setup_deck_source": "same_acting_seat_recorded_episode_setup_deck",
+      "required_card_id": 743,
+      "required_minimum_copies": 1,
+      "predicate": "literal_membership_of_card_id_743_in_same_acting_seat_setup_deck",
+      "exact_pilot_list_match_required": false,
+      "exact_pilot_list_digest_match_required": false,
+      "archetype_label_or_classifier_match_required": false,
+      "minimum_line_or_other_core_card_signature_required": false,
+      "tech_inclusion_exception_exists": false,
+      "deck_containing_743_qualifies_even_if_external_classifier_calls_it_a_tech": true,
+      "nonqualifying_opponent_seat_decisions_included": false,
+      "both_qualifying_seats_are_included_independently": true,
+      "neither_seat_qualifies_behavior": "audit_and_census_episode_but_materialize_zero_rows",
+      "missing_or_malformed_setup_deck_behavior": "exclude_affected_seat_rows_with_explicit_reason_and_count_never_guess"
+    },
+    "list_variant_stratification": {
+      "required_per_included_row_field": "acting_deck_multiset_sha256",
+      "digest_input": "complete_recorded_same_acting_seat_setup_deck_card_id_multiset",
+      "digest_algorithm": "sha256_of_utf8_canonical_json_numerically_sorted_card_id_array_with_comma_colon_separators",
+      "train_validation_and_evaluation_manifests_preserve_digest": true,
+      "per_digest_game_and_row_counts_required": true,
+      "digest_is_eligibility_gate": false,
+      "digest_is_runtime_opponent_deck_input": false,
+      "role": "provenance_and_list_variant_stratification_only"
+    },
+    "unchanged_revision_5_artifact_acceptance": {
+      "historical_receipt_bytes_may_be_mutated_or_reissued_in_place": false,
+      "raw_30_day_manifest_accepted_without_recompute_when_it_enumerates_and_scans_every_episode": true,
+      "in_flight_raw_manifest_validation_may_continue": true,
+      "feature_target_and_checklist_schema_bytes_accepted_when_checksum_identical": true,
+      "zero_bypass_catalog_simulator_card2vec_and_frozen_tensor_evidence_accepted_when_checksum_identical": true,
+      "all_episode_collision_census_accepted_when_scope_and_digest_validate": true,
+      "refeaturized_shards_accepted_only_when_every_included_row_passes_the_743_acting_seat_predicate_every_nonqualifying_seat_row_is_absent_and_every_included_row_has_the_variant_digest": true,
+      "incorrectly_scoped_outputs": "deterministically_filter_or_rematerialize_only_affected_outputs",
+      "raw_audit_or_schema_recompute_due_only_to_revision_6_identity": false,
+      "blind_hash_substitution_allowed": false
+    },
+    "migration_receipt": {
+      "schema": "poke_bot.alakazam_rule_derivative_corpus_scope_migration_receipt/v1",
+      "exact_top_level_inventory_required": true,
+      "unknown_top_level_fields_allowed": false,
+      "required_fields": [
+        "schema",
+        "goal_contract_path",
+        "goal_contract_sha256",
+        "goal_revision",
+        "predecessor_gateway_sha256",
+        "predecessor_contract_sha256",
+        "validated_30_day_raw_manifest_path",
+        "validated_30_day_raw_manifest_sha256",
+        "window_start_utc",
+        "window_end_utc",
+        "utc_partition_count",
+        "raw_episode_count",
+        "raw_episode_scan_count",
+        "all_raw_episodes_scanned",
+        "no_episode_deck_seat_or_archetype_prefilter",
+        "all_episode_collision_census_receipt_sha256",
+        "feature_schema_sha256",
+        "target_schema_sha256",
+        "checklist_provenance_schema_sha256",
+        "zero_bypass_receipt_sha256",
+        "predecessor_schema_freeze_receipt_sha256",
+        "predecessor_corpus_and_refeaturization_receipt_sha256s",
+        "eligibility_card_id",
+        "eligibility_predicate",
+        "acting_seat_only",
+        "exact_pilot_match_required",
+        "tech_inclusion_exception_exists",
+        "total_actor_visible_decisions_scanned",
+        "included_actor_visible_decisions",
+        "excluded_nonqualifying_acting_seat_decisions",
+        "excluded_missing_or_malformed_setup_deck_decisions",
+        "both_qualifying_seats_handled_independently",
+        "opponent_nonqualifying_decisions_included",
+        "included_row_manifest_sha256",
+        "excluded_row_reason_counts_sha256",
+        "acting_deck_multiset_digest_algorithm",
+        "all_included_rows_have_acting_deck_contains_743",
+        "all_included_rows_have_acting_deck_multiset_sha256",
+        "no_included_row_requires_exact_pilot_digest",
+        "list_variant_strata_manifest_sha256",
+        "source_day_group_disjoint_split_manifest_sha256s",
+        "reused_artifact_sha256_inventory",
+        "filtered_or_rematerialized_artifact_sha256_inventory",
+        "recomputation_required_due_only_to_revision_change",
+        "migration_validation_passed",
+        "sealed_at_utc"
+      ],
+      "fixed_values": {
+        "goal_revision": 6,
+        "window_start_utc": "2026-07-13",
+        "window_end_utc": "2026-08-11",
+        "utc_partition_count": 30,
+        "eligibility_card_id": 743,
+        "all_raw_episodes_scanned": true,
+        "no_episode_deck_seat_or_archetype_prefilter": true,
+        "acting_seat_only": true,
+        "exact_pilot_match_required": false,
+        "tech_inclusion_exception_exists": false,
+        "both_qualifying_seats_handled_independently": true,
+        "opponent_nonqualifying_decisions_included": false,
+        "all_included_rows_have_acting_deck_contains_743": true,
+        "all_included_rows_have_acting_deck_multiset_sha256": true,
+        "no_included_row_requires_exact_pilot_digest": true,
+        "recomputation_required_due_only_to_revision_change": false,
+        "migration_validation_passed": true
+      },
+      "must_be_validated_in_addition_to_existing_corpus_and_schema_receipts_before_training_readiness": true,
+      "receipt_bytes_are_checksum_bound_by_their_consumer": true,
+      "self_referential_receipt_sha256_field_allowed": false
+    }
+  },
+  "revision_7_r195_compatible_weight_warmstart": {
+    "owner_goal_revision": 7,
+    "predecessor_goal_revision": 6,
+    "r195_checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "r195_role": "primary_source_for_exact_name_and_shape_compatible_legacy_backbone_and_policy_tensors",
+    "r274_role": "source_only_for_architecture_additions_absent_from_r195_and_same_architecture_baseline_and_rollback",
+    "tensor_merge_rule": "r195_first_then_r274_only_for_names_absent_from_r195_then_new_rule_parameters_initialized_separately",
+    "exact_per_tensor_source_map_required": true,
+    "ambiguous_overlap_or_shape_drift_behavior": "fail_closed",
+    "inherited_tensors_frozen_during_initial_bootstrap": true,
+    "r195_or_r274_checkpoint_bytes_may_be_mutated": false,
+    "revision_6_corpus_schema_census_and_migration_artifacts_reusable_without_recompute": true,
+    "immediate_runtime_or_service_authority": false
+  },
+  "objective": "Build and validate the Alakazam public-rule derivative on Elmo, then at one clean receipt-backed boundary supersede the active Inzi r274 training lineage with frozen-parent Blackwell bootstrap/training, queue one checksum-exact first_if_allowed Kaggle submission after bootstrap validation, and only after the durable queue receipt begin derivative self-play across the checksum-proven available hardware fleet; perform no runtime or service change while recording this contract.",
+  "desired_results": [
+    "measured_collision_and_rules_coverage_report_over_raw_elmo_episodes",
+    "smallest_versioned_representation_and_head_changes_justified_by_report",
+    "frozen_parent_inzi_blackwell_candidate",
+    "simulator_rule_tests_and_paired_benchmarks_against_r241_r274_and_r195",
+    "one_checksum_exact_single_use_kaggle_submission_queue_handoff",
+    "receipt_bound_full_available_fleet_derivative_self_play"
+  ],
+  "scope": {
+    "pre_handoff_host": "elmo",
+    "bootstrap_and_training_host_after_handoff": "inzi_blackwell",
+    "pre_handoff_experiment_only": true,
+    "raw_expert_episodes_available": true,
+    "required_existing_raw_corpus_days_exact": 30,
+    "audit_full_existing_30_day_raw_corpus_before_recollection": true,
+    "refeaturized_rows_follow_revision_6_acting_seat_card_743_scope": true,
+    "broad_recollection_default": false,
+    "broad_recollection_allowed_only_if_raw_audit_proves_required_evidence_absent": true,
+    "inzi_changes_before_receipt_backed_handoff_except_revision_4_quarantined_create_only_shard_staging": false,
+    "inzi_restarts_workers_collection_checkpoint_or_runtime_changes_while_recording_revision_5": false,
+    "production_serving_selector_activation": false,
+    "parent_checkpoints_and_current_feature_artifacts_immutable": true
+  },
+  "raw_corpus_contract": {
+    "host": "elmo",
+    "scope": "latest_complete_contiguous_30_day_raw_expert_archive_window",
+    "window_start_utc": "2026-07-13",
+    "window_end_utc": "2026-08-11",
+    "window_inclusive": true,
+    "contiguous_window_required": true,
+    "utc_partition_count_exact": 30,
+    "distinct_utc_partitions_required": true,
+    "partition_identity": "utc_calendar_day",
+    "validated_manifest_required": true,
+    "deduplicated_manifest_required": true,
+    "validated_deduplicated_manifest_sha256_required": true,
+    "validated_deduplicated_manifest_sha256_binding": "required_in_phase_a_refeaturization_training_and_evaluation_receipts",
+    "raw_audit_episode_scope": "all_episodes_without_deck_seat_archetype_or_eligibility_prefilter",
+    "raw_field_and_collision_census_scans_all_episodes": true,
+    "refeaturized_row_scope": "acting_seat_decisions_only_when_same_seat_setup_deck_contains_card_id_743",
+    "exact_pilot_list_match_for_refeaturization": false,
+    "tech_inclusion_exception_exists": false,
+    "nonqualifying_opponent_seat_rows_included": false,
+    "acting_deck_multiset_sha256_required_on_every_included_row": true,
+    "twenty_day_fallback_allowed": false,
+    "any_silent_subset_or_adjacent_window_fallback_allowed": false,
+    "missing_duplicate_overlapping_or_non_utc_partition_behavior": "fail_closed_and_report",
+    "recollection_allowed_without_checksum_bound_absence_proof": false,
+    "recollection_scope_after_absence_proof": "only_evidence_proven_absent_by_raw_manifest_and_audit",
+    "split_contract": {
+      "applies_to": [
+        "train",
+        "validation",
+        "evaluation"
+      ],
+      "simultaneously_disjoint_by": [
+        "source",
+        "utc_day_partition",
+        "group"
+      ],
+      "cross_split_overlap_allowed": false,
+      "split_manifests_must_bind_raw_manifest_sha256": true
+    }
+  },
+  "elmo_resource_envelope": {
+    "isolated_experiment_jobs_only": true,
+    "all_available_elmo_cpu_may_be_used": true,
+    "all_available_elmo_gpu_may_be_used": true,
+    "experiment_ram_hard_ceiling_gib": 96,
+    "experiment_ram_hard_ceiling_bytes": 103079215104,
+    "ram_accounting_scope": "aggregate_experiment_jobs_and_children_using_a_non_double_counting_charge_or_equivalent",
+    "ram_ceiling_may_be_exceeded": false,
+    "memory_heavy_phase_concurrency_exact": 1,
+    "memory_heavy_phases_must_be_serialized": true,
+    "normal_existing_truenas_zfs_l2arc_caching_allowed": true,
+    "zfs_arc_or_l2arc_tuning_resize_flush_replacement_or_reconfiguration_allowed": false,
+    "managed_service_create_edit_stop_restart_reload_or_replace_allowed": false,
+    "receipt_resource_peaks_required_for_every_isolated_job": true,
+    "receipt_resource_peak_fields": [
+      "experiment_ram_measurement_method",
+      "experiment_ram_peak_bytes",
+      "cpu_process_or_utilization_peak",
+      "gpu_memory_peak_bytes_per_device_or_not_applicable",
+      "gpu_utilization_peak_per_device_or_not_applicable"
+    ]
+  },
+  "sequencing_contract": {
+    "owner_goal_revision": 6,
+    "ordered_steps": [
+      "implement_isolated_versioned_representation_target_and_checklist_provenance_changes_default_zero_and_inert",
+      "freeze_feature_target_and_checklist_provenance_schema_with_checksum_bound_manifest_and_zero_bypass_receipt",
+      "immediately_validate_deduplicate_and_audit_every_episode_in_the_exact_2026_07_13_through_2026_08_11_utc_corpus_then_refeaturize_only_eligible_acting_seat_card_743_decisions_under_frozen_schema",
+      "transfer_each_individually_validated_immutable_shard_create_only_to_quarantined_inzi_staging_while_remaining_shards_continue",
+      "generate_full_collision_census_during_same_refeaturization_pass_or_deterministically_from_its_immutable_outputs",
+      "adjudicate_branch_support_from_corpus_validation_and_census_before_any_nonzero_activation_or_training",
+      "validate_revision_6_corpus_scope_migration_receipt_and_list_variant_strata_without_recomputing_unchanged_revision_5_raw_or_schema_artifacts",
+      "seal_parent_corpus_schema_frozen_tensor_blackwell_rollback_and_clean_boundary_readiness_receipts",
+      "at_clean_boundary_pause_exact_r274_training_and_submission_boundary_services_and_atomically_activate_staged_shards_for_derivative_training",
+      "bootstrap_and_train_receipt_bound_frozen_parent_candidate_on_inzi_blackwell_only_on_census_supported_branches",
+      "validate_bootstrap_and_build_checksum_exact_kaggle_package",
+      "durably_queue_exactly_one_first_if_allowed_kaggle_submission_without_waiting_for_score",
+      "after_queue_receipt_is_durable_activate_derivative_self_play_across_the_checksum_proven_available_fleet",
+      "run_bo250_only_after_candidate_and_all_prior_gate_receipts_pass"
+    ],
+    "feature_schema_freeze_precedes_refeaturization": true,
+    "target_schema_freeze_precedes_refeaturization": true,
+    "checklist_provenance_schema_freeze_precedes_refeaturization": true,
+    "collision_census_may_be_generated_during_or_from_same_refeaturization_pass": true,
+    "separate_full_collision_census_before_zero_inert_implementation_required": false,
+    "schema_freeze_receipt_required_fields": [
+      "schema_id_and_version",
+      "feature_schema_sha256",
+      "target_schema_sha256",
+      "checklist_provenance_schema_sha256",
+      "new_branch_inventory",
+      "default_zero_and_inert_attestation",
+      "layer_off_bit_identical_baseline_logits",
+      "exact_goal_contract_sha256"
+    ],
+    "audit_gates": {
+      "nonzero_derivative_activation_before_corpus_validation_and_census": false,
+      "candidate_training_before_corpus_validation_and_census": false,
+      "candidate_training_before_revision_6_corpus_scope_migration_receipt": false,
+      "inzi_training_before_complete_handoff_readiness_and_activation_receipts": false,
+      "kaggle_queue_before_bootstrap_validation_and_package_receipts": false,
+      "self_play_before_durable_kaggle_queue_receipt": false,
+      "bo250_before_corpus_validation_census_and_candidate_receipts": false
+    },
+    "unsupported_branch_disposition": {
+      "must_remain_exact_zero_and_inert": true,
+      "may_be_rejected_after_census": true,
+      "may_silently_become_trainable_or_active": false,
+      "frozen_schema_may_be_silently_mutated_after_census": false
+    }
+  },
+  "card2vec_non_regression": {
+    "owner_goal_revision": 5,
+    "preserve_complete_existing_system": true,
+    "learned_embeddings_frozen_and_untouched": true,
+    "current_inputs_frozen_and_untouched": true,
+    "text_derived_knowledge_frozen_and_untouched": true,
+    "checkpoint_tensors_bit_identical": true,
+    "runtime_behavior_bit_identical_when_new_path_off": true,
+    "retraining_reembedding_retokenization_or_input_rewiring_allowed": false,
+    "structured_simulator_residual_relationship": "additive_alongside_or_after_card2vec",
+    "structured_simulator_residual_may_replace_card2vec": false,
+    "legacy_text_hashes_may_remain_in_existing_frozen_card2vec_or_legacy_path": true,
+    "legacy_text_hashes_are_exact_mechanics_authority_for_new_residual": false,
+    "legacy_text_hashes_may_generate_new_structured_mechanics_fields_or_targets": false,
+    "required_receipts": [
+      "card2vec_parameter_and_buffer_bit_identity",
+      "card2vec_input_schema_and_values_unchanged",
+      "card2vec_runtime_output_and_behavior_parity_with_new_path_off",
+      "new_structured_residual_is_additive_and_zero_initialized",
+      "no_text_hash_exact_mechanics_or_target_provenance_in_new_residual"
+    ]
+  },
+  "create_only_inzi_transfer_staging": {
+    "historical_transfer_contract_owner_goal_revision": 4,
+    "training_eligibility_supersession_owner_goal_revision": 6,
+    "authority_before_handoff": "transfer_and_quarantined_byte_staging_only",
+    "source_host": "elmo",
+    "destination_host": "inzi",
+    "destination_directory": "/home/inzi/poke-bot-agent/outputs/quarantine/alakazam-elmo-rule-derivative/g4-refeaturized-census-shards",
+    "destination_role": "quarantined_non_runtime_create_only_staging",
+    "destination_directory_creation_allowed": true,
+    "destination_must_be_real_directory_not_symlink": true,
+    "receipt_schemas": {
+      "per_shard": "poke_bot.alakazam_elmo_refeaturization_shard_transfer_receipt/v1",
+      "final_parity": "poke_bot.alakazam_elmo_refeaturization_transfer_parity_receipt/v1",
+      "per_shard_filename_pattern": "sha256-<64_lowercase_object_hex>.transfer-receipt.json",
+      "final_parity_filename": "transfer-parity-receipt.json"
+    },
+    "per_shard_transfer_may_overlap_remaining_refeaturization_and_census": true,
+    "shard_eligibility": {
+      "complete": true,
+      "immutable": true,
+      "maximum_size_mib": 96,
+      "maximum_size_bytes": 100663296,
+      "individual_schema_validation_required": true,
+      "individual_sha256_validation_required": true,
+      "individual_exact_size_validation_required": true,
+      "frozen_feature_target_and_checklist_provenance_schema_binding_required": true,
+      "validated_deduplicated_30_day_raw_manifest_sha256_binding_required": true
+    },
+    "content_addressing": {
+      "full_lowercase_sha256_in_filename_required": true,
+      "filename_pattern": "sha256-<64_lowercase_hex>.refeaturization-census.shard",
+      "digest_covers_exact_transferred_object_bytes": true,
+      "content_address_or_manifest_binding_mismatch_behavior": "refuse"
+    },
+    "transport": {
+      "parallel_lanes_maximum": 4,
+      "parallel_lanes_minimum": 1,
+      "per_object_gateway_limit_approximate_mb": 100,
+      "strict_per_object_limit_is_96_mib": true,
+      "resumable": true,
+      "idempotent": true,
+      "partial_object_name_is_private_and_not_eligible": true,
+      "atomic_create_only_final_publication_required": true,
+      "existing_exact_verified_object": "skip",
+      "existing_incomplete_private_partial": "resume_and_reverify",
+      "existing_conflicting_final_name_or_content": "refuse_without_overwrite_delete_rename_or_replace"
+    },
+    "remote_post_transfer_validation": {
+      "sha256_required": true,
+      "exact_size_required": true,
+      "schema_and_manifest_binding_required": true,
+      "validation_must_run_on_destination_bytes": true,
+      "failed_validation_behavior": "quarantine_partial_and_refuse_publication_or_use"
+    },
+    "per_shard_receipt": {
+      "required": true,
+      "required_fields": [
+        "schema",
+        "goal_contract_path",
+        "goal_contract_sha256",
+        "goal_revision",
+        "validated_30_day_raw_manifest_sha256",
+        "feature_schema_sha256",
+        "target_schema_sha256",
+        "checklist_provenance_schema_sha256",
+        "source_shard_logical_id",
+        "content_addressed_filename",
+        "source_sha256",
+        "source_size_bytes",
+        "source_schema_validation_passed",
+        "destination_host",
+        "destination_directory",
+        "destination_path",
+        "destination_sha256",
+        "destination_size_bytes",
+        "destination_validation_passed",
+        "transfer_disposition_copied_resumed_or_skipped_exact",
+        "parallel_lane_id",
+        "started_at_utc",
+        "validated_at_utc",
+        "conflict_refused",
+        "inzi_loading_or_execution_authority"
+      ],
+      "goal_revision_value": 4,
+      "historical_goal_contract_sha256_value": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+      "inzi_loading_or_execution_authority_value": false,
+      "receipt_must_be_checksum_bound": true
+    },
+    "final_parity_receipt": {
+      "required": true,
+      "fields": [
+        "schema",
+        "goal_contract_path",
+        "goal_contract_sha256",
+        "goal_revision",
+        "destination_directory",
+        "source_manifest_sha256",
+        "destination_manifest_sha256",
+        "source_and_destination_object_count",
+        "content_addressed_filename_set",
+        "per_object_source_sha256_and_size",
+        "per_object_destination_sha256_and_size",
+        "schema_binding",
+        "validated_30_day_raw_manifest_binding",
+        "ordered_per_shard_receipt_sha256s",
+        "skip_resume_and_conflict_counts",
+        "parallel_lane_maximum_observed",
+        "source_remote_parity_passed",
+        "inzi_loading_or_execution_authority"
+      ],
+      "goal_revision_value": 4,
+      "historical_goal_contract_sha256_value": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+      "source_remote_parity_required": true,
+      "source_remote_parity_passed_value": true,
+      "inzi_loading_or_execution_authority_value": false,
+      "receipt_must_be_checksum_bound": true
+    },
+    "forbidden_inzi_authority_before_handoff_activation_receipt": [
+      "load",
+      "decode",
+      "import",
+      "mmap",
+      "cache_warm",
+      "training",
+      "collection",
+      "selector",
+      "runtime",
+      "worker",
+      "managed_service_create_edit_stop_restart_reload_or_replace",
+      "checkpoint",
+      "package",
+      "submission",
+      "propagation",
+      "activation"
+    ],
+    "staged_objects_training_or_evaluation_eligible_before_handoff": false,
+    "staging_or_final_parity_receipt_alone_grants_inzi_use": false,
+    "staged_objects_become_training_eligible_atomically_at_handoff": true,
+    "training_eligibility_requires": [
+      "complete_source_remote_parity_receipt",
+      "complete_corpus_collision_census_and_branch_adjudication_receipts",
+      "complete_revision_6_corpus_scope_migration_receipt",
+      "complete_inzi_training_handoff_readiness_receipt",
+      "complete_inzi_training_handoff_activation_receipt"
+    ],
+    "evaluation_eligibility_after_handoff": "only_under_separately_receipted_candidate_and_evaluation_contract"
+  },
+  "inzi_blackwell_training_handoff": {
+    "owner_goal_revision": 5,
+    "status": "authorized_for_future_clean_boundary_no_runtime_change_now",
+    "trusted_roots": {
+      "staged_corpus_root": "/home/inzi/poke-bot-agent/outputs/quarantine/alakazam-elmo-rule-derivative/g4-refeaturized-census-shards",
+      "run_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5",
+      "checkpoint_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5/checkpoints",
+      "receipt_root": "/home/inzi/poke-bot-agent/outputs/receipts/alakazam-rule-derivative-g5",
+      "runtime_registry": "/home/inzi/poke-bot-agent/outputs/state/alakazam-rule-derivative-g5-runtime-registry.json",
+      "submission_package_root": "/home/inzi/poke-bot-agent/outputs/submissions/alakazam-rule-derivative-g5",
+      "self_play_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5/self_play"
+    },
+    "overwrite_semantics": "logical_exclusive_active_training_lineage_and_managed_service_handoff_never_destructive_file_or_checkpoint_overwrite",
+    "old_lineage": {
+      "id": "alakazam-new-list-direct-policy-r274",
+      "trainer_service": "pokebot-alakazam-r274-rl.service",
+      "submission_boundary_service": "pokebot-alakazam-r274-rl-submission-boundaries.service",
+      "both_services_paused_only_at_clean_durable_boundary": true,
+      "shared_kaggle_queue_service": "pokebot-kaggle-submission-queue.service",
+      "shared_kaggle_queue_service_must_remain_running_and_unchanged": true,
+      "concurrent_old_r274_training_or_collection_after_handoff": false,
+      "checkpoints_receipts_run_root_and_registry_preserved_immutable_for_rollback": true
+    },
+    "clean_boundary": {
+      "current_healthy_r274_training_continues_until_all_readiness_receipts_pass": true,
+      "no_early_stop": true,
+      "no_mid_collection_or_mid_shard_pause": true,
+      "no_mid_optimizer_or_mid_adapter_pause": true,
+      "no_mid_checkpoint_or_mid_commit_pause": true,
+      "required_state": "current_collection_shard_optimizer_adapter_checkpoint_and_commit_units_complete_durable_and_receipted_before_next_dispatch_or_optimizer_step",
+      "service_control": "systemd_user_managed_pause_only_no_direct_signal_or_process_tree_termination",
+      "activation_is_atomic": "pause_two_exact_r274_services_seal_old_state_then_publish_derivative_registry_and_training_eligibility_before_starting_derivative_managed_unit"
+    },
+    "parent": {
+      "role": "checksum_bound_composite_r195_compatible_weight_warmstart_plus_r274_only_architecture_additions",
+      "identity_is_parameterized_until_parent_receipt": true,
+      "r195_role": "primary_exact_name_and_shape_compatible_legacy_weight_parent",
+      "r274_role": "architecture_additions_same_architecture_baseline_and_rollback_source",
+      "per_tensor_source_map_required": true,
+      "ambiguous_overlap_or_shape_drift_behavior": "fail_closed",
+      "parent_bytes_may_be_mutated": false,
+      "child_checkpoint_must_be_new_content_addressed_artifact": true
+    },
+    "blackwell": {
+      "host": "inzi",
+      "device": "cuda:1",
+      "device_model": "NVIDIA RTX PRO 5000 Blackwell",
+      "learner_and_bootstrap_device": "exclusive_primary",
+      "fallback_device_without_new_owner_or_receipt": false,
+      "load_forward_backward_optimizer_canary_required": true,
+      "finite_loss_gradient_and_update_required": true,
+      "frozen_tensor_gradient_and_optimizer_membership_must_be_zero": true,
+      "measured_memory_headroom_and_resource_peaks_required": true
+    },
+    "managed_successor_services": {
+      "bootstrap": "pokebot-alakazam-rule-derivative-g5-bootstrap.service",
+      "self_play_and_training_after_queue": "pokebot-alakazam-rule-derivative-g5-rl.service",
+      "bootstrap_and_self_play_services_may_overlap": false,
+      "no_successor_service_may_start_before_its_receipt_boundary": true
+    },
+    "receipt_contract": {
+      "exact_top_level_inventory_required": true,
+      "unknown_top_level_fields_allowed": false,
+      "receipt_bytes_are_checksum_bound_by_their_consumer_or_parent_receipt": true,
+      "self_referential_receipt_sha256_field_allowed": false,
+      "parent": {
+        "schema": "poke_bot.alakazam_rule_derivative_inzi_parent_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "root_owner_revision", "old_lineage_id", "old_run_root", "old_runtime_registry_path", "old_runtime_registry_sha256", "old_checkpoint_path", "old_checkpoint_sha256", "old_checkpoint_size_bytes", "old_checkpoint_model_schema", "old_checkpoint_committed_iteration_and_update", "old_optimizer_state_path", "old_optimizer_state_sha256", "old_optimizer_state_size_bytes", "old_collection_root", "old_collection_manifest_path", "old_collection_manifest_sha256", "old_last_sealed_shard_receipt_sha256", "old_trainer_service_definition_sha256", "old_submission_boundary_service_definition_sha256", "exact_new_list_canonical_multiset_sha256", "canonical_simulator_sha256", "active_head_route_and_adapter_inventory_sha256", "safety_approved", "immutable", "clean_boundary_state", "sealed_at_utc"
+        ]
+      },
+      "corpus": {
+        "schema": "poke_bot.alakazam_rule_derivative_inzi_corpus_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "window_start_utc", "window_end_utc", "utc_partition_count", "validated_deduplicated_raw_manifest_sha256", "source_day_group_disjoint_split_manifest_sha256s", "collision_census_receipt_sha256", "branch_adjudication_receipt_sha256", "source_manifest_sha256", "destination_manifest_sha256", "source_remote_parity_receipt_sha256", "staging_root", "ordered_content_addressed_shard_sha256_and_size", "ordered_per_shard_transfer_receipt_sha256s", "object_count", "total_games", "total_decisions", "schema_validation_passed", "source_remote_parity_passed", "hidden_inputs_absent", "training_eligible_before_activation", "sealed_at_utc"
+        ]
+      },
+      "schema_freeze": {
+        "schema": "poke_bot.alakazam_rule_derivative_schema_freeze_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "feature_schema_id", "feature_schema_sha256", "target_schema_id", "target_schema_sha256", "checklist_provenance_schema_id", "checklist_provenance_schema_sha256", "public_catalog_manifest_sha256", "canonical_simulator_sha256", "new_branch_inventory", "census_supported_branch_inventory", "unsupported_zero_inert_branch_inventory", "q3_bench_only", "q5_q6_trace_only_zero", "public_information_contract_passed", "zero_bypass_receipt_sha256", "layer_off_bit_identical_baseline_logits", "frozen_at_utc"
+        ]
+      },
+      "frozen_tensors": {
+        "schema": "poke_bot.alakazam_rule_derivative_frozen_tensor_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "parent_checkpoint_sha256", "frozen_module_names", "frozen_parameter_and_buffer_inventory_sha256", "frozen_parameter_and_buffer_bytes_sha256_before", "frozen_parameter_and_buffer_bytes_sha256_after_load", "card2vec_input_schema_sha256", "card2vec_output_parity_sha256", "card2vec_parameter_and_buffer_bit_identity", "backbone_existing_heads_fusion_own_deck_and_matchup_adapter_bit_identity", "trainable_parameter_names", "trainable_parameter_inventory_sha256", "optimizer_parameter_names", "frozen_parameters_absent_from_optimizer", "new_path_zero_initialized", "layer_off_bit_identical_baseline_logits", "validated_at_utc"
+        ]
+      },
+      "blackwell_preflight": {
+        "schema": "poke_bot.alakazam_rule_derivative_blackwell_preflight_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "host", "device", "device_model", "device_uuid", "compute_capability", "driver_version", "cuda_version", "cudnn_version", "nccl_version", "torch_version", "runtime_commit_sha256", "python_environment_manifest_sha256", "device_total_memory_bytes", "device_free_memory_bytes_before", "required_dtype_and_kernel_capabilities", "planned_batch_and_optimizer_config_sha256", "load_canary_passed", "forward_backward_optimizer_canary_passed", "finite_loss_and_gradients", "frozen_tensor_gradient_norm_exact_zero", "frozen_parameters_absent_from_optimizer", "layer_off_parity_passed", "peak_device_memory_bytes", "peak_host_ram_bytes", "resource_headroom_passed", "no_runtime_or_service_change_performed", "validated_at_utc"
+        ]
+      },
+      "rollback_plan": {
+        "schema": "poke_bot.alakazam_rule_derivative_training_rollback_plan_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "old_lineage_id", "old_trainer_service", "old_submission_boundary_service", "shared_kaggle_queue_service", "shared_kaggle_queue_service_preserved", "old_run_root", "old_runtime_registry_path", "old_runtime_registry_sha256", "old_checkpoint_path", "old_checkpoint_sha256", "old_optimizer_state_path", "old_optimizer_state_sha256", "old_collection_manifest_path", "old_collection_manifest_sha256", "old_service_definition_sha256s", "old_environment_manifest_sha256", "new_lineage_id", "new_run_root", "rollback_trigger_inventory", "managed_rollback_action_sequence", "clean_boundary_required", "new_artifacts_preserved_not_deleted", "staged_corpus_requarantined_on_rollback", "rollback_dry_run_passed", "sealed_at_utc"
+        ]
+      },
+      "preemption_readiness": {
+        "schema": "poke_bot.alakazam_rule_derivative_inzi_handoff_readiness_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "root_owner_revision", "parent_receipt_sha256", "corpus_receipt_sha256", "schema_freeze_receipt_sha256", "frozen_tensor_receipt_sha256", "blackwell_preflight_receipt_sha256", "rollback_plan_receipt_sha256", "current_r274_checkpoint_and_optimizer_sealed", "current_r274_collection_and_shard_sealed", "current_r274_adapter_and_commit_sealed", "no_r274_work_unit_in_flight", "planned_pause_service_names", "shared_kaggle_queue_service_excluded_from_pause", "staged_shards_still_training_ineligible", "readiness_passed", "ready_at_utc"
+        ]
+      },
+      "activation": {
+        "schema": "poke_bot.alakazam_rule_derivative_inzi_training_handoff_activation_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "root_owner_revision", "readiness_receipt_sha256", "activation_boundary_id", "old_lineage_id", "old_trainer_service", "old_submission_boundary_service", "old_services_paused_via_systemd_user", "old_services_inactive_verified", "shared_kaggle_queue_service", "shared_kaggle_queue_service_unchanged", "old_parent_checkpoint_sha256", "old_optimizer_state_sha256", "old_collection_manifest_sha256", "new_lineage_id", "new_managed_bootstrap_service", "new_run_root", "new_runtime_registry_path", "new_runtime_registry_sha256", "staged_corpus_receipt_sha256", "staged_shards_training_eligible", "training_eligibility_activated_at_utc", "blackwell_preflight_receipt_sha256", "rollback_plan_receipt_sha256", "no_concurrent_r274_training_or_collection", "no_serving_selector_or_submission_activation", "activated_at_utc"
+        ]
+      }
+    },
+    "rollback": {
+      "old_lineage_artifacts_are_never_deleted_or_overwritten": true,
+      "triggers": [
+        "receipt_identity_or_checksum_failure", "blackwell_load_or_resource_failure", "nonfinite_loss_gradient_or_update", "frozen_tensor_or_layer_off_parity_failure", "managed_launch_failure", "initial_candidate_validation_failure", "fleet_package_or_collection_integrity_failure"
+      ],
+      "action": "at_next_safe_clean_boundary_pause_derivative_managed_units_requarantine_derivative_training_inputs_restore_exact_old_registry_and_resume_the_two_exact_r274_units_via_systemd_user",
+      "rollback_does_not_resume_r274_if_its_own_integrity_receipts_fail": true,
+      "shared_kaggle_queue_service_never_paused_or_replaced": true
+    }
+  },
+  "bootstrap_validation_and_kaggle": {
+    "owner_goal_revision": 5,
+    "order": "after_successful_inzi_blackwell_bootstrap_and_candidate_validation_before_derivative_self_play",
+    "exact_submission_count": 1,
+    "competition": "pokemon-tcg-ai-battle",
+    "turn_order_preference": "first_if_allowed",
+    "canonical_label": "Alakazam public-rule derivative g5, exact new list, Blackwell bootstrap, no RTP",
+    "exact_new_list_canonical_multiset_sha256": "sha256:a42e047c45c419a599a31f2e20a6209d324558082f27e12091ade8918376d182",
+    "single_use_authorization": true,
+    "retry_copy_duplicate_or_second_slot_allowed": false,
+    "shared_queue_path": "/home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json",
+    "shared_queue_service": "pokebot-kaggle-submission-queue.service",
+    "shared_queue_service_may_be_stopped_restarted_replaced_or_reconfigured": false,
+    "queue_entry_status_sufficient_for_self_play": [
+      "accepted_by_queue",
+      "pending_quota_or_spacing"
+    ],
+    "wait_for_upload_or_score_before_self_play": false,
+    "submission_delay_quota_or_upload_failure_mutates_or_invalidates_checkpoint": false,
+    "do_not_claim_submitted_without_upload_receipt": true,
+    "receipt_contract": {
+      "exact_top_level_inventory_required": true,
+      "unknown_top_level_fields_allowed": false,
+      "package": {
+        "schema": "poke_bot.alakazam_rule_derivative_kaggle_package_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "candidate_validation_receipt_sha256", "candidate_checkpoint_path", "candidate_checkpoint_sha256", "candidate_checkpoint_size_bytes", "parent_checkpoint_sha256", "deck_path", "deck_sha256", "deck_ordered_cards_sha256", "deck_canonical_multiset_sha256", "runtime_manifest_sha256", "runtime_commit_sha256", "canonical_simulator_sha256", "public_catalog_manifest_sha256", "feature_schema_sha256", "target_schema_sha256", "checklist_provenance_schema_sha256", "q3_bench_only", "q5_q6_trace_only_zero", "matchup_router_manifest_sha256", "matchup_adapter_inventory_sha256", "rtp_enabled", "search_or_mcts_enabled", "package_path", "package_sha256", "package_size_bytes", "package_member_manifest_sha256", "package_parity_passed", "package_smoke_passed", "canonical_label", "built_at_utc"
+        ]
+      },
+      "queue": {
+        "schema": "poke_bot.alakazam_rule_derivative_kaggle_queue_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "single_use_authorization_id", "authorization_receipt_sha256", "package_receipt_sha256", "package_sha256", "candidate_checkpoint_sha256", "deck_canonical_multiset_sha256", "canonical_label", "competition", "turn_order_preference", "shared_queue_path", "shared_queue_service", "shared_queue_entry_id", "deduplication_key", "preexisting_matching_entry_count", "queue_entry_status", "quota_spacing_state", "queue_file_sha256_after", "single_use_consumed", "duplicate_or_retry_created", "durable_fsync_or_equivalent_passed", "queued_at_utc"
+        ],
+        "deduplication_key": "sha256_of_goal_revision_candidate_checkpoint_package_deck_competition_and_single_use_authorization_id",
+        "allowed_queue_entry_status": [
+          "accepted_by_queue", "pending_quota_or_spacing"
+        ],
+        "single_use_consumed_value": true,
+        "duplicate_or_retry_created_value": false
+      },
+      "upload": {
+        "schema": "poke_bot.alakazam_rule_derivative_kaggle_upload_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "queue_receipt_sha256", "shared_queue_entry_id", "single_use_authorization_id", "package_sha256", "candidate_checkpoint_sha256", "competition", "canonical_label", "upload_attempt_count", "kaggle_submission_id", "kaggle_submission_created_at_utc", "upload_status", "remote_package_identity_or_message", "checkpoint_preserved_immutable", "recorded_at_utc"
+        ],
+        "required_only_after_successful_remote_upload": true,
+        "absence_while_pending_or_failed_may_be_called_submitted": false
+      }
+    }
+  },
+  "full_available_fleet_self_play": {
+    "owner_goal_revision": 5,
+    "status": "authorized_after_durable_kaggle_queue_receipt_no_runtime_change_now",
+    "new_lineage_id": "alakazam-rule-derivative-g5",
+    "new_managed_trainer_service": "pokebot-alakazam-rule-derivative-g5-rl.service",
+    "known_candidate_hosts": [
+      "inzi", "elmo", "bert"
+    ],
+    "full_available_fleet_definition": "every_known_candidate_host_proven_available_eligible_and_checksum_compatible_by_the_same_frozen_inventory_receipt; any exclusion_requires_timestamped_failure_or_owner_hold_evidence",
+    "ordering": {
+      "training_handoff_activation_receipt_precedes_blackwell_bootstrap": true,
+      "candidate_validation_receipt_precedes_package_receipt": true,
+      "package_receipt_precedes_durable_queue_receipt": true,
+      "durable_queue_receipt_precedes_self_play_activation": true,
+      "kaggle_upload_or_score_precedes_self_play": false,
+      "old_r274_training_or_collection_concurrent_with_derivative_self_play": false
+    },
+    "routing": {
+      "learner_and_optimizer_host": "inzi",
+      "learner_and_optimizer_device": "cuda:1_blackwell",
+      "remote_hosts_may_run_optimizer_or_mutate_checkpoint": false,
+      "simulator_worker_and_policy_leaf_counts": "exact_per_host_values_from_fleet_activation_receipt",
+      "gpu_leaf_routes": "explicit_per_host_device_uuid_worker_range_and_capacity_from_routing_receipt",
+      "unreceipted_dynamic_host_or_device_fallback": false,
+      "no_device_oversubscription_or_resource_cap_weakening": true
+    },
+    "collection_identity": {
+      "global_collection_id_required": true,
+      "global_game_id_unique_across_hosts": true,
+      "game_identity_components": [
+        "lineage_id", "iteration", "phase", "global_game_index", "seed", "seat", "opponent_package_sha256", "simulator_sha256", "candidate_checkpoint_sha256"
+      ],
+      "one_live_lease_per_global_game_id": true,
+      "duplicate_return_disposition": "checksum_identical_duplicate_is_accounted_once_conflicting_duplicate_fails_closed",
+      "append_only_partial_shards": true,
+      "collection_or_training_from_partial_unsealed_shard": false
+    },
+    "resource_contract": {
+      "per_host_caps_come_from_checksum_bound_capability_receipt": true,
+      "inzi_blackwell_training_headroom_has_priority_over_policy_leaf_work": true,
+      "elmo_aggregate_experiment_ram_ceiling_gib": 96,
+      "one_elmo_memory_heavy_phase_at_a_time": true,
+      "normal_existing_zfs_arc_l2arc_caching_only": true,
+      "zfs_arc_l2arc_tuning_or_managed_storage_service_change": false,
+      "per_host_cpu_ram_gpu_network_and_failure_peaks_required": true
+    },
+    "receipt_contract": {
+      "exact_top_level_inventory_required": true,
+      "unknown_top_level_fields_allowed": false,
+      "fleet_inventory": {
+        "schema": "poke_bot.alakazam_rule_derivative_fleet_inventory_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "inventory_at_utc", "known_candidate_hosts", "per_host_availability_eligibility_and_exclusion_evidence", "per_host_os_arch_cpu_ram_and_network_identity", "per_host_gpu_device_models_uuids_memory_and_runtime_versions", "per_host_simulator_capacity_and_pack_sizes", "per_host_resource_caps", "per_host_managed_worker_service_names", "canonical_simulator_sha256", "full_available_fleet_included", "inventory_sha256"
+        ]
+      },
+      "package_parity": {
+        "schema": "poke_bot.alakazam_rule_derivative_fleet_package_parity_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "fleet_inventory_receipt_sha256", "candidate_checkpoint_sha256", "runtime_manifest_sha256", "canonical_simulator_sha256", "feature_target_checklist_schema_manifest_sha256", "public_catalog_manifest_sha256", "matchup_router_and_adapter_manifest_sha256", "per_host_package_path_sha256_size_and_member_manifest", "per_host_layer_off_and_action_parity", "per_host_engine_smoke_passed", "all_available_hosts_checksum_exact", "validated_at_utc"
+        ]
+      },
+      "routing": {
+        "schema": "poke_bot.alakazam_rule_derivative_fleet_routing_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "fleet_inventory_receipt_sha256", "package_parity_receipt_sha256", "learner_host", "learner_device_uuid", "per_host_simulator_process_count", "per_process_environment_count", "per_host_policy_leaf_device_uuid_and_worker_ranges", "per_host_concurrency_and_resource_caps", "blackwell_training_headroom_bytes", "capacity_probe_results", "no_oversubscription", "no_unreceipted_fallback", "routing_manifest_sha256", "validated_at_utc"
+        ]
+      },
+      "activation": {
+        "schema": "poke_bot.alakazam_rule_derivative_fleet_self_play_activation_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "training_handoff_activation_receipt_sha256", "candidate_validation_receipt_sha256", "kaggle_queue_receipt_sha256", "kaggle_queue_entry_status", "fleet_inventory_receipt_sha256", "package_parity_receipt_sha256", "routing_receipt_sha256", "managed_service_definition_sha256s", "global_collection_id", "collection_manifest_path", "collection_manifest_sha256", "global_game_identity_schema", "lease_and_duplicate_suppression_schema", "old_r274_services_inactive_verified", "shared_kaggle_queue_service_unchanged", "new_managed_trainer_service", "new_managed_worker_services", "no_old_r274_training_or_collection", "no_serving_selector_change", "activated_at_utc"
+        ]
+      },
+      "collection_shard": {
+        "schema": "poke_bot.alakazam_rule_derivative_fleet_collection_shard_receipt/v1",
+        "required_fields": [
+          "schema", "goal_contract_path", "goal_contract_sha256", "goal_revision", "fleet_activation_receipt_sha256", "global_collection_id", "iteration", "phase", "shard_id", "content_sha256", "size_bytes", "ordered_global_game_ids", "seed_seat_and_opponent_identity_manifest_sha256", "host_contribution_counts", "duplicate_identical_count", "duplicate_conflict_count", "missing_game_count", "simulator_failure_count", "selected_action_legality_passed", "schema_validation_passed", "sealed_append_only", "resource_peaks_by_host", "sealed_at_utc"
+        ]
+      }
+    },
+    "failure_behavior": "pause_derivative_managed_units_at_safe_boundary_preserve_partial_append_only_evidence_and_follow_checksum_bound_rollback_plan_no_silent_host_drop_or_r274_concurrency"
+  },
+  "ground_truth": {
+    "gameplay_rules": "exact_pinned_official_libcg_binary_by_sha256",
+    "legal_action_set": "legal_option_list_emitted_by_pinned_libcg",
+    "official_paper_rules_when_libcg_differs": "secondary_only",
+    "unsupported_mechanics_from_card_text_hashes_allowed": false,
+    "missing_evidence_behavior": "explicit_unavailable_never_guess",
+    "canonical_simulator": {
+      "typed_source": "state/canonical-libcg-r236.json",
+      "typed_source_sha256": "sha256:d75ff752808ead08f3ae20f7f2f8a034c9e6163109188a46d3b877bf1910ae2d",
+      "kaggle_environments_version": "1.32.6",
+      "wheel_sha256": "sha256:e70a7d7765b16deb1fcfa00532eb5197f28bc9fbfa07a0eee150a17d67bd77ab",
+      "linux_x86_64_member": "cg/libcg.so",
+      "linux_x86_64_sha256": "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7",
+      "linux_x86_64_size_bytes": 1342400
+    },
+    "legal_omission_examples": [
+      "required_effect_has_no_bench_space",
+      "required_draw_effect_with_deck_zero",
+      "required_hand_effect_with_opponent_hand_count_zero"
+    ],
+    "nullifying_zero": {
+      "pokemon": "mega_zygarde_ex",
+      "resolution": "automatic_left_to_right",
+      "target_order_choice_exists": false,
+      "knockouts": "simultaneous"
+    },
+    "simultaneous_knockout": {
+      "prize_and_promotion_prompts": "exact_libcg_order",
+      "both_players_eventually_zero_prizes": "draw"
+    },
+    "prize_yield": {
+      "ordinary_pokemon_default": 1,
+      "ordinary_ex_default": 2,
+      "mega_ex_default": 3,
+      "visible_modifiers_apply": true,
+      "mega_ex_precedes_ex_when_both_flags_true": true
+    },
+    "replacement_alakazam_line": {
+      "meaning": "replacement_attacker_line_on_bench",
+      "bench_only": true,
+      "current_active_alakazam_counts": false
+    }
+  },
+  "baselines_and_candidate": {
+    "r195_operational_reference": {
+      "role": "best_operational_reference_older_architecture_different_native_list",
+      "typed_source": "state/alakazam-terminal-expert-bootstrap-no-rtp-submit-r195.json",
+      "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+      "checkpoint_size_bytes": 127914385,
+      "submission_id": 55378392,
+      "rtp_enabled": false,
+      "immutable": true
+    },
+    "r241_r274_same_architecture_baseline": {
+      "role": "fair_baseline_for_new_heads_and_matchup_adapters",
+      "candidate_id": "alakazam-new-list-direct-policy-r274",
+      "typed_source": "state/alakazam-new-list-direct-policy-r241.json",
+      "deck_id": "alakazam-new-list-direct-r241",
+      "exact_new_list_canonical_multiset_sha256": "sha256:a42e047c45c419a599a31f2e20a6209d324558082f27e12091ade8918376d182",
+      "must_be_unchanged": true,
+      "evaluation_checkpoint_identity": "parameterized_by_receipt_at_launch",
+      "checkpoint_sha256": null,
+      "checkpoint_size_bytes": null
+    },
+    "derivative_candidate": {
+      "candidate_id": "alakazam-rule-derivative-g5",
+      "implementation": "separately_versioned_public_rule_adapter_and_repaired_auxiliary_heads",
+      "baseline": "exact_receipt_bound_unchanged_r241_r274",
+      "frozen_backbone": true,
+      "existing_heads_frozen": true,
+      "fusion_frozen": true,
+      "own_deck_routes_frozen": true,
+      "matchup_adapters_frozen": true,
+      "parent_checkpoint_rewrite_allowed": false,
+      "checkpoint_sha256": null,
+      "checkpoint_size_bytes": null,
+      "candidate_validation_receipt_required": true,
+      "zero_gated_default": true,
+      "disabled_path_complete_bypass": true,
+      "disabled_path_baseline_logits_bit_identical": true,
+      "disabled_path_legal_choice_identical": true,
+      "inzi_blackwell_training_wiring_after_handoff": true,
+      "production_serving_selector_wiring": false
+    },
+    "candidate_validation_receipt_schema": "poke_bot.alakazam_rule_derivative_candidate_validation_receipt/v1",
+    "candidate_validation_receipt_required_fields": [
+      "schema",
+      "goal_contract_path",
+      "goal_contract_sha256",
+      "goal_revision",
+      "root_owner_revision",
+      "candidate_id",
+      "training_handoff_activation_receipt_sha256",
+      "parent_receipt_sha256",
+      "corpus_receipt_sha256",
+      "schema_freeze_receipt_sha256",
+      "frozen_tensor_receipt_sha256",
+      "blackwell_preflight_receipt_sha256",
+      "candidate_checkpoint_sha256",
+      "candidate_checkpoint_size_bytes",
+      "candidate_checkpoint_model_schema",
+      "candidate_checkpoint_parameter_inventory_sha256",
+      "bootstrap_training_manifest_sha256",
+      "bootstrap_optimizer_config_sha256",
+      "bootstrap_rows_steps_and_epochs",
+      "bootstrap_loss_gradient_and_resource_peaks",
+      "trainable_parameters_changed_and_finite",
+      "frozen_backbone_true",
+      "baseline_r274_candidate_id",
+      "baseline_r274_checkpoint_sha256",
+      "baseline_r274_checkpoint_size_bytes",
+      "exact_new_list_canonical_multiset_sha256",
+      "layer_off_bit_identical_baseline_logits",
+      "layer_off_identical_legal_choice",
+      "all_frozen_tensor_bit_identity",
+      "public_information_metamorphic_tests_passed",
+      "simulator_engine_tests_passed",
+      "bootstrap_validation_passed",
+      "production_serving_selector_authority"
+    ],
+    "missing_candidate_or_baseline_checkpoint_identity_behavior": "fail_closed_before_benchmark_no_substitution"
+  },
+  "information_set_contract": {
+    "runtime_information": "acting_player_public_information_set_only",
+    "runtime_consumers": [
+      "policy",
+      "value",
+      "fusion",
+      "checklist",
+      "public_rule_adapter",
+      "matchup_adapter",
+      "search"
+    ],
+    "forbidden_runtime_inputs": [
+      "exact_opponent_hand_identities",
+      "opponent_deck_order",
+      "unrevealed_prize_identities",
+      "terminal_result_or_reason_before_observed",
+      "future_transition_fields"
+    ],
+    "privileged_fields": {
+      "allowed_location": "separately_typed_target_only_labels",
+      "may_drive_policy_value_fusion_checklist_adapter_or_search_inputs": false,
+      "may_drive_teacher_or_search_action_selection": false,
+      "may_drive_action_filtering_rollout_branches_or_counterfactual_values": false
+    },
+    "one_realized_environment_transition_and_reward_as_target": true,
+    "unknown_hidden_or_noncausal_evidence_residual": 0.0
+  },
+  "phase_a_raw_corpus_audit": {
+    "must_precede_zero_inert_representation_target_or_provenance_implementation": false,
+    "superseded_sequencing_owner_goal_revision": 3,
+    "must_complete_before_nonzero_activation_candidate_training_or_bo250": true,
+    "may_be_generated_during_same_refeaturization_pass": true,
+    "may_be_generated_deterministically_from_immutable_refeaturization_outputs": true,
+    "full_existing_30_day_corpus_required": true,
+    "episode_scope": "all_episodes_in_every_validated_partition",
+    "episode_level_deck_seat_archetype_or_row_eligibility_filter_allowed": false,
+    "field_and_collision_census_must_scan_all_episodes": true,
+    "row_materialization_scope_is_separate_from_raw_audit_scope": true,
+    "window_start_utc": "2026-07-13",
+    "window_end_utc": "2026-08-11",
+    "window_inclusive_and_contiguous": true,
+    "utc_partition_count_exact": 30,
+    "validated_deduplicated_manifest_sha256_required": true,
+    "twenty_day_subset_or_adjacent_window_fallback_allowed": false,
+    "recollection_before_absence_proof_allowed": false,
+    "raw_schema_field_classes": [
+      "direct_public_libcg_observation_or_option",
+      "immutable_public_card_catalog_metadata",
+      "target_derived_from_recorded_transition",
+      "target_requiring_fresh_simulator_execution",
+      "intentionally_hidden_information"
+    ],
+    "per_actor_visible_selection_frame": [
+      "select_context",
+      "effect",
+      "context_card",
+      "complete_raw_option_payload",
+      "current_feature_signature",
+      "selected_option",
+      "adjacent_public_successor_when_available"
+    ],
+    "minimum_measurements": [
+      "every_observed_number_value",
+      "prompts_with_multiple_number_values_especially_4_vs_5",
+      "same_card_id_skill_options_with_different_serial_or_source",
+      "duplicate_attack_payloads",
+      "options_differing_by_count_source_target_effect_or_remaining_budget",
+      "frequency",
+      "selected_action_involvement",
+      "matchup_distribution",
+      "deck_distribution"
+    ],
+    "collision_actionability": "publicly_distinguishable_inputs_with_different_simulator_semantics",
+    "non_bugs": [
+      "hidden_state_equivalence",
+      "harmless_permutation_equivalence"
+    ],
+    "required_report": "raw_corpus_field_and_full_option_collision_census"
+  },
+  "phase_b_minimal_versioned_representation_repair": {
+    "pre_census_implementation_basis": "requested_goal_contract_and_official_api_only",
+    "pre_census_branch_state": "default_zero_and_inert",
+    "feature_schema_must_freeze_before_refeaturization": true,
+    "corpus_validation_and_census_gate_nonzero_eligibility_and_training": true,
+    "card2vec_preserved_bit_identically": true,
+    "new_structured_residual_is_additive_alongside_or_after_card2vec": true,
+    "new_structured_residual_replaces_card2vec": false,
+    "existing_text_hashes_may_remain_only_in_frozen_legacy_card2vec_path": true,
+    "text_hashes_are_exact_mechanics_authority_for_new_residual": false,
+    "preserve_all_legacy_features": true,
+    "parallel_residual": true,
+    "added_selection_semantics": [
+      "exact_number_without_collapsing_values_greater_than_or_equal_to_4",
+      "select_context",
+      "selection_type",
+      "context_card",
+      "effect_identity",
+      "min_count",
+      "max_count",
+      "remaining_damage_counter",
+      "remaining_energy_cost",
+      "option_count",
+      "stable_skill_source_binding",
+      "semantic_source_target_area_slot_tool_energy_binding"
+    ],
+    "added_public_state_when_present_in_raw": [
+      "current_hp",
+      "maximum_hp",
+      "evolution_stack",
+      "appear_this_turn",
+      "typed_energy_units",
+      "effective_bench_maximum",
+      "once_per_turn_action_flags"
+    ],
+    "entity_binding": "stable_within_observation",
+    "blind_global_serial_encoding": false,
+    "incidental_candidate_order_encoding": false,
+    "ordinal_fallback": "documented_only_when_official_libcg_distinguishes_otherwise_identical_payloads",
+    "option_permutation_equivariance_required_unless_libcg_order_is_semantic": true,
+    "card_catalog_adapter": {
+      "pinned_public_metadata": true,
+      "zero_initialized_parallel_adapter": true,
+      "accept_every_observed_ex_mega_ex_flag_combination": true,
+      "mega_ex_three_prize_precedence": true,
+      "ordinary_ex_two_prize_default": true,
+      "visible_prize_modifiers_apply": true,
+      "catalog_digest_required_in_receipt": true
+    },
+    "terminal_result_reason_and_future_transition_policy_features": false
+  },
+  "phase_c_target_repairs": {
+    "target_and_provenance_schema_must_freeze_before_refeaturization": true,
+    "target_rows_populated_during_exact_30_day_refeaturization": true,
+    "source": "selected_action_public_trajectories",
+    "repairs": {
+      "lethal_threat": "remove_terminal_right_censoring",
+      "prize_liability": "exact_visible_liability_and_prize_modifiers",
+      "action_utility": "credit_deterministic_attack_ko_prize_promotion_chain",
+      "terminal_conversion": "follow_deterministic_prompt_chain",
+      "forced_draw_and_deck_out": "exact_timing"
+    },
+    "counterfactual_labels_for_unchosen_actions": false,
+    "counterfactual_if_needed": "separate_targeted_libcg_state_restoration_corpus_with_public_information_seeds_and_explicit_provenance",
+    "legality_prediction": "diagnostic_only",
+    "legality_prediction_may_modify_libcg_legal_option_set": false
+  },
+  "simulator_specific_tests": [
+    "required_effect_attack_omitted_when_no_bench_space",
+    "required_draw_attack_omitted_when_deck_zero",
+    "required_hand_effect_attack_omitted_when_opponent_hand_count_zero",
+    "nullifying_zero_automatic_left_to_right_without_target_order_choice",
+    "simultaneous_ko_prize_prompts_follow_libcg_order",
+    "both_players_eventually_zero_prizes_is_draw",
+    "ordinary_pokemon_one_prize",
+    "ordinary_ex_two_prizes",
+    "mega_ex_three_prizes",
+    "visible_prize_modifying_effects"
+  ],
+  "information_set_tests": {
+    "pair_construction": "identical_public_state_and_history_different_privileged_opponent_hands_deck_orders_and_unrevealed_prizes",
+    "must_be_identical": [
+      "sanitized_observation_hash",
+      "board_features",
+      "option_features",
+      "base_logits",
+      "candidate_logits",
+      "public_belief_search_proposals_for_identical_public_derived_seeds"
+    ],
+    "realized_transition_may_differ": true,
+    "pre_transition_action_may_depend_on_hidden_truth": false,
+    "bit_identical_required_where_declared": true
+  },
+  "eight_checklist_output": {
+    "evaluation_frames": "every_actor_visible_decision_or_forced_selection_frame",
+    "provenance_schema_must_freeze_before_refeaturization": true,
+    "provenance_records_emitted_during_exact_30_day_refeaturization": true,
+    "unsupported_provenance_branches_remain_zero_and_inert_after_census": true,
+    "channels": [
+      {
+        "id": 1,
+        "name": "ko_hand_threshold",
+        "status": "eligible_when_public_evidence_available"
+      },
+      {
+        "id": 2,
+        "name": "safe_spend_above_threshold",
+        "status": "eligible_when_public_evidence_available"
+      },
+      {
+        "id": 3,
+        "name": "replacement_alakazam_line",
+        "status": "eligible_when_public_evidence_available",
+        "bench_only": true,
+        "active_alakazam_counts": false
+      },
+      {
+        "id": 4,
+        "name": "unavoidable_draws_before_attack",
+        "status": "eligible_when_public_evidence_available"
+      },
+      {
+        "id": 5,
+        "name": "bench_prize_exposure",
+        "status": "trace_only",
+        "gate": 0.0,
+        "nonzero_requires": "independent_narrow_predicate_validation_calibration_and_explicit_enablement"
+      },
+      {
+        "id": 6,
+        "name": "immediate_disruption_outcome",
+        "status": "trace_only",
+        "gate": 0.0,
+        "nonzero_requires": "independent_narrow_predicate_validation_calibration_and_explicit_enablement"
+      },
+      {
+        "id": 7,
+        "name": "unknown_prize_robust_line",
+        "status": "eligible_when_public_evidence_available"
+      },
+      {
+        "id": 8,
+        "name": "terminal_before_forced_draw",
+        "status": "eligible_when_public_evidence_available"
+      }
+    ],
+    "per_channel_fields": [
+      "factual_public_evidence",
+      "availability_or_unknown_status",
+      "unavailable_reason",
+      "per_option_signed_evidence_where_applicable",
+      "applied_gate",
+      "final_residual"
+    ],
+    "unknown_or_hidden_residual": 0.0,
+    "full_eight_channel_logit_coverage_claim_allowed_while_q5_or_q6_gate_zero": false
+  },
+  "training": {
+    "pre_training_sequence": "implement_and_freeze_feature_target_and_checklist_provenance_schema_then_validate_and_refeaturize_full_30_day_corpus_and_complete_collision_census",
+    "new_immutable_feature_schema_required": true,
+    "full_existing_30_day_raw_corpus_required": true,
+    "full_existing_30_day_requirement_applies_to_raw_audit_not_unfiltered_row_materialization": true,
+    "validated_deduplicated_raw_manifest_sha256_required": true,
+    "raw_audit_all_episodes_required": true,
+    "refeaturized_and_train_validation_evaluation_row_scope": "acting_seat_decisions_only_when_same_seat_recorded_setup_deck_contains_card_id_743",
+    "eligibility_card_id": 743,
+    "exact_pilot_list_or_digest_match_required": false,
+    "tech_inclusion_exception_exists": false,
+    "nonqualifying_opponent_seat_decisions_included": false,
+    "both_qualifying_seats_included_independently": true,
+    "acting_deck_multiset_sha256_preserved_per_included_row_and_split_manifest": true,
+    "list_variant_strata_counts_required": true,
+    "revision_6_corpus_scope_migration_receipt_required": true,
+    "unchanged_revision_5_raw_manifest_and_frozen_schema_artifacts_may_be_reused_without_recompute": true,
+    "source_day_and_group_disjoint_train_validation_evaluation_manifests_required": true,
+    "twenty_day_or_subset_fallback_allowed": false,
+    "host_after_handoff": "inzi",
+    "primary_training_device": "cuda:1_nvidia_rtx_pro_5000_blackwell",
+    "requires_training_handoff_activation_receipt": true,
+    "staged_shards_training_eligible_before_handoff": false,
+    "current_r274_must_be_fully_paused_before_derivative_training": true,
+    "concurrent_r274_and_derivative_training_or_collection": false,
+    "frozen_modules": [
+      "neural_backbone",
+      "existing_heads",
+      "fusion",
+      "own_deck_routes",
+      "matchup_adapters"
+    ],
+    "trainable_scope": [
+      "new_public_rule_adapter",
+      "repaired_heads",
+      "explicitly_eligible_bounded_gates"
+    ],
+    "candidate_training_before_validated_30_day_corpus_and_complete_census": false,
+    "candidate_training_before_revision_6_corpus_scope_migration_validation": false,
+    "candidate_training_before_parent_schema_corpus_frozen_tensor_blackwell_rollback_readiness_and_activation_receipts": false,
+    "only_census_supported_branches_training_eligible": true,
+    "unsupported_branches_exact_zero_and_inert": true,
+    "recollection": "only_if_phase_a_manifest_and_audit_prove_required_evidence_absent",
+    "kaggle_or_formal_evaluation_training_eligible": false
+  },
+  "evaluation": {
+    "bo250_before_validated_30_day_corpus_complete_census_and_candidate_receipts": false,
+    "comparisons": [
+      {
+        "id": "A",
+        "candidate": "frozen_parent_inzi_blackwell_derivative",
+        "control": "unchanged_exact_receipt_bound_r241_r274",
+        "candidate_deck": "exact_new_list",
+        "control_deck": "exact_same_new_list",
+        "interpretation": "same_architecture_primary_comparison"
+      },
+      {
+        "id": "B",
+        "candidate": "frozen_parent_inzi_blackwell_derivative",
+        "control": "immutable_r195",
+        "candidate_deck": "exact_new_list",
+        "control_deck": "r195_native_operational_configuration",
+        "interpretation": "operational_reference_comparison"
+      },
+      {
+        "id": "C",
+        "candidate": "frozen_parent_inzi_blackwell_derivative",
+        "control": "r195_weights_with_exact_new_list",
+        "candidate_deck": "exact_new_list",
+        "control_deck": "exact_new_list",
+        "interpretation": "exploratory_deck_shift_confound"
+      }
+    ],
+    "bo250_per_reported_comparison": {
+      "pairs": 125,
+      "games": 250,
+      "seed_matched": true,
+      "seat_swapped": true,
+      "conclusive_by_itself": false
+    },
+    "required_reporting": [
+      "paired_confidence_intervals",
+      "draws",
+      "action_disagreements",
+      "severe_rule_error_rate",
+      "per_channel_coverage",
+      "residual_that_changed_each_action"
+    ],
+    "candidate_and_control_artifact_substitution": false,
+    "missing_identity_or_receipt_behavior": "do_not_run"
+  },
+  "deliverables": [
+    "raw_corpus_field_and_collision_census",
+    "direct_versus_derived_field_classification",
+    "exact_source_changes",
+    "feature_schema_manifest",
+    "target_schema_manifest",
+    "hidden_information_proof",
+    "simulator_binary_and_catalog_digests",
+    "unit_and_engine_backed_test_results",
+    "frozen_feature_target_and_checklist_provenance_schema_manifest_and_zero_bypass_receipt",
+    "validated_deduplicated_30_utc_partition_raw_manifest_and_sha256",
+    "source_day_group_disjoint_refeaturization_receipts",
+    "revision_6_all_episode_audit_and_acting_seat_card_743_corpus_scope_migration_receipt",
+    "acting_deck_multiset_list_variant_strata_manifest",
+    "per_job_resource_peak_receipts",
+    "per_shard_create_only_inzi_transfer_validation_receipts",
+    "final_elmo_source_inzi_remote_shard_parity_receipt",
+    "card2vec_bit_identity_and_additive_structured_residual_receipts",
+    "inzi_parent_corpus_schema_frozen_tensor_blackwell_preflight_and_rollback_receipts",
+    "clean_boundary_readiness_and_training_handoff_activation_receipts",
+    "blackwell_bootstrap_candidate_validation_receipt",
+    "checksum_exact_kaggle_package_single_use_queue_and_eventual_upload_receipts",
+    "fleet_inventory_package_parity_routing_activation_and_collection_receipts",
+    "paired_benchmark_report",
+    "explicit_unresolved_limitations",
+    "recommendation_reject_retain_as_trace_or_training_aid_or_request_future_promotion_decision"
+  ],
+  "completion_and_promotion": {
+    "experiment_complete_only_when_all_deliverables_exist": true,
+    "revision_5_as_narrowed_by_revision_6_grants_receipt_gated_inzi_training_kaggle_queue_and_fleet_self_play_authority": true,
+    "revision_6_corpus_scope_migration_receipt_required_before_training_readiness": true,
+    "immediate_unreceipted_runtime_or_service_authority": false,
+    "production_serving_selector_authority": false,
+    "recommendation_grants_additional_authority": false,
+    "further_serving_promotion_path": "new_explicit_owner_decision_in_production_goal"
+  }
+}

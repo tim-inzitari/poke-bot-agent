@@ -745,6 +745,9 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
             game_time_budget_s=float(timeout_s),
             game_watchdog_reserve_s=min(60.0, max(10.0, 0.1 * float(timeout_s))),
             strict_runtime=True,
+            own_deck_ledger_enabled=bool(
+                job.get("own_deck_ledger_enabled", False)
+            ),
         )
         them_agent = PolicyAgent(
             model=them_model,
@@ -761,6 +764,9 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
             game_time_budget_s=float(timeout_s),
             game_watchdog_reserve_s=min(60.0, max(10.0, 0.1 * float(timeout_s))),
             strict_runtime=True,
+            own_deck_ledger_enabled=bool(
+                job.get("own_deck_ledger_enabled", False)
+            ),
         )
         us_agent.reset_game()
         them_agent.reset_game()

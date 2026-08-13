@@ -4432,14 +4432,14 @@ canonical_libcg_r236:
   r229_retains_r233_outer_watchdog_and_excludes_r234_kaggle_lifecycle: true
   managed_service_restart_authorized_by_this_projection: false
 
-# Revision 241 is a separately versioned direct-policy training successor.
+# Runtime revision 274 is the separately versioned direct-policy training successor.
 # It cannot consume or alter any concurrent MCTS/RTP evaluation authority.
-alakazam_new_list_direct_policy_r241:
-  schema: poke_bot.alakazam_new_list_direct_policy_r241_projection/v1
+alakazam_new_list_direct_policy_r274:
+  schema: poke_bot.alakazam_new_list_direct_policy_r274_projection/v1
   values_owned_by: state/alakazam-new-list-direct-policy-r241.json
-  values_owned_by_sha256: sha256:57cbc0ac7ca7ee3791f7257899a16f6f0642749effa218323368e35940cdc202
-  owner_decision_revision: 241
-  latest_owner_clarification_revision: 262
+  values_owned_by_sha256: sha256:b144d7c65dede58db024c962f96464602a0a7a2459b98ff9dd1d33af91c4a3ec
+  owner_decision_revision: 274
+  latest_owner_clarification_revision: 285
   status: immutable_owner_intent_external_activation_overlay_required
   specialist_id: alakazam
   parent_checkpoint_sha256: sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a
@@ -4448,33 +4448,49 @@ alakazam_new_list_direct_policy_r241:
     sha256: sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a
     size_bytes: 127914385
   exact_deck_multiset_sha256: sha256:a42e047c45c419a599a31f2e20a6209d324558082f27e12091ade8918376d182
-  rl_updates_exact: 10
-  zero_indexed_last_commit: 9
-  collection_for_iteration_10_allowed: false
+  rl_updates_exact: 20
+  zero_indexed_last_commit: 19
+  collection_for_iteration_20_allowed: false
   games_per_update: 8196
   self_play_games_exact: 1024
   public_mix_games_exact: 7172
   marnie_h10_games_minimum: 1024
+  frozen_submission_55378392_games_minimum: 128
+  frozen_submission_55378392_each_seat_minimum: 64
   established_diverse_public_mix_preserved: true
+  multi_env_per_worker: 4
+  remote_self_play_multi_games: 4
+  public_multi_env_safety_contract: state/alakazam-public-multi-env-split-r182.json
+  public_multi_env_default_deny: true
+  unverified_or_research_public_transport: singleton_play
   marnie_h10_is_minimum_not_exclusive_public_opponent: true
-  every_non_combo_head_and_fusion_route_live_and_trainable: true
+  retained_physical_head_count: 21
+  active_fusion_route_count_from_iteration_1: 20
+  combo_state_tensors_preserved: true
   combo_state_loss_and_fusion_route_enabled: false
+  combo_state_loss_weight: 0.0
+  new_tactical_sequence_head_physically_present: false
+  old_strategic_tactical_outcome_head_and_route_preserved: true
+  own_deck_ledger_live_cotrain: true
+  tactical_outlook_head_live_cotrain: true
+  tactical_search_planner_shadow_only: true
   matchup_adapters_enabled: true
   authenticated_ptcgreplay_matchup_archetype_refresh_revision: 247
   authenticated_ptcgreplay_matchup_archetype_refresh_deferred_by_owner_revision: 248
-  matchup_archetype_refresh_cycle_status: deferred_not_part_of_r241_cycle
-  matchup_archetype_refresh_launch_gate: not_required_due_to_r248_deferral
-  adapter_slot_migration_required_status: no_slot_change
+  matchup_archetype_refresh_cycle_status: expanded_exact_id_router_fit_required_prestart
+  matchup_archetype_refresh_launch_gate: required
+  adapter_slot_migration_required_status: append_only_slots_20_through_39
   existing_matchup_slot_identities_and_peak_r195_tensors_immutable: true
   new_matchup_slots_start_exact_zero_and_dormant: true
-  new_matchup_slots_allowed_this_cycle: false
+  new_matchup_slots_allowed_this_cycle: true
   ptcgreplay_meta_may_supply_training_actions_or_gate_evidence: false
   exact_first_games: 4098
   exact_second_games: 4098
   expert_window: {start: 2026-07-22, end: 2026-08-10, calendar_days_inclusive: 20}
-  expert_soft_refresh_completed_update_boundaries: [5, 10]
+  initial_expert_bootstrap_epochs: 25
+  expert_soft_refresh_completed_update_boundaries: [5, 10, 15, 20]
   expert_soft_refresh_epochs_each: 5
-  terminal_checkpoint_name: expert_before_iter_00010.pt
+  terminal_checkpoint_name: expert_before_iter_00020.pt
   official_libcg_linux_sha256: sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7
   mcts_rtp_guide2vec_and_search_targets_allowed: false
   direct_policy_scope:
@@ -4485,15 +4501,18 @@ alakazam_new_list_direct_policy_r241:
     frozen_non_h10_diverse_public_opponent_packages_and_selectors: preserve_unchanged_per_r245
   public_opponent_selector_change: forbidden
   public_search_firewall: not_introduced
-  exact_terminal_submission_count: 1
+  exact_terminal_submission_count: 5
+  formal_holdout_first_iteration: 1
+  formal_holdout_opponents: [alakazam-r195-no-rtp-submission-55378392, specialist-marnie-final-format-h10-f20efb20f5c3]
+  formal_holdout_games_total: 500
   submission_preference: first_if_allowed
   required_2026_08_10_expert_day_published: true
   exact_2026_07_22_through_2026_08_10_manifest_sha256: sha256:09848f04a6c863a02c517fdcd5b7a61a139eceafd3348aa2a08705fd6e971a16
-  activation_overlay_schema: poke_bot.alakazam_new_list_direct_r241_activation_overlay/v2
-  activation_overlay_mirror_schema: poke_bot.alakazam_new_list_direct_r241_activation_overlay_mirror/v2
-  activation_overlay_mirrors_schema: poke_bot.alakazam_new_list_direct_r241_activation_overlay_mirrors/v2
-  owner_start_authorization_schema: poke_bot.alakazam_new_list_direct_r241_owner_start_authorization/v2
-  owner_start_authorization_generator_schema: poke_bot.alakazam_new_list_direct_r241_owner_start_authorization_generator/v2
+  activation_overlay_schema: poke_bot.alakazam_new_list_direct_r274_activation_overlay/v1
+  activation_overlay_mirror_schema: poke_bot.alakazam_new_list_direct_r274_activation_overlay_mirror/v1
+  activation_overlay_mirrors_schema: poke_bot.alakazam_new_list_direct_r274_activation_overlay_mirrors/v1
+  owner_start_authorization_schema: poke_bot.alakazam_new_list_direct_r274_owner_start_authorization/v1
+  owner_start_authorization_generator_schema: poke_bot.alakazam_new_list_direct_r274_owner_start_authorization_generator/v1
   logical_activation_overlay_cardinality: one
   overlay_host_publication_identity: byte_identical_with_one_shared_sha256
   external_activation_overlay_required: true
@@ -4501,8 +4520,10 @@ alakazam_new_list_direct_policy_r241:
   inherited_learned_head_count_present: 19
   inherited_active_non_combo_fusion_route_count: 18
   new_typed_option_head_count: 2
-  total_architecture_head_count_after_import: 21
-  new_routes_outside_inherited_fusion_denominator: 2
+  shadow_tactical_head_count: 1
+  total_architecture_head_count_after_import: 22
+  new_routes_outside_inherited_fusion_denominator: 3
+  total_active_fusion_route_count: 22
   own_deck_head_structure_import:
     owner_revision: 260
     status: authorized_for_pre_start_successor_integration
