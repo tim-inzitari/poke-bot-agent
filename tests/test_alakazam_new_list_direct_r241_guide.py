@@ -230,6 +230,91 @@ def test_enhanced_hammer_prefers_counter_immunity_energy(monkeypatch) -> None:
     assert scores[0] > scores[1]
 
 
+def test_mega_lopunny_exact_hand_and_visible_mist_rules(monkeypatch) -> None:
+    """The guide's Buneary matchup note stays grounded in public mechanics."""
+
+    monkeypatch.setenv("POKEBOT_ALAKAZAM_NEW_LIST_GUIDE_TARGETS", "1")
+    me = _player(
+        hand_count=17,
+        active=_pokemon(
+            guide.ALAKAZAM,
+            140,
+            energy=[guide.PSYCHIC_ENERGY],
+        ),
+    )
+    mega_lopunny_ex = _pokemon(849, 330, energy=[guide.MIST_ENERGY])
+    mega_lopunny_ex["megaEx"] = True
+    opp = _player(
+        active=mega_lopunny_ex,
+        bench=[_pokemon(900, 200, energy=[guide.ENRICHING_ENERGY])],
+    )
+
+    attack_obs = _obs(
+        me,
+        opp,
+        {
+            "context": 0,
+            "option": [
+                {"type": 13, "attackId": guide.POWERFUL_HAND_ATTACK},
+                {"type": 14},
+            ],
+            "minCount": 1,
+            "maxCount": 1,
+        },
+    )
+    protected_scores = guide.guide_scores(
+        attack_obs, [[0], [1]], deck=guide.EXACT_DECK
+    )
+    assert protected_scores is not None
+    assert protected_scores[0] < protected_scores[1]
+
+    hammer_obs = _obs(
+        me,
+        opp,
+        {
+            "context": 30,
+            "effect": {"id": guide.ENHANCED_HAMMER},
+            "option": [
+                {
+                    "type": 5,
+                    "area": 4,
+                    "index": 0,
+                    "playerIndex": 1,
+                    "energyIndex": 0,
+                },
+                {
+                    "type": 5,
+                    "area": 5,
+                    "index": 0,
+                    "playerIndex": 1,
+                    "energyIndex": 0,
+                },
+            ],
+            "minCount": 1,
+            "maxCount": 1,
+        },
+    )
+    hammer_scores = guide.guide_scores(
+        hammer_obs, [[0], [1]], deck=guide.EXACT_DECK
+    )
+    assert hammer_scores is not None
+    assert hammer_scores[0] > hammer_scores[1]
+
+    mega_lopunny_ex["energyCards"] = []
+    lethal_scores = guide.guide_scores(
+        attack_obs, [[0], [1]], deck=guide.EXACT_DECK
+    )
+    assert lethal_scores is not None
+    assert lethal_scores[0] > lethal_scores[1]
+
+    me["handCount"] = 16
+    me["hand"] = me["hand"][:16]
+    nonlethal_scores = guide.guide_scores(
+        attack_obs, [[0], [1]], deck=guide.EXACT_DECK
+    )
+    assert nonlethal_scores is None
+
+
 def test_hammer_rock_requires_fighting_host_and_active_target(monkeypatch) -> None:
     monkeypatch.setenv("POKEBOT_ALAKAZAM_NEW_LIST_GUIDE_TARGETS", "1")
     me = _player(

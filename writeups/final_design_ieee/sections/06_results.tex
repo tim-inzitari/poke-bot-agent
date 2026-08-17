@@ -1,0 +1,65 @@
+\section{Results and Evidence Status}
+
+\subsection{Representation census}
+
+The 20-day census scanned 18,412,973 option records over 2,351,208 decisions.
+The legacy public-semantic key produced 127,641 collision groups containing
+255,398 records, or approximately 1.39\% of all options. Selected actions
+appeared in 129,503 of the collision records. Six semantic-delta classes were
+observed; five had targeted transition witnesses and one was supported by a
+legality-only witness. After adding the structured projection, the census found
+99 raw duplicate groups. Every one was permutation-equivalent, leaving zero
+unresolved actionable repaired-key collision groups. This result supports the
+representation repair. It does not, by itself, estimate a win-rate delta.
+
+\subsection{Bootstrap diagnostics}
+
+The full bootstrap completed 25 epochs over 2,351,208 decision occurrences and
+18,412,973 option occurrences per epoch. This corresponds to approximately
+57.88 million decision-occurrence visits in 5,757.14 seconds. The final
+semantic loss was 1.7141 and semantic accuracy was 42.27\%. The sealed
+checkpoint begins with digest \texttt{8b59af9a}. These numbers demonstrate the
+intended optimizer scope and completed workload; semantic accuracy is not
+gameplay accuracy.
+
+\subsection{Offline critic evidence}
+
+The Prize-plan v2 sidecar trained for three epochs and 30,552 optimizer steps.
+Validation contained 380,499 complete actions, with 358,344 H3-eligible actions
+(94.18\% coverage). H3 action-value mean squared error was 0.0040745 versus
+0.0046184 for the empirical-mean baseline, an 11.78\% reduction; the state-value
+error was 0.0045797 versus 0.0046184, a 0.84\% reduction. On 2,146,670 exact
+policy decisions, the receipt recorded legacy and H3 effective-sample-size
+fractions of 0.251337 and 0.251758, with clip fractions 0.076078 and 0.075819.
+The non-regression check passed. These are held-out prediction and actor-weight
+stability results. The sidecar remained outside runtime policy inference.
+
+A separate eight-output action critic also trained for three epochs. All eight
+held-out outputs beat zero and empirical-mean baselines. For context,
+$Q_{\mathrm{win}}$ recorded Brier score 0.24728 versus 0.24979 and expected
+calibration error 0.03406; $V_{\mathrm{win}}$ recorded 0.24921 and 0.02964.
+This critic is shadow-only and supplies no serving-policy efficacy claim.
+
+\subsection{Gameplay observations and disposition}
+
+The checksum-bound NO-RTP package for submission 55487412 completed with a
+public score of 600.0. Search and MCTS were disabled. Because there is no
+seed-matched baseline under the same platform conditions, this is a contextual
+leaderboard observation rather than causal evidence for the semantic adapter.
+
+Iteration 2 completed a receipt-audited 900-game formal holdout against 18
+opponents, 50 games per opponent and a 25/25 candidate-seat split. It recorded
+a 76.83\% skill-weighted win rate, 74.39\% reported lower bound, 54.0\% minimum
+opponent win rate, and 76.12\% S-tier mean. The broader pipeline gate failed
+because of Kaggle-rating simulation and historical-nonregression criteria.
+Accordingly, the checkpoint was carried as a continuous learner rather than
+reported as a promotion pass.
+
+Revision 27 waived only iteration 3's formal holdout. The candidate and
+promotion comparison were preserved, but 900 planned games were skipped and
+zero formal-holdout games were measured. Its promotion comparison was rejected
+because the confidence lower bound did not clear the threshold. At the
+snapshot, iteration-4 collection was sealed but no commit or evaluation result
+existed; a provider-initialization \texttt{NameError} occurred before H3
+materialization or optimization and was handled through a receipt-bound
+recovery path. We report this as operational status, not a policy result.

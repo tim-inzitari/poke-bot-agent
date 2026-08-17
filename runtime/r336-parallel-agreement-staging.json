@@ -1,0 +1,41 @@
+{
+  "schema": "poke_bot.alakazam_rule_derivative_parallel_agreement_staging/v1",
+  "recorded_at_utc": "2026-08-14T17:50:51Z",
+  "run_name": "alakazam_rule_derivative_g5_r12",
+  "activation_boundary": "after_immutable_iteration_4_commit_before_iteration_5_process_start",
+  "current_iteration_4_untouched": true,
+  "current_trainer_main_pid": 1920917,
+  "current_trainer_restart_count": 0,
+  "implementation": {
+    "trainer_sha256": "sha256:971b8ac126e3b42f790795ef0035cae63acd62889f4c4bb814a54c54d190887f",
+    "test_sha256": "sha256:1ef151cfb34b8ec7e1e7364ad6d6a053d4196a700855c0d1d693a014bb5cd719",
+    "dropin_sha256": "sha256:ed3cd474b3f843116af2bf02ad22251dfa401cb2ddd28d87af6d995f9f53ddd6",
+    "packed_independent_game_histories": true,
+    "frozen_parent_agreement_packed": true,
+    "post_update_candidate_agreement_packed": true,
+    "stable_prediction_row_order": true,
+    "training_or_policy_semantics_changed": false
+  },
+  "verification": {
+    "focused_tests_passed": 3,
+    "focused_tests_failed": 0,
+    "serial_and_packed_argmax_exactly_equal": true,
+    "serial_temporal_calls": 2,
+    "packed_temporal_calls": 1,
+    "cpu_synthetic_sequences": 96,
+    "cpu_synthetic_rows": 624,
+    "cpu_serial_seconds": 0.0971,
+    "cpu_packed_seconds": 0.0524,
+    "cpu_speedup": 1.85,
+    "gpu_device": "NVIDIA RTX 3080 Ti gpu0",
+    "gpu_serial_seconds": 0.3522,
+    "gpu_packed_seconds": 0.1328,
+    "gpu_speedup": 2.65
+  },
+  "authority": {
+    "staging_only": true,
+    "requires_iteration_4_commit": true,
+    "mid_optimizer_activation_allowed": false,
+    "r274_service_changes": false
+  }
+}

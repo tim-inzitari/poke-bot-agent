@@ -1,0 +1,22 @@
+\begin{table*}[t]
+\centering
+\footnotesize
+\caption{Component state at the evidence snapshot. Physical presence is not
+equated with training, runtime activation, or measured benefit.}
+\label{tab:components}
+\begin{tabularx}{0.98\textwidth}{p{0.20\textwidth}p{0.09\textwidth}p{0.12\textwidth}p{0.13\textwidth}Y}
+\toprule
+Component & Physical & Derivative training & Runtime action path & Boundary \\
+\midrule
+Causal backbone, policy/value, existing Fusion & Yes & Eligible under rev. 10 & Yes & Acting-player-visible inputs; current legal set only \\
+Preserved Card2Vec path & Yes & Preserved & Yes & Bit identity and layer-off parity; not replaced by rule residual \\
+Public-rule semantic projection & Yes & Accepted & Yes & Zero-initialized additive residual; simulator remains authoritative \\
+Public catalog metadata residual & Yes & No & No & Census branch unsupported; exact-zero/inert \\
+Repaired auxiliary heads & Yes & No & No & Census branch unsupported; exact-zero/inert \\
+Eight checklist-provenance gates & Schema/trace & No & No & Evidence emitted; gate branch unsupported and exact-zero \\
+Combo-state tensors & ABI bytes & No & No & Zero loss; optimizer-excluded; route disabled \\
+Prize-plan v2 sidecar & Separate & Three-epoch sidecar & No & Trainer-only H3 advantage; no policy gradient into sidecar \\
+RTP / recursive planner & Separate & Shadow only & No & No package, selector, Fusion, or serving authority \\
+\bottomrule
+\end{tabularx}
+\end{table*}

@@ -249,7 +249,13 @@ def main() -> int:
         print(json.dumps(receipt, sort_keys=True))
         return 0
     finally:
-        if ram_root.exists():
+        # A failed lane or parent merge is recovery evidence, not scratch.
+        # Removing the private spool here discarded every successfully written
+        # lane and forced a full raw replay after an unrelated late failure.
+        # Clean it only after COMPLETE.json has been published successfully;
+        # otherwise leave both active and relocated closed lanes intact for a
+        # checksum-verified resume/recovery pass.
+        if succeeded and ram_root.exists():
             shutil.rmtree(ram_root)
         if succeeded and completed_root is not None and completed_root.exists():
             shutil.rmtree(completed_root)

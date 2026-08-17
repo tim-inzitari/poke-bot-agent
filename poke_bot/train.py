@@ -72,9 +72,11 @@ from .model import (
     EXPANDED_HEAD_KEY_PREFIXES,
     EXPANDED_HEAD_NAMES,
     EXPANDED_HEAD_SCHEMA,
+    PackedSparse,
     SETUP_BOARD_OUTCOME_HEAD_NAME,
     TemporalCabtTransformer,
     build_model,
+    pack_sparse_batch,
 )
 from .own_deck_ledger import (
     OPTION_FEATURE_DIM as OWN_DECK_LEDGER_OPTION_FEATURE_DIM,
@@ -756,6 +758,11 @@ class TrainConfig:
     #: proven cap above the optimizer cap so memory safety does not force two
     #: full policy scans into hundreds of tiny batches.
     agreement_max_decisions_per_batch: int = 6144
+    #: Agreement is a frozen inference scan, so process the independent game
+    #: histories as one padded temporal batch instead of issuing one temporal
+    #: encoder call per game.  This preserves stable row order and is toggleable
+    #: for exact disabled-path/parity coverage.
+    agreement_pack_temporal_games: bool = True
     val_frac: float = 0.1
     #: Keep both acting-seat records from an episode in the same split.
     split_by_episode: bool = False
@@ -855,6 +862,10 @@ class TrainConfig:
     #: Prepare at most one subsequent baseline batch on a CPU thread while the
     #: current packed temporal batch is evaluated on the learner device.
     awr_baseline_prefetch_batches: int = 1
+    #: Revision-28 candidate path.  Prepare and page-lock exactly one next
+    #: batch's sparse board/action/option tensors while the current optimizer
+    #: batch runs.  Zero preserves the historical host GameSequence path.
+    optimizer_sparse_prefetch_batches: int = 0
     #: Subtract from policy loss: ``entropy_bonus * H(π)`` (pure_rl only).
     entropy_bonus: float = 0.01
     #: Shadow-study diagnostic: retain one epoch of scalar AWR weights so the
@@ -2691,6 +2702,366 @@ def sequence_losses(
     )
 
 
+@dataclass(frozen=True)
+class PreparedHostSparseBatch:
+    """Pinned sparse inputs prepared one optimizer batch ahead.
+
+    The object deliberately contains only representations that the reference
+    path already derives from immutable ``GameSequence`` rows.  Targets,
+    ledgers, stage metadata, AWR keys, and every loss remain on the existing
+    audited path inside :func:`batch_losses`.
+    """
+
+    game_identity: tuple[int, ...]
+    game_decision_lengths: tuple[int, ...]
+    valid_option_counts: tuple[int, ...]
+    boards: PackedSparse
+    previous_actions: PackedSparse
+    options: PackedSparse
+    ledger_tensors: Mapping[str, torch.Tensor]
+    pinned: bool
+
+    def to_device(
+        self,
+        device: torch.device,
+        *,
+        non_blocking: bool,
+    ) -> "PreparedDeviceSparseBatch":
+        target = torch.device(device)
+
+        def moved(value: PackedSparse) -> PackedSparse:
+            return PackedSparse(
+                index=value.index.to(device=target, non_blocking=non_blocking),
+                value=value.value.to(device=target, non_blocking=non_blocking),
+                offset=value.offset.to(device=target, non_blocking=non_blocking),
+            )
+
+        return PreparedDeviceSparseBatch(
+            game_identity=self.game_identity,
+            game_decision_lengths=self.game_decision_lengths,
+            valid_option_counts=self.valid_option_counts,
+            boards=moved(self.boards),
+            previous_actions=moved(self.previous_actions),
+            options=moved(self.options),
+            ledger_tensors={
+                name: tensor.to(device=target, non_blocking=non_blocking)
+                for name, tensor in self.ledger_tensors.items()
+            },
+        )
+
+
+@dataclass(frozen=True)
+class PreparedDeviceSparseBatch:
+    game_identity: tuple[int, ...]
+    game_decision_lengths: tuple[int, ...]
+    valid_option_counts: tuple[int, ...]
+    boards: PackedSparse
+    previous_actions: PackedSparse
+    options: PackedSparse
+    ledger_tensors: Mapping[str, torch.Tensor]
+
+
+@dataclass(frozen=True)
+class _AsyncPreparedSparseBatch:
+    games: list[GameSequence]
+    prepared: PreparedDeviceSparseBatch
+    ready: torch.cuda.Event
+
+
+def _pack_padded_options_cpu(
+    option_rows: Sequence[Any], counts: Sequence[int]
+) -> PackedSparse:
+    if len(option_rows) != len(counts):
+        raise ValueError("prepared option rows/counts lost alignment")
+    max_options = max((int(value) for value in counts), default=1)
+    max_options = max(1, max_options)
+    index: list[int] = []
+    value: list[float] = []
+    offset: list[int] = [0]
+    for sparse, count_value in zip(option_rows, counts, strict=True):
+        count = int(count_value)
+        if count <= 0 or int(sparse.num_words) != count:
+            raise ValueError("prepared option count differs from sparse row")
+        for word in range(count):
+            start = int(sparse.offset[word])
+            end = (
+                int(sparse.offset[word + 1])
+                if word + 1 < len(sparse.offset)
+                else len(sparse.index)
+            )
+            index.extend(int(sparse.index[pos]) for pos in range(start, end))
+            value.extend(float(sparse.value[pos]) for pos in range(start, end))
+            offset.append(len(index))
+        for _ in range(max_options - count):
+            offset.append(len(index))
+    return PackedSparse(
+        index=torch.tensor(index, dtype=torch.long),
+        value=torch.tensor(value, dtype=torch.float32),
+        offset=torch.tensor(offset, dtype=torch.long),
+    )
+
+
+def _pack_shifted_actions_cpu(games: Sequence[GameSequence]) -> PackedSparse:
+    index: list[int] = []
+    value: list[float] = []
+    offset: list[int] = [0]
+    for game in games:
+        actions = [None] + [
+            decision.action_token for decision in game.decisions[:-1]
+        ]
+        for action in actions:
+            if action is not None:
+                if int(action.num_words) != 1:
+                    raise ValueError(
+                        "prepared previous-action token must contain one word"
+                    )
+                start = int(action.offset[0])
+                end = len(action.index)
+                index.extend(int(action.index[pos]) for pos in range(start, end))
+                value.extend(float(action.value[pos]) for pos in range(start, end))
+            offset.append(len(index))
+    return PackedSparse(
+        index=torch.tensor(index, dtype=torch.long),
+        value=torch.tensor(value, dtype=torch.float32),
+        offset=torch.tensor(offset, dtype=torch.long),
+    )
+
+
+def _pack_ledger_inputs_cpu(
+    games: Sequence[GameSequence],
+    *,
+    counts: Sequence[int],
+    card_vocab: int,
+) -> dict[str, torch.Tensor]:
+    present: list[int] = []
+    availability_ids: list[int] = []
+    availability_stats: list[list[float]] = []
+    availability_offsets = [0]
+    scalars: list[list[float]] = []
+    select_ids: list[int] = []
+    select_counts: list[float] = []
+    select_offsets = [0]
+    looking_ids: list[int] = []
+    looking_counts: list[float] = []
+    looking_offsets = [0]
+    option_rows: list[tuple[tuple[float, ...], ...]] = []
+
+    for game in games:
+        for decision in game.decisions:
+            raw_snapshot = getattr(decision, "ledger_snapshot", None)
+            snapshot = (
+                None
+                if raw_snapshot is None
+                else _validate_own_deck_snapshot(raw_snapshot)
+            )
+            if snapshot is None:
+                present.append(0)
+                scalars.append([0.0] * 10)
+            else:
+                present.append(1)
+                for row in snapshot.card_availability:
+                    card_id = int(row.card_id)
+                    if not 0 <= card_id < int(card_vocab):
+                        raise ValueError("ledger card id is outside model vocabulary")
+                    availability_ids.append(card_id)
+                    availability_stats.append(
+                        [
+                            float(row.lower),
+                            float(row.upper),
+                            0.0 if row.expected is None else float(row.expected),
+                            0.0
+                            if row.probability_at_least_one is None
+                            else float(row.probability_at_least_one),
+                            1.0 if row.exact else 0.0,
+                        ]
+                    )
+                scalar = [float(value) for value in snapshot.scalar_vector]
+                if len(scalar) != 10 or not all(math.isfinite(v) for v in scalar):
+                    raise ValueError("ledger scalar vector changed")
+                scalars.append(scalar)
+                for card_id, count in snapshot.select_deck_counts:
+                    select_ids.append(int(card_id))
+                    select_counts.append(float(count))
+                for card_id, count in snapshot.looking_counts:
+                    looking_ids.append(int(card_id))
+                    looking_counts.append(float(count))
+            availability_offsets.append(len(availability_ids))
+            select_offsets.append(len(select_ids))
+            looking_offsets.append(len(looking_ids))
+
+            stages = decision.policy_stages or [
+                PolicyStage(
+                    options=decision.options,
+                    action_combos=decision.action_combos,
+                    target_index=decision.action_combo_index,
+                )
+            ]
+            for stage in stages:
+                count = int(stage.options.num_words)
+                target = int(stage.target_index)
+                if count <= 0 or target < 0 or target >= count:
+                    continue
+                raw_features = getattr(stage, "ledger_option_features", None)
+                if raw_features is None and snapshot is None:
+                    option_rows.append(
+                        tuple(
+                            (0.0,) * OWN_DECK_LEDGER_OPTION_FEATURE_DIM
+                            for _ in range(count)
+                        )
+                    )
+                else:
+                    option_rows.append(
+                        _validated_ledger_option_features(
+                            raw_features,
+                            option_count=count,
+                        )
+                    )
+
+    if len(option_rows) != len(counts):
+        raise AssertionError("prepared ledger option rows lost alignment")
+    max_options = max(counts, default=1)
+    padded_options = torch.zeros(
+        (len(counts), max_options, OWN_DECK_LEDGER_OPTION_FEATURE_DIM),
+        dtype=torch.float32,
+    )
+    for row, (values, count) in enumerate(zip(option_rows, counts, strict=True)):
+        padded_options[row, :count] = torch.tensor(values, dtype=torch.float32)
+
+    def tensor(values: Any, dtype: torch.dtype) -> torch.Tensor:
+        return torch.tensor(values, dtype=dtype).contiguous()
+
+    return {
+        "ledger_present": tensor(present, torch.uint8),
+        "ledger_availability_card_id": tensor(availability_ids, torch.int16),
+        "ledger_availability_stats": tensor(
+            availability_stats, torch.float32
+        ).reshape(-1, 5),
+        "ledger_availability_offset": tensor(
+            availability_offsets, torch.int32
+        ),
+        "ledger_scalar": tensor(scalars, torch.float32).reshape(-1, 10),
+        "ledger_select_card_id": tensor(select_ids, torch.int16),
+        "ledger_select_count": tensor(select_counts, torch.float32),
+        "ledger_select_offset": tensor(select_offsets, torch.int32),
+        "ledger_looking_card_id": tensor(looking_ids, torch.int16),
+        "ledger_looking_count": tensor(looking_counts, torch.float32),
+        "ledger_looking_offset": tensor(looking_offsets, torch.int32),
+        "ledger_option_features": padded_options,
+    }
+
+
+def prepare_host_sparse_batch(
+    seqs: Sequence[GameSequence],
+    *,
+    board_words: int,
+    card_vocab: int,
+    pin_memory: bool,
+) -> PreparedHostSparseBatch:
+    """Pack immutable sparse inputs without evaluating the model or targets."""
+
+    games = tuple(sequence for sequence in seqs if sequence.decisions)
+    boards = [decision.board for game in games for decision in game.decisions]
+    option_rows: list[Any] = []
+    counts: list[int] = []
+    for game in games:
+        if game.policy_targets is not None or game.factorized_policy_targets is not None:
+            raise ValueError(
+                "optimizer sparse prefetch supports selected-action hard targets only"
+            )
+        for decision in game.decisions:
+            stages = decision.policy_stages or [
+                PolicyStage(
+                    options=decision.options,
+                    action_combos=decision.action_combos,
+                    target_index=decision.action_combo_index,
+                )
+            ]
+            for stage in stages:
+                count = int(stage.options.num_words)
+                target = int(stage.target_index)
+                if count > 0 and 0 <= target < count:
+                    option_rows.append(stage.options)
+                    counts.append(count)
+    board_pack = pack_sparse_batch(boards, int(board_words), torch.device("cpu"))
+    action_pack = _pack_shifted_actions_cpu(games)
+    option_pack = _pack_padded_options_cpu(option_rows, counts)
+    ledger_tensors = _pack_ledger_inputs_cpu(
+        games,
+        counts=counts,
+        card_vocab=int(card_vocab),
+    )
+
+    def maybe_pin(value: PackedSparse) -> PackedSparse:
+        if not pin_memory:
+            return value
+        return PackedSparse(
+            index=value.index.pin_memory(),
+            value=value.value.pin_memory(),
+            offset=value.offset.pin_memory(),
+        )
+
+    return PreparedHostSparseBatch(
+        game_identity=tuple(id(game) for game in games),
+        game_decision_lengths=tuple(len(game.decisions) for game in games),
+        valid_option_counts=tuple(counts),
+        boards=maybe_pin(board_pack),
+        previous_actions=maybe_pin(action_pack),
+        options=maybe_pin(option_pack),
+        ledger_tensors={
+            name: tensor.pin_memory() if pin_memory else tensor
+            for name, tensor in ledger_tensors.items()
+        },
+        pinned=bool(pin_memory),
+    )
+
+
+def iter_prefetched_sparse_batches(
+    batches: Sequence[list[GameSequence]],
+    *,
+    board_words: int,
+    card_vocab: int,
+    device: torch.device,
+) -> Any:
+    """Yield one CUDA-ready sparse batch while preparing exactly one ahead."""
+
+    target = torch.device(device)
+    if target.type != "cuda":
+        raise ValueError("optimizer sparse prefetch requires CUDA")
+    if not batches:
+        return
+    stream = torch.cuda.Stream(device=target)
+
+    def prepare(games: list[GameSequence]) -> _AsyncPreparedSparseBatch:
+        host = prepare_host_sparse_batch(
+            games,
+            board_words=int(board_words),
+            card_vocab=int(card_vocab),
+            pin_memory=True,
+        )
+        with torch.cuda.device(target), torch.cuda.stream(stream):
+            prepared = host.to_device(target, non_blocking=True)
+            ready = torch.cuda.Event()
+            ready.record(stream)
+        return _AsyncPreparedSparseBatch(
+            games=games,
+            prepared=prepared,
+            ready=ready,
+        )
+
+    with ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="optimizer-sparse-prefetch"
+    ) as pool:
+        future: Future[_AsyncPreparedSparseBatch] = pool.submit(
+            prepare, list(batches[0])
+        )
+        for index in range(len(batches)):
+            current = future.result()
+            if index + 1 < len(batches):
+                future = pool.submit(prepare, list(batches[index + 1]))
+            torch.cuda.current_stream(target).wait_event(current.ready)
+            yield current.games, current.prepared
+
+
 def batch_losses(
     model: TemporalCabtTransformer,
     seqs: Sequence[GameSequence],
@@ -2731,6 +3102,7 @@ def batch_losses(
     awr_normalize_advantages: bool = True,
     entropy_bonus: float = 0.0,
     awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None,
+    awr_advantage_cache: Optional[Mapping[tuple[int, int, int], float]] = None,
     awr_capture_baseline: Optional[dict[tuple[int, int, int], float]] = None,
     awr_weight_sink: Optional[list[float]] = None,
     prediction_sink: Optional[list[int]] = None,
@@ -2742,6 +3114,7 @@ def batch_losses(
     matchup_adapter_training: bool = False,
     pack_temporal_games: bool = False,
     allow_masked_own_deck_ledger_rows: bool = False,
+    prepared_sparse_batch: Optional[PreparedDeviceSparseBatch] = None,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Causal history forward over all valid decisions.
 
@@ -2998,12 +3371,31 @@ def batch_losses(
     games = [s for s in seqs if s.decisions]
     if not games:
         return torch.zeros((), device=device, requires_grad=True), BatchMetrics()
+    if prepared_sparse_batch is not None:
+        if tuple(id(game) for game in games) != prepared_sparse_batch.game_identity:
+            raise ValueError("prepared sparse batch belongs to different games")
+        if tuple(len(game.decisions) for game in games) != (
+            prepared_sparse_batch.game_decision_lengths
+        ):
+            raise ValueError("prepared sparse batch decision boundaries changed")
+        for packed in (
+            prepared_sparse_batch.boards,
+            prepared_sparse_batch.previous_actions,
+            prepared_sparse_batch.options,
+        ):
+            if packed.index.device != device:
+                raise ValueError("prepared sparse tensors are not on the model device")
+        if any(
+            tensor.device != device
+            for tensor in prepared_sparse_batch.ledger_tensors.values()
+        ):
+            raise ValueError("prepared ledger tensors are not on the model device")
 
     all_boards = [d.board for g in games for d in g.decisions]
     all_ledger_snapshots = [
         getattr(d, "ledger_snapshot", None) for g in games for d in g.decisions
     ]
-    if ledger_model_enabled:
+    if ledger_model_enabled and prepared_sparse_batch is None:
         validated_snapshots: list[OwnDeckLedgerSnapshot | None] = []
         flat_decisions = [decision for game in games for decision in game.decisions]
         for decision, snapshot in zip(
@@ -3024,23 +3416,56 @@ def batch_losses(
                 continue
             validated_snapshots.append(_validate_own_deck_snapshot(snapshot))
         all_ledger_snapshots = validated_snapshots
-    spatial_all = model.encode_board(all_boards)
-    ledger_residual_all = model.own_deck_ledger_residuals(
-        all_ledger_snapshots if ledger_model_enabled else None,
-        batch_size=len(all_boards),
-        device=spatial_all.device,
-        dtype=spatial_all.dtype,
-        # Offline loss/validation must exercise the physical successor input
-        # even while model.eval() deliberately keeps serving authority off.
-        offline_training_path=ledger_model_enabled,
+    spatial_all = (
+        model.encode_board_packed(
+            prepared_sparse_batch.boards,
+            batch_size=len(all_boards),
+        )
+        if prepared_sparse_batch is not None
+        else model.encode_board(all_boards)
     )
+    prepared_action_state_all = (
+        model.encode_previous_actions_packed(
+            prepared_sparse_batch.previous_actions,
+            batch_size=len(all_boards),
+        )
+        if prepared_sparse_batch is not None
+        else None
+    )
+    if ledger_model_enabled and prepared_sparse_batch is not None:
+        side = prepared_sparse_batch.ledger_tensors
+        ledger_residual_all = model.own_deck_ledger_packed_residuals(
+            present=side["ledger_present"],
+            availability_card_ids=side["ledger_availability_card_id"],
+            availability_stats=side["ledger_availability_stats"],
+            availability_offsets=side["ledger_availability_offset"],
+            scalar_vectors=side["ledger_scalar"],
+            select_card_ids=side["ledger_select_card_id"],
+            select_counts=side["ledger_select_count"],
+            select_offsets=side["ledger_select_offset"],
+            looking_card_ids=side["ledger_looking_card_id"],
+            looking_counts=side["ledger_looking_count"],
+            looking_offsets=side["ledger_looking_offset"],
+            dtype=spatial_all.dtype,
+            offline_training_path=True,
+        )
+    else:
+        ledger_residual_all = model.own_deck_ledger_residuals(
+            all_ledger_snapshots if ledger_model_enabled else None,
+            batch_size=len(all_boards),
+            device=spatial_all.device,
+            dtype=spatial_all.dtype,
+            # Offline loss/validation must exercise the physical successor input
+            # even while model.eval() deliberately keeps serving authority off.
+            offline_training_path=ledger_model_enabled,
+        )
     packed_game_states: list[torch.Tensor] | None = None
     packed_identity_states: list[torch.Tensor] | None = None
     if pack_temporal_games:
-        if not matchup_adapter_training:
+        if not (matchup_adapter_training or prediction_only):
             raise ValueError(
-                "packed temporal games are currently authorized only for "
-                "isolated matchup-adapter fitting"
+                "packed temporal games are authorized only for isolated "
+                "matchup-adapter fitting or prediction-only agreement"
             )
         if model.decision_context != "history":
             raise ValueError("packed temporal games require history context")
@@ -3119,6 +3544,13 @@ def batch_losses(
         factorized_pt = g.factorized_policy_targets
         length = len(g.decisions)
         game_spatial = spatial_all[spatial_offset : spatial_offset + length]
+        game_prepared_actions = (
+            None
+            if prepared_action_state_all is None
+            else prepared_action_state_all[
+                spatial_offset : spatial_offset + length
+            ]
+        )
         game_ledger_residuals = (
             None
             if ledger_residual_all is None
@@ -3130,14 +3562,24 @@ def batch_losses(
                 game_states = packed_game_states[game_index]
                 game_identity_states = packed_identity_states[game_index]
             else:
-                previous_actions = [None] + [
-                    decision.action_token for decision in g.decisions[:-1]
-                ]
-                cls = model.history_tokens(
-                    game_spatial,
-                    previous_actions,
-                    game_ledger_residuals,
-                ).unsqueeze(0)
+                if game_prepared_actions is None:
+                    previous_actions = [None] + [
+                        decision.action_token for decision in g.decisions[:-1]
+                    ]
+                    cls = model.history_tokens(
+                        game_spatial,
+                        previous_actions,
+                        game_ledger_residuals,
+                    ).unsqueeze(0)
+                else:
+                    cls = (
+                        model.pool_cls(game_spatial)
+                        + float(model.cfg.history_action_scale)
+                        * game_prepared_actions
+                    )
+                    if game_ledger_residuals is not None:
+                        cls = cls + game_ledger_residuals
+                    cls = cls.unsqueeze(0)
                 game_states, _ = model.temporal_encode(
                     cls, append=False, return_all=True
                 )
@@ -3330,18 +3772,39 @@ def batch_losses(
             route_tensor,
             enabled=True,
         )
-    decoded = model.decode_options(
-        valid_options,
-        current_spatial,
-        policy_value_state,
-        n_options=valid_n,
-        return_hidden=use_option_aux_heads,
-        decision_fusion_state_vec=state_all,
-        ledger_option_features=(
-            ledger_option_feature_rows if ledger_model_enabled else None
-        ),
-        offline_training_path=ledger_model_enabled,
-    )
+    if prepared_sparse_batch is not None:
+        if tuple(valid_n) != prepared_sparse_batch.valid_option_counts:
+            raise ValueError("prepared sparse option rows changed")
+        decoded = model.decode_options_packed(
+            prepared_sparse_batch.options,
+            current_spatial,
+            policy_value_state,
+            n_options=valid_n,
+            batch_size=len(valid_n),
+            return_hidden=use_option_aux_heads,
+            decision_fusion_state_vec=state_all,
+            ledger_option_features=(
+                prepared_sparse_batch.ledger_tensors[
+                    "ledger_option_features"
+                ]
+                if ledger_model_enabled
+                else None
+            ),
+            offline_training_path=ledger_model_enabled,
+        )
+    else:
+        decoded = model.decode_options(
+            valid_options,
+            current_spatial,
+            policy_value_state,
+            n_options=valid_n,
+            return_hidden=use_option_aux_heads,
+            decision_fusion_state_vec=state_all,
+            ledger_option_features=(
+                ledger_option_feature_rows if ledger_model_enabled else None
+            ),
+            offline_training_path=ledger_model_enabled,
+        )
     if use_option_aux_heads:
         if not isinstance(decoded, tuple):
             raise AssertionError("option auxiliary decoder did not return hidden states")
@@ -3530,7 +3993,34 @@ def batch_losses(
         # Capture raw diagnostics before whitening. The compatibility
         # ``mean_advantage`` signal intentionally uses mean(abs(A)) so symmetric
         # positive/negative learning signal cannot look dead by cancellation.
+        # Always construct the exact legacy terminal term here, against this
+        # optimizer unit's frozen V_existing.  The external cache contains
+        # only the receipt-bound H3 additive term; it may never replace or
+        # precompute the terminal/value baseline out of process.
         raw_advantages = v_target - baseline_pred.detach()
+        if awr_advantage_cache is not None:
+            if not pure_rl:
+                raise ValueError("a frozen AWR advantage cache requires pure_rl=True")
+            missing_advantages = [
+                key for key in awr_baseline_keys if key not in awr_advantage_cache
+            ]
+            if missing_advantages:
+                raise KeyError(
+                    "frozen AWR advantage cache is missing "
+                    f"{len(missing_advantages)} decision-stage row(s)"
+                )
+            supplied = [float(awr_advantage_cache[key]) for key in awr_baseline_keys]
+            if any(not math.isfinite(value) for value in supplied):
+                raise FloatingPointError("frozen AWR advantage cache contains non-finite values")
+            # Addends are precomputed once per complete action and repeated
+            # for each selected factorized stage.  They are constants: no
+            # gradient can enter the frozen sidecar, while the exact legacy
+            # z-V_existing term and ordinary AWR normalization/clipping remain.
+            raw_advantages = raw_advantages + torch.tensor(
+                supplied,
+                device=device,
+                dtype=value_pred.dtype,
+            )
         raw_stats = raw_advantages.detach().float()
         raw_adv_mean = float(raw_stats.mean().item())
         raw_adv_std = float(raw_stats.std(unbiased=False).item())
@@ -6449,6 +6939,9 @@ def evaluate(
     cfg: TrainConfig,
     desc: str = "val",
     awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None,
+    awr_advantage_cache: Optional[Mapping[tuple[int, int, int], float]] = None,
+    awr_capture_baseline: Optional[dict[tuple[int, int, int], float]] = None,
+    allow_masked_own_deck_ledger_rows: bool = False,
 ) -> BatchMetrics:
     model.eval()
     parts: list[BatchMetrics] = []
@@ -6523,7 +7016,12 @@ def evaluate(
                 awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
                 entropy_bonus=float(cfg.entropy_bonus),
                 awr_baseline_cache=awr_baseline_cache,
+                awr_advantage_cache=awr_advantage_cache,
+                awr_capture_baseline=awr_capture_baseline,
                 awr_weight_sink=exact_awr_weights,
+                allow_masked_own_deck_ledger_rows=bool(
+                    allow_masked_own_deck_ledger_rows
+                ),
                 history_identity_weight=float(
                     cfg.history_identity_loss_weight
                 ),
@@ -7028,6 +7526,12 @@ def train_bootstrap(
     cfg.current_deck_guide_training_mode = canonical_guide_training_mode(
         cfg.current_deck_guide_training_mode
     )
+    if int(cfg.optimizer_sparse_prefetch_batches) not in {0, 1}:
+        raise ValueError(
+            "optimizer sparse prefetch must be bounded to zero or one batch"
+        )
+    if int(cfg.optimizer_sparse_prefetch_batches):
+        raise ValueError("optimizer sparse prefetch is pure-RL only")
     if (
         cfg.current_deck_guide_training_mode
         == GUIDE_TRAINING_MODE_STRATEGIC
@@ -8046,6 +8550,15 @@ def supervised_rehearsal_step(
     torch.manual_seed(cfg.seed)
     random.seed(cfg.seed)
     model = load_model_from_checkpoint(base_path, device=device)
+    derivative_full_model_bootstrap = os.environ.get(
+        "POKEBOT_DERIVATIVE_FULL_MODEL_BOOTSTRAP", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if derivative_full_model_bootstrap:
+        # Revision 10 uses the established rehearsal path but explicitly puts
+        # every architecture-present parameter except the dormant combo ABI
+        # tensors into the optimizer.
+        for name, parameter in model.named_parameters():
+            parameter.requires_grad_("combo_state" not in name)
     if (
         cfg.current_deck_guide_training_mode
         == GUIDE_TRAINING_MODE_STRATEGIC
@@ -8691,6 +9204,10 @@ def supervised_rehearsal_step(
         model_config=model.cfg,
         extra=inherited_extra,
     )
+    payload = preserve_alakazam_rule_derivative_envelope(
+        payload,
+        parent=base_payload,
+    )
     saved = checkpoint.immutable_torch_save(payload, out_path)
     digest = checkpoint.checkpoint_digest(saved)
     return {
@@ -9310,6 +9827,9 @@ def _policy_argmax_predictions(
                         awr_baseline_cache=awr_baseline_cache,
                         prediction_sink=predictions,
                         prediction_only=True,
+                        pack_temporal_games=bool(
+                            cfg.agreement_pack_temporal_games
+                        ),
                     )
                 return metrics
 
@@ -9985,6 +10505,20 @@ def _inherited_dormant_matchup_adapter_continuation(
     )
 
 
+def _restore_streaming_derivative_full_model_trainability(
+    model: torch.nn.Module,
+) -> bool:
+    """Apply the existing revision-10 optimizer membership to a streamed fit."""
+
+    enabled = os.environ.get(
+        "POKEBOT_DERIVATIVE_FULL_MODEL_BOOTSTRAP", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if enabled:
+        for name, parameter in model.named_parameters():
+            parameter.requires_grad_("combo_state" not in name)
+    return enabled
+
+
 def streaming_r260_host_rehearsal_step(
     *,
     manifest_path: Union[str, Path],
@@ -10030,10 +10564,28 @@ def streaming_r260_host_rehearsal_step(
         prefer_name=config.HARDWARE.train_gpu_name,
         allow_cpu=False,
     )
-    model.to(train_device).train()
-    optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=cfg.lr, weight_decay=cfg.weight_decay)
     parent_payload = checkpoint.load_checkpoint(base, map_location=train_device)
-    checkpoint.apply_checkpoint(parent_payload, model=model, optimizer=optimizer, restore_rng=True)
+    # The derivative may add trainable heads after the parent's optimizer was
+    # saved.  Preserve every parent tensor and RNG state, but intentionally
+    # start the already-declared fresh optimizer over the current parameter
+    # set instead of loading incompatible historical parameter groups.
+    checkpoint.apply_checkpoint(
+        parent_payload, model=model, optimizer=None, restore_rng=True
+    )
+    # ``apply_checkpoint`` restores the parent's runtime-disabled adapter
+    # configuration, which freezes those tensors.  Restore the derivative's
+    # declared all-non-combo optimizer membership *after* applying the parent
+    # and before constructing the fresh rehearsal optimizer.  Doing this
+    # earlier is ineffective because checkpoint application freezes the
+    # adapters again and the eventual checkpoint is then rejected as a
+    # non-zero dormant bank without continuation state.
+    _restore_streaming_derivative_full_model_trainability(model)
+    model.to(train_device).train()
+    optimizer = torch.optim.AdamW(
+        [parameter for parameter in model.parameters() if parameter.requires_grad],
+        lr=cfg.lr,
+        weight_decay=cfg.weight_decay,
+    )
     seen_key_count = 0
     sidecar_joined_count = 0
     sidecar_masked_unjoinable_count = 0
@@ -10181,7 +10733,13 @@ def streaming_r260_host_rehearsal_step(
                 _fit(batch, tail=True)
     finally:
         del plan
-    child_state = model.state_dict(); parent_state = parent_payload["model_state_dict"]
+    child_state = model.state_dict()
+    parent_state = (
+        parent_payload.get("model_state_dict")
+        or parent_payload.get("base_model_state_dict")
+    )
+    if not isinstance(parent_state, dict) or not parent_state:
+        raise RuntimeError("r260 streaming rehearsal parent has no tensor map")
     changed = {
         prefix: (
             finite_nonzero_gradients[prefix]
@@ -10210,6 +10768,10 @@ def streaming_r260_host_rehearsal_step(
     if tactical_enabled:
         loss_weights["tactical_sequence_outcome"] = 0.025
     payload = checkpoint.build_checkpoint(model=model, optimizer=optimizer, step=int(parent_payload.get("step", 0)), epoch=int(parent_payload.get("epoch", 0)) + int(epochs), rl_iteration=int(parent_payload.get("rl_iteration", 0)), archetype_id=archetype_id, model_id=str(parent_payload.get("model_id") or "alakazam") + ".r260-expert", model_config=model.cfg, extra={**dict(parent_payload.get("extra") or {}), "pure_rl": True, "r260_streaming_rehearsal": {"schema": "poke_bot.r260_streaming_expert_rehearsal/v1", "loss_weights": loss_weights, "max_games_per_batch": int(batch_games), "manifest_workers": int(manifest_workers), "manifest_plan_scans": 1, "manifest_plan_reused_across_epochs": True, "full_window_device_resident": False, "masked_own_deck_ledger_rows_explicitly_authorized": True, "sampled_key_count": int(seen_key_count), "retained_key_sample_count": len(seen_key_sample), "sidecar_joined_decision_count": int(sidecar_joined_count), "sidecar_masked_unjoinable_decision_count": int(sidecar_masked_unjoinable_count), "tactical_exact_root_count": len(seen_tactical_keys), "gradient_reachability": changed}})
+    payload = preserve_alakazam_rule_derivative_envelope(
+        payload,
+        parent=parent_payload,
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     checkpoint.immutable_torch_save(payload, output)
     return {"candidate_path": str(output), "candidate_digest": checkpoint.checkpoint_digest(output), "parent_digest": checkpoint.checkpoint_digest(base), "rl_iteration": int(parent_payload.get("rl_iteration", 0)), "sampled_key_count": int(seen_key_count), "sampled_keys": seen_key_sample, "sidecar_joined_decision_count": int(sidecar_joined_count), "sidecar_masked_unjoinable_decision_count": int(sidecar_masked_unjoinable_count), "tactical_exact_root_count": len(seen_tactical_keys), "max_games_per_batch": int(batch_games), "manifest_workers": int(manifest_workers), "manifest_plan_scans": 1, "manifest_plan_reused_across_epochs": True, "gradient_reachability": changed, "mean_loss": sum(losses) / max(1, len(losses))}
@@ -10293,6 +10855,8 @@ def rl_train_step(
     device_resident_min_free_gib: float = DEFAULT_MIN_FREE_GIB,
     preserve_rl_iteration: bool = False,
     checkpoint_pure_rl_override: Optional[bool] = None,
+    awr_advantage_cache: Optional[Mapping[tuple[int, int, int], float]] = None,
+    awr_advantage_provider_receipt: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """One immutable history-policy candidate fit for the RL loop.
 
@@ -10320,6 +10884,10 @@ def rl_train_step(
     cfg.current_deck_guide_training_mode = canonical_guide_training_mode(
         cfg.current_deck_guide_training_mode
     )
+    if int(cfg.optimizer_sparse_prefetch_batches) not in {0, 1}:
+        raise ValueError(
+            "optimizer sparse prefetch must be bounded to zero or one batch"
+        )
     canonical_r241_contract = canonical_r241_peak_r195_training_contract(
         cfg.r241_peak_r195_training_contract
     )
@@ -10342,6 +10910,40 @@ def rl_train_step(
             "exact shadow AWR weight quantiles currently require host-batched "
             "temporal training"
         )
+    if (awr_advantage_cache is None) != (awr_advantage_provider_receipt is None):
+        raise ValueError(
+            "frozen AWR advantage cache and provider receipt must be supplied together"
+        )
+    if awr_advantage_cache is not None:
+        if not cfg.pure_rl:
+            raise ValueError("frozen AWR advantage provider requires pure RL")
+        if device_resident:
+            raise ValueError(
+                "frozen H3 advantage provider is not authorized for the resident corpus"
+            )
+        from .prize_plan_actor_boundary import (
+            replay_membership_sha256,
+            validate_activation_receipt,
+        )
+
+        receipt = dict(awr_advantage_provider_receipt or {})
+        binding = receipt.get("provider_binding")
+        if not isinstance(binding, Mapping):
+            raise ValueError("frozen H3 advantage provider lacks its boundary binding")
+        validate_activation_receipt(
+            receipt,
+            cache_receipt_sha256=str(binding.get("cache_receipt_sha256") or ""),
+            cache_artifact_sha256=str(binding.get("cache_artifact_sha256") or ""),
+            policy_checkpoint_sha256=actual_parent_digest,
+            replay_membership_digest=replay_membership_sha256(dataset.sequences),
+        )
+        expected_stage_rows = sum(
+            len(decision.policy_stages)
+            for sequence in dataset.sequences
+            for decision in sequence.decisions
+        )
+        if len(awr_advantage_cache) != expected_stage_rows:
+            raise ValueError("frozen H3 advantage provider lacks exact stage coverage")
     if device_resident and cfg.collect_own_deck_promotion_metrics:
         raise ValueError(
             "own-deck promotion metric collection requires host GameSequence "
@@ -10354,6 +10956,16 @@ def rl_train_step(
     random.seed(seed)
 
     model = load_model_from_checkpoint(base_ckpt, device=device)
+    derivative_full_model_bootstrap = os.environ.get(
+        "POKEBOT_DERIVATIVE_FULL_MODEL_BOOTSTRAP", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if derivative_full_model_bootstrap:
+        # Owner revision 10: r195 weights in the r274/new derivative structure
+        # receive a genuine full-model expert bootstrap.  Combo tensors remain
+        # checkpoint/pack ABI only because physically removing them breaks the
+        # established pack; they have no loss, optimizer membership, or route.
+        for name, parameter in model.named_parameters():
+            parameter.requires_grad_("combo_state" not in name)
     parent_trainable_parameter_names = tuple(
         name for name, parameter in model.named_parameters()
         if parameter.requires_grad
@@ -10564,9 +11176,81 @@ def rl_train_step(
     )
     if bool(getattr(model, "expanded_heads_enabled", False)):
         if not parent_expanded_contract:
-            raise ValueError(
-                "expanded-head checkpoint lacks tensor-bound training metadata"
+            # Revision-10's composite writer preserved the r195-sourced head
+            # tensors and the typed r241 training contract, but accidentally
+            # dropped ``extra.expanded_head_training`` while wrapping the base
+            # tensor map in the derivative envelope. Recover only that exact
+            # receipt-bound case; ordinary checkpoints still fail closed.
+            derivative_bootstrap = dict(
+                (parent_payload.get("extra") or {}).get(
+                    "revision_10_full_model_bootstrap"
+                )
+                or {}
             )
+            r195_expanded_weights = canonical_expanded_loss_weights(
+                {
+                    "action_q": 0.1,
+                    "action_type": 0.05,
+                    "action_target": 0.025,
+                    "action_resource": 0.025,
+                    "action_utility": 0.05,
+                    "tactical_outcome": 0.05,
+                    "opponent_response": 0.05,
+                    "resource_forecast": 0.025,
+                    "game_phase": 0.025,
+                    "outcome_distribution": 0.05,
+                    "remaining_turns": 0.025,
+                }
+            )
+            recoverable_derivative_contract = bool(
+                parent_payload.get("schema")
+                == _ALAKAZAM_RULE_DERIVATIVE_SCHEMA
+                and int(parent_payload.get("goal_revision", -1)) == 10
+                and derivative_bootstrap.get("r195_source_sha256")
+                == "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a"
+                and derivative_bootstrap.get(
+                    "all_architecture_present_non_combo_weights_optimizer_eligible"
+                )
+                is True
+                and all(
+                    weight > 0.0
+                    for weight in r195_expanded_weights.values()
+                )
+                and not any(requested_expanded_weights.values())
+            )
+            if not recoverable_derivative_contract:
+                raise ValueError(
+                    "expanded-head checkpoint lacks tensor-bound training metadata"
+                )
+            parent_expanded_contract = {
+                "schema": "poke_bot.expanded_head_training/v1",
+                "target_schema_version": EXPANDED_STRATEGIC_SCHEMA,
+                "target_schema_digest": TARGET_SCHEMA_DIGEST,
+                "schedule_version": EXPANDED_SCHEDULE_SCHEMA,
+                "schedule_digest": (
+                    "sha256:e471f58915df0cbe88b837de6fbe532e6416aa028a538b92a11ec788621f45dc"
+                ),
+                "stage": "revision_10_derivative_metadata_recovery",
+                "epoch": 25,
+                "epochs_total": 25,
+                "architecture_present_heads": list(EXPANDED_HEAD_IDS),
+                "trained_heads": list(EXPANDED_HEAD_IDS),
+                "trained_this_epoch": [],
+                "gradient_enabled_heads": list(EXPANDED_HEAD_IDS),
+                "runtime_enabled_heads": [],
+                "loss_weights": r195_expanded_weights,
+                "effective_loss_weights": r195_expanded_weights,
+                "metadata_recovery": {
+                    "schema": (
+                        "poke_bot.alakazam_rule_derivative_expanded_metadata_recovery/v1"
+                    ),
+                    "source": "exact_revision_10_r195_composite_parent",
+                    "r195_source_sha256": derivative_bootstrap[
+                        "r195_source_sha256"
+                    ],
+                    "tensor_values_changed": False,
+                },
+            }
         inherited_expanded_weights = canonical_expanded_loss_weights(
             dict(parent_expanded_contract.get("loss_weights") or {})
         )
@@ -10703,6 +11387,13 @@ def rl_train_step(
             )
     awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None
     if resident_corpus is not None:
+        baseline_started = time.perf_counter()
+        print(
+            "[rl-prep] baseline begin "
+            f"sequences={resident_corpus.total_samples} "
+            f"rows={resident_corpus.total_samples} mode=device_resident",
+            flush=True,
+        )
         resident_baseline = _device_exact_value_cache(
             model,
             resident_corpus,
@@ -10710,14 +11401,50 @@ def rl_train_step(
             batch_size=resident_batch_size,
             desc="rl-prep baseline",
         )
+        print(
+            "[rl-prep] baseline complete "
+            f"rows={int(resident_baseline.numel())} "
+            f"seconds={time.perf_counter() - baseline_started:.3f}",
+            flush=True,
+        )
     elif cfg.pure_rl and cfg.awr_freeze_baseline:
+        baseline_sequences = [*train_seqs, *val_seqs]
+        baseline_rows = sum(
+            len(decision.policy_stages or [None])
+            for sequence in baseline_sequences
+            for decision in sequence.decisions
+        )
+        baseline_started = time.perf_counter()
+        print(
+            "[rl-prep] baseline begin "
+            f"sequences={len(baseline_sequences)} rows={baseline_rows} "
+            f"mode={'value_only' if cfg.awr_value_only_baseline else 'reference'}",
+            flush=True,
+        )
         awr_baseline_cache = _precompute_awr_baseline_cache(
             model,
-            [*train_seqs, *val_seqs],
+            baseline_sequences,
             cfg=cfg,
             desc="rl-prep baseline",
         )
+        print(
+            "[rl-prep] baseline complete "
+            f"rows={len(awr_baseline_cache)} "
+            f"seconds={time.perf_counter() - baseline_started:.3f}",
+            flush=True,
+        )
     agreement_sequences = [*train_seqs, *val_seqs]
+    agreement_rows = sum(
+        len(decision.policy_stages or [None])
+        for sequence in agreement_sequences
+        for decision in sequence.decisions
+    )
+    agreement_started = time.perf_counter()
+    print(
+        "[rl-agreement] parent begin "
+        f"sequences={len(agreement_sequences)} rows={agreement_rows}",
+        flush=True,
+    )
     if resident_corpus is not None:
         parent_predictions: Union[list[int], torch.Tensor] = (
             _device_exact_policy_predictions(
@@ -10736,6 +11463,12 @@ def rl_train_step(
             awr_baseline_cache=awr_baseline_cache,
             desc="rl-agreement parent",
         )
+    print(
+        "[rl-agreement] parent complete "
+        f"predictions={int(parent_predictions.numel()) if isinstance(parent_predictions, torch.Tensor) else len(parent_predictions)} "
+        f"seconds={time.perf_counter() - agreement_started:.3f}",
+        flush=True,
+    )
     patience = max(0, int(cfg.early_stop_patience))
     patience_left = patience
     best_metric = float("inf")
@@ -10759,6 +11492,12 @@ def rl_train_step(
     last_epoch_optimizer_sps = 0.0
     stepped_epochs = 0
     step = base_step
+    print(
+        "[rl-train] optimizer begin "
+        f"epochs={max(1, epochs)} train_sequences={len(train_seqs)} "
+        f"validation_sequences={len(val_seqs)} parent_step={base_step}",
+        flush=True,
+    )
     epoch_bar = tqdm(range(max(1, epochs)), desc="rl-epochs", leave=False, unit="ep")
     for epoch in epoch_bar:
         model.train()
@@ -10785,13 +11524,34 @@ def rl_train_step(
                 epoch=epoch,
             )
         parts: list[BatchMetrics] = []
+        sparse_prefetch_enabled = bool(
+            resident_corpus is None
+            and int(cfg.optimizer_sparse_prefetch_batches) == 1
+        )
+        if sparse_prefetch_enabled:
+            if device.type != "cuda":
+                raise ValueError("optimizer sparse prefetch requires CUDA")
+            batch_iterable = iter_prefetched_sparse_batches(
+                list(batches),
+                board_words=int(model.num_board_tokens),
+                card_vocab=int(model.belief_card_vocab),
+                device=device,
+            )
+        else:
+            batch_iterable = batches
         batch_bar = tqdm(
-            batches,
+            batch_iterable,
+            total=len(batches),
             desc=f"rl-train ep{epoch}",
             leave=False,
             unit="batch",
         )
-        for batch in batch_bar:
+        for batch_item in batch_bar:
+            if sparse_prefetch_enabled:
+                batch, prepared_sparse = batch_item
+            else:
+                batch = batch_item
+                prepared_sparse = None
             def _apply_update(total: torch.Tensor, bm: BatchMetrics) -> BatchMetrics:
                 nonlocal step
                 if bm.n_decisions == 0:
@@ -10809,7 +11569,10 @@ def rl_train_step(
                 step += 1
                 return bm
 
-            def _train_chunk(work: list[GameSequence]) -> BatchMetrics:
+            def _train_chunk(
+                work: list[GameSequence],
+                prepared: Optional[PreparedDeviceSparseBatch] = None,
+            ) -> BatchMetrics:
                 optimizer.zero_grad(set_to_none=True)
                 chunk_awr_weights: Optional[list[float]] = (
                     [] if exact_epoch_awr_weights is not None else None
@@ -10870,7 +11633,9 @@ def rl_train_step(
                         awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
                         entropy_bonus=float(cfg.entropy_bonus),
                         awr_baseline_cache=awr_baseline_cache,
+                        awr_advantage_cache=awr_advantage_cache,
                         awr_weight_sink=chunk_awr_weights,
+                        prepared_sparse_batch=prepared,
                     )
                 applied = _apply_update(total, bm)
                 if (
@@ -10919,6 +11684,8 @@ def rl_train_step(
                         entropy_bonus=cfg.entropy_bonus,
                     )
                 completed_parts = [_apply_update(total, resident_metrics)]
+            elif prepared_sparse is not None:
+                completed_parts = [_train_chunk(batch, prepared_sparse)]
             else:
                 completed_parts = process_with_oom_splitting(
                     batch,
@@ -11001,6 +11768,7 @@ def rl_train_step(
                 cfg=cfg,
                 desc=f"rl-val ep{epoch}",
                 awr_baseline_cache=awr_baseline_cache,
+                awr_advantage_cache=awr_advantage_cache,
             )
             metric = val_m.total_loss
         else:
@@ -11184,6 +11952,14 @@ def rl_train_step(
     rl_metrics = dict(last.__dict__)
     rl_metrics["policy_prev_agreement"] = policy_prev_agreement
     rl_metrics["optimizer_samples_per_second"] = last_epoch_optimizer_sps
+    rl_metrics["optimizer_sparse_prefetch_batches"] = int(
+        cfg.optimizer_sparse_prefetch_batches
+    )
+    rl_metrics["optimizer_input_path"] = (
+        "pinned_host_sparse_one_batch_prefetch_v1"
+        if int(cfg.optimizer_sparse_prefetch_batches) == 1
+        else "reference_host_game_sequence_v1"
+    )
     rl_metrics["awr_weight_quantiles_exact"] = bool(
         cfg.capture_awr_weight_distribution
     )
@@ -11438,6 +12214,12 @@ def rl_train_step(
                 if resident_baseline is not None
                 else len(awr_baseline_cache or {})
             ),
+            "awr_advantage_provider": (
+                dict(awr_advantage_provider_receipt or {})
+                if awr_advantage_cache is not None
+                else None
+            ),
+            "awr_advantage_rows": len(awr_advantage_cache or {}),
             "awr_baseline_implementation": (
                 "device_resident"
                 if resident_baseline is not None
@@ -11532,6 +12314,10 @@ def rl_train_step(
             ),
         },
     )
+    ckpt = preserve_alakazam_rule_derivative_envelope(
+        ckpt,
+        parent=parent_payload,
+    )
     if output_path is not None:
         # Iteration candidates are lineage evidence. Only an explicit caller
         # override may replace one; pure-RL provenance is never implicit write
@@ -11588,6 +12374,12 @@ def rl_train_step(
             if awr_baseline_cache is not None
             else "detached_online"
         ),
+        "awr_advantage_provider": (
+            dict(awr_advantage_provider_receipt or {})
+            if awr_advantage_cache is not None
+            else None
+        ),
+        "awr_advantage_rows": len(awr_advantage_cache or {}),
         "awr_baseline_implementation": (
             "device_resident"
             if resident_baseline is not None
@@ -11685,6 +12477,20 @@ def load_model_from_checkpoint(
     """
     device = device or device_mod.inference_device(allow_cpu=True)
     ckpt = checkpoint.load_checkpoint(path, map_location=device)
+    derivative_candidate = (
+        ckpt.get("schema")
+        == "poke_bot.alakazam_rule_derivative_composite_candidate_initialization/v1"
+        and int(ckpt.get("goal_revision", -1)) in {9, 10}
+        and str(ckpt.get("goal_contract_sha256", "")).startswith("sha256:")
+        and "public_rule_semantic_projection"
+        in list(ckpt.get("eligible_trainable_branches") or ())
+        and ckpt.get("unsupported_zero_inert_branches")
+        == [
+            "public_rule_metadata_residual",
+            "r298_repaired_auxiliary_heads",
+            "eight_checklist_provenance_gates",
+        ]
+    )
     snap = ckpt.get("model_config")
     if snap is None:
         # Some early checkpoints did not serialize a model config at all.
@@ -11797,7 +12603,11 @@ def load_model_from_checkpoint(
                 f"checkpoint {path} has incompatible model_config: {exc}"
             ) from exc
 
-    state = ckpt.get("model_state_dict")
+    state = (
+        ckpt.get("base_model_state_dict")
+        if derivative_candidate
+        else ckpt.get("model_state_dict")
+    )
     if not isinstance(state, dict):
         raise ValueError(f"checkpoint {path} is missing model_state_dict")
     dense = bool(getattr(cfg, "dense_card2vec", False))
@@ -11835,11 +12645,12 @@ def load_model_from_checkpoint(
         decoder_vocab=decoder_vocab,
         belief_card_vocab=belief_card_vocab,
     )
-    checkpoint.validate_matchup_adapter_contract(
-        ckpt,
-        model=model,
-        source=path,
-    )
+    if not derivative_candidate:
+        checkpoint.validate_matchup_adapter_contract(
+            ckpt,
+            model=model,
+            source=path,
+        )
     incompatible = model.load_state_dict(state, strict=False)
     missing = list(getattr(incompatible, "missing_keys", []) or [])
     unexpected = list(getattr(incompatible, "unexpected_keys", []) or [])
@@ -12104,5 +12915,98 @@ def load_model_from_checkpoint(
             extra["warm_started_decision_fusion"] = True
         extra["aux_heads_present"] = list(model.aux_heads_present)
         ckpt["extra"] = extra
+    if derivative_candidate:
+        from .alakazam_rule_derivative_model_r298 import (
+            R298PublicRuleSemanticProjection,
+            R298SemanticProjectionConfig,
+        )
+
+        projection_config = ckpt.get("public_rule_semantic_projection_config")
+        projection_state = ckpt.get("public_rule_semantic_projection_state_dict")
+        if not isinstance(projection_config, dict) or not isinstance(
+            projection_state, dict
+        ):
+            raise RuntimeError(
+                "rule-derivative checkpoint lacks its trained semantic sidecar"
+            )
+        projection = R298PublicRuleSemanticProjection(
+            R298SemanticProjectionConfig(**dict(projection_config))
+        ).to(device)
+        projection.load_state_dict(projection_state, strict=True)
+        projection.requires_grad_(False)
+        projection.eval()
+        # Keep the sidecar outside ``nn.Module`` registration: the base model
+        # remains the exact frozen legacy tensor inventory and optimizers must
+        # never discover this runtime-only reference by walking model params.
+        model.__dict__["_public_rule_semantic_projection_runtime"] = projection
     model.eval()
     return model
+
+
+_ALAKAZAM_RULE_DERIVATIVE_SCHEMA = (
+    "poke_bot.alakazam_rule_derivative_composite_candidate_initialization/v1"
+)
+
+
+def preserve_alakazam_rule_derivative_envelope(
+    child: Mapping[str, Any],
+    *,
+    parent: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Keep the trained semantic projection beside a newly written base model.
+
+    The ordinary RL and expert-rehearsal writers own the legacy policy tensor
+    update.  A rule-derivative checkpoint stores that tensor map under
+    ``base_model_state_dict`` and carries a separately trained semantic
+    projection.  Flattening the child through the legacy writer would silently
+    turn iteration 1 back into a non-derivative policy, so preserve the exact
+    envelope whenever the verified parent is a derivative checkpoint.
+    """
+
+    if parent.get("schema") != _ALAKAZAM_RULE_DERIVATIVE_SCHEMA:
+        return dict(child)
+    required = (
+        "goal_revision",
+        "goal_gateway_sha256",
+        "goal_contract_sha256",
+        "public_rule_semantic_projection_config",
+        "public_rule_semantic_projection_state_dict",
+        "public_rule_semantic_projection_optimizer_state_dict",
+        "eligible_trainable_branches",
+        "unsupported_zero_inert_branches",
+    )
+    missing = [name for name in required if name not in parent]
+    if missing:
+        raise RuntimeError(
+            "rule-derivative parent envelope is incomplete: " + ", ".join(missing)
+        )
+    result = dict(child)
+    state = result.pop("model_state_dict", None)
+    if not isinstance(state, dict) or not state:
+        raise RuntimeError("rule-derivative child lacks its trained base tensor map")
+    result["schema"] = _ALAKAZAM_RULE_DERIVATIVE_SCHEMA
+    result["base_model_state_dict"] = state
+    for name in required:
+        result[name] = copy.deepcopy(parent[name])
+    result["extra"] = {
+        **copy.deepcopy(dict(parent.get("extra") or {})),
+        **copy.deepcopy(dict(result.get("extra") or {})),
+    }
+    return result
+
+
+def public_rule_runtime_kwargs_for_model(
+    model: Optional[TemporalCabtTransformer],
+) -> dict[str, Any]:
+    """Return explicit ``PolicyAgent`` kwargs for a trusted derivative model."""
+
+    if model is None:
+        return {}
+    projection = model.__dict__.get("_public_rule_semantic_projection_runtime")
+    if projection is None:
+        return {}
+    return {
+        "public_rule_semantic_projection": projection,
+        "public_rule_semantic_projection_enabled": True,
+        "public_rule_semantic_projection_gate": 1.0,
+    }

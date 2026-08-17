@@ -1,0 +1,27 @@
+\begin{abstract}
+Trading card game agents act through variable, multi-stage legal menus under
+partial observability. This makes representation correctness inseparable from
+policy quality: two options with different public rule semantics may be aliased
+by a transient option index, while a richer representation can accidentally
+leak an opponent's private state. We describe a direct-policy Pok\'emon TCG
+controller that keeps the pinned simulator as the sole legality and transition
+authority, restricts inference to the acting player's information set, and adds
+a zero-bypass public-rule semantic residual to a preserved causal policy. A
+content-addressed 20-day corpus and collision census drive branch activation;
+unsupported metadata, auxiliary, and checklist routes remain exact-zero. The
+census contains 18,412,973 option records and identifies 127,641 collision
+groups in the legacy projection. The repaired key leaves zero unresolved
+actionable semantic collisions, with 99 residual duplicate groups classified as
+harmless permutations. We further specify full-model bootstrap, direct-policy
+self-play, a trainer-only public Prize-plan canary, matched evaluation, and
+immutable receipt lineage. A 900-game iteration-2 holdout is reported with its
+non-promotion pipeline disposition, and an iteration-3 holdout waiver is
+reported as zero measured games. The paper's central claim is therefore
+representation and auditability, not leaderboard superiority or causal
+gameplay improvement.
+\end{abstract}
+
+\begin{IEEEkeywords}
+reinforcement learning, partial observability, legal-action representation,
+trading card games, reproducibility, semantic collisions, policy audit
+\end{IEEEkeywords}

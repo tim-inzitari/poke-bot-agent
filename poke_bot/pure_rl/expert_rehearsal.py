@@ -365,9 +365,34 @@ def resolve_expert_manifest(
     outer = json.loads(source.read_text(encoding="utf-8"))
     if outer.get("format") == "pokebot-bootstrap-feature-manifest":
         if require_protected:
-            raise ValueError("expert corpus must use a protected pointer")
-        manifest_path = source
-        expected_digest = ""
+            # Some long-lived managed units predate the protected-pointer
+            # argument and still name the immutable manifest directly.  Keep
+            # that launch identity stable only when a sibling protected
+            # pointer proves that it binds these exact bytes.
+            pointer_path = source.with_name("PROTECTED_EXPERT_CORPUS.json")
+            if not pointer_path.is_file():
+                raise ValueError("expert corpus must use a protected pointer")
+            pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+            raw_manifest = str(pointer.get("manifest") or "")
+            candidate = Path(raw_manifest).expanduser()
+            protected_manifest = (
+                candidate.resolve()
+                if candidate.is_absolute()
+                else (pointer_path.parent / candidate).resolve()
+            )
+            expected_digest = str(pointer.get("manifest_sha256") or "")
+            if (
+                pointer.get("schema") != "poke_bot.pinned_expert_corpus/v1"
+                or pointer.get("protected") is not True
+                or protected_manifest != source
+                or not expected_digest.startswith("sha256:")
+                or _sha256(source) != expected_digest
+            ):
+                raise ValueError("expert corpus sibling protected pointer is invalid")
+            manifest_path = source
+        else:
+            manifest_path = source
+            expected_digest = ""
     else:
         if require_protected and (
             outer.get("schema") != "poke_bot.pinned_expert_corpus/v1"

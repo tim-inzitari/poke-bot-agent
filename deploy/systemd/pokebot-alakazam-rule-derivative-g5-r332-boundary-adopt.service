@@ -1,0 +1,16 @@
+[Unit]
+Description=Adopt bounded parallel H3 scan and packed agreement after derivative iteration 4 commits
+After=network-online.target pokebot-alakazam-rule-derivative-g5-rl.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r336-parallel-agreement-971b8ac
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r336-parallel-agreement-971b8ac
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/activate_h3_parallel_scan_r332.py --commit /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/commits/iter_00004.json --iteration 4 --expected-main-pid 1920917 --training-unit pokebot-alakazam-rule-derivative-g5-rl.service --deployment-root /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r336-parallel-agreement-971b8ac --source-manifest-sha256 sha256:20fb30352ce1418930d9dcd318a19e296487ad44f95de4a3ed88bcc9e701bef4 --module-sha256 sha256:42df0fbb0bb507df94db1ecf6b4c9e1a6d9df7a76a009bab30b611539b052ac8 --benchmark-receipt /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r336-parallel-agreement-971b8ac/runtime/r332-h3-parallel-scan-benchmark.json --benchmark-receipt-sha256 sha256:d3e0a35e239b2495d704283c41e358f98545dc9632e253ab92471cde93280c63 --drop-in-source /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r336-parallel-agreement-971b8ac/deploy/systemd/pokebot-alakazam-rule-derivative-g5-rl.service.d/336-h3-parallel-agreement-prep-telemetry.conf --drop-in-destination /home/inzi/.config/systemd/user/pokebot-alakazam-rule-derivative-g5-rl.service.d/336-h3-parallel-agreement-prep-telemetry.conf --receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/runtime/r336-h3-parallel-agreement-activation.json --workers 8 --poll-seconds 0.25
+Restart=no
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target

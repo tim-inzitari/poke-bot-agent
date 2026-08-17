@@ -1,0 +1,16 @@
+[Unit]
+Description=Adopt Prize-plan-v2 H3 reward after derivative iteration 3 commits
+After=network-online.target pokebot-alakazam-rule-derivative-g5-rl.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r328-h3
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r328-h3
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/activate_alakazam_prize_plan_h3_r328.py --commit /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/commits/iter_00003.json --expected-main-pid 630098 --training-unit pokebot-alakazam-rule-derivative-g5-rl.service --drop-in-source /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r328-h3/deploy/systemd/pokebot-alakazam-rule-derivative-g5-rl.service.d/328-prize-plan-h3.conf --drop-in-destination /home/inzi/.config/systemd/user/pokebot-alakazam-rule-derivative-g5-rl.service.d/328-prize-plan-h3.conf --contract /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r328-h3/goals/alakazam-elmo-rule-derivative/contract.json --contract-sha256 sha256:95dd9718860f22d4e170b86db12bc07353d94addd3001a13a7a1ea6a19fed087 --sidecar /home/inzi/poke-bot-agent/outputs/critics/prize-plan-v2-r23-h3/prize-plan-v2-sidecar.pt --sidecar-sha256 sha256:dd14380e01c0dfd6935a9b534eaa28a1182c19aeaf772c740b904403a9564183 --scale-support /home/inzi/poke-bot-agent/outputs/critics/prize-plan-v2-r23-h3/h3-scale-support.json --scale-support-sha256 sha256:bac77d0799a6f8af3c7f931d41cbd4febd70aa7c36629f7fde0055625e68485c --c3-support /home/inzi/poke-bot-agent/outputs/critics/prize-plan-v2-r23-h3/h3-c3-public-support.json --c3-support-sha256 sha256:620aec5c7c71a626966375835ef52e2bfe5afcf64e947e6ca79818b5f6d0a27e --receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/runtime/r328-prize-plan-h3-boundary-activation.json --poll-seconds 0.25
+Restart=no
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target

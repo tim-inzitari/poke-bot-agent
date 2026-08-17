@@ -1,0 +1,43 @@
+\section*{3. Public Prize potential and H3-shaped AWR}
+
+Terminal win/loss is mathematically correct but sparse. The revision-27
+design~\cite{projectContract2026} instead fits a training-only monotone
+potential from public remaining-Prize counts:
+\[
+ \Phi(p_o,p_x)=2P_{\mathrm{iso}}(\mathrm{win}\mid p_o,p_x)-1 .
+\]
+If our remaining count falls, $\Phi$ may not fall; if the opponent's falls,
+$\Phi$ may not rise. For a fixed $\gamma$, the shaped segment reward and
+$h$-segment return are
+\[
+ r_t^P=\gamma\Phi(s_{t+1})-\Phi(s_t),\qquad
+ G_t^{(h)}=\sum_{k=0}^{h-1}\gamma^k r_{t+k}^P
+          =\gamma^h\Phi(s_{t+h})-\Phi(s_t).
+\]
+The sidecar target is $G_t^{(h)}/(1+\gamma^h)$. Missing, ambiguous, or
+terminal-censored segments are masked; they are never relabeled as zero.
+
+The actor uses exactly one cumulative horizon:
+\[
+ A_{\mathrm{H3}}(s,a)=z-V_{\mathrm{existing}}(s)
+ +0.025\,m_3c_3\,
+ \mathcal S_{\mathrm{train}}\!\left[
+ Q^{\mathrm{plan}}_3(s,a)-V^{\mathrm{plan}}_3(s)\right].
+\]
+$m_3=1$ only for three complete, causal, unambiguous segments from the same
+seat. $c_3\in[0,1]$ is a frozen public confidence and action-support scalar,
+and
+$\mathcal S_{\mathrm{train}}$ is frozen train-split scaling. H1, H6, and H12
+have zero actor coefficient. The same complete action advantage is broadcast
+to its selected factorized stages, with no gradient into the sidecar.
+
+Following AWR~\cite{peng2019awr}, optional batch whitening gives
+\[
+ \widehat A_i=\frac{A_i-\mu_B}{\max(\sigma_B,10^{-6})},\quad
+ w_i=\min\{w_{\max},e^{\widehat A_i/\beta}\},\quad
+ \mathcal L_\pi=-\frac1{|B|}\sum_i
+ \operatorname{stopgrad}(w_i)\log\pi_\theta(a_i\mid I_i).
+\]
+$\beta$ and $w_{\max}$ remain configuration variables; no extra raw H3
+advantage clip is introduced. The H3 model changes training weights only. It
+is absent from policy state, serving, and Kaggle inference.

@@ -2395,12 +2395,29 @@ def _selection_state(
             maximum=MAX_SELECTION_COUNT,
             optional=True,
         ),
-        "remain_energy_cost": _exact_int(
-            _first_present(select, ("remainEnergyCost", "remainingEnergyCost")),
-            field="select.remainEnergyCost",
-            minimum=0,
-            maximum=MAX_SELECTION_COUNT,
-            optional=True,
+        # libcg/replay rows use negative values (observed -1 and -2) as
+        # explicit "not applicable" sentinels outside an energy-budget
+        # prompt.  They are not negative budgets and must not make an
+        # otherwise public observation unrepresentable.
+        "remain_energy_cost": (
+            None
+            if (
+                (remaining_energy_cost := _first_present(
+                    select, ("remainEnergyCost", "remainingEnergyCost")
+                ))
+                is None
+                or (
+                    isinstance(remaining_energy_cost, int)
+                    and not isinstance(remaining_energy_cost, bool)
+                    and remaining_energy_cost < 0
+                )
+            )
+            else _exact_int(
+                remaining_energy_cost,
+                field="select.remainEnergyCost",
+                minimum=0,
+                maximum=MAX_SELECTION_COUNT,
+            )
         ),
         "looking_menu": _menu_signature(
             select.get("deck"), metadata_cards=metadata_cards

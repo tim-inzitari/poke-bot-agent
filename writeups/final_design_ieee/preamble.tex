@@ -1,0 +1,44 @@
+% IEEE presentation and claim-status helpers.
+% Keep substantive manuscript prose in sections/.
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext,newtxmath}
+\usepackage{microtype}
+\usepackage{cite}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{ink}{HTML}{17233B}
+\definecolor{blue}{HTML}{2457A6}
+\definecolor{pale}{HTML}{EAF1FB}
+\definecolor{mint}{HTML}{E8F5EF}
+\definecolor{sand}{HTML}{FFF3D9}
+\definecolor{statusgreen}{HTML}{1E6B48}
+\definecolor{statusorange}{HTML}{955D00}
+\definecolor{statusgray}{HTML}{555B66}
+\definecolor{statusred}{HTML}{9D2A2A}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue,
+  pdftitle={Auditable Legal-Action Learning for Partially Observable Trading Card Games},
+  pdfsubject={IEEE conference manuscript template; design revision 27}
+}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\Measured}{\textcolor{statusgreen}{\textbf{Measured}}}
+\newcommand{\Verified}{\textcolor{blue}{\textbf{Receipt-verified}}}
+\newcommand{\Configured}{\textcolor{statusorange}{\textbf{Configured}}}
+\newcommand{\Historical}{\textcolor{statusgray}{\textbf{Historical}}}
+\newcommand{\NotMeasured}{\textcolor{statusred}{\textbf{Not measured}}}
+\newcommand{\archbox}[2]{%
+  \fcolorbox{blue}{#1}{\parbox[c][0.62in][c]{0.92\linewidth}{\centering\footnotesize #2}}}
+
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.08}

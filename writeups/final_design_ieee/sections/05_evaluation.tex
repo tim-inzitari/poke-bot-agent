@@ -1,0 +1,54 @@
+\section{Evaluation Methodology}
+
+\subsection{Representation and engine tests}
+
+Evaluation begins below gameplay. Layer-off tests require bit-identical base
+logits, legal choices, and Card2Vec outputs. The collision census classifies
+every legacy duplicate by public semantic delta, selected-action involvement,
+and available successor witness. Targeted engine cases cover full-bench attack
+requirements, deck-zero or opponent-hand-zero conditions, automatic effect
+ordering, simultaneous-knockout prompt order, ordinary/ex/Mega-ex Prize counts,
+and visible Prize modifiers. A legality predictor may flag a discrepancy but
+cannot alter the engine list.
+
+Information-set metamorphic tests hold the acting player's sanitized state,
+history, and legal options fixed while changing privileged opponent hands, deck
+order, or unrevealed Prizes. Observation hashes, option features, base logits,
+candidate logits, and any public-belief proposal must remain identical. The
+realized future may change after action execution; the pre-transition decision
+may not depend on that hidden truth.
+
+\subsection{Paired policy comparisons}
+
+The smallest reported gameplay comparison is BO250: 125 seed-matched pairs,
+with candidate and reference swapping seats inside each pair. BO250 is a
+diagnostic, not a conclusive promotion gate. Reports include wins, draws,
+losses, paired intervals, action disagreement, severe rule-error rate, residual
+coverage, and which bounded contribution changed each action.
+
+Formal evaluation uses a fixed opponent roster and 50 games per opponent deck,
+split 25/25 by candidate seat. With the current 18-deck roster this yields 900
+games. We report skill-weighted rate, its receipt-defined lower bound, minimum
+opponent rate, tier strata, and every pipeline criterion. A statistically
+favorable aggregate does not erase a failed rating simulation, historical
+non-regression check, or identity audit. Wilson-style binomial intervals are
+useful descriptive summaries~\cite{wilson1927probable}, but the receipt-defined
+gate remains the operational criterion.
+
+The Prize-plan study has a separate preregistered structure. Eligible legacy,
+H1, H3, and later H6 arms each require 8,192 seed-matched, seat-swapped games
+when capacity permits. Required outputs include W/D/L, Prize conversion,
+matchup and public-Prize strata, late closeout, deck-out, action entropy,
+calibration, coverage, AWR effective sample size, clipping, and action
+disagreement. No such completed multi-arm gameplay receipt exists at the paper
+snapshot.
+
+\subsection{Evidence tiers}
+
+We distinguish five tiers. \Measured\ is a completed numerical artifact with
+its experimental unit. \Verified\ is an integration, identity, or training
+receipt that does not itself prove game strength. \Configured\ is a future
+protocol or active design. \Historical\ is context from a different checkpoint,
+deck, or uncontrolled public environment. \NotMeasured\ means no result is
+available, including a waived test. These labels remain adjacent to each table
+row so a detached number cannot silently acquire a stronger interpretation.

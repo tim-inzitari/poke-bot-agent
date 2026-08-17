@@ -111,22 +111,11 @@ def _option_semantic_features(
         _finite(selection.get("max_count")),
         _finite(selection.get("remain_damage_counter")),
         _finite(selection.get("remain_energy_cost")),  # 20
-        _finite(state.get("turn")),
-        _finite(state.get("turn_action_count")),
-        _bool(state.get("supporter_played")),
-        _bool(state.get("stadium_played")),
-        _bool(state.get("energy_attached")),
-        _bool(state.get("retreated")),  # 26
-        _finite(acting.get("hand_count")),
-        _finite(acting.get("deck_count")),
-        _finite(acting.get("prize_count")),
-        _finite(len(_rows(acting.get("bench", ()), field="acting bench"))),
-        _finite(acting.get("effective_bench_maximum")),
-        _finite(opponent.get("hand_count")),
-        _finite(opponent.get("deck_count")),
-        _finite(opponent.get("prize_count")),
-        _finite(len(_rows(opponent.get("bench", ()), field="opponent bench"))),
-        _finite(opponent.get("effective_bench_maximum")),  # 36
+        # The sealed recent-20 rollout rows contain the public-observation hash
+        # but not these scalar values. Keep their reserved ABI columns exact
+        # zero so training and runtime cannot disagree or learn from invented
+        # reconstructions; the base r274 policy already consumes full state.
+        *([0.0] * 16),  # 36
         _bool(payload.get("source")),
         _bool(payload.get("target")),
         _bool(payload.get("stable_simulator_discriminator")),

@@ -301,7 +301,10 @@ def main() -> int:
     args = parser.parse_args()
 
     manifest_identity = validate_full_expert_manifest(args.manifest)
-    owner = load_r260_owner_contract()
+    owner = load_r260_owner_contract(
+        expected_sha256=None,
+        expected_clarification_revision=None,
+    )
     binding = json.loads(args.sidecar_binding.read_text(encoding="utf-8"))
     daily: dict[str, str] = {}
     for day, row in dict(binding["daily_sidecar_meta_receipts"]).items():
@@ -362,7 +365,7 @@ def main() -> int:
         lethal_threat_loss_weight=0.025,
         prize_race_loss_weight=0.025,
         setup_board_outcome_loss_weight=0.025,
-        combo_state_loss_weight=0.025,
+        combo_state_loss_weight=0.0,
         visible_tutor_completion_loss_weight=0.025,
         terminal_conversion_loss_weight=0.025,
         tactical_sequence_outcome_loss_weight=0.025,
@@ -383,6 +386,9 @@ def main() -> int:
         seed=int(args.seed),
         training_provenance={
             "schema": "poke_bot.r274_resident_expert_bootstrap/v1",
+            "owner_revision_10_full_model_bootstrap": True,
+            "optimizer_scope": "all_r195_to_r274_derivative_non_combo_weights",
+            "combo_state_role": "dormant_checkpoint_pack_abi_only",
             "manifest": manifest_identity,
             "loader_workers": int(args.loader_workers),
             "resident_in_host_ram": True,

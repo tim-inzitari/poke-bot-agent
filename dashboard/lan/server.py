@@ -2401,6 +2401,31 @@ class SnapshotCache:
         handoff = value.get("specialist_handoff") or {}
         protocol = value.get("specialist_protocol") or {}
         training = value.get("training") or {}
+        derivative_bootstrap_current = bool(
+            training.get("mode")
+            == "alakazam_rule_derivative_r10_full_bootstrap"
+            and training.get("status") == "running"
+            and training.get("run")
+            == "alakazam-rule-derivative-r10-full-25epochs-c"
+            and service.get("name")
+            == "pokebot-alakazam-rule-derivative-g5-full-bootstrap-r10.service"
+            and service.get("active") is True
+            and int(service.get("pid") or 0) > 0
+            and curriculum.get("source_current") is True
+            and str((curriculum.get("progress") or {}).get("line") or "")
+        )
+        derivative_rl_current = bool(
+            training.get("mode") == "alakazam_rule_derivative_g5_rl"
+            and training.get("status") == "running"
+            and training.get("run") == "alakazam_rule_derivative_g5_r12"
+            and service.get("name")
+            == "pokebot-alakazam-rule-derivative-g5-rl.service"
+            and service.get("active") is True
+            and int(service.get("pid") or 0) > 0
+            and curriculum.get("source_current") is True
+            and curriculum.get("run") == training.get("run")
+            and str((curriculum.get("progress") or {}).get("line") or "")
+        )
         r274_current = bool(
             training.get("authoritative") is True
             and training.get("mode")
@@ -2908,14 +2933,33 @@ class SnapshotCache:
             "model": {
                 "required": True,
                 "current": bool(
-                    structure.get("verified") is True
-                    and structure.get("checkpoint")
-                    == model.get("active_checkpoint")
-                    and structure.get("checkpoint_digest")
-                    == model.get("active_checkpoint_digest")
+                    derivative_bootstrap_current
+                    or (
+                        derivative_rl_current
+                        and model.get("run") == training.get("run")
+                        and structure.get("checkpoint")
+                        == model.get("active_checkpoint")
+                        and structure.get("checkpoint_digest")
+                        == model.get("active_checkpoint_digest")
+                    )
+                    or (
+                        structure.get("verified") is True
+                        and structure.get("checkpoint")
+                        == model.get("active_checkpoint")
+                        and structure.get("checkpoint_digest")
+                        == model.get("active_checkpoint_digest")
+                    )
                 ),
-                "identity": model.get("active_checkpoint_digest"),
-                "source": structure.get("checkpoint"),
+                "identity": (
+                    training.get("run")
+                    if derivative_bootstrap_current
+                    else model.get("active_checkpoint_digest")
+                ),
+                "source": (
+                    training.get("source")
+                    if derivative_bootstrap_current
+                    else structure.get("checkpoint")
+                ),
                 "checks": {
                     "checkpoint_identity": bool(
                         structure.get("checkpoint")
@@ -2951,7 +2995,11 @@ class SnapshotCache:
                 "source": structure.get("checkpoint"),
             },
             "protocol": {
-                "required": not r274_current,
+                "required": not (
+                    r274_current
+                    or derivative_bootstrap_current
+                    or derivative_rl_current
+                ),
                 "current": protocol_identity_current,
                 "identity": (
                     runtime_specialist
@@ -2995,7 +3043,11 @@ class SnapshotCache:
             },
             "latest10": {
                 "required": not (
-                    handoff_active or handoff_transition_current or r274_current
+                    handoff_active
+                    or handoff_transition_current
+                    or r274_current
+                    or derivative_bootstrap_current
+                    or derivative_rl_current
                 ),
                 "current": bool(
                     expert_archive_current
@@ -3031,6 +3083,8 @@ class SnapshotCache:
             "terminal": {
                 "required": bool(
                     not r274_current
+                    and not derivative_bootstrap_current
+                    and not derivative_rl_current
                     and (
                         terminal_completion.get("available") is True
                         or str(training.get("phase") or "").startswith("terminal:")
@@ -3060,6 +3114,21 @@ class SnapshotCache:
         )
         replay = curriculum.get("replay_window") or {}
         r274_formal_holdout = training.get("formal_holdout_contract") or {}
+        derivative_holdout_waiver = (
+            curriculum.get("formal_holdout_waiver") or {}
+        )
+        derivative_holdout_waiver_current = bool(
+            derivative_rl_current
+            and derivative_holdout_waiver.get("verified") is True
+            and derivative_holdout_waiver.get("run_name")
+            == training.get("run")
+            and derivative_holdout_waiver.get("iteration")
+            == curriculum.get("next_iteration")
+            and derivative_holdout_waiver.get(
+                "measured_holdout_pass_claim_allowed"
+            )
+            is False
+        )
         r274_nextgate_current = bool(
             r274_current
             and r274_formal_holdout.get("verified") is True
@@ -3109,7 +3178,7 @@ class SnapshotCache:
                     "source": "live nvidia-smi device telemetry",
                 },
                 "outcomes": {
-                    "required": True,
+                    "required": not derivative_bootstrap_current,
                     "current": bool(
                         curriculum.get("last_committed_iteration") is not None
                         or curriculum.get("last_completed_iteration") is not None
@@ -3159,15 +3228,22 @@ class SnapshotCache:
                     "source": baseline.get("source"),
                 },
                 "nextgate": {
-                    "required": True,
+                    "required": not derivative_bootstrap_current,
                     "current": bool(
                         r274_nextgate_current
+                        or derivative_holdout_waiver_current
                         or gate.get("available") is True
                         or gate.get("contract_valid") is True
                     ),
-                    "identity": gate.get("checkpoint_digest")
+                    "identity": derivative_holdout_waiver.get(
+                        "candidate_checkpoint_sha256"
+                    )
+                    if derivative_holdout_waiver_current
+                    else gate.get("checkpoint_digest")
                     or model.get("active_checkpoint_digest"),
-                    "source": r274_formal_holdout.get("source")
+                    "source": derivative_holdout_waiver.get("source")
+                    if derivative_holdout_waiver_current
+                    else r274_formal_holdout.get("source")
                     if r274_nextgate_current
                     else gate.get("contract_source")
                     or (curriculum.get("gate_program") or {}).get("source"),
@@ -3242,7 +3318,14 @@ class SnapshotCache:
             required = bool(
                 host_key == "inzi"
                 or (
-                    curriculum.get("active")
+                    collecting
+                    and not (
+                        derivative_rl_current
+                        and int(
+                            (curriculum.get("progress") or {}).get("remotes")
+                            or 0
+                        ) == 0
+                    )
                     and host.get("production_active") is not False
                 )
             )
@@ -3270,9 +3353,15 @@ class SnapshotCache:
         rows["hardware"] = {
             "required": True,
             "current": bool(
-                rows["fleet_inzi"]["current"]
-                and rows["fleet_elmo"]["current"]
-                and rows["fleet_bert"]["current"]
+                all(
+                    row.get("current") is True
+                    for row in (
+                        rows["fleet_inzi"],
+                        rows["fleet_elmo"],
+                        rows["fleet_bert"],
+                    )
+                    if row.get("required") is True
+                )
             ),
             "identity": "inzi+elmo+bert",
             "source": "per-host live snapshots",

@@ -331,10 +331,30 @@ def _advance_remote_worker_checkpoint_scope(
 
 
 def _collect_remote_worker_game_cycles(state: dict[str, Any]) -> int:
-    """Collect unreachable per-game RTP/agent cycles after result serialization."""
+    """Bound optional post-job GC without changing game/result semantics.
 
-    collected = int(gc.collect())
+    The historical behavior runs a full collection after every remote packet.
+    That is the safe default for memory-sensitive workers.  A later
+    receipt-backed throughput trial can use a small ``POKEBOT_REMOTE_WORKER_GC_EVERY_JOBS``
+    interval to amortize interpreter coordination; all agent/result references
+    are already out of scope before this function runs, and worker recycling
+    remains the hard native-memory bound.
+    """
+
     lifecycle = state.setdefault("_remote_worker_memory_lifecycle", {})
+    raw_interval = os.environ.get("POKEBOT_REMOTE_WORKER_GC_EVERY_JOBS", "1")
+    try:
+        interval = max(1, min(64, int(raw_interval)))
+    except (TypeError, ValueError):
+        interval = 1
+    job_count = 1
+    if isinstance(lifecycle, dict):
+        job_count = int(lifecycle.get("post_job_gc_checks", 0)) + 1
+        lifecycle["post_job_gc_checks"] = job_count
+        lifecycle["post_job_gc_interval"] = interval
+    if job_count % interval:
+        return 0
+    collected = int(gc.collect())
     if isinstance(lifecycle, dict):
         lifecycle["post_job_gc_runs"] = int(lifecycle.get("post_job_gc_runs", 0)) + 1
         lifecycle["post_job_gc_collected"] = int(
@@ -644,7 +664,10 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
 
     from poke_bot import config as _config
     from poke_bot.agent import PolicyAgent, install_quiet_stdout, play_game
-    from poke_bot.train import load_model_from_checkpoint
+    from poke_bot.train import (
+        load_model_from_checkpoint,
+        public_rule_runtime_kwargs_for_model,
+    )
 
     our_seat = int(job.get("our_seat", 0))
     opp_id = str(job.get("opponent_id") or "self")
@@ -695,6 +718,8 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
         from poke_bot.pure_rl.leaf_self_play import plan_self_play_leaf_wiring
 
         leaf_backend = batched_infer.remote_leaf_backend_from_worker()
+        if bool(job.get("public_rule_semantic_projection_required")):
+            leaf_backend = None
         plan = plan_self_play_leaf_wiring(
             us_checkpoint=us,
             them_checkpoint=them,
@@ -727,6 +752,14 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
 
         us_leaf = leaf_backend if plan.use_leaf_for_us else None
         them_leaf = leaf_backend if plan.use_leaf_for_them else None
+        us_rule_runtime = public_rule_runtime_kwargs_for_model(us_model)
+        them_rule_runtime = public_rule_runtime_kwargs_for_model(them_model)
+        if bool(job.get("public_rule_semantic_projection_required")) and not (
+            us_rule_runtime
+        ):
+            raise RuntimeError(
+                "derivative remote job did not load its trained rule sidecar"
+            )
         temp = float(job.get("action_temperature", 1.0))
         sample = bool(job.get("sample_actions", True))
         ctx = int(job.get("model_max_context") or _config.MODEL.max_context)
@@ -748,6 +781,7 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
             own_deck_ledger_enabled=bool(
                 job.get("own_deck_ledger_enabled", False)
             ),
+            **us_rule_runtime,
         )
         them_agent = PolicyAgent(
             model=them_model,
@@ -767,6 +801,7 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
             own_deck_ledger_enabled=bool(
                 job.get("own_deck_ledger_enabled", False)
             ),
+            **them_rule_runtime,
         )
         us_agent.reset_game()
         them_agent.reset_game()
@@ -780,16 +815,34 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
             signal.alarm(timeout_s)
         t0 = time.perf_counter()
         try:
+            from poke_bot.pure_rl.no_progress import (
+                configured_max_stagnant_turns,
+            )
+
+            no_progress_limit = configured_max_stagnant_turns(job)
             if our_seat == 0:
-                result = play_game(us_agent, them_agent, deck, list(job.get("opp_deck") or deck))
+                result = play_game(
+                    us_agent,
+                    them_agent,
+                    deck,
+                    list(job.get("opp_deck") or deck),
+                    max_no_progress_turns=no_progress_limit,
+                )
             else:
-                result = play_game(them_agent, us_agent, list(job.get("opp_deck") or deck), deck)
+                result = play_game(
+                    them_agent,
+                    us_agent,
+                    list(job.get("opp_deck") or deck),
+                    deck,
+                    max_no_progress_turns=no_progress_limit,
+                )
         finally:
             if had_alarm:
                 signal.alarm(0)
         wall_s = time.perf_counter() - t0
         terminal_policy_failure = result.get("failed_seat") is not None
         terminal_failure_error = None
+        stall_terminated = bool(result.get("stall_terminated"))
         if terminal_policy_failure:
             failed = int(result["failed_seat"])
             from poke_bot.pure_rl.multi_env_self_play import (
@@ -803,7 +856,7 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
                 result.get("error") or "policy action failure"
             )
         else:
-            if result.get("incomplete"):
+            if result.get("incomplete") and not stall_terminated:
                 return _base(
                     resource_error=True,
                     game_timeout=True,
@@ -811,9 +864,16 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
                     error="incomplete",
                 )
             winner = int(result["winner"])
-            value = (
-                0.0 if winner == 2 else (1.0 if winner == our_seat else -1.0)
-            )
+            if stall_terminated:
+                from poke_bot.pure_rl.no_progress import STALL_TRAINING_RETURN
+
+                value = STALL_TRAINING_RETURN
+            else:
+                value = (
+                    0.0
+                    if winner == 2
+                    else (1.0 if winner == our_seat else -1.0)
+                )
         matchup_runtime_audit = us_agent.matchup_adapter_shadow_snapshot()
         opponent_matchup_runtime_audit = (
             them_agent.matchup_adapter_shadow_snapshot()
@@ -841,6 +901,13 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
                         if terminal_policy_failure
                         else None
                     ),
+                    "training_return_override_reason": (
+                        "no_progress_stall" if stall_terminated else None
+                    ),
+                    "training_return_override": (
+                        value if stall_terminated else None
+                    ),
+                    "stall_turns": int(result.get("stall_turns", 0)),
                     "matchup_runtime_audit": matchup_runtime_audit,
                 },
                 opp_archetype=(
@@ -852,7 +919,7 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
         if collect_both and them_agent.targets:
             rr = load_round_robin_module()
             opp_deck = list(job.get("opp_deck") or deck)
-            opp_value = 0.0 if winner == 2 else -value
+            opp_value = value if stall_terminated else (0.0 if winner == 2 else -value)
             opp_record = rr._build_selfplay_record(
                 them_agent.targets,
                 our_deck=opp_deck,
@@ -877,6 +944,13 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
                         if terminal_policy_failure
                         else None
                     ),
+                    "training_return_override_reason": (
+                        "no_progress_stall" if stall_terminated else None
+                    ),
+                    "training_return_override": (
+                        opp_value if stall_terminated else None
+                    ),
+                    "stall_turns": int(result.get("stall_turns", 0)),
                     "matchup_runtime_audit": opponent_matchup_runtime_audit,
                 },
                 opp_archetype=(
@@ -947,6 +1021,11 @@ def _remote_self_play_job_impl(job: dict[str, Any]) -> dict[str, Any]:
             "matchup_runtime_audit": matchup_runtime_audit,
             "opponent_matchup_runtime_audit": opponent_matchup_runtime_audit,
             "policy_terminal_failure": terminal_policy_failure,
+            "stall_terminated": stall_terminated,
+            "stall_turns": int(result.get("stall_turns", 0)),
+            "training_return_override": (
+                value if stall_terminated else None
+            ),
             "failed_seat": (
                 int(result["failed_seat"])
                 if terminal_policy_failure

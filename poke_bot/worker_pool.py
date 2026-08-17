@@ -76,6 +76,69 @@ def _cap_worker_native_threads() -> None:
         os.environ[var] = "1"
 
 
+def _parse_cpu_set(raw: str) -> Optional[set[int]]:
+    """Parse a small ``0-3,7`` CPU-set expression for an opt-in worker pin."""
+
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    parsed: set[int] = set()
+    try:
+        for item in value.split(","):
+            token = item.strip()
+            if not token:
+                continue
+            if "-" in token:
+                lo_raw, hi_raw = token.split("-", 1)
+                lo, hi = int(lo_raw), int(hi_raw)
+                if lo < 0 or hi < lo:
+                    return None
+                parsed.update(range(lo, hi + 1))
+            else:
+                cpu = int(token)
+                if cpu < 0:
+                    return None
+                parsed.add(cpu)
+    except (TypeError, ValueError):
+        return None
+    return parsed or None
+
+
+def apply_sim_worker_cpu_affinity() -> Optional[int]:
+    """Pin one simulator process to one allowed CPU when explicitly enabled.
+
+    CPU affinity can reduce scheduler migration and cache churn for one-process
+    / four-environment workers, but topology differs across Inzi, Elmo and
+    developer hosts.  It is therefore default-off and best-effort: an invalid
+    cgroup mask or unsupported platform leaves the worker untouched rather
+    than turning a throughput experiment into a collection failure.
+    """
+
+    if not _env_truthy("POKEBOT_SIM_WORKER_CPU_AFFINITY"):
+        return None
+    get_affinity = getattr(os, "sched_getaffinity", None)
+    set_affinity = getattr(os, "sched_setaffinity", None)
+    if not callable(get_affinity) or not callable(set_affinity):
+        return None
+    try:
+        allowed = {int(cpu) for cpu in get_affinity(0)}
+    except (OSError, TypeError, ValueError):
+        return None
+    requested = _parse_cpu_set(os.environ.get("POKEBOT_SIM_WORKER_CPUSET", ""))
+    if requested is not None:
+        allowed &= requested
+    if not allowed:
+        return None
+    identity = tuple(getattr(mp.current_process(), "_identity", ()) or ())
+    ordinal = max(0, int(identity[-1]) - 1) if identity else max(0, os.getpid())
+    cpu = sorted(allowed)[ordinal % len(allowed)]
+    try:
+        set_affinity(0, {cpu})
+    except (OSError, TypeError, ValueError):
+        return None
+    return int(cpu)
+
+
 def _worker_incarnation_generation(
     pool_generation: int, slot: int, incarnation: int
 ) -> int:
@@ -254,6 +317,7 @@ def _worker_init_impl(cg_lib_path: Optional[str], remote_channel=None) -> None:
     # Override inherited parent values (the live run inherited 32). These are
     # simulator processes; one native thread each is intentional.
     _cap_worker_native_threads()
+    apply_sim_worker_cpu_affinity()
     # Import here so each spawned worker binds its own cg runtime.
     from . import cg_env
 

@@ -1,0 +1,99 @@
+\section{Data and Training Lineage}
+
+\subsection{Eligibility and split isolation}
+
+Revision 9 selected the most recent 20 contiguous UTC days, 23 July through 11
+August 2026. Raw episodes are scanned, but derivative rows are restricted at
+the acting-seat level. A decision is eligible if and only if that seat's exact
+recorded setup deck contains literal card ID 743. This is a membership test,
+not an archetype classifier: a tech copy qualifies, and a deck label cannot
+substitute for the card record. If only one seat qualifies, the other seat's
+decisions are excluded. Each included row retains a digest of the complete
+acting-seat setup-deck multiset so list variants can be stratified without
+becoming hidden runtime inputs.
+
+The sealed corpus contains 24,335 games, 2,351,208 decision occurrences,
+18,412,973 option records, and 68 acting-deck variants. Whole UTC days are
+assigned 14/3/3 to train, validation, and evaluation. The source manifests
+report zero cross-split overlap by source archive, day, game, and group. The
+evaluation split is unavailable for fitting, support thresholds, scaling, or
+tuning. Missing or malformed acting-deck evidence causes explicit exclusion,
+not guessed eligibility.
+
+Targets come from recorded selected actions and causally aligned public
+trajectories. The system does not fabricate labels for unchosen actions.
+Counterfactual simulator data, if later required, must be a separately
+identified corpus with public-information restoration seeds and its own
+provenance. Incomplete, ambiguous, nonmonotone, or terminal-censored intervals
+are masked rather than assigned zero.
+
+\subsection{Full-model bootstrap}
+
+The candidate structure maps exact-name/shape-compatible r195 tensors into the
+r274 head architecture plus bug-fixed derivative paths. All twenty day archives
+are freshly packed against this structure; an older pre-fix tensor pack cannot
+substitute. Training runs 25 genuine full-corpus epochs, and each epoch visits
+every eligible decision occurrence once before the next epoch. Semantic-pattern
+deduplication may support analysis but cannot replace optimizer rows.
+
+All architecture-present non-combo weights are optimizer-eligible under the
+revision-10 override. Combo-state bytes remain physical only to preserve an
+existing checkpoint/pack ABI: their loss is zero and their training and runtime
+routes are disabled. A prior short, sidecar-only run is preserved as invalid
+historical evidence and cannot seed self-play, routing, or promotion. This
+negative provenance is important because a valid checkpoint is defined by its
+data and optimizer scope, not just by a finite loss.
+
+\subsection{Direct-policy self-play schedule}
+
+After validation and one checksum-bound initial package, the derivative enters
+20 direct-policy iterations. Each iteration collects exactly 8,196 source
+games: 1,024 self-play and 7,172 against a checksum-pinned public-package mix.
+Seats are balanced. At iterations 5, 10, 15, and 20, the loop seals collection
+and checkpoint state, then runs five full expert-refresh epochs on the same
+recent-20-day pack with the same non-combo optimizer scope. Kaggle packages are
+queued only at iterations 10 and 20. There is no iteration 21.
+
+Every shard, pack, checkpoint, optimizer state, opponent package, seed, seat,
+and boundary action is content-addressed. A remote worker may produce games,
+but the Inzi Blackwell host remains the sole learner and optimizer. Duplicate
+suppression and unique lease/game identities prevent one returned game from
+appearing twice. A host fault reduces eligible capacity; it does not silently
+change the checkpoint, package, or exact retained count.
+
+\subsection{Trainer-only Prize-plan canary}
+
+The Prize-plan v2 sidecar trains horizons $h\in\{1,3,6,12\}$ on complete,
+recorded, chosen action programs. Public remaining-Prize counts define a
+train-split-only monotone potential
+\begin{equation}
+  \Phi(p_{\mathrm{ours}},p_{\mathrm{opp}})
+    =2P_{\mathrm{iso}}(\mathrm{win}\mid p_{\mathrm{ours}},p_{\mathrm{opp}})-1.
+\end{equation}
+The potential cannot decrease when our remaining count falls and cannot
+increase when the opponent's remaining count falls. A receipt-bound fixed
+$\gamma$ produces segment reward
+\begin{equation}
+  r_t^{P}=\gamma\Phi(s_{t+1})-\Phi(s_t),
+\end{equation}
+a potential-based shaping form related to policy-invariant reward
+transformations~\cite{ng1999policy}. The current actor canary uses only H3:
+\begin{equation}
+\begin{split}
+ A_{\mathrm{H3}}(s,a) ={}& z-V_{\mathrm{existing}}(s)\\
+ &+0.025\,m_3c_3\left(Q_{\mathrm{plan}}^3(s,a)-V_{\mathrm{plan}}^3(s)\right).
+\end{split}
+\label{eq:h3}
+\end{equation}
+Here $m_3=1$ only when all three complete same-seat segments are causal,
+unambiguous, and not terminal-censored. The scalar $c_3\in[0,1]$ is a frozen,
+receipt-bound public confidence/action-support value fit on training data only.
+The one complete-action advantage is broadcast identically across its selected
+factorized stages. Sidecar predictions are precomputed and frozen for an actor
+unit; no actor gradient reaches the sidecar.
+
+The legacy branch is exactly $z-V_{\mathrm{existing}}(s)$. Any identity,
+alignment, support, calibration, finiteness, effective-sample-size, clipping,
+or noninterference failure restores that branch at a clean boundary without
+rewriting the policy checkpoint. H1, H6, and H12 remain diagnostic under H3
+mode with actor coefficient zero; simultaneous horizon terms are forbidden.

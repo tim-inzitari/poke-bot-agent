@@ -1,0 +1,27 @@
+[Unit]
+Description=Package and queue Alakazam derivative checkpoints every five completed iterations
+After=network-online.target pokebot-kaggle-submission-queue.service
+Wants=network-online.target pokebot-kaggle-submission-queue.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r338-submission-matchup-compat
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r338-submission-matchup-compat
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/stage_final_format_alakazam_milestone_submissions.py \
+  --runtime-root /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r338-submission-matchup-compat \
+  --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12 \
+  --representatives /home/inzi/poke-bot-agent/outputs/state/alakazam-rule-derivative-g5-submission-inputs-r332/alakazam-new-list-direct-r241-representative.v1.json \
+  --matchup-tree /home/inzi/poke-bot-agent/outputs/submissions/alakazam-rule-derivative-g5/package-r10-full-8b59af9af1d7-d/stage/matchup_tree.json \
+  --cg-root /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/cg-r236/cg \
+  --submission-root /home/inzi/poke-bot-agent/outputs/submissions/alakazam-rule-derivative-g5/milestones-r332 \
+  --receipts /home/inzi/poke-bot-agent/outputs/state/alakazam-rule-derivative-g5-milestone-submissions-r332 \
+  --queue /home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json \
+  --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python \
+  --specialist-id alakazam \
+  --maximum-iteration 19 \
+  --owner-decision-revision 332
+Nice=10
+IOSchedulingClass=idle
+

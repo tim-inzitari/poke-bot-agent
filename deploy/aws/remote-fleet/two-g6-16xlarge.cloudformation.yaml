@@ -1,0 +1,200 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Private SSM-managed Pokebot g6.16xlarge workers (2 initially, up to 4).
+
+Parameters:
+  UseManagedNetwork:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+  VpcId: {Type: String, Default: auto}
+  SubnetId: {Type: String, Default: auto}
+  ManagedAvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+  InstanceCount:
+    Type: Number
+    Default: 2
+    AllowedValues: [2, 4]
+  LatestGpuAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux-2023/gpu/recommended/image_id
+  MarketType:
+    Type: String
+    Default: on-demand
+    AllowedValues: [on-demand, spot]
+  RootVolumeGiB:
+    Type: Number
+    Default: 300
+    MinValue: 100
+    MaxValue: 2048
+  MaxRuntimeHours:
+    Type: Number
+    Default: 48
+    MinValue: 1
+    MaxValue: 168
+  ExpireAtEpoch:
+    Type: Number
+    Description: Shared absolute Unix deadline; expansion nodes inherit the original deadline.
+  DeploymentPublicKey:
+    Type: String
+    NoEcho: true
+
+Conditions:
+  UseSpot: !Equals [!Ref MarketType, spot]
+  UseFour: !Equals [!Ref InstanceCount, 4]
+  CreateManagedNetwork: !Equals [!Ref UseManagedNetwork, "true"]
+
+Resources:
+  ManagedVpc:
+    Type: AWS::EC2::VPC
+    Condition: CreateManagedNetwork
+    Properties:
+      CidrBlock: 10.77.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: [{Key: Name, Value: !Sub "${AWS::StackName}-vpc"}]
+
+  ManagedSubnet:
+    Type: AWS::EC2::Subnet
+    Condition: CreateManagedNetwork
+    Properties:
+      VpcId: !Ref ManagedVpc
+      CidrBlock: 10.77.1.0/24
+      AvailabilityZone: !Ref ManagedAvailabilityZone
+      MapPublicIpOnLaunch: false
+      Tags: [{Key: Name, Value: !Sub "${AWS::StackName}-private"}]
+
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateManagedNetwork
+    Properties:
+      GroupDescription: SSM endpoints reachable only from the managed VPC
+      VpcId: !Ref ManagedVpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 10.77.0.0/16}
+
+  SsmEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateManagedNetwork
+    Properties:
+      VpcEndpointType: Interface
+      VpcId: !Ref ManagedVpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ssm"
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref ManagedSubnet]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  SsmMessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateManagedNetwork
+    Properties:
+      VpcEndpointType: Interface
+      VpcId: !Ref ManagedVpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ssmmessages"
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref ManagedSubnet]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Pokebot workers - no inbound; access only through SSM
+      VpcId: !If [CreateManagedNetwork, !Ref ManagedVpc, !Ref VpcId]
+      SecurityGroupIngress: []
+      SecurityGroupEgress:
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  WorkerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: {Roles: [!Ref WorkerRole]}
+
+  WorkerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref LatestGpuAmiId
+        InstanceType: g6.16xlarge
+        IamInstanceProfile: {Arn: !GetAtt WorkerInstanceProfile.Arn}
+        InstanceMarketOptions: !If
+          - UseSpot
+          - MarketType: spot
+            SpotOptions: {InstanceInterruptionBehavior: terminate, SpotInstanceType: one-time}
+          - !Ref AWS::NoValue
+        InstanceInitiatedShutdownBehavior: terminate
+        MetadataOptions: {HttpEndpoint: enabled, HttpTokens: required, HttpPutResponseHopLimit: 2}
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: false
+            DeleteOnTermination: true
+            Groups: [!Ref WorkerSecurityGroup]
+            SubnetId: !If [CreateManagedNetwork, !Ref ManagedSubnet, !Ref SubnetId]
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs: {DeleteOnTermination: true, Encrypted: true, VolumeSize: !Ref RootVolumeGiB, VolumeType: gp3}
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - {Key: Project, Value: pokebot-remote-fleet}
+              - {Key: ManagedBy, Value: pokebot-aws-remote-fleet-v1}
+              - {Key: AutoTerminateHours, Value: !Ref MaxRuntimeHours}
+        UserData:
+          Fn::Base64: !Sub |
+            #!/usr/bin/env bash
+            set -euo pipefail
+            exec > >(tee -a /var/log/pokebot-bootstrap.log) 2>&1
+            systemctl enable --now amazon-ssm-agent
+            systemctl enable --now sshd
+            remaining=$(( ${ExpireAtEpoch} - $(date +%s) ))
+            if (( remaining <= 0 )); then shutdown -h now; exit 0; fi
+            systemd-run --unit pokebot-auto-expire --on-active=${!remaining}s /sbin/shutdown -h now
+            install -d -o ec2-user -g ec2-user -m 0700 /home/ec2-user/.ssh
+            printf '%s\n' '${DeploymentPublicKey}' > /home/ec2-user/.ssh/authorized_keys
+            chown ec2-user:ec2-user /home/ec2-user/.ssh/authorized_keys
+            chmod 0600 /home/ec2-user/.ssh/authorized_keys
+            install -d -m 0755 /opt/pokebot/checkpoint /opt/pokebot/state /opt/pokebot/logs
+
+  Worker1:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate: {LaunchTemplateId: !Ref WorkerLaunchTemplate, Version: !GetAtt WorkerLaunchTemplate.LatestVersionNumber}
+      Tags: [{Key: Name, Value: !Sub "${AWS::StackName}-01"}]
+  Worker2:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate: {LaunchTemplateId: !Ref WorkerLaunchTemplate, Version: !GetAtt WorkerLaunchTemplate.LatestVersionNumber}
+      Tags: [{Key: Name, Value: !Sub "${AWS::StackName}-02"}]
+  Worker3:
+    Type: AWS::EC2::Instance
+    Condition: UseFour
+    Properties:
+      LaunchTemplate: {LaunchTemplateId: !Ref WorkerLaunchTemplate, Version: !GetAtt WorkerLaunchTemplate.LatestVersionNumber}
+      Tags: [{Key: Name, Value: !Sub "${AWS::StackName}-03"}]
+  Worker4:
+    Type: AWS::EC2::Instance
+    Condition: UseFour
+    Properties:
+      LaunchTemplate: {LaunchTemplateId: !Ref WorkerLaunchTemplate, Version: !GetAtt WorkerLaunchTemplate.LatestVersionNumber}
+      Tags: [{Key: Name, Value: !Sub "${AWS::StackName}-04"}]
+
+Outputs:
+  NetworkMode:
+    Value: !If [CreateManagedNetwork, managed-private-ssm-endpoints, existing]
+  EffectiveVpcId:
+    Value: !If [CreateManagedNetwork, !Ref ManagedVpc, !Ref VpcId]
+  EffectiveSubnetId:
+    Value: !If [CreateManagedNetwork, !Ref ManagedSubnet, !Ref SubnetId]
+  Worker1InstanceId: {Value: !Ref Worker1}
+  Worker2InstanceId: {Value: !Ref Worker2}
+  Worker3InstanceId: {Condition: UseFour, Value: !Ref Worker3}
+  Worker4InstanceId: {Condition: UseFour, Value: !Ref Worker4}

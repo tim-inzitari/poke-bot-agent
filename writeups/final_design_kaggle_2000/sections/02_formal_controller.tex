@@ -1,0 +1,36 @@
+\section*{1. Constrained legal-action control}
+
+Let $I_t=\Pi_{\mathrm{act}}(o_{\leq t})$ be everything visible to the acting
+seat: its own hand and private state, the public board and history, and the
+current simulator menu. Opponent hand identities, either deck order,
+unrevealed Prize identities, terminal results not yet observed, and future
+transitions are excluded. The pinned simulator, not a learned rule model,
+defines
+\[
+  \mathcal A_t=\mathcal A(I_t).
+\]
+
+A prompt with $n$ options and legal selection size $\ell\leq k\leq u$
+contains
+\[
+  |\mathcal A_t|
+  =\sum_{k=\ell}^{u} P(n,k)
+  =\sum_{k=\ell}^{u}\frac{n!}{(n-k)!}
+\]
+ordered complete actions. Enumerating that set is unnecessary. From prefix
+$p$, the decoder considers every unused extension $p\mathbin{\Vert}i$ and,
+once $|p|\geq\ell$, an explicit \textsc{stop}. At $|p|=u$, the prefix is
+complete. Thus, for $a=(i_1,\ldots,i_k)$,
+\[
+ \pi_\theta(a\mid I_t)
+ =\prod_{j=1}^{k}\pi_\theta(i_j\mid I_t,p_{j-1})
+  \;\pi_\theta(\textsc{stop}\mid I_t,p_k)^{\mathbf 1[k<u]} .
+\]
+Every stage is masked to its simulator-supplied candidate set $C_t(p)$:
+\[
+ \pi_\theta(i\mid I_t,p)
+ =\frac{\mathbf 1[i\in C_t(p)]e^{\ell_i}}
+        {\sum_{j\in C_t(p)}e^{\ell_j}} .
+\]
+This factorization preserves complete legal support and recomputes legality
+after each selection, including order-sensitive effects.

@@ -1,0 +1,108 @@
+\section{System Design}
+
+\subsection{Simulator-owned legality}
+
+The environment boundary is intentionally asymmetric. The simulator owns exact
+rules, random outcomes, legal menus, transitions, and terminal conditions. The
+controller owns representation and ranking. At every factorized stage the
+wrapper requests the current legal list, encodes every option, selects one
+current index, and submits that index. If model load or inference fails, a
+seeded fallback still chooses from the supplied list. This cannot guarantee a
+strategically good action, but it preserves the basic legality invariant
+\begin{equation}
+  a_{t,k}\in\mathcal{A}(I_{t,k}) \quad \text{for every executed stage }k.
+\end{equation}
+
+\subsection{Causal state and option encoding}
+
+The base model uses a Transformer-style causal representation
+\cite{vaswani2017attention}. Spatial board information, acting-seat private
+state, public flags and counts, and realized action history are encoded without
+future tokens. Each legal option receives structured identity, category,
+source, destination, target, count, effect, and continuation context. A
+factorized decoder compares the current legal set in parallel, then emits one
+option at a time. For multi-select prompts, already selected options and the
+remaining budget are part of the next stage; an explicit \textsc{stop} becomes
+selectable only when the engine exposes it.
+
+The score for current option $i$ can be written schematically as
+\begin{equation}
+  \ell_i = \ell_i^{\mathrm{base}}
+    + g_{\mathrm{rule}}\,r_i
+    + \sum_{j\in\mathcal{H}} m_{j,i}\,\rho_{j,i}\,\Delta_{j,i},
+  \label{eq:fused-score}
+\end{equation}
+where $r_i$ is the rule-semantic residual, $g_{\mathrm{rule}}$ is its gated
+activation, and each auxiliary route has an availability mask $m_{j,i}$,
+bounded reliability $\rho_{j,i}$, and option-conditioned contribution
+$\Delta_{j,i}$. Equation~\eqref{eq:fused-score} describes the architectural
+contract, not a claim that every physical route is active. The census accepted
+only the public-rule projection; unsupported branches keep exact-zero gates.
+
+\subsection{Public-rule semantic repair}
+
+The legacy card representation is preserved bit-for-bit. The repair is a
+parallel residual whose schema includes:
+
+\begin{itemize}
+\item exact NUMBER values rather than a coarse bucket or text hash;
+\item selection context, effect, context card, and option count;
+\item minimum, maximum, selected, and remaining selection counts;
+\item remaining damage and energy budgets when publicly defined;
+\item stable source, target, area, slot, tool, and energy bindings;
+\item public current/maximum HP, evolution stack, appearance-this-turn, bench
+maximum, typed energy units, and once-per-turn flags when retained and proven;
+\item pinned public catalog metadata through a separately gated adapter.
+\end{itemize}
+
+Global serials and incidental menu order are not semantic identities. Stable
+within-observation entity bindings are preferred; ordinal position is a
+last-resort fallback only when the simulator distinguishes otherwise identical
+payloads. Text hashes may remain in the legacy card path but never serve as
+exact mechanics authority for the new residual. The new path is initialized to
+zero, and a layer-off test requires bit-identical base logits. This gives the
+migration an executable rollback rather than a prose promise.
+
+\subsection{Corpus-driven branch adjudication}
+
+Implementation is not evidence of usefulness. Every proposed branch is first
+physical, default-zero, and inert. The frozen schema is then applied to the
+complete eligible corpus, and a census measures public semantic collisions,
+selected-action involvement, deck and matchup distribution, transition
+witnesses, and harmless equivalences. Only a branch supported by the census may
+enter training or action scoring.
+
+For the current snapshot, adjudication accepted
+\texttt{public\_rule\_semantic\_projection}. The public metadata residual,
+repaired auxiliary heads, and all eight checklist-provenance gates remained
+unsupported or unproven and therefore exact-zero. This distinction prevents a
+paper from describing a head inventory as realized decision influence.
+
+\subsection{Checklist provenance}
+
+The schema records eight public questions at every actor-visible decision or
+forced selection: current knockout hand threshold; cards safely spendable above
+that threshold; replacement Alakazam line; unavoidable draws before the next
+attack; bench Prize exposure; immediate disruption outcome; a robust line under
+unknown Prize identity; and whether the game ends before a forced draw. Each
+channel records factual evidence, availability, an unavailable reason,
+per-option signed evidence when defined, the gate, and final residual. Unknown
+or hidden evidence yields zero. The current corpus did not authorize the
+checklist gate branch, so these records support trace and future calibration,
+not a present action-influence claim.
+
+\subsection{Typed auxiliary separation}
+
+The r274-compatible policy structure contains existing policy, value,
+strategic-head, Fusion, own-deck, and matchup paths. Revision 10 mapped immutable
+r195-compatible weights into that structure and optimized every
+architecture-present non-combo model weight. Combo tensors were retained only
+for checkpoint and pack ABI compatibility, with zero loss, no optimizer
+membership, and a disabled runtime route. The preserved Card2Vec branch is a
+specific non-regression boundary: the semantic residual may accompany it but
+cannot replace, re-embed, or rewire it.
+
+Matchup routing is also causal. A route must resolve from supported public
+identity; unknown, ambiguous, retired, or unsupported identities take the
+base-policy bypass. Model materialization alone is not route selection, and
+route selection alone is not evidence of improved outcomes.

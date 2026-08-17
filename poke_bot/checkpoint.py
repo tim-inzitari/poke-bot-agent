@@ -485,6 +485,21 @@ def assert_trusted_policy_checkpoint(path: PathLike) -> dict[str, Any]:
     remain rejected.
     """
     ckpt = load_checkpoint(path, map_location="cpu")
+    if ckpt.get("schema") == (
+        "poke_bot.alakazam_rule_derivative_composite_candidate_initialization/v1"
+    ):
+        revision = int(ckpt.get("goal_revision", -1))
+        if (
+            revision not in {9, 10}
+            or not str(ckpt.get("goal_contract_sha256", "")).startswith("sha256:")
+            or not isinstance(ckpt.get("base_model_state_dict"), dict)
+            or not isinstance(
+                ckpt.get("public_rule_semantic_projection_state_dict"), dict
+            )
+            or "public_rule_semantic_projection"
+            not in list(ckpt.get("eligible_trainable_branches") or ())
+        ):
+            raise ValueError("rule-derivative candidate checkpoint is not trusted")
     model_cfg = dict(ckpt.get("model_config") or {})
     provenance = dict(ckpt.get("provenance") or {})
     decision_context = str(

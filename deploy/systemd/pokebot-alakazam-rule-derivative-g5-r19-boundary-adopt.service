@@ -1,0 +1,15 @@
+[Unit]
+Description=Admit Elmo remote and launch RTP shadow at derivative revision-19 boundary
+After=network-online.target pokebot-alakazam-rule-derivative-g5-rl.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r19-boundary-2ab5d489b0a7
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/activate_alakazam_elmo_rtp_boundary_r19.py --commit /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/commits/iter_00000.json --expected-main-pid 2633862 --training-unit pokebot-alakazam-rule-derivative-g5-rl.service --elmo-host elmo --elmo-endpoint 192.168.1.143:8765 --compose-host /mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/docker-compose.host.yml --compose-host-sha256 sha256:f2b34b3738a5b6a685349b1edb3936cb65983f01f65e8a4d76840a02582bf87c --compose-production /mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/docker-compose.production.yml --compose-production-sha256 sha256:e36863cab2af364906c5f00f9883e8e7124e6dd7473399d591694ccd4f09c61a --compose-libcg /mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/docker-compose.libcg-official.yml --compose-libcg-sha256 sha256:66e282f5e654a4dccbb300497da2389c35629843cf2a5d7f067e31b92d1f076a --worker-image-sha256 sha256:0bcf2305438f8feecd9420cc37af8da4e3a2d81986e112597ad38fbe1e3f1aa3 --rtp-checkpoint /mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-recent20-rtp-shadow-r16-bootstrap-v3/alakazam-r16-shadow/rtp/rtp_shadow_planner.pt --rtp-checkpoint-sha256 sha256:aea301bbf958a671cc7ccfc07867b1c3d25b163ef1a2575488897bf28b587c20 --rtp-completion /mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-recent20-rtp-shadow-r16-bootstrap-v3/alakazam-r16-shadow/rtp/sha256-941f957e26b5556894578f42e6317fbe6a509c36c8259dee297b82f4fa2ed60c.COMPLETE.json --rtp-completion-sha256 sha256:941f957e26b5556894578f42e6317fbe6a509c36c8259dee297b82f4fa2ed60c --rtp-shadow-unit pokebot-alakazam-rule-derivative-g5-rtp-shadow-boundary.service --rtp-shadow-unit-path /home/admin/.config/systemd/user/pokebot-alakazam-rule-derivative-g5-rtp-shadow-boundary.service --rtp-shadow-unit-sha256 sha256:2aa430a2e4f76843fc362648b3efc08f8eecd44024d8334ad7902aeb647cfb8f --rtp-shadow-output /mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-recent20-rtp-shadow-r19-boundary-iter00000-v1 --receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/runtime/r321-elmo-rtp-boundary-activation.json --poll-seconds 0.25
+Restart=no
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target

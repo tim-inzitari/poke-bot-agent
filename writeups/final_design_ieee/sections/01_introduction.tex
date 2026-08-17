@@ -1,0 +1,64 @@
+\section{Introduction}
+
+A digital trading card game exposes a compact interface---a state and a list of
+legal menu choices---but the underlying decision is neither a fixed discrete
+action nor a fully observed Markov state. Search, recovery, target selection,
+ordered multi-select, and optional stopping can create several prompts for one
+conceptual action. The meaning of an option depends on its source, target,
+count, effect, and the public state in which the engine produced it. Meanwhile,
+each player knows private facts that the other does not. These properties make
+the problem naturally related to partially observable sequential decision
+making~\cite{kaelbling1998planning,sutton2018reinforcement}, but they also create
+software-specific failure modes that a generic POMDP description does not
+capture.
+
+The first failure mode is \emph{legal-option aliasing}. A policy may receive an
+option index or a lossy payload in which distinct public choices collapse to
+the same representation. Increasing model capacity cannot recover a distinction
+that is absent from the input. The second is \emph{information leakage}. Fields
+that are useful as offline targets---future transitions, terminal outcomes,
+opponent private cards, or unrevealed Prize identities---must not become
+deployment features. The third is \emph{claim leakage}: training accuracy,
+public leaderboard score, shadow-planner diagnostics, and formal held-out win
+rate are measurements of different objects. Combining them into one apparent
+performance result produces a paper that is stronger than its evidence.
+
+This work describes the finalized design of an isolated Alakazam
+rule-derivative controller governed by a versioned, typed contract
+\cite{projectContract2026}. The controller is direct policy at deployment. The
+official pinned simulator enumerates legal options and executes the selected
+current index; no learned component can make an illegal option legal. A causal
+state/history encoder and the legacy card representation are preserved. Beside
+them, a separately versioned residual represents exact public rule semantics:
+selection context, numeric value, count range, remaining resource budget,
+effect, and stable source/target/area/slot bindings. New branches begin at exact
+zero and become trainable only if a full corpus census supports them. This
+turns representation migration into an empirical, reversible change rather
+than an architectural assertion.
+
+The resulting paper is organized around evidence boundaries. Its contributions
+are:
+
+\begin{itemize}
+\item an acting-player information-set contract that separates runtime fields,
+target-only fields, and forbidden hidden truth;
+\item a factorized legal-action representation in which semantic repair is
+additive, zero-bypassable, and subordinate to simulator legality;
+\item a corpus-driven activation rule that accepts only the public-rule
+projection and keeps unsupported metadata, repaired-head, and checklist gates
+inert;
+\item a checksum-bound training lifecycle covering a 25-epoch full-model
+bootstrap, direct-policy self-play, expert refresh, and a trainer-only H3
+Prize-plan canary;
+\item paired evaluation and claim-status conventions that preserve failed,
+waived, historical, and not-yet-measured results instead of relabeling them.
+\end{itemize}
+
+The strongest measured technical result is a collision repair over 18.4 million
+option records. Gameplay observations are included because a systems paper
+should expose its current evidence, but their scope is narrow. A Kaggle score is
+not treated as a controlled ablation; a formal holdout whose broader gate failed
+is not presented as promotion; and a waived holdout with zero games is not a
+pass. This conservative separation follows reproducibility practice in which
+the experimental unit, data lineage, and reporting decision are explicit
+\cite{pineau2021improving}.

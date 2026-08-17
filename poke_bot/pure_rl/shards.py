@@ -3,10 +3,35 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
+
+
+_MAX_WRITE_BUFFER_BYTES = 64 * 1024 * 1024
+
+
+def compact_shard_write_buffer_bytes(*, default: int = 0) -> int:
+    """Return the explicitly opted-in compact-shard sequential write buffer.
+
+    The historical writer opens and closes the shard once per game.  That is
+    safest for a live append-only recovery path, so the default remains exact
+    legacy behavior (``0``).  A receipt-gated collection deployment may opt
+    into a bounded buffer with ``PURE_RL_SHARD_WRITE_BUFFER_BYTES``; this only
+    changes when already-complete JSONL lines become visible, never their
+    content, order, counters, or final shard bytes.
+    """
+
+    raw = os.environ.get("PURE_RL_SHARD_WRITE_BUFFER_BYTES")
+    if raw is None or not str(raw).strip():
+        return max(0, int(default))
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return max(0, int(default))
+    return max(0, min(_MAX_WRITE_BUFFER_BYTES, value))
 
 
 @dataclass
@@ -113,13 +138,22 @@ def game_to_jsonable(game: CompactGame) -> dict[str, Any]:
 class CompactShardWriter:
     """Append compact games to a JSONL shard (worker-safe via one writer)."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, buffer_bytes: Optional[int] = None):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._n_games = 0
         self._n_decisions = 0
         self._t0 = time.time()
         self._read_only = False
+        requested_buffer = (
+            compact_shard_write_buffer_bytes()
+            if buffer_bytes is None
+            else int(buffer_bytes)
+        )
+        self._buffer_bytes = max(0, min(_MAX_WRITE_BUFFER_BYTES, requested_buffer))
+        self._pending_lines: list[str] = []
+        self._pending_bytes = 0
+        self._flush_count = 0
 
     @classmethod
     def from_completed_shard(
@@ -143,18 +177,61 @@ class CompactShardWriter:
         writer._read_only = True
         return writer
 
-    def write_game(self, game: CompactGame) -> None:
+    def write_game(self, game: CompactGame) -> bool:
+        """Append one complete JSONL game, returning whether bytes were flushed.
+
+        A buffered writer retains only complete newline-terminated records in
+        RAM.  This is important for prefix readers: they either see the prior
+        durable prefix or a whole collection of new lines, never a torn JSON
+        record.  Callers that stream-featurize the shard use the return value
+        to avoid rescanning after an in-memory-only append.
+        """
+
         if self._read_only:
             raise RuntimeError(f"completed shard is immutable: {self.path}")
-        line = json.dumps(game_to_jsonable(game), separators=(",", ":"))
-        with self.path.open("a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
+        line = json.dumps(game_to_jsonable(game), separators=(",", ":")) + "\n"
         self._n_games += 1
         self._n_decisions += len(game.decisions)
+        if self._buffer_bytes <= 0:
+            self._append_text(line)
+            return True
+        self._pending_lines.append(line)
+        self._pending_bytes += len(line.encode("utf-8"))
+        if self._pending_bytes >= self._buffer_bytes:
+            return self.flush()
+        return False
 
     def write_games(self, games: Iterable[CompactGame]) -> None:
         for game in games:
             self.write_game(game)
+        # ``write_games`` has historically completed a fully visible append
+        # before it returns. Preserve that useful batch boundary even when the
+        # caller explicitly enables the throughput buffer.
+        self.flush()
+
+    def _append_text(self, data: str) -> None:
+        with self.path.open("a", encoding="utf-8") as fh:
+            fh.write(data)
+        self._flush_count += 1
+
+    def flush(self) -> bool:
+        """Flush complete buffered records in one sequential append.
+
+        No per-flush ``fsync`` is introduced: the legacy path did not fsync
+        every game either, and final receipt/sealing remains the durability
+        boundary.  On an I/O exception the pending records remain intact for
+        the caller to surface or retry; they are never silently discarded.
+        """
+
+        if self._read_only:
+            return False
+        if not self._pending_lines:
+            return False
+        data = "".join(self._pending_lines)
+        self._append_text(data)
+        self._pending_lines.clear()
+        self._pending_bytes = 0
+        return True
 
     @property
     def n_games(self) -> int:
@@ -163,6 +240,24 @@ class CompactShardWriter:
     @property
     def n_decisions(self) -> int:
         return self._n_decisions
+
+    @property
+    def buffer_bytes(self) -> int:
+        """Configured bounded buffer capacity (zero is legacy immediate IO)."""
+
+        return self._buffer_bytes
+
+    @property
+    def pending_bytes(self) -> int:
+        """Current not-yet-visible complete JSONL payload size."""
+
+        return self._pending_bytes
+
+    @property
+    def flush_count(self) -> int:
+        """Number of sequential append syscalls performed by this writer."""
+
+        return self._flush_count
 
     def throughput(self) -> dict[str, float]:
         elapsed = max(time.time() - self._t0, 1e-6)

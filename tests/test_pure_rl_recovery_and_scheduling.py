@@ -813,6 +813,7 @@ def test_spare_results_are_isolated_and_only_replace_missing_primary(
     rows = [json.loads(line) for line in shard.read_text().splitlines()]
     assert [row["episode_id"] for row in rows] == ["episode-0", "episode-3"]
     assert rows[1]["target_provenance"]["replacement_for_job_index"] == 1
+    assert rows[1]["target_provenance"]["collection_job_index"] == 1
 
 
 def test_spare_can_fill_a_contract_equivalent_missing_schedule_cell(
@@ -865,6 +866,7 @@ def test_spare_can_fill_a_contract_equivalent_missing_schedule_cell(
     provenance = row["target_provenance"]
     assert provenance["replacement_for_job_index"] == 1
     assert provenance["replacement_original_for_job_index"] == 0
+    assert provenance["collection_job_index"] == 1
     audit = promoted["promoted_runtime_audit_rows"][0]
     assert audit["job_index"] == 1
     assert audit["replacement_original_for_job_index"] == 0
@@ -2012,6 +2014,21 @@ def test_immutable_json_refuses_overwrite(tmp_path: Path) -> None:
     train_pure_rl._write_json_exclusive(path, {"iteration": 1})
     with pytest.raises(RuntimeError, match="refusing to overwrite"):
         train_pure_rl._write_json_exclusive(path, {"iteration": 2})
+
+
+def test_immutable_json_resume_accepts_only_identical_prior_bytes(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "iter.json"
+    payload = {"iteration": 5, "mode": "shadow_only"}
+    train_pure_rl._write_json_exclusive_or_verify(path, payload)
+    original = path.read_bytes()
+    train_pure_rl._write_json_exclusive_or_verify(path, payload)
+    assert path.read_bytes() == original
+    with pytest.raises(RuntimeError, match="differs on resume"):
+        train_pure_rl._write_json_exclusive_or_verify(
+            path, {"iteration": 5, "mode": "changed"}
+        )
 
 
 def test_heldout_requires_confidence_coverage_floor_and_seat_balance() -> None:

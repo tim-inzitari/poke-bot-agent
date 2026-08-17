@@ -1,7 +1,7 @@
 # Pokémon RL Goal Gateway
 
 Schema: `poke_bot.goal_gateway/v1`  
-Revision: `310`
+Revision: `334`
 
 Status: `authoritative`
 
@@ -30,6 +30,295 @@ This root gateway and `state/alakazam-new-list-direct-policy-r241.json`
 continue to own the separate r274 terminal lineage and the production handoff
 boundary. Reading `/goal` for the derivative must follow the delegated files
 above; it must not merge derivative semantics or status into r274 ownership.
+
+Under revision 313-ARCHIVE, Elmo's `/mnt/Main` ZFS pool is the long-term
+archive for the complete separately owned Alakazam rule-derivative and
+refeaturization lineage. Begin create-only checksum-exact return replication
+of every already sealed Inzi-only derivative artifact now, while leaving all
+Inzi source bytes in place and preserving Inzi as the active learner/working
+copy. Copy only closed immutable boundaries; active or mutable outputs remain
+pending until sealed. The stopped superseded Elmo tmpfs spool may be reclaimed
+only after its exact tree is durably archived on ZFS and source/archive parity
+is receipted. Archival runs at bounded low priority, may not interrupt healthy
+training, collection, Kaggle, inspector, storage, or interactive services, and
+grants no selector, serving, gradient, extra-submission, or production
+authority. The dedicated semantics and receipt inventory are canonical only in
+`goals/alakazam-elmo-rule-derivative/contract.json` revision 13.
+
+Under revision 314-DERIVATIVE-CADENCE, after the separately owned derivative's
+validated revision-10 bootstrap and initial upload, run exactly 20 derivative
+self-play iterations. At completed iterations 5, 10, 15, and 20, seal the
+iteration, run five full expert-refresh epochs on the same recent-20-day pack,
+validate the refreshed checkpoint, and durably queue exactly one package whose
+visible Kaggle label includes at least the first 12 lowercase characters of
+that checkpoint's SHA-256. Do not collect iteration 21. This pointer records
+the owner decision; the dedicated revision-12 contract owns the exact
+semantics and receipts. It grants no r274 restart or production-selector
+authority.
+
+Under revision 315-DERIVATIVE-SUBMISSION-CADENCE, keep expert refreshes at
+iterations 5, 10, 15, and 20 but queue derivative milestone submissions only
+at iterations 10 and 20. Iteration-5 and iteration-15 refreshes do not package
+or queue. The dedicated revision-13 goal and contract own the exact semantics;
+the active derivative collection continues without restart, and this grants no
+r274, RTP, combo, or production-selector authority.
+
+Under revision 316-KAGGLE, immediately submit exactly one derivative of the
+validated revision-10 checkpoint `sha256:8b59af9af1d7…a248` using the exact
+deck list from Kaggle submission `55468965`. The dedicated revision-14 goal
+and contract own the exact semantics: clone submission `55486518`'s package,
+change only `deck.csv`, visibly label both `8b59af9af1d7` and `55468965`, keep
+NO RTP/search off, and preserve active derivative self-play, r274, and the
+revision-13 milestone cadence unchanged. No retry, duplicate, or second copy
+is authorized.
+
+Under revision 318-RTP-SHADOW, prepare and, after a passing noninterference
+preflight, bootstrap a separately managed Alakazam RTP shadow sidecar from the
+sealed recent-20 complete-action overlay on Elmo. Bind the exact immutable
+base pack, overlay manifest, selected frozen derivative checkpoint, and any
+RTP warm-start checkpoint by full SHA-256. The shadow trainer may learn only
+its separately versioned semantic adapter and RTP sidecar; it may not update
+the policy checkpoint, optimizer, active derivative learner, selectors,
+Kaggle package, self-play collection, or runtime authority. The live
+derivative service continues without interruption. Stage any recurring
+boundary-following integration now, but activate it only after its own
+receipt-backed preflight and through a separate managed Elmo service. Shadow
+outputs remain serving- and action-ineligible without a later explicit owner
+promotion decision. The dedicated revision-16 goal and contract own the exact
+input identities, resource limits, bootstrap semantics, and receipts.
+
+Under revision 319-TRAINING, keep the active derivative bootstrap unchanged
+and train a separate eight-output action/reward critic on Bert from the sealed
+recent-20 feature rollouts. After the bootstrap checkpoint is immutable and
+validated, but before the next play-loop RL advantage/optimizer unit, hot swap
+only the trainer's advantage provider to the checksum-bound frozen critic.
+Preserve the existing model `value_head`, strategic `action_q_head`, policy
+state dict, runtime, Fusion, selector, and Kaggle package. The composite uses
+observed terminal return, calibrated chosen-action win advantage, and next
+one/two/three same-seat Prize-differential advantages with coefficients owned
+by dedicated derivative revision 17. Any gate or identity failure falls back
+exactly to the legacy terminal advantage. No bootstrap restart, mid-epoch
+change, replay weighting, GAE/TD, simulator branching, RTP, MCTS, search, or
+new submission is authorized.
+
+Under revision 320-TRAINING, after the derivative bootstrap and revision-319
+critic hot-swap activation receipts are both durable, readmit Bert to the main
+derivative play loop as a checksum-matched remote simulator/policy-leaf host.
+Inzi remains the sole learner and optimizer. Bert receives no gradient,
+optimizer, checkpoint-mutation, selector, serving, or Kaggle authority. Start
+it only before a fresh collection dispatch after exact checkpoint/runtime/
+simulator/schema/critic-config/opponent-package parity and a fresh managed
+health, noninterference, capacity, routing, lease, and duplicate-suppression
+receipt pass. A Bert failure affects only its exact remote capacity and may not
+reduce game counts, change semantics, or interrupt an in-flight unit. Dedicated
+derivative revision 18 owns the exact reentry boundary and receipts.
+
+Under revision 321-ELMO-RTP-BOUNDARY, after the sealed revision-16 RTP
+bootstrap, return Elmo to the main derivative play loop as the checksum-matched
+remote at the next immutable collection commit, and at that same boundary
+start a separately managed continuation of RTP shadow training from the exact
+bootstrapped planner-plus-semantic-adapter checkpoint. Start and health-check
+Elmo's existing compose-managed worker before the one boundary restart that
+makes Inzi adopt its already-staged `192.168.1.143:8765` endpoint. The RTP
+continuation remains shadow-only: it may update only a new create-only RTP
+sidecar output and may not choose actions, alter the policy learner or
+optimizer, enter Fusion, serve, package, submit, or gain selector authority.
+No mid-collection restart is allowed. Dedicated derivative revision 19 owns
+the exact checkpoint, service, resource, failure, and activation receipts.
+
+Under revision 322-CRITIC-CANARY, supersede only revision 319's first actor
+formula and activation receipt. Keep the separate eight-output Bert critic,
+the unchanged existing `value_head` and strategic `action_q_head`, and every
+runtime/search/data-isolation boundary. Convert the frozen calibrated state
+win probability to the terminal-return scale as
+`Vwin_z(s) = 2 * clamp(P(win|s), 0, 1) - 1`. The first enabled trainer-only
+canary uses exactly
+`A = (z - Vwin_z(s)) + 0.05 * m1 * (Q_prize^1(s,a) - V_prize^1(s))`,
+where `m1` masks an unavailable one-frame realized same-seat interval. Train
+and receipt `Q_win` and prize horizons 2 and 3, but give them zero actor
+coefficient until a later explicit owner revision and separate canary. A
+disabled or rolled-back canary executes the legacy
+`z - V_existing(s)` branch exactly. Do not add raw-advantage clipping or alter
+the existing AWR normalization/weight clipping. Revision 320's Bert reentry
+now requires the revision-322 activation receipt; revision 321's Elmo/RTP
+boundary is otherwise unchanged. Dedicated derivative revision 20 owns these
+semantics, the four-stream Elmo-to-Bert bootstrap transfer, and the receipts.
+
+Under revision 323-CRITIC-DRAW-SAFETY, supersede only revision 322's use of a
+binary win probability as the terminal baseline. A calibrated binary
+`P(win)` cannot represent a draw on the existing `z in {-1,0,+1}` scale, so
+the first canary retains the current frozen state-value baseline exactly and
+adds only the action-conditioned one-frame Prize term:
+`A = (z - V_existing(s)) + 0.05 * m1 * (Q_prize^1(s,a) - V_prize^1(s))`.
+Continue to train and receipt all eight sidecar outputs; `V_win`, `Q_win`, and
+Prize horizons 2/3 remain diagnostic with zero actor coefficient. Dedicated
+revision 21 defines the typed target-overlay interval and masks, preserves the
+four-stream transfer, and owns the activation receipt required by Bert
+reentry. Revision 321's Elmo/RTP boundary is unchanged.
+
+Under revision 324-ELASTIC-REMOTE-FLEET-STAGING, stage but do not activate one
+stable, loopback-bound remote-fleet gateway so the derivative trainer can later
+adopt one endpoint at a clean collection boundary and thereafter add or remove
+one or many checksum-compatible simulator/GPU-leaf remotes through an atomic
+registry without another trainer argument, code, optimizer, or checkpoint
+change. Candidate registries fail closed: every enabled backend must pass exact
+hostname, protocol/capability, worker-cap, local checkpoint-path, and full
+SHA-256 checks before the complete snapshot replaces the last known-good
+fleet. Preserve the existing compressed whole-game protocol, global game IDs,
+leases, duplicate suppression, Inzi-only learner/optimizer role, per-host
+resource receipts, and strict between-iteration checkpoint hard gate. The
+gateway remains loopback-only; remote worker ports may use authenticated
+tunnels or private routes and may never be exposed publicly. This revision
+authorizes only source, inert config, service/AWS templates, documentation, and
+tests. It does not install/start a service, provision or bill a provider,
+change a firewall/tunnel, alter the current `inzi`/`elmo`/`bert` candidate
+list, restart training, or admit a host. A later explicit owner activation
+revision must bind the exact registry/gateway/service/checkpoint/package and
+per-host inventory/routing receipts and may perform the one-time trainer
+endpoint adoption only at a fresh collection boundary. Dedicated derivative
+revision 22 is the sole typed owner of these staging semantics.
+
+Under revision 325-PRIZE-PLAN-V2-H3-CANARY-STAGING, supersede only the
+unlaunched first H1 Prize actor canary for the separately owned critic lane.
+Keep the observed terminal term exactly `z - V_existing(s)`, preserve the
+fixed eight-output sidecar and existing `value_head`/`action_q_head`, and stage
+a separately versioned public Prize-plan-v2 sidecar rather than silently
+repurposing its ABI. Its first possible enabled actor formula is exactly
+`A = (z - V_existing(s)) + 0.025 * m3 * c3 * A_plan_3`, where
+`A_plan_3 = Q_plan_3(s,a) - V_plan_3(s)` is frozen and train-split-scaled.
+Horizon means complete same-seat actions with all intervening opponent activity
+included. Train and receipt H1, H3, H6, and H12 public Prize-plan critics, but
+only H3 may have a nonzero actor coefficient in this canary; H1 is a
+comparison arm and H6/H12 remain diagnostic. The public, train-split-only,
+SHA-bound monotone Prize-race potential and each causal masked segment must be
+materialized exactly from stored transitions; missing, ambiguous, nonmonotone,
+or terminal-censored evidence is masked rather than fabricated. Before any
+implementation or activation, reconcile this direction against the measured
+stored schema; if it cannot be materialized exactly, retain the exact legacy
+branch and stage only the closest valid diagnostic target with the blocker.
+Stage implementation now, but hot-swap only at the first clean receipt-backed
+actor/optimizer-unit boundary after the target, sidecar, calibration,
+action-support, ESS/clip, noninterference, and rollback gates pass. Do not
+mutate an in-flight collection/optimizer unit, restart healthy training, add
+search/RTP/MCTS, alter replay weighting, or grant runtime/serving/selector
+authority. Dedicated derivative revision 23 is the sole typed owner; unrelated
+revision-22 elastic-fleet staging remains inactive and unchanged.
+Revision 320's future Bert reentry consequently requires the revision-23 H3
+activation receipt rather than the superseded revision-21 receipt.
+
+Under revision 326-AWS-ELASTIC-FLEET-OPERATOR-STAGING, extend only the inactive
+revision-324/dedicated-revision-22 fleet staging with the selected AWS path:
+two On-Demand `g6.16xlarge` workers initially, optionally four later, each with
+48 CPU simulator workers and one co-located L4 policy leaf. Stage a one-file
+operator using a normal AWS CLI profile, private SSM endpoint networking, no
+public IP/inbound worker port, and direct authenticated Elmo-image and
+Inzi-checkpoint streams with no S3, ECR, or Tailscale data path. Require
+content-addressed local checkpoint verification, a conservative `$500`
+pre-launch refusal guard, and one absolute 48-hour termination deadline shared
+by later expansion nodes. `add-two` may initialize only nodes three and four
+and hot-admit the complete registry snapshot without restarting the first two
+or touching trainer arguments. The billable command must refuse unless the
+separately authorized one-time clean-boundary gateway/trainer adoption already
+exists. This remains staging only: do not install tools, activate a service,
+change the trainer, create a tunnel/network, provision or bill AWS, restart
+training, or admit a host. Dedicated revision 24 owns the exact staging
+semantics.
+
+Under revision 327-DERIVATIVE-FUTURE-HOLDOUT-REDUCTION, do not interrupt or
+resize the active derivative iteration-0 evaluation. Beginning with the first
+formal holdout dispatched after its immutable commit and a receipt-backed
+boundary migration, run exactly 50 games per opponent deck in the complete
+checksum-bound formal roster, balanced 25/25 by candidate seat. With the
+current 18-deck roster this is 900 games. Run no separate research-control or
+research-game block in future iterations. Preserve the roster, weights,
+thresholds, audits, promotion semantics, and evaluation isolation. Dedicated
+derivative revision 25 owns the exact semantics and activation boundary.
+
+Under revision 328-PRIZE-PLAN-V2-H3-ACTOR-ACTIVATION, use the already-trained
+Prize-plan-v2 reward system in the derivative learner beginning at the first
+clean actor/optimizer boundary after iteration 3 is fully trained, evaluated,
+and committed. Do not change the in-flight iteration-3 optimizer. The enabled
+formula remains exactly
+`(z-V_existing(s))+0.025*m3*c3*(Q_plan_3(s,a)-V_plan_3(s))`, using frozen,
+checksum-bound predictions over the exact replay window and only public
+recorded chosen actions. Existing `value_head` and strategic `action_q_head`,
+runtime/Kaggle bytes, replay weights, and search-off state remain unchanged.
+Dedicated derivative revision 26 owns cache, activation, rollback, and receipt
+semantics; any mismatch returns to the exact legacy branch at a clean boundary.
+
+Under revision 329-ITER3-FORMAL-HOLDOUT-WAIVER, skip only the derivative
+iteration-3 900-game formal holdout. Bind the waiver to the exact trained
+candidate SHA-256, preserve the completed promotion comparison, make no
+measured holdout-pass claim, and recover the candidate without retraining.
+Commit iteration 3 and then apply revision 26's H3 reward migration before
+iteration 4. Future formal holdouts retain revision 25's 50-games-per-deck
+contract. Dedicated derivative revision 27 owns the exact waiver semantics.
+
+Under revision 330-BLACKWELL-OPTIMIZER-FEED-OPTIMIZATION, preserve the healthy
+derivative iteration-4 optimizer and its already-armed boundary adoption, then
+stage a bounded host-packed, pinned-memory, one-batch-prefetched feed for the
+Inzi Blackwell optimizer. Activate only at the first later clean optimizer
+boundary after exact replay/checkpoint loss, gradient, update, prediction,
+memory, and wall-time evidence passes. This changes no reward, replay, epoch
+count, 2,048-decision cap, optimizer schedule, model head, Fusion, Matchup
+Adapter, guide, runtime, collection, evaluation, Kaggle, r274, or production
+semantics. Dedicated derivative revision 28 is the sole typed owner and rejects
+GPU-utilization-only changes that do not reduce end-to-end optimizer time.
+
+Under revision 331-SIMULATOR-THROUGHPUT-OPTIMIZATION, implement and benchmark a
+separate default-off simulator fast path in parallel with the healthy learner.
+Retain four environments per process unless exact same-host evidence proves a
+higher value increases completed-game GPS. Target persistent worker reuse,
+bounded cross-environment policy-leaf batching, immutable encoding caches, and
+buffered sequential result writes. Activate only at a clean collection boundary
+after exact checkpoint/game-plan action, result, seed, trace, completeness,
+resource, disabled-path, and material GPS-gain receipts pass. Do not restart an
+in-flight unit or change simulator, policy, reward, replay, search/RTP/MCTS,
+trainer, r274, production, or Kaggle semantics. Dedicated derivative revision
+29 is the sole typed owner; Elmo may run isolated non-authorizing GPU
+microbenchmarks only after a fresh noninterference check.
+
+Under revision 332-DERIVATIVE-GPS-AND-FIVE-UPDATE-DIRECT-SUBMISSIONS, accept
+the owner's clean-boundary activation of the derivative's bounded sequential
+shard buffer and immutable deck-encoding cache beginning with iteration 5,
+while leaving Elmo's current worker/leaf configuration unchanged. Supersede
+only the derivative submission iterations: queue the sealed zero-indexed
+iteration checkpoints 4, 9, 14, and 19. Each package uses the exact current
+four-Enhanced-Hammer Alakazam list and is direct-policy only with MCTS/search
+assets absent and RTP off/no sidecar. One exact-package retry is permitted only
+when the prior rejection is proven local and pre-network. Dedicated derivative
+revision 30 owns the exact identities, receipts, rollback, and cadence; this
+grants no r274 or production authority.
+
+Under revision 333-DERIVATIVE-STALL-REWARD-AND-SUBMISSION-MIRROR-GATE,
+preserve the healthy active derivative iteration 5 unchanged. At its first
+sealed post-commit boundary, make a legal 64-turn no-progress self-play loop a
+typed training-only truncation with return `-1.0` for both collected seats,
+while preserving the actual unfinished engine result separately and leaving
+the existing H3 reward term unchanged. Hand/deck/discard recycling does not
+count as win progress. Before every future derivative network upload, require
+64 independent final-tarball mirror games to terminate; reject timeout,
+incomplete, illegal/fail-closed, step-cap, or no-progress cases. Official
+libcg exposes no native shuffle seed, so record framework seed 0 without
+claiming deterministic native seed control. New explicit-profile packages
+latch a serving-only legal-END escape after 512 complete turns with unchanged
+public win progress, bypassing inference only at subsequent MAIN prompts; the
+mirror hard-rejects if the game still has not progressed by 768 turns.
+Dedicated derivative revision 31 owns the exact reward, boundary, package
+escape, mirror limits, and receipts; this grants no r274 or production
+authority.
+
+Under revision 334-DERIVATIVE-TERMINAL-REFRESH-DUAL-SUBMIT-STOP, stop the
+separate derivative before iteration 14, preserve its incomplete unreceipted
+shard as ineligible evidence, run one checksum-bound expert-refresh epoch from
+the committed iteration-13 checkpoint, then upload exactly two final
+direct-policy packages from that same refreshed checkpoint: the exact
+four-Enhanced-Hammer list and the exact original r195 submission-55378392
+list. Both retain Matchup Adapters/Fusion, exclude RTP/MCTS/search, and pass the
+revision-31 final-tarball mirror gate. After both upload receipts are durable,
+stop the managed derivative production fleet. Dedicated revision 32 owns the
+exact identities and receipts; r274, critic work, interactive sessions, and
+unrelated services remain untouched.
 
 Treat Slowking as a terminal failed experiment under the explicit revision-79
 owner boundary. Preserve its sealed collections, failed evaluations, and
@@ -3869,6 +4158,26 @@ or workflow has changed:
 | 308-TRACKING | 2026-08-12 | Route `/goal` tracking for the Alakazam Elmo rule derivative through its dedicated human gateway, sole typed contract, and concise receipt-backed execution-status projection, while preserving the root/r241 ownership of the separate r274 terminal lineage and production handoff. | Active immediately as a metadata-only routing change. It changes no derivative semantics, runtime, service, selector, checkpoint, corpus, training, staging, queue, or submission authority. |
 | 309-KAGGLE | 2026-08-12 | Submit one additional checksum-exact copy of immutable r195 NO-RTP submission `55378392` with exact label `r195 iter 21 261d367e131e NO RTP`. | Activated immediately without changing archive bytes, training, or runtime. Fresh one-shot authorization was consumed before upload; Kaggle submission `55468965` was accepted for evaluation at `2026-08-12T23:38:18Z`. Typed source: `state/alakazam-r195-no-rtp-additional-copy-r309.json`. |
 | 310-TRACKING | 2026-08-13 | Record the derivative owner's one-GiB final content-addressed shard and transfer-object limit in the dedicated revision-8 goal/contract. | Pointer-only root reconciliation. The active revision-7 Elmo/Inzi re-featurization runs continue without restart or recomputation and remain predecessor evidence; private partials remain ineligible. This changes no r274, service, selector, training, submission, or activation authority. |
+| 311-TRACKING | 2026-08-13 | Route the derivative to dedicated revision 9: use the recent 20 UTC days, process one day at a time with intraday process lanes, and cap finalized content-addressed rollout shards at 15,000,000,000 bytes. | Pointer-only root reconciliation. Superseded distributed partials remain ineligible recovery evidence. This changes no r274, service, selector, training activation, submission, or serving authority. |
+| 312-TRAINING | 2026-08-13 | Dedicated revision 10 immediately supersedes conflicting derivative bootstrap instructions: pack every decision occurrence from all twenty completed bug-fixed rollout days without semantic deduplication; bootstrap the r274 head structure from exact r195 weights for 25 full epochs with every architecture-present non-combo weight optimizer-eligible; preserve combo tensors only as dormant ABI bytes; then submit exactly one validated checkpoint and begin the existing derivative self-play loop. | The 325-step/6,438-pattern sidecar-only run is invalid historical evidence and may not promote, route, or seed self-play. This order changes no r274 service. Dedicated authority remains `goals/alakazam-elmo-rule-derivative/GOAL.md` and `contract.json`; `STATUS.json` is projection only. |
+| 316-KAGGLE | 2026-08-13 | Submit checkpoint `8b59af9af1d7…` on the exact deck list from Kaggle `55468965`. | Immediate one-shot override owned by dedicated revision 14: clone submission `55486518`, change only `deck.csv`, label both identities, retain NO RTP/search-off, and do not disturb active self-play or revision-13 cadence. No retry or second copy. |
+| 317-KAGGLE | 2026-08-13 | Upload the revision-316 package now without waiting for the ordinary queue spacing boundary. | Completed as Kaggle submission `55487412` at `2026-08-13T16:21:16.367Z`, status `COMPLETE`, score `600.0`: exactly one actual network upload, zero retries, no second copy, and no training/service interruption. |
+| 319-TRAINING | 2026-08-13 | Add the full eight-output action/reward critic as a trainer-only post-bootstrap hot swap. | Train the separately checkpointed critic on Bert without changing the running bootstrap. Activate its frozen composite advantage only after the bootstrap seals and before the next RL optimizer unit; preserve existing value/Q heads and runtime bytes, and fail closed to the exact legacy advantage. Dedicated revision 17 owns the formula, splits, masks, gates, and exclusions. |
+| 320-TRAINING | 2026-08-13 | Return Bert to the main derivative play loop after bootstrap and critic activation. | Readmit Bert only as a receipt-backed remote simulator/policy-leaf host before a fresh collection dispatch; Inzi remains sole learner/optimizer. Require exact package/runtime/checkpoint/schema/critic-config parity, capacity and noninterference proof, and unchanged global game/lease/duplicate accounting. Dedicated revision 18 owns the boundary. |
+| 321-ELMO-RTP-BOUNDARY | 2026-08-13 | Return Elmo to the main derivative loop and continue RTP shadow training at the next immutable collection commit. | Start and health-check the existing compose-managed Elmo worker before one boundary restart adopts its staged endpoint; concurrently launch a separate create-only RTP shadow continuation from the exact revision-16 planner-plus-adapter checkpoint. Inzi remains sole learner and RTP remains action/serving-ineligible. Dedicated revision 19 owns the boundary and receipts. |
+| 322-CRITIC-CANARY | 2026-08-13 | Correct only the first Bert-critic actor canary while retaining all eight trained outputs. | Use signed calibrated `V_win` plus the masked one-frame chosen-action Prize advantage at coefficient `0.05`; keep `Q_win` and Prize horizons 2/3 diagnostic with zero actor coefficient. Preserve exact legacy fallback, existing heads, data order/weights, runtime, and search-off behavior. Dedicated revision 20 owns the transfer, formula, gates, and receipts; Bert reentry requires its activation receipt. |
+| 323-CRITIC-DRAW-SAFETY | 2026-08-13 | Correct the binary-win/draw scale mismatch before critic training or actor activation. | Keep `z - V_existing(s)` as the terminal term and add only the masked `0.05 * (Q_prize^1 - V_prize^1)` action term. All eight sidecar outputs still train; binary win and horizons 2/3 are diagnostic for the first canary. Dedicated revision 21 owns the typed target masks and activation receipt. |
+| 324-ELASTIC-REMOTE-FLEET-STAGING | 2026-08-13 | Stage one stable manifest-driven gateway for future one-or-many remote simulation workers without changing trainer membership on every addition. | Code/config/service/AWS templates, documentation, and tests only. Keep it loopback-bound and inactive; preserve the current candidate list and active trainer. A later owner revision and complete receipts are required for the one-time clean-boundary endpoint adoption or any new-host admission. Dedicated revision 22 owns the typed staging gates. |
+| 325-PRIZE-PLAN-V2-H3-CANARY-STAGING | 2026-08-13 | Supersede the planned H1 Prize actor canary with a separately versioned, public Prize-plan-v2 H3-only canary. | Preserve exact `z - V_existing(s)`, the fixed eight-output sidecar ABI, existing value/action-Q heads, and every runtime/search/data-isolation boundary. Train/receipt H1/H3/H6/H12 public plan critics, but only H3 can later contribute `0.025*m3*c3*(Q_plan_3-V_plan_3)` at a clean receipt-backed actor/optimizer boundary. Bind train-only monotone public `Phi`, fit/table schemas, action support, masks, calibration, ESS/clip, evaluation, rollback, and 8,192-game-per-eligible-arm paired evidence. If the measured stored schema cannot materialize exact public causal segments, record the blocker and retain exact legacy rather than fabricate labels. Dedicated revision 23 owns this staging; r22 stays inactive and unchanged. |
+| 326-AWS-ELASTIC-FLEET-OPERATOR-STAGING | 2026-08-13 | Extend only inactive elastic-fleet staging with a one-file AWS operator for two `g6.16xlarge` nodes initially and four later. | Private SSM endpoint networking, no inbound/public worker port, direct Elmo image and Inzi checkpoint streams without S3/ECR/Tailscale, SHA-bound local publication, conservative `$500` refusal, shared absolute 48-hour expiry, and new-node-only hot expansion are mandatory. Refuse billing until the separate clean-boundary gateway/trainer adoption exists. Dedicated revision 24 remains source/template/test staging only and grants no tool installation, activation, provider, tunnel, restart, host-admission, optimizer, checkpoint, selector, or training authority. |
+| 327-DERIVATIVE-FUTURE-HOLDOUT-REDUCTION | 2026-08-13 | Reduce future derivative formal holdouts to 50 games per opponent deck and remove research games. | Apply only after a clean receipt-backed boundary; preserve the active unit and all other evaluation semantics. Dedicated revision 25 owns the exact contract. |
+| 328-PRIZE-PLAN-V2-H3-ACTOR-ACTIVATION | 2026-08-14 | Use the trained Prize-plan-v2 H3 reward system in derivative actor training. | Finish iteration 3 unchanged, then activate the exact `0.025` H3 additive reward at the next clean actor/optimizer boundary with replay-window cache, immutable identity, rollback, and noninterference receipts. No runtime/Kaggle/search/replay-weight or existing-head change. Dedicated revision 26 owns the exact semantics. |
+| 329-ITER3-FORMAL-HOLDOUT-WAIVER | 2026-08-14 | Skip only the derivative iteration-3 900-game formal holdout. | Preserve the completed optimizer checkpoint and promotion comparison, bind the waiver to candidate `0078f6a652a6…`, make no measured pass claim, recover without retraining, commit iteration 3, then activate revision 26 H3 before iteration 4. Future holdouts remain 50 games per deck. Dedicated revision 27 owns the waiver. |
+| 330-BLACKWELL-OPTIMIZER-FEED-OPTIMIZATION | 2026-08-14 | Stage a host-packed, pinned-memory, one-batch-prefetched feed for the derivative Blackwell optimizer. | Preserve the active iteration and already-armed boundary adoption. Activate only at a later clean boundary after exact replay/checkpoint loss, gradient, update, prediction, memory, disabled-path, and end-to-end wall-time evidence passes. Dedicated revision 28 owns the change; no reward, replay, epoch, batch-cap, head, runtime, r274, or production semantic changes. |
+| 331-SIMULATOR-THROUGHPUT-OPTIMIZATION | 2026-08-14 | Stage default-off simulator GPS improvements in parallel with the healthy learner. | Keep the proven four-environment route unless exact same-host evidence favors more. Optimize persistent reuse, bounded leaf batching, immutable encoding caches, and buffered sequential writes; require fixed-plan action/result/seed/trace parity and material completed-game GPS gain before a clean-boundary activation. Dedicated revision 29 owns the change; no active-unit restart or simulator/policy/reward/replay/search/runtime/r274/production semantic change. |
+| 332-DERIVATIVE-GPS-AND-FIVE-UPDATE-DIRECT-SUBMISSIONS | 2026-08-14 | Activate the receipt-visible buffered writer and immutable deck cache at the sealed iteration-4 boundary, and submit every fifth completed zero-indexed derivative iteration. | Keep Elmo at 36 workers/four leaves. Queue iterations 4, 9, 14, and 19 using the exact four-Enhanced-Hammer Alakazam list and direct-policy packages with MCTS/search absent and RTP off. Permit one retry only for a proven pre-network local-validator rejection. Dedicated revision 30 owns the identities and receipts; no r274 or production change. |
+| 333-DERIVATIVE-STALL-REWARD-AND-SUBMISSION-MIRROR-GATE | 2026-08-14 | Penalize the legal mutual-recycling timeout and harden future package validation. | Do not interrupt iteration 5. At its sealed boundary, truncate new self-play after 64 turns without win progress and assign training-only return -1 to both collected seats while preserving the actual engine result. Require 64 final-package mirrors to terminate before upload; hard-fail timeout, incomplete, illegal/fail-closed, step-cap, or no-progress cases. Dedicated revision 31 owns the exact semantics and receipts. |
+| 334-DERIVATIVE-TERMINAL-REFRESH-DUAL-SUBMIT-STOP | 2026-08-16 | Stop before iteration 14, run one quick expert-refresh epoch, submit the same refreshed checkpoint on both the four-Enhanced-Hammer and original r195 lists, then stop derivative production. | The ordinary trainer is inactive and iteration 14 has no receipt. Preserve its partial as ineligible evidence, run no more self-play or holdout, require the existing final-tarball mirror gate for both direct-policy/RTP-off/search-off packages, and stop managed derivative production after both upload receipts are durable. Dedicated revision 32 owns the exact identities and receipts; r274 and unrelated work remain untouched. |
 
 ## Non-regression invariants
 

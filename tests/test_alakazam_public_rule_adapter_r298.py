@@ -150,6 +150,14 @@ def test_public_projection_is_hidden_information_invariant() -> None:
     assert "terminal" not in encoded_first.state
 
 
+def test_negative_remaining_energy_cost_is_not_applicable_sentinel() -> None:
+    for sentinel in (-1, -2):
+        observation = _observation([{"type": "Number", "number": 4}])
+        observation["select"]["remainEnergyCost"] = sentinel
+        representation = build_public_rule_representation(observation)
+        assert representation.selection["remain_energy_cost"] is None
+
+
 def test_public_projection_strictly_drops_root_and_actor_private_aliases() -> None:
     """Public fingerprints cannot drift with leaked replay/debug payloads."""
 

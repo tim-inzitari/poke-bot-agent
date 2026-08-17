@@ -178,7 +178,10 @@ def stage_one(args: argparse.Namespace, iteration: int) -> dict[str, Any]:
         python=args.python,
         archetype=args.specialist_id,
         matchup_tree=args.matchup_tree,
+        cg_root=args.cg_root,
         turn_order_preference="first_if_allowed",
+        rtp_mode="off",
+        direct_no_search_assets=True,
     )
     copy = _copy_submission_slot(bundle, root, 1)
     queued = queue_submission_copies(
@@ -221,6 +224,7 @@ def main() -> int:
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--representatives", type=Path, required=True)
     parser.add_argument("--matchup-tree", type=Path, required=True)
+    parser.add_argument("--cg-root", type=Path)
     parser.add_argument("--submission-root", type=Path, required=True)
     parser.add_argument("--receipts", type=Path, required=True)
     parser.add_argument("--queue", type=Path, required=True)
@@ -240,6 +244,8 @@ def main() -> int:
         "submission_root", "receipts", "queue", "python",
     ):
         setattr(args, key, getattr(args, key).expanduser().resolve())
+    if args.cg_root is not None:
+        args.cg_root = args.cg_root.expanduser().resolve()
     iterations = (
         [args.iteration]
         if args.iteration is not None

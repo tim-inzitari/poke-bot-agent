@@ -38,6 +38,7 @@ _RTP_R197_REQUIRED_NEURAL_PASSES = {
     "normal": 6,
     "forced_replan": 5,
 }
+_SUBMISSION_NO_PROGRESS_ESCAPE_TURNS = 512
 _RTP_PROMOTION_REQUIRED_FIELDS = frozenset(
     {
         "schema",
@@ -896,6 +897,11 @@ _SEARCH_BUDGET = None
 _SEARCH_CONFIG = None
 _GAME_COUNT = 0
 _RNG = random.Random(0)
+_NO_PROGRESS_ESCAPE_TURNS = 0
+_NO_PROGRESS_LAST_SEEN_TURN: int | None = None
+_NO_PROGRESS_LAST_PROGRESS_TURN: int | None = None
+_NO_PROGRESS_LAST_SIGNATURE: tuple[Any, ...] | None = None
+_NO_PROGRESS_ESCAPE_LATCHED = False
 _TRAINED_DORMANT_MATCHUP_ADAPTER_SCHEMA = (
     "poke_bot.trained_dormant_matchup_adapter/v1"
 )
@@ -1080,10 +1086,19 @@ def _ensure_agent_path() -> None:
 
 def _ensure_runtime():
     global _DECK, _MODEL, _CLOCK, _POLICY, _SEARCH_BUDGET, _SEARCH_CONFIG
+    global _NO_PROGRESS_ESCAPE_TURNS
     if _DECK is None:
         _DECK = _read_deck()
     if _MODEL is None:
         runtime_profile = _apply_runtime_profile()
+        raw_escape_turns = runtime_profile.get("no_progress_escape_turns")
+        if raw_escape_turns is not None:
+            if (
+                isinstance(raw_escape_turns, bool)
+                or int(raw_escape_turns) != _SUBMISSION_NO_PROGRESS_ESCAPE_TURNS
+            ):
+                raise RuntimeError("submission no-progress escape contract changed")
+            _NO_PROGRESS_ESCAPE_TURNS = int(raw_escape_turns)
         _ensure_agent_path()
         # Vendored ``cg/`` sits directly beside this entry point. The shared
         # runtime path resolver otherwise looks only for repository/Kaggle
@@ -1110,6 +1125,37 @@ def _ensure_runtime():
         checkpoint_payload = checkpoint_mod.load_checkpoint(
             checkpoint, map_location="cpu"
         )
+        derivative_checkpoint = checkpoint_payload.get("schema") == (
+            "poke_bot.alakazam_rule_derivative_composite_candidate_initialization/v1"
+        )
+        if derivative_checkpoint:
+            derivative_authority = (
+                checkpoint_payload.get("goal_revision"),
+                checkpoint_payload.get("goal_contract_sha256"),
+            )
+            if (
+                derivative_authority
+                not in {
+                    (
+                        9,
+                        "sha256:fd5460fca1ebab8ae0881de33ed7467905b8dbc2839e859a1aad89db83cd5cf8",
+                    ),
+                    (
+                        10,
+                        "sha256:91e9c60e87fe093446ef9979f64464be18e77a5041afe82164c4c6ca80d2225f",
+                    ),
+                }
+                or runtime_profile is None
+                or runtime_profile.get("public_rule_semantic_projection")
+                != "enabled"
+                or runtime_profile.get("public_rule_semantic_projection_gate")
+                != 1.0
+                or runtime_profile.get("model_checkpoint_sha256")
+                != _sha256_file(checkpoint)
+            ):
+                raise RuntimeError(
+                    "rule-derivative checkpoint lacks its exact submitted runtime binding"
+                )
         runtime_mode = (
             _runtime_profile_mode(runtime_profile) if runtime_profile else "default_off"
         )
@@ -1147,20 +1193,49 @@ def _ensure_runtime():
                 checkpoint_payload=checkpoint_payload,
                 matchup_tree=matchup_tree,
             )
-        if matchup_tree.is_file():
+        if trained_matchup_adapter_bank and matchup_tree.is_file():
             # The shipped tree is itself runtime-gated and consumes only
             # cumulative public opponent cards. PolicyAgent validates the
             # artifact before enabling the frozen trained adapter bank.
             os.environ["POKEBOT_MATCHUP_ADAPTER_RUNTIME"] = "1"
             os.environ["POKEBOT_PUBLIC_MATCHUP_TREE_PATH"] = str(matchup_tree)
         else:
-            # A legacy package with no tree must not inherit another package's
-            # runtime activation from the hosting process.
+            # A package may carry an inert tree solely for the shared queue's
+            # immutable bundle ABI.  Without a trained bank it must not turn
+            # routing on, nor inherit another package's activation state.
             os.environ.pop("POKEBOT_MATCHUP_ADAPTER_RUNTIME", None)
             os.environ.pop("POKEBOT_PUBLIC_MATCHUP_TREE_PATH", None)
         model = load_model_from_checkpoint(checkpoint, device=device)
         model.eval()
         _MODEL = model
+        semantic_projection = None
+        if derivative_checkpoint:
+            from poke_bot.alakazam_rule_derivative_model_r298 import (
+                R298PublicRuleSemanticProjection,
+                R298SemanticProjectionConfig,
+            )
+
+            semantic_projection = R298PublicRuleSemanticProjection(
+                R298SemanticProjectionConfig(
+                    **dict(
+                        checkpoint_payload[
+                            "public_rule_semantic_projection_config"
+                        ]
+                    )
+                )
+            ).to(device)
+            semantic_projection.load_state_dict(
+                checkpoint_payload["public_rule_semantic_projection_state_dict"],
+                strict=True,
+            )
+            semantic_projection.requires_grad_(False)
+            semantic_projection.eval()
+        derivative_policy_kwargs = {
+            "public_rule_semantic_projection": semantic_projection,
+            "public_rule_semantic_projection_enabled": derivative_checkpoint,
+            "public_rule_semantic_projection_gate": 1.0,
+            "strict_runtime": derivative_checkpoint,
+        }
         search_config_path = _agent_dir() / "search_config.json"
         belief_decks_path = _agent_dir() / "belief_decks.json"
         search_enabled = (
@@ -1178,7 +1253,12 @@ def _ensure_runtime():
                 # Canonical competition mode is the frozen policy-only path.
                 # The digest-bound belief-MCTS implementation below remains
                 # dormant for a separately validated future experiment.
-                _POLICY = PolicyAgent(model=model, deck=_DECK, use_mcts=False)
+                _POLICY = PolicyAgent(
+                    model=model,
+                    deck=_DECK,
+                    use_mcts=False,
+                    **derivative_policy_kwargs,
+                )
                 _CLOCK = None
             else:
                 belief_payload = json.loads(belief_decks_path.read_text())
@@ -1242,10 +1322,16 @@ def _ensure_runtime():
                     min_trusted_sims=int(_SEARCH_CONFIG["minimum_sims"]),
                     move_time_s=float(_SEARCH_CONFIG["maximum_move_s"]),
                     belief_mcts_lanes=int(_SEARCH_CONFIG.get("lane_count", 1)),
+                    **derivative_policy_kwargs,
                 )
                 _CLOCK = _POLICY.clock
         else:
-            _POLICY = PolicyAgent(model=model, deck=_DECK, use_mcts=False)
+            _POLICY = PolicyAgent(
+                model=model,
+                deck=_DECK,
+                use_mcts=False,
+                **derivative_policy_kwargs,
+            )
             _CLOCK = None
         if runtime_mode in {"legacy_off", "off"}:
             if (
@@ -1313,6 +1399,121 @@ def _fail_closed(obs_dict: dict, preferred: list[int]) -> list[int]:
     return _RNG.sample(range(option_count), count) if count > 0 else []
 
 
+def _submission_progress_pokemon(card: Any) -> tuple[Any, ...] | None:
+    if not isinstance(card, Mapping):
+        return None
+    return (
+        card.get("id"),
+        card.get("hp"),
+        card.get("maxHp"),
+        tuple(sorted(str(value) for value in (card.get("energies") or []))),
+        tuple(sorted(str(value) for value in (card.get("energyCards") or []))),
+    )
+
+
+def _submission_win_progress_signature(obs_dict: dict) -> tuple[Any, ...]:
+    """Public win progress; hand/deck/discard recycling is intentionally inert."""
+
+    current = dict(obs_dict.get("current") or {})
+    rows: list[tuple[Any, ...]] = []
+    for raw_player in current.get("players") or []:
+        player = raw_player if isinstance(raw_player, Mapping) else {}
+        rows.append(
+            (
+                len(player.get("prize") or []),
+                tuple(
+                    value
+                    for value in (
+                        _submission_progress_pokemon(card)
+                        for card in (player.get("active") or [])
+                    )
+                    if value is not None
+                ),
+                tuple(
+                    value
+                    for value in (
+                        _submission_progress_pokemon(card)
+                        for card in (player.get("bench") or [])
+                    )
+                    if value is not None
+                ),
+                bool(player.get("poisoned")),
+                bool(player.get("burned")),
+                bool(player.get("asleep")),
+                bool(player.get("paralyzed")),
+                bool(player.get("confused")),
+            )
+        )
+    return tuple(rows)
+
+
+def _reset_submission_no_progress_escape() -> None:
+    global _NO_PROGRESS_LAST_SEEN_TURN, _NO_PROGRESS_LAST_PROGRESS_TURN
+    global _NO_PROGRESS_LAST_SIGNATURE, _NO_PROGRESS_ESCAPE_LATCHED
+
+    _NO_PROGRESS_LAST_SEEN_TURN = None
+    _NO_PROGRESS_LAST_PROGRESS_TURN = None
+    _NO_PROGRESS_LAST_SIGNATURE = None
+    _NO_PROGRESS_ESCAPE_LATCHED = False
+
+
+def _legal_end_turn_choice(obs_dict: dict) -> list[int] | None:
+    selection = obs_dict.get("select") if obs_dict else None
+    if not isinstance(selection, Mapping):
+        return None
+    context = selection.get("context")
+    if not (
+        context == 0
+        or str(context or "").strip().lower() in {"main", "selectcontext.main"}
+    ):
+        return None
+    options = selection.get("option") or []
+    minimum = int(selection.get("minCount", 0) or 0)
+    maximum = min(int(selection.get("maxCount", 0) or 0), len(options))
+    if not minimum <= 1 <= maximum:
+        return None
+    matches = [
+        index
+        for index, option in enumerate(options)
+        if isinstance(option, Mapping)
+        and (
+            option.get("type") == 14
+            or str(option.get("type") or "").strip().lower()
+            in {"end", "end_turn", "optiontype.end"}
+        )
+    ]
+    return [matches[0]] if matches else None
+
+
+def _submission_no_progress_escape(obs_dict: dict) -> list[int] | None:
+    """Latch a package-only legal END escape after an extreme public stall."""
+
+    global _NO_PROGRESS_LAST_SEEN_TURN, _NO_PROGRESS_LAST_PROGRESS_TURN
+    global _NO_PROGRESS_LAST_SIGNATURE, _NO_PROGRESS_ESCAPE_LATCHED
+
+    if _NO_PROGRESS_ESCAPE_TURNS <= 0:
+        return None
+    current = dict(obs_dict.get("current") or {})
+    if int(current.get("result", -1)) != -1:
+        return None
+    turn = int(current.get("turn", 0) or 0)
+    if turn != _NO_PROGRESS_LAST_SEEN_TURN:
+        signature = _submission_win_progress_signature(obs_dict)
+        if signature != _NO_PROGRESS_LAST_SIGNATURE:
+            _NO_PROGRESS_LAST_SIGNATURE = signature
+            _NO_PROGRESS_LAST_PROGRESS_TURN = turn
+        _NO_PROGRESS_LAST_SEEN_TURN = turn
+        if (
+            _NO_PROGRESS_LAST_PROGRESS_TURN is not None
+            and turn - _NO_PROGRESS_LAST_PROGRESS_TURN
+            >= _NO_PROGRESS_ESCAPE_TURNS
+        ):
+            _NO_PROGRESS_ESCAPE_LATCHED = True
+    if not _NO_PROGRESS_ESCAPE_LATCHED:
+        return None
+    return _legal_end_turn_choice(obs_dict)
+
+
 def agent(obs_dict: dict) -> list[int]:
     """Kaggle entry point."""
 
@@ -1327,6 +1528,7 @@ def agent(obs_dict: dict) -> list[int]:
 
     observation = to_observation_class(obs_dict)
     if observation.select is None:
+        _reset_submission_no_progress_escape()
         if policy is not None:
             policy.reset_game()
         if _SEARCH_BUDGET is not None:
@@ -1334,6 +1536,10 @@ def agent(obs_dict: dict) -> list[int]:
                 _SEARCH_BUDGET.reset()
             _GAME_COUNT += 1
         return list(deck)
+
+    escape_action = _submission_no_progress_escape(obs_dict)
+    if escape_action is not None:
+        return _fail_closed(obs_dict, escape_action)
 
     try:
         if _SEARCH_BUDGET is None:

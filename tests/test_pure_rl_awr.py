@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 import torch
 
@@ -15,6 +17,7 @@ from poke_bot.train import (
     _precompute_awr_baseline_cache_value_only,
     _policy_argmax_predictions,
     batch_losses,
+    prepare_host_sparse_batch,
     rl_train_step,
 )
 
@@ -112,6 +115,71 @@ def test_pure_rl_defaults_zero_aux_weights() -> None:
     assert cfg.epochs == 2
 
 
+def test_offline_h3_metrics_match_live_awr_advantage_path() -> None:
+    """The one-forward gate must reproduce the trainer's FP32 AWR math."""
+
+    from scripts.evaluate_alakazam_prize_plan_v2_awr_gate import (
+        _metric,
+        _offline_h3_metric,
+    )
+    from poke_bot.train import evaluate
+
+    torch.manual_seed(41)
+    model = _small_model()
+    sequences = [
+        GameSequence(
+            episode_id=f"offline-h3-{seat}",
+            seat=seat,
+            archetype="alakazam",
+            opp_archetype="mirror",
+            deck=[1] * 60,
+            value=value,
+            decisions=[_decision(seat * 2), _decision(seat * 2 + 1)],
+        )
+        for seat, value in ((0, 1.0), (1, -1.0))
+    ]
+    cfg = TrainConfig.pure_rl_defaults(
+        games_per_batch=1,
+        max_decisions_per_batch=8,
+        capture_awr_weight_distribution=True,
+    )
+    baseline: dict[tuple[int, int, int], float] = {}
+    evaluate(
+        model,
+        sequences,
+        cfg=cfg,
+        awr_capture_baseline=baseline,
+        allow_masked_own_deck_ledger_rows=True,
+    )
+    additive = {
+        key: (-0.025 if index % 2 else 0.0125)
+        for index, key in enumerate(sorted(baseline))
+    }
+    live = _metric(
+        evaluate(
+            model,
+            sequences,
+            cfg=cfg,
+            awr_advantage_cache=additive,
+            allow_masked_own_deck_ledger_rows=True,
+        )
+    )
+    offline = _offline_h3_metric(
+        sequences,
+        cfg=cfg,
+        baseline=baseline,
+        additive=additive,
+    )
+    assert offline.keys() == live.keys()
+    for name in live:
+        if name == "decisions":
+            assert offline[name] == live[name]
+        else:
+            assert offline[name] == pytest.approx(
+                live[name], rel=1e-6, abs=1e-5
+            ), name
+
+
 def test_policy_only_agreement_matches_argmax_and_skips_value_head(
     monkeypatch,
 ) -> None:
@@ -176,6 +244,61 @@ def test_policy_agreement_uses_its_proven_inference_decision_cap(
     assert captured == {"games_per_batch": 7, "max_decisions": 6144}
 
 
+def test_policy_agreement_packs_independent_histories_with_exact_argmax_parity(
+    monkeypatch,
+) -> None:
+    torch.manual_seed(31)
+    model = _small_model()
+    sequences = [
+        GameSequence(
+            episode_id="agreement-packed-a",
+            seat=0,
+            archetype="dragapult",
+            opp_archetype="iono",
+            deck=[1] * 60,
+            value=1.0,
+            decisions=[_decision(0), _decision(1), _decision(2)],
+        ),
+        GameSequence(
+            episode_id="agreement-packed-b",
+            seat=1,
+            archetype="dragapult",
+            opp_archetype="iono",
+            deck=[1] * 60,
+            value=-1.0,
+            decisions=[_decision(3)],
+        ),
+    ]
+    serial_cfg = TrainConfig.pure_rl_defaults(
+        games_per_batch=8,
+        max_decisions_per_batch=64,
+        agreement_max_decisions_per_batch=64,
+        agreement_pack_temporal_games=False,
+    )
+    packed_cfg = TrainConfig.pure_rl_defaults(
+        games_per_batch=8,
+        max_decisions_per_batch=64,
+        agreement_max_decisions_per_batch=64,
+        agreement_pack_temporal_games=True,
+    )
+
+    original_temporal_encode = model.temporal_encode
+    calls = {"serial": 0, "packed": 0}
+    mode = "serial"
+
+    def count_temporal_calls(*args, **kwargs):
+        calls[mode] += 1
+        return original_temporal_encode(*args, **kwargs)
+
+    monkeypatch.setattr(model, "temporal_encode", count_temporal_calls)
+    serial = _policy_argmax_predictions(model, sequences, cfg=serial_cfg)
+    mode = "packed"
+    packed = _policy_argmax_predictions(model, sequences, cfg=packed_cfg)
+
+    assert packed == serial
+    assert calls == {"serial": 2, "packed": 1}
+
+
 def test_pure_rl_model_under_param_budget() -> None:
     from poke_bot.pure_rl.model_profile import (
         build_pure_rl_model,
@@ -225,6 +348,65 @@ def test_awr_runs_without_soft_targets() -> None:
     assert 0.0 < metrics.awr_effective_sample_fraction <= 1.0
 
 
+def test_optimizer_sparse_pack_preserves_loss_predictions_and_gradients() -> None:
+    torch.manual_seed(97)
+    reference_model = _small_model()
+    candidate_model = _small_model()
+    candidate_model.load_state_dict(reference_model.state_dict())
+    reference_model.train()
+    candidate_model.train()
+    sequences = [
+        GameSequence(
+            episode_id=f"sparse-prefetch-{seat}",
+            seat=seat,
+            archetype="dragapult",
+            opp_archetype="iono",
+            deck=[1] * 60,
+            value=(1.0 if seat == 0 else -1.0),
+            decisions=[_decision(seat * 4), _decision(seat * 4 + 1)],
+        )
+        for seat in (0, 1)
+    ]
+    reference_predictions: list[int] = []
+    reference_loss, reference_metrics = batch_losses(
+        reference_model,
+        sequences,
+        pure_rl=True,
+        prediction_sink=reference_predictions,
+    )
+    reference_loss.backward()
+    reference_gradients = {
+        name: parameter.grad.detach().clone()
+        for name, parameter in reference_model.named_parameters()
+        if parameter.grad is not None
+    }
+
+    host = prepare_host_sparse_batch(
+        sequences,
+        board_words=reference_model.num_board_tokens,
+        card_vocab=reference_model.belief_card_vocab,
+        pin_memory=False,
+    )
+    prepared = host.to_device(torch.device("cpu"), non_blocking=False)
+    candidate_predictions: list[int] = []
+    candidate_loss, candidate_metrics = batch_losses(
+        candidate_model,
+        sequences,
+        pure_rl=True,
+        prediction_sink=candidate_predictions,
+        prepared_sparse_batch=prepared,
+    )
+    candidate_loss.backward()
+
+    assert candidate_predictions == reference_predictions
+    assert candidate_metrics.__dict__ == reference_metrics.__dict__
+    assert torch.equal(candidate_loss.detach(), reference_loss.detach())
+    for name, parameter in candidate_model.named_parameters():
+        if name in reference_gradients:
+            assert parameter.grad is not None
+            assert torch.equal(parameter.grad, reference_gradients[name]), name
+        else:
+            assert parameter.grad is None
 def test_frozen_awr_baseline_survives_value_head_update() -> None:
     torch.manual_seed(0)
     model = _small_model()
@@ -261,6 +443,73 @@ def test_frozen_awr_baseline_survives_value_head_update() -> None:
         before.raw_advantage_mean_abs
     )
     assert online.raw_advantage_mean != pytest.approx(before.raw_advantage_mean)
+
+
+def test_frozen_external_advantages_add_only_h3_to_raw_awr_credit() -> None:
+    torch.manual_seed(31)
+    model = _small_model()
+    seq = GameSequence(
+        episode_id="h3-provider",
+        seat=0,
+        archetype="alakazam",
+        opp_archetype="iono",
+        deck=[1] * 60,
+        value=1.0,
+        decisions=[_decision(0), _decision(1)],
+    )
+    _, legacy_metrics = batch_losses(
+        model,
+        [seq],
+        pure_rl=True,
+        awr_normalize_advantages=False,
+    )
+    # The frozen cache contributes only the H3 additive term; the policy's
+    # actual in-batch z-V_existing baseline remains authoritative.
+    supplied = {(id(seq), 0, 0): 0.25, (id(seq), 1, 0): -0.75}
+    loss, metrics = batch_losses(
+        model,
+        [seq],
+        pure_rl=True,
+        awr_advantage_cache=supplied,
+        awr_normalize_advantages=False,
+    )
+    assert torch.isfinite(loss)
+    assert metrics.raw_advantage_mean == pytest.approx(
+        legacy_metrics.raw_advantage_mean - 0.25
+    )
+    assert metrics.normalized_advantage_mean == pytest.approx(metrics.raw_advantage_mean)
+    assert math.isfinite(metrics.normalized_advantage_std)
+    assert metrics.normalized_advantage_std > 0.0
+
+
+def test_frozen_external_advantages_fail_closed_on_missing_or_nonfinite_rows() -> None:
+    model = _small_model()
+    seq = GameSequence(
+        episode_id="h3-provider-invalid",
+        seat=0,
+        archetype="alakazam",
+        opp_archetype="iono",
+        deck=[1] * 60,
+        value=0.0,
+        decisions=[_decision(0), _decision(1)],
+    )
+    with pytest.raises(KeyError, match="advantage cache is missing"):
+        batch_losses(
+            model,
+            [seq],
+            pure_rl=True,
+            awr_advantage_cache={(id(seq), 0, 0): 0.0},
+        )
+    with pytest.raises(FloatingPointError, match="non-finite"):
+        batch_losses(
+            model,
+            [seq],
+            pure_rl=True,
+            awr_advantage_cache={
+                (id(seq), 0, 0): 0.0,
+                (id(seq), 1, 0): float("nan"),
+            },
+        )
 
 
 def test_value_only_packed_baseline_matches_reference_values_and_awr() -> None:

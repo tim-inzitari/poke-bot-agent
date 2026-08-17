@@ -1,0 +1,37 @@
+{
+  "schema": "poke_bot.alakazam_prize_plan_h3_parallel_scan_benchmark/v1",
+  "status": "passed_real_inzi_replay_sample",
+  "observed_at_utc": "2026-08-14T17:00:14Z",
+  "host": "inzi",
+  "sample_source": {
+    "collection_receipt_sha256": "sha256:ecabca5c69b61fbf98d953da82eeeb456b56c54c8ae29f68d961d3352b32b305",
+    "replay_cache_manifest_sha256": "sha256:a59b6704bbabbafa548882ab4ad82f88304c9ef87ca67f78c2a9329ecf4ca904",
+    "iteration": 4,
+    "sample_bytes": 67474825,
+    "wanted_complete_actions": 9414
+  },
+  "implementation": {
+    "baseline_source_sha256": "sha256:cf1381bbcdf21715aa3ff7c7508dd4f3a372db822b45ee886f6bf453261966cb",
+    "candidate_source_sha256": "sha256:42df0fbb0bb507df94db1ecf6b4c9e1a6d9df7a76a009bab30b611539b052ac8",
+    "benchmark_source_sha256": "sha256:1a3d6ce3d883a80d369ffc5459f6d518bc795d64edc1608a9c2952dea7e817e0",
+    "test_source_sha256": "sha256:5c81fd0daac6ae566ac6029c940dc3a715055daa9f7cc98f64693e9d561bc119",
+    "workers": 8,
+    "inner_shard_byte_ranges": true,
+    "private_bounded_spools": true,
+    "parent_deterministic_inference_and_merge": true
+  },
+  "measurement": {
+    "serial_seconds": 304.75461479998194,
+    "parallel_seconds": 11.53385017902474,
+    "speedup": 26.42262644907625,
+    "membership_example_count_and_mask_parity": true,
+    "range_overlap_detected": false
+  },
+  "activation": {
+    "current_iteration_4_restarted": false,
+    "first_eligible_iteration": 5,
+    "safe_boundary_required": true,
+    "reward_semantics_changed": false,
+    "r274_or_production_authority": false
+  }
+}

@@ -16,7 +16,12 @@ from typing import Any
 
 AUTH_SCHEMA = "poke_bot.kaggle_submission_authorization/v1"
 QUEUE_SCHEMA = "poke_bot.kaggle_submission_queue/v1"
-PRE_NETWORK_BLOCK = "no matching unused one-shot explicit authorization"
+PRE_NETWORK_BLOCKS = frozenset(
+    {
+        "no matching unused one-shot explicit authorization",
+        "queued submission model/deck identity validation failed",
+    }
+)
 STANDING_OWNER_DECISION = "GOAL.md#/decision-ledger/revision-18"
 
 
@@ -45,6 +50,7 @@ def main() -> int:
     parser.add_argument("--authorization", type=Path, required=True)
     parser.add_argument("--specialist-id", required=True)
     parser.add_argument("--copy-number", type=int, required=True)
+    parser.add_argument("--checkpoint-sha256")
     parser.add_argument("--approval-text", required=True)
     parser.add_argument("--expires-seconds", type=float, default=3600.0)
     args = parser.parse_args()
@@ -63,6 +69,10 @@ def main() -> int:
             for row in queue.get("queue") or []
             if row.get("specialist_id") == args.specialist_id
             and int(row.get("copy_number", -1)) == args.copy_number
+            and (
+                args.checkpoint_sha256 is None
+                or row.get("checkpoint_checksum") == args.checkpoint_sha256
+            )
         ]
         if len(matches) != 1:
             raise RuntimeError("expected exactly one matching queue entry")
@@ -70,9 +80,12 @@ def main() -> int:
         failure = str(entry.get("failure_reason") or "")
         if (
             entry.get("queue_status") != "failed"
-            or PRE_NETWORK_BLOCK not in failure
+            or failure not in PRE_NETWORK_BLOCKS
             or entry.get("submission_id") is not None
             or entry.get("submitted_at") is not None
+            or entry.get("attempt_started_at") is not None
+            or entry.get("attempt_quota_date") is not None
+            or int(entry.get("attempt_count") or 0) != 0
         ):
             raise RuntimeError("queue entry is not a proven pre-network block")
         upload = Path(str(entry.get("file") or "")).expanduser().resolve()

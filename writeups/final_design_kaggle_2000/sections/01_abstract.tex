@@ -1,0 +1,16 @@
+\section*{Abstract}
+
+Powerful Hand Alakazam turns Pok\'emon TCG play into a coupled counting and
+control problem: hand size determines attack output, Prize values determine
+the shortest winning route, and every optional draw changes deck-out risk.
+The agent must solve that problem inside a variable, multi-stage legal action
+space without reading hidden opponent information. We formulate the final
+design as a constrained direct policy. A pinned simulator supplies the legal
+set; an autoregressive decoder assigns probability to every ordered legal
+selection; a public-rule semantic key prevents distinct choices from sharing
+one representation; and a bounded residual augments, rather than replaces,
+the learned option embedding. Training adds a masked three-action Prize-plan
+advantage, while serving remains direct-policy inference. The resulting
+design connects deck mathematics to model mathematics: exact knockout
+thresholds, safe hand slack, forced-draw feasibility, and Prize routes become
+causal quantities that the controller can represent and learn.

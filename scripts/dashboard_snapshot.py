@@ -69,6 +69,17 @@ ALAKAZAM_R274_SIDECAR_INDEX_SERVICE = (
 ALAKAZAM_R281_ADAPTER_BOOTSTRAP_SERVICE = (
     "pokebot-alakazam-r281-bootstrap-adapters.service"
 )
+ALAKAZAM_RULE_DERIVATIVE_BOOTSTRAP_SERVICE = (
+    "pokebot-alakazam-rule-derivative-g5-full-bootstrap-r10.service"
+)
+ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE = (
+    "pokebot-alakazam-rule-derivative-g5-rl.service"
+)
+ALAKAZAM_RULE_DERIVATIVE_RL_ITERATIONS = 20
+ALAKAZAM_RULE_DERIVATIVE_BOOTSTRAP_LOG = (
+    ROOT
+    / "outputs/bootstrap/alakazam-rule-derivative-r10-full-25epochs-c.log"
+)
 # The typed source and transferred bytes retain r241 in their physical names as
 # immutable design/transport provenance.  All active dashboard identities are
 # r274 under the revision-275 conversion boundary.
@@ -13899,6 +13910,118 @@ def parse_curriculum_progress(
             )
             continue
 
+        baseline_marker = re.search(
+            r"\[rl-prep\] baseline (begin|complete) "
+            r"(?:sequences=(\d+) rows=(\d+) mode=(\S+)|"
+            r"rows=(\d+) seconds=([0-9.]+))",
+            line,
+        )
+        if baseline_marker:
+            state, sequences, begin_rows, mode, complete_rows, seconds = (
+                baseline_marker.groups()
+            )
+            complete = state == "complete"
+            rows = int(complete_rows or begin_rows or 0)
+            progress.update(
+                line=baseline_marker.group(0).strip(),
+                stage="train:prep:baseline",
+                iteration=iteration_hint,
+                epoch=0,
+                percent=100.0 if complete else None,
+                current=rows if complete else 0,
+                total=rows,
+                unit="selected stages",
+                rate=None,
+                rate_unit=None,
+                eta="parent-policy agreement" if complete else "snapshotting frozen V(s)",
+                gps=None,
+                sps=None,
+                remotes=0,
+                metrics={
+                    key: value
+                    for key, value in {
+                        "sequences": int(sequences) if sequences else None,
+                        "baseline_rows": rows,
+                        "baseline_mode": mode,
+                        "elapsed_seconds": float(seconds) if seconds else None,
+                    }.items()
+                    if value is not None
+                },
+            )
+            continue
+
+        agreement_marker = re.search(
+            r"\[rl-agreement\] parent (begin|complete) "
+            r"(?:sequences=(\d+) rows=(\d+)|"
+            r"predictions=(\d+) seconds=([0-9.]+))",
+            line,
+        )
+        if agreement_marker:
+            state, sequences, begin_rows, predictions, seconds = (
+                agreement_marker.groups()
+            )
+            complete = state == "complete"
+            rows = int(predictions or begin_rows or 0)
+            progress.update(
+                line=agreement_marker.group(0).strip(),
+                stage="train:agreement:parent",
+                iteration=iteration_hint,
+                epoch=0,
+                percent=100.0 if complete else None,
+                current=rows if complete else 0,
+                total=rows,
+                unit="selected stages",
+                rate=None,
+                rate_unit=None,
+                eta="optimizer epochs" if complete else "freezing parent argmaxes",
+                gps=None,
+                sps=None,
+                remotes=0,
+                metrics={
+                    key: value
+                    for key, value in {
+                        "sequences": int(sequences) if sequences else None,
+                        "prediction_rows": rows,
+                        "elapsed_seconds": float(seconds) if seconds else None,
+                    }.items()
+                    if value is not None
+                },
+            )
+            continue
+
+        optimizer_marker = re.search(
+            r"\[rl-train\] optimizer begin epochs=(\d+) "
+            r"train_sequences=(\d+) validation_sequences=(\d+) "
+            r"parent_step=(\d+)",
+            line,
+        )
+        if optimizer_marker:
+            epochs, train_sequences, validation_sequences, parent_step = (
+                optimizer_marker.groups()
+            )
+            progress.update(
+                line=optimizer_marker.group(0).strip(),
+                stage="train:policy",
+                iteration=iteration_hint,
+                epoch=1,
+                percent=0.0,
+                current=0,
+                total=int(epochs),
+                unit="epochs",
+                rate=None,
+                rate_unit=None,
+                eta="first optimizer batch",
+                gps=None,
+                sps=None,
+                remotes=0,
+                metrics={
+                    "train_sequences": int(train_sequences),
+                    "validation_sequences": int(validation_sequences),
+                    "parent_step": int(parent_step),
+                },
+            )
+            continue
+
         preparation = re.search(
             r"rl-(prep|agreement)\s+(baseline|parent|candidate):\s*(\d+)%.*?\s(\d+)/(\d+)\s+\[([^]]*)\]",
             line,
@@ -14061,8 +14184,13 @@ def infer_between_bar_progress(
                 marker, marker_kind = line, kind
     if marker_kind not in {"collect_done", "train_begin"}:
         return progress
-    # Only replace the just-completed collection bar for this same iteration.
-    if progress.get("iteration") != iteration_hint or float(progress.get("percent") or 0) < 100:
+    # A current-service train-begin marker is authoritative even when an
+    # immutable deployment still contains a stale, incomplete collection
+    # tqdm alias from an earlier process. A collect-done marker alone still
+    # requires the bar itself to prove completion.
+    if progress.get("iteration") != iteration_hint:
+        return progress
+    if marker_kind == "collect_done" and float(progress.get("percent") or 0) < 100:
         return progress
     updated = dict(progress)
     updated.update(
@@ -14251,6 +14379,175 @@ def infer_post_train_gate_progress(
         ),
     )
     return updated
+
+
+def derivative_rl_journal_progress(
+    progress: dict[str, Any],
+    raw_journal: str,
+    *,
+    iteration_hint: int | None,
+) -> tuple[dict[str, Any], str | None]:
+    """Overlay cwd-copied tqdm with the current derivative service attempt."""
+
+    if iteration_hint is None:
+        return progress, None
+    clean = ANSI_RE.sub("", raw_journal).replace("\r", "\n")
+    resume_pattern = rf"\[pure_rl\] RESUME next_iteration={int(iteration_hint)}\b"
+    attempts = list(re.finditer(resume_pattern, clean))
+    # A busy optimizer emits enough tqdm updates to push the hours-old RESUME
+    # marker out of the bounded journal tail.  The journal is already scoped
+    # to the active managed derivative unit and ``iteration_hint`` comes from
+    # the receipt-backed run state, so current exact progress frames remain a
+    # valid live source even when that marker is no longer in the tail.
+    attempt = clean[attempts[-1].start() :] if attempts else clean
+    # A new exact tqdm in this attempt is already the best inner-step truth.
+    attempt_progress = parse_curriculum_progress(
+        "",
+        attempt,
+        iteration_hint=iteration_hint,
+    )
+    if (
+        attempt_progress.get("line")
+        and attempt_progress.get("iteration") == iteration_hint
+    ):
+        # Older active deployments emit the expensive replay/AWR preparation
+        # bars as journald binary blobs.  Once the plain guide-row marker is
+        # newer than the last parseable replay-cache bar, do not leave the
+        # dashboard frozen at "replay cache 100%".  The current deployment
+        # cannot distinguish its frozen-V baseline and parent-agreement
+        # substeps textually, so report the truthful combined preparation
+        # window; newer deployments emit the exact markers parsed above.
+        guide_offset = attempt.rfind("[rl-train] current-deck guide rows=")
+        replay_offset = attempt.rfind("replay-cache load ")
+        if (
+            guide_offset > replay_offset >= 0
+            and str(attempt_progress.get("stage") or "")
+            == "train:preparing"
+        ):
+            attempt_progress.update(
+                line=(
+                    "optimizer prep: frozen V(s) baseline -> parent-policy "
+                    "agreement -> first optimizer heartbeat"
+                ),
+                stage="train:prep:baseline_or_agreement",
+                iteration=int(iteration_hint),
+                epoch=0,
+                percent=None,
+                current=None,
+                total=None,
+                unit="selected stages",
+                rate=None,
+                rate_unit=None,
+                eta="waiting for exact optimizer heartbeat",
+                gps=None,
+                sps=None,
+                remotes=0,
+                metrics={
+                    "replay_cache_complete": True,
+                    "guide_row_validation_complete": True,
+                    "frozen_value_baseline": True,
+                    "parent_policy_agreement": True,
+                    "exact_subphase_markers_available": False,
+                },
+            )
+        return attempt_progress, (
+            f"journalctl --user -u {ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE}"
+        )
+
+    marker_match = list(
+        re.finditer(
+            rf"\[pure_rl\] RECOVER_TRAINED_CANDIDATE "
+            rf"iter={int(iteration_hint)}\s+digest=(sha256:[0-9a-f]+)…?\s+"
+            r"skip_retrain=1\s+resume=([^\s]+)",
+            attempt,
+        )
+    )
+    if not marker_match:
+        return progress, None
+    marker = marker_match[-1]
+    digest = marker.group(1)
+    destination = marker.group(2)
+    updated = dict(progress)
+    updated.update(
+        line=(
+            f"pure_rl recovery:trained_candidate iter={int(iteration_hint)}: "
+            f"sealed {digest}… restored · retraining skipped · "
+            f"resuming {destination}"
+        ),
+        stage="recovery:trained_candidate",
+        iteration=int(iteration_hint),
+        epoch=None,
+        percent=100.0,
+        current=1,
+        total=1,
+        unit="candidate",
+        rate=None,
+        rate_unit=None,
+        eta="restoring promotion/holdout state",
+        gps=None,
+        sps=None,
+        remotes=0,
+        metrics={
+            "candidate_checkpoint_digest": digest,
+            "skip_retrain": True,
+            "resume": destination,
+        },
+    )
+    return updated, (
+        f"journalctl --user -u {ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE}"
+    )
+
+
+def derivative_formal_holdout_waiver_state(
+    run_dir: Path | None,
+    run_name: str | None,
+    next_iteration: int | None,
+) -> dict[str, Any]:
+    """Verify an owner receipt that intentionally waives one formal holdout."""
+
+    if run_dir is None or run_name != "alakazam_rule_derivative_g5_r12":
+        return {"available": False, "verified": False}
+    candidates = sorted(
+        (run_dir / "runtime").glob("*formal-holdout-waiver.json"),
+        key=lambda path: path.stat().st_mtime,
+    )
+    if not candidates:
+        return {"available": False, "verified": False}
+    path = candidates[-1]
+    receipt = read_json(path)
+    iteration = receipt.get("iteration")
+    checkpoint = (
+        run_dir / "checkpoints" / f"iter_{int(iteration):05d}.pt"
+        if isinstance(iteration, int)
+        else None
+    )
+    verified = bool(
+        receipt.get("schema")
+        == "poke_bot.alakazam_rule_derivative_iter3_holdout_waiver/v1"
+        and int(receipt.get("owner_goal_revision") or 0) >= 27
+        and int(receipt.get("root_owner_revision") or 0) >= 329
+        and receipt.get("run_name") == run_name
+        and isinstance(next_iteration, int)
+        and iteration == next_iteration
+        and int(receipt.get("formal_holdout_games_skipped") or 0) == 900
+        and receipt.get("formal_holdout_only") is True
+        and receipt.get("promotion_comparison_preserved") is True
+        and receipt.get("measured_holdout_pass_claim_allowed") is False
+        and receipt.get("trained_candidate_reused_without_retraining") is True
+        and str(receipt.get("candidate_checkpoint_sha256") or "").startswith(
+            "sha256:"
+        )
+        and checkpoint is not None
+        and checkpoint.is_file()
+    )
+    return {
+        **receipt,
+        "available": True,
+        "verified": verified,
+        "source": str(path),
+        "checkpoint": str(checkpoint) if checkpoint is not None else None,
+        "updated_at": path.stat().st_mtime,
+    }
 
 
 def _expert_rehearsal_exclusion_seconds(
@@ -14598,6 +14895,10 @@ def _is_curriculum_service_unit(unit: str) -> bool:
     lowered = str(unit).lower()
     if lowered == ALAKAZAM_R274_RL_SERVICE:
         return True
+    if lowered == ALAKAZAM_RULE_DERIVATIVE_BOOTSTRAP_SERVICE:
+        return True
+    if lowered == ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE:
+        return True
     if "pure-rl" in lowered or "curriculum" in lowered:
         return True
     # Owner hard-swap r175 unit is final-format-alakazam-rtp-r175-rl (not *-h10*).
@@ -14709,6 +15010,101 @@ def _select_curriculum_run_dir(
         if candidates
         else None
     )
+
+
+def _managed_process_cwd(pid: int) -> Path | None:
+    """Resolve a managed trainer cwd without accepting an arbitrary path."""
+
+    try:
+        cwd = Path(f"/proc/{int(pid)}/cwd").resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    permitted_roots = (
+        ROOT,
+        Path("/home/inzi/poke-bot-agent-deployments"),
+    )
+    if not any(cwd == base or base in cwd.parents for base in permitted_roots):
+        return None
+    return cwd
+
+
+def _curriculum_progress_paths(
+    run_name: str | None,
+    active_units: list[str],
+    active_pids: list[int],
+) -> tuple[Path | None, Path | None]:
+    """Bind progress to the run identity or the active trainer's cwd alias."""
+
+    status = (
+        ROOT / "outputs/logs" / f"{run_name}.progress.status"
+        if run_name
+        else None
+    )
+    progress_log = (
+        ROOT / "outputs/logs" / f"{run_name}.progress.log"
+        if run_name
+        else None
+    )
+    if ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE not in active_units:
+        return status, progress_log
+
+    # The derivative runtime is an immutable deployment envelope. Its tqdm
+    # writer intentionally uses a cwd-local stable alias rather than the run
+    # name. The service PID makes that alias exact and prevents cross-run data.
+    for pid in active_pids:
+        cwd = _managed_process_cwd(pid)
+        if cwd is None:
+            continue
+        alias_status = cwd / "outputs/logs/pure_rl_core.progress.status"
+        alias_log = cwd / "outputs/logs/pure_rl_core.progress.log"
+        if alias_status.is_file() or alias_log.is_file():
+            return (
+                alias_status if alias_status.is_file() else None,
+                alias_log if alias_log.is_file() else None,
+            )
+    return status, progress_log
+
+
+def _managed_unit_journal_tail(unit: str, *, lines: int = 400) -> str:
+    """Read current managed-service telemetry without trusting stale aliases."""
+
+    try:
+        result = subprocess.run(
+            [
+                "journalctl",
+                "--user",
+                "-u",
+                str(unit),
+                "-n",
+                str(max(1, int(lines))),
+                "--no-pager",
+                "-o",
+                "json",
+                "--output-fields=MESSAGE",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    decoded: list[str] = []
+    for raw_line in result.stdout.splitlines():
+        try:
+            message = json.loads(raw_line).get("MESSAGE")
+        except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(message, str):
+            decoded.append(message)
+        elif isinstance(message, list) and all(
+            isinstance(value, int) and 0 <= value <= 255 for value in message
+        ):
+            # systemd serializes control-character tqdm frames as byte arrays
+            # in JSON output.  Decode them explicitly instead of accepting
+            # journalctl's human-facing "[N B blob data]" placeholder.
+            decoded.append(bytes(message).decode("utf-8", errors="replace"))
+    return "\n".join(decoded)
 
 
 def active_expert_pack_state() -> dict[str, Any]:
@@ -15371,15 +15767,10 @@ def curriculum_state() -> dict[str, Any]:
         or loop.get("run_name")
         or (run_dir.name if run_dir else None)
     )
-    run_status = (
-        ROOT / "outputs/logs" / f"{run_name}.progress.status"
-        if run_name
-        else None
-    )
-    run_progress_log = (
-        ROOT / "outputs/logs" / f"{run_name}.progress.log"
-        if run_name
-        else None
+    run_status, run_progress_log = _curriculum_progress_paths(
+        run_name,
+        active_units,
+        active_pids,
     )
     # Once a run identity exists, never fall back to the global alias: it may
     # still point at a previous lineage during the first seconds of launch.
@@ -15399,10 +15790,31 @@ def curriculum_state() -> dict[str, Any]:
     run_training_log = (
         ROOT / "outputs/logs" / f"{run_name}.log" if run_name else TRAINING_LOG
     )
+    derivative_loop_active = (
+        ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE in active_units
+    )
     raw_training_log = read_tail(
-        run_training_log if run_training_log.is_file() else TRAINING_LOG,
+        run_training_log
+        if run_training_log.is_file()
+        else Path("/dev/null")
+        if derivative_loop_active
+        else TRAINING_LOG,
         250_000,
     )
+    if derivative_loop_active:
+        managed_journal = _managed_unit_journal_tail(
+            ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE,
+            lines=800,
+        )
+        if managed_journal:
+            raw_training_log = managed_journal
+            journal_progress = parse_curriculum_progress(
+                "",
+                managed_journal,
+                iteration_hint=iteration_hint,
+            )
+            if journal_progress.get("stage"):
+                progress = journal_progress
     progress = reconcile_completed_train_epoch(
         progress,
         raw_training_log,
@@ -15422,6 +15834,13 @@ def curriculum_state() -> dict[str, Any]:
         iteration_hint=iteration_hint,
     )
     progress = annotate_expert_optimizer_sps(progress, raw_training_log)
+    journal_progress_source: str | None = None
+    if derivative_loop_active:
+        progress, journal_progress_source = derivative_rl_journal_progress(
+            progress,
+            managed_journal,
+            iteration_hint=iteration_hint,
+        )
     replay_window = replay_window_state(
         run_dir,
         loop,
@@ -15576,6 +15995,25 @@ def curriculum_state() -> dict[str, Any]:
             else None
         ),
     )
+    formal_holdout_waiver = derivative_formal_holdout_waiver_state(
+        run_dir,
+        run_name,
+        (
+            int(loop["next_iteration"])
+            if isinstance(loop.get("next_iteration"), int)
+            else None
+        ),
+    )
+    if (
+        formal_holdout_waiver.get("verified") is True
+        and isinstance(gate_program.get("next_gate"), dict)
+    ):
+        gate_program["next_gate"] = {
+            **gate_program["next_gate"],
+            "status": "owner_waived_for_iteration",
+            "owner_waiver": formal_holdout_waiver,
+            "measured_pass_claimed": False,
+        }
     if isinstance(gate_program.get("next_gate"), dict):
         active_gate = gate_program["next_gate"]
         active_gate["runtime"] = strong_public_gate_runtime_state(
@@ -15681,6 +16119,8 @@ def curriculum_state() -> dict[str, Any]:
         (value for value in (status_updated_at, log_updated_at) if value is not None),
         default=None,
     )
+    if journal_progress_source is not None:
+        progress_updated_at = time.time()
     status_age_s = time.time() - progress_updated_at if progress_updated_at else None
     progress_current = bool(
         run_name
@@ -15703,10 +16143,16 @@ def curriculum_state() -> dict[str, Any]:
         "progress_not_cross_run": run_status is None or status_path == run_status,
         "progress_log_bound_to_run": (
             not active_units
-            or bool(run_progress_log is not None and run_progress_log.is_file())
+            or bool(
+                (run_progress_log is not None and run_progress_log.is_file())
+                or (run_status is not None and run_status.is_file())
+            )
         ),
     }
     progress_source = (
+        journal_progress_source
+        if journal_progress_source is not None
+        else
         run_dir / "manifest.json"
         if expert_startup_pending and run_dir is not None
         else run_progress_log
@@ -15754,8 +16200,13 @@ def curriculum_state() -> dict[str, Any]:
         "research_controls": research_controls,
         "strong_public_practice": strong_public_practice,
         "gate_program": gate_program,
+        "formal_holdout_waiver": formal_holdout_waiver,
         "progress_source": str(progress_source),
-        "progress_status_source": str(status_path),
+        "progress_status_source": (
+            journal_progress_source
+            if journal_progress_source is not None
+            else str(status_path)
+        ),
         "progress_log_source": str(run_progress_log) if run_progress_log else None,
         "progress_updated_at": progress_updated_at,
         "progress_age_s": status_age_s,
@@ -19906,6 +20357,201 @@ def annotate_gpu_production_assignments(
             )
 
 
+def alakazam_rule_derivative_bootstrap_state() -> dict[str, Any]:
+    """Project the revision-10 full-model derivative bootstrap from its unit.
+
+    This experiment deliberately lives under ``outputs/bootstrap`` and its
+    managed command has no ``--run-name`` argument, so the generic Pure-RL run
+    directory discovery cannot identify it. The service identity and its
+    exact append-only tqdm log are the authoritative live sources.
+    """
+
+    service = unit_state(ALAKAZAM_RULE_DERIVATIVE_BOOTSTRAP_SERVICE, user=True)
+    active = bool(service.get("active") and int(service.get("pid") or 0) > 0)
+    if not active:
+        return {
+            "available": False,
+            "active": False,
+            "status": "stopped",
+            "service": service,
+            "source": str(ALAKAZAM_RULE_DERIVATIVE_BOOTSTRAP_LOG),
+        }
+
+    raw_log = read_tail(ALAKAZAM_RULE_DERIVATIVE_BOOTSTRAP_LOG, 2_000_000)
+    progress = parse_curriculum_progress("", raw_log, iteration_hint=0)
+    progress = annotate_expert_optimizer_sps(progress, raw_log)
+    epoch = int(progress.get("epoch") or 0)
+    epochs = int(progress.get("epochs") or 25)
+    inner_percent = progress.get("percent")
+    completed_epochs = max(0, epoch - 1) if epoch else 0
+    overall_percent = (
+        100.0
+        * (completed_epochs + float(inner_percent or 0.0) / 100.0)
+        / max(1, epochs)
+    )
+    exact_progress = bool(progress.get("stage") and progress.get("line"))
+    if not exact_progress:
+        progress.update(
+            stage="train:expert:loading",
+            epoch=epoch or 1,
+            epochs=epochs,
+            unit="batches",
+            eta="loading corpus",
+        )
+    progress["available"] = exact_progress
+    run = "alakazam-rule-derivative-r10-full-25epochs-c"
+    pure_rl_progress = {
+        "available": True,
+        "label": "Alakazam rule-derivative full bootstrap",
+        "run": run,
+        "outer": {
+            "kind": "epochs",
+            "completed_epochs": completed_epochs,
+            "active_epoch": epoch or 1,
+            "total_epochs": epochs,
+            "percent": round(overall_percent, 2),
+            # Compatibility fields for older dashboard clients.
+            "completed_iterations": completed_epochs,
+            "active_iteration": epoch or 1,
+            "last_iteration_index": epochs,
+            "total_iterations": epochs,
+        },
+        "inner": progress,
+        "active_step_index": 1,
+        "steps": [
+            {"index": 0, "name": "recent-20 corpus pack", "status": "complete"},
+            {"index": 1, "name": "25 full-corpus epochs", "status": "active"},
+            {"index": 2, "name": "validation + checkpoint seal", "status": "pending"},
+            {"index": 3, "name": "single Kaggle package", "status": "pending"},
+            {"index": 4, "name": "derivative self-play", "status": "pending"},
+        ],
+        "summary": str(progress.get("line") or "Loading full derivative corpus"),
+        "source": str(ALAKAZAM_RULE_DERIVATIVE_BOOTSTRAP_LOG),
+        "read_only": True,
+    }
+    return {
+        "available": True,
+        "current": True,
+        "active": True,
+        "fresh": True,
+        "status": "running",
+        "mode": "alakazam_rule_derivative_r10_full_bootstrap",
+        "specialist_id": "alakazam",
+        "run": run,
+        "phase": str(progress.get("stage") or "train:expert:loading"),
+        "epoch": progress.get("epoch"),
+        "epochs": progress.get("epochs") or epochs,
+        "current": progress.get("current"),
+        "total": progress.get("total"),
+        "unit": progress.get("unit"),
+        "percent": progress.get("percent"),
+        "rate": progress.get("rate"),
+        "rate_unit": progress.get("rate_unit"),
+        "samples_per_second": progress.get("sps"),
+        "metrics": progress.get("metrics") or {},
+        "latest_line": progress.get("line"),
+        "progress": progress,
+        "pure_rl_progress": pure_rl_progress,
+        "service": service,
+        "source": str(ALAKAZAM_RULE_DERIVATIVE_BOOTSTRAP_LOG),
+        "log": str(ALAKAZAM_RULE_DERIVATIVE_BOOTSTRAP_LOG),
+        "updated_at": time.time(),
+    }
+
+
+def alakazam_rule_derivative_rl_progress(
+    curriculum: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the outer loop and exact inner tqdm for derivative Pure-RL."""
+
+    if (
+        not curriculum.get("active")
+        or ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE
+        not in (curriculum.get("active_units") or [])
+    ):
+        return {"available": False}
+    progress = dict(curriculum.get("progress") or {})
+    stage = str(progress.get("stage") or curriculum.get("stage") or "starting")
+    if stage.startswith("collect:self_play"):
+        active_step = 0
+    elif stage.startswith("collect:public_mix"):
+        active_step = 1
+    elif stage.startswith("drain:"):
+        active_step = 2
+    elif stage.startswith(("train:preparing", "train:prep", "train:agreement")):
+        active_step = 3
+    elif stage.startswith("train:"):
+        active_step = 4
+    elif stage.startswith("recovery:trained_candidate"):
+        active_step = 5
+    elif stage.startswith(("promote:", "promotion:", "audit:")):
+        active_step = 5
+    elif stage.startswith(("heldout:", "evaluate:")):
+        active_step = 6
+    elif stage.startswith(("commit:", "receipt:")):
+        active_step = 7
+    else:
+        active_step = 0
+    last_completed = curriculum.get("last_completed_iteration")
+    completed = (
+        max(0, int(last_completed) + 1)
+        if isinstance(last_completed, int)
+        else 0
+    )
+    iteration = progress.get("iteration")
+    if not isinstance(iteration, int):
+        iteration = curriculum.get("next_iteration")
+    if not isinstance(iteration, int):
+        iteration = completed
+    step_names = [
+        "self-play collection",
+        "public-mix collection",
+        "seal + result drain",
+        "optimizer preparation",
+        "policy optimization",
+        "promotion + safety",
+        "formal holdout",
+        "receipt commit",
+    ]
+    return {
+        "available": True,
+        "label": "Alakazam rule-derivative Pure-RL",
+        "run": curriculum.get("run"),
+        "outer": {
+            "kind": "iterations",
+            "completed_iterations": completed,
+            "active_iteration": iteration,
+            "last_iteration_index": ALAKAZAM_RULE_DERIVATIVE_RL_ITERATIONS - 1,
+            "total_iterations": ALAKAZAM_RULE_DERIVATIVE_RL_ITERATIONS,
+            "percent": round(
+                100.0
+                * min(completed, ALAKAZAM_RULE_DERIVATIVE_RL_ITERATIONS)
+                / ALAKAZAM_RULE_DERIVATIVE_RL_ITERATIONS,
+                2,
+            ),
+        },
+        "inner": {**progress, "available": bool(progress.get("line"))},
+        "active_step_index": active_step,
+        "steps": [
+            {
+                "index": index,
+                "name": name,
+                "status": (
+                    "complete"
+                    if index < active_step
+                    else "active"
+                    if index == active_step
+                    else "pending"
+                ),
+            }
+            for index, name in enumerate(step_names)
+        ],
+        "summary": str(progress.get("line") or stage),
+        "source": curriculum.get("progress_source"),
+        "read_only": True,
+    }
+
+
 def main() -> None:
     # Elmo is an independent host. Fetch its three views concurrently so a
     # slow SSH handshake cannot serialize into the outer Bert→Inzi timeout.
@@ -19939,10 +20585,20 @@ def main() -> None:
         r274_prestart = alakazam_r241_prestart_progress(
             source_materialization=r241_source_materialization
         )
+        derivative_play_loop_active = bool(
+            curriculum.get("active")
+            and ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE
+            in (curriculum.get("active_units") or [])
+        )
         # Prefer an authoritative Crustle projection whenever it is available.
         # Historical stopped Marnie RL must not mask the active Crustle selector
         # during brief systemd transitions or after Marnie completion.
-        if r274_prestart.get("selected") is True:
+        if derivative_play_loop_active:
+            # A PID-bound live curriculum outranks durable prestart and stopped
+            # specialist projections. Leave this empty so the generic live
+            # selector remains authoritative below.
+            active_final_refresh = {}
+        elif r274_prestart.get("selected") is True:
             active_final_refresh = r274_prestart
         elif final_crustle.get("status") in {"running", "stopped", "complete"}:
             active_final_refresh = final_crustle
@@ -20033,7 +20689,22 @@ def main() -> None:
                 },
                 "final_format_refresh": active_final_refresh,
             }
-        if postupload_boundary.get("current") is True:
+        if derivative_play_loop_active:
+            derivative_service = unit_state(
+                ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE,
+                user=True,
+            )
+            service = {
+                **derivative_service,
+                "command": (
+                    derivative_service.get("command")
+                    or derivative_service.get("exec_start")
+                ),
+            }
+        if (
+            postupload_boundary.get("current") is True
+            and not derivative_play_loop_active
+        ):
             boundary_service = dict(postupload_boundary.get("service") or {})
             boundary_progress = dict(postupload_boundary.get("progress") or {})
             boundary_active = postupload_boundary.get("active") is True
@@ -20085,6 +20756,47 @@ def main() -> None:
                     "command": boundary_service.get("command"),
                 },
                 "managed_boundary": postupload_boundary,
+            }
+        derivative_bootstrap = alakazam_rule_derivative_bootstrap_state()
+        if derivative_bootstrap.get("active") is True:
+            # Revision 10 is the immediate delegated owner override. Its live
+            # managed unit outranks historical specialist/prestart projections
+            # without changing any trainer or selector state.
+            active_final_refresh = derivative_bootstrap
+            service = dict(derivative_bootstrap.get("service") or {})
+            derivative_progress = dict(
+                derivative_bootstrap.get("progress") or {}
+            )
+            curriculum = {
+                **curriculum,
+                "active": True,
+                "active_units": [ALAKAZAM_RULE_DERIVATIVE_BOOTSTRAP_SERVICE],
+                "active_pids": [int(service.get("pid") or 0)],
+                "run": derivative_bootstrap.get("run"),
+                "iteration": 0,
+                "stage": derivative_bootstrap.get("phase"),
+                "progress": derivative_progress,
+                "progress_source": derivative_bootstrap.get("source"),
+                "progress_status_source": derivative_bootstrap.get("source"),
+                "progress_log_source": derivative_bootstrap.get("log"),
+                "progress_updated_at": derivative_bootstrap.get("updated_at"),
+                "source_current": True,
+                "remote_workers": 0,
+                "remote_endpoints": [],
+                "scheduler_queues": {
+                    "available": False,
+                    "mode": "optimizer_only",
+                    "phase": derivative_bootstrap.get("phase"),
+                    "phase_source": "exact live trainer tqdm",
+                },
+                "worker": {
+                    **(curriculum.get("worker") or {}),
+                    "active": True,
+                    "rss_bytes": service.get("memory_bytes"),
+                    "source": "systemd-user-cgroup",
+                    "command": service.get("exec_start"),
+                },
+                "rule_derivative_bootstrap": derivative_bootstrap,
             }
         gpus = gpu_state()
         elmo = elmo_future.result()
@@ -20196,6 +20908,14 @@ def main() -> None:
     training = authoritative_training_state(
         curriculum, transition, specialist_handoff
     )
+    derivative_rl_progress = alakazam_rule_derivative_rl_progress(curriculum)
+    if derivative_rl_progress.get("available") is True:
+        training = {
+            **training,
+            "mode": "alakazam_rule_derivative_g5_rl",
+            "specialist_id": "alakazam",
+            "pure_rl_progress": derivative_rl_progress,
+        }
     if active_final_refresh.get("status") in {
         "running",
         "complete",
@@ -20859,6 +21579,187 @@ def main() -> None:
                         "minimum_games_each_update": 128,
                     }
                 ],
+            },
+        }
+    if (
+        active_final_refresh.get("mode")
+        == "alakazam_rule_derivative_r10_full_bootstrap"
+    ):
+        derivative_service = dict(active_final_refresh.get("service") or {})
+        final_model_override = {
+            "implementation": "TemporalCabtTransformer",
+            "architecture": "Alakazam rule-derivative r10 full model",
+            "run": active_final_refresh.get("run"),
+            "profile_id": "r274-head-structure+rule-derivative-r10",
+            "active_checkpoint": None,
+            "active_checkpoint_digest": None,
+            "checkpoint_structure": {
+                "verified": False,
+                "phase": "live_full_model_bootstrap",
+                "reason": "checkpoint seals only after epoch 25 validation",
+            },
+            "parameter_source": (
+                "immutable r195 weights mapped into the bug-fixed r274 "
+                "head/architecture structure"
+            ),
+            "heads": {
+                "architecture_present": 21,
+                "training_active": 20,
+                "fusion_routes_active": 20,
+                "combo_state": {
+                    "enabled": False,
+                    "architecture_present": True,
+                    "loss_weight": 0.0,
+                    "optimizer_active": False,
+                    "runtime_enabled": False,
+                    "reason": "dormant checkpoint/pack ABI only",
+                },
+                "tactical_outcome": {
+                    "enabled": True,
+                    "fusion_route_enabled": True,
+                },
+                "public_rule_semantic_projection": {
+                    "enabled": True,
+                    "optimizer_active": True,
+                },
+            },
+            "training_targets": {
+                "current_deck_guide": {
+                    "enabled": False,
+                    "loss_weight": 0.0,
+                }
+            },
+            "decision_fusion": {
+                "available": True,
+                "verified": True,
+                "phase": "full_model_bootstrap",
+                "training_enabled": True,
+                "runtime_enabled": False,
+                "serving_eligible": False,
+                "reason": "bootstrap checkpoint is not yet sealed or activated",
+            },
+            "matchup_adapter_runtime": {
+                "verified": False,
+                "enabled": False,
+                "training_enabled": True,
+                "reason": "matchup paths train now; runtime waits for validation",
+            },
+            "training_schedule": {
+                "phase": "full_corpus_bootstrap",
+                "epochs_target": 25,
+                "eligible_decisions_visited_once_per_epoch": True,
+                "combo_state_loss_weight": 0.0,
+            },
+            "runtime_identity": {
+                "active_learner": "alakazam-rule-derivative-r10",
+                "runtime_build": "bootstrap-only",
+                "runtime_root": str(ROOT),
+                "service_active": derivative_service.get("active") is True,
+                "service_state": (
+                    f"{derivative_service.get('active_state')}/"
+                    f"{derivative_service.get('sub_state')}"
+                ),
+                "serving_authority": False,
+                "frozen_inference_opponents": [],
+            },
+        }
+    if derivative_play_loop_active:
+        live_model = dict(curriculum.get("model_contract") or {})
+        live_schedule = dict(live_model.get("training_schedule") or {})
+        live_fusion = dict(live_model.get("decision_fusion") or {})
+        live_matchup_receipt = dict(curriculum.get("matchup_runtime") or {})
+        live_matchup_combined = dict(live_matchup_receipt.get("combined") or {})
+        live_matchup_enforcement = dict(
+            live_matchup_receipt.get("enforcement") or {}
+        )
+        live_matchup_verified = bool(
+            live_matchup_receipt.get("available") is True
+            and live_matchup_enforcement.get("passed") is True
+            and live_matchup_combined.get("all_games_audited") is True
+            and live_matchup_combined.get("all_runtime_enabled") is True
+            and live_matchup_combined.get("contract_clean") is True
+        )
+        # Historical r79 inventory is useful below as an archive, but it must
+        # not overwrite the active derivative learner. The current checkpoint
+        # retains 21 ABI heads; combo_state alone is deliberately dormant, so
+        # all 20 non-combo heads/paths remain optimizer-eligible.
+        final_model_override = {
+            "architecture": "Alakazam rule-derivative full-model Pure-RL",
+            "run": curriculum.get("run"),
+            "profile_id": "r274-head-structure+rule-derivative-r10",
+            "heads": {
+                "architecture_present": 21,
+                "training_active": 20,
+                "fusion_routes_active": 20,
+                "combo_state": {
+                    "enabled": False,
+                    "architecture_present": True,
+                    "loss_weight": 0.0,
+                    "optimizer_active": False,
+                    "runtime_enabled": False,
+                    "reason": "dormant checkpoint/pack ABI only",
+                },
+                "tactical_sequence_outcome": {
+                    "enabled": False,
+                    "removed_before_rl_update_0": True,
+                    "bounded_search_planner_shadow_only": False,
+                },
+                "tactical_outcome": {
+                    "enabled": True,
+                    "fusion_route_enabled": True,
+                    "role": "preserved_strategic_tactical_outcome_head",
+                },
+                "public_rule_semantic_projection": {
+                    "enabled": True,
+                    "optimizer_active": True,
+                },
+            },
+            "training_schedule": {
+                **live_schedule,
+                "phase": "derivative_self_play",
+                "iterations_target": ALAKAZAM_RULE_DERIVATIVE_RL_ITERATIONS,
+                "expert_refresh_iterations": [5, 10, 15, 20],
+                "expert_refresh_epochs": 5,
+            },
+            "decision_fusion": {
+                **live_fusion,
+                "training_enabled": True,
+                "runtime_enabled": True,
+                "serving_eligible": True,
+            },
+            "matchup_adapter_runtime": {
+                "verified": live_matchup_verified,
+                "enabled": live_matchup_verified,
+                "training_enabled": True,
+                "iteration": live_matchup_receipt.get("iteration"),
+                "audited_games": live_matchup_combined.get("audited_games"),
+                "active_final_route_games": live_matchup_combined.get(
+                    "active_final_route_games"
+                ),
+                "exact_bypass_final_games": live_matchup_combined.get(
+                    "exact_bypass_final_games"
+                ),
+                "source": live_matchup_receipt.get("source"),
+                "reason": (
+                    "latest committed collection proves causal runtime routing"
+                    if live_matchup_verified
+                    else live_matchup_receipt.get("reason")
+                    or "no committed causal-router collection receipt"
+                ),
+            },
+            "runtime_identity": {
+                "active_learner": "alakazam-rule-derivative-g5",
+                "runtime_build": "alakazam-rule-derivative-g5-r13",
+                "runtime_root": str(
+                    _managed_process_cwd(
+                        int((curriculum.get("active_pids") or [0])[0])
+                    )
+                    or ROOT
+                ),
+                "service_active": True,
+                "service_state": "active/running",
+                "serving_authority": True,
+                "frozen_inference_opponents": [],
             },
         }
     baseline_eval = baseline_eval_state()

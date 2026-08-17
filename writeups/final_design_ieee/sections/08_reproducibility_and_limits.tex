@@ -1,0 +1,41 @@
+\section{Reproducibility, Ethics, and Limitations}
+
+The reproducibility unit is a digest-bound claim rather than a mutable filename.
+The minimum identity set contains the typed goal contract, corpus and split
+manifests, feature/target/checklist schemas, simulator and catalog build,
+checkpoint ancestry, optimizer scope, deck multiset, runtime tree, opponent
+packages, seed/seat schedule, and evaluation receipt. Package manifests bind
+every archive member. Superseded checkpoints and failed attempts remain
+immutable evidence and cannot be renamed into an active result. This approach
+is consistent with the broader need for explicit experimental artifacts and
+reporting decisions in machine learning~\cite{pineau2021improving}.
+
+The official Kaggle simulation environment~\cite{kaggleSimulationOverview}
+is pinned as the rules source. The project snapshot records Kaggle Environments
+1.32.6 and a checksum-bound Linux x86-64 \texttt{libcg.so}. The paper archive
+does not redistribute that binary, replays, private trajectories, model or
+optimizer weights, Pok\'emon card images, or logos. Public strategy sources are
+cited rather than copied. Own-hand information is legitimate for the acting
+seat, but opponent hidden information remains excluded; for this reason we use
+``acting-player-visible'' rather than the overly narrow phrase ``public only.''
+
+Several limitations remain. First, zero repaired semantic collisions in this
+corpus do not prove that every future simulator option is covered. Schema
+versioning and fail-closed unknown handling remain necessary. Second, the
+literal card-743 eligibility rule makes the evidence Alakazam-centered. The
+causal encoder and factorized decoder may transfer, but the distribution of
+selection contexts, targets, and Prize plans may not. Third, a 600.0 public
+score entangles policy, deck, opponent pool, and platform variance. It is not
+an adapter ablation. Fourth, the iteration-2 holdout was numerically strong but
+failed a broader pipeline gate; the iteration-3 formal result is absent by
+explicit waiver. Fifth, the H3 sidecar has prediction and ESS/clipping evidence
+but no completed required multi-arm gameplay evaluation. Sixth, current
+checklist gates are inert, and recursive planning/RTP remains outside the
+packaged action path.
+
+Finally, auditability carries cost. Exact 8,196-game iterations, full expert
+refresh, paired seat balance, immutable artifacts, fleet parity, and isolated
+formal evaluation slow experimentation and consume substantial compute and
+storage. We consider this cost justified when the alternative is an
+irreproducible strength claim whose legality, information boundary, or data
+lineage cannot be reconstructed.

@@ -14,6 +14,7 @@ trainee on the host — remotes are collect capacity, not a second trainer.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import json
 import math
@@ -626,6 +627,94 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="VRAM headroom retained while packing the resident replay corpus.",
     )
     p.add_argument(
+        "--train-optimizer-sparse-prefetch",
+        action=argparse.BooleanOptionalAction,
+        default=str(
+            os.environ.get("PURE_RL_TRAIN_OPTIMIZER_SPARSE_PREFETCH", "0")
+        ).strip().lower()
+        in {"1", "true", "yes", "on"},
+        help=(
+            "Pack and pin exactly one next host batch's sparse board/action/"
+            "option tensors and transfer it on a dedicated CUDA stream. "
+            "Default-off; targets, losses, ordering, and optimizer semantics "
+            "remain on the existing history-policy path."
+        ),
+    )
+    p.add_argument(
+        "--prize-plan-h3-cache-receipt",
+        type=Path,
+        default=None,
+        help=(
+            "Inactive-by-default trainer-only H3 additive cache for the exact "
+            "current replay window. Requires the paired clean-boundary activation "
+            "receipt and is rejected on any identity or coverage mismatch."
+        ),
+    )
+    p.add_argument("--prize-plan-h3-cache-receipt-sha256", default="")
+    p.add_argument(
+        "--prize-plan-h3-activation-receipt",
+        type=Path,
+        default=None,
+        help=(
+            "Later owner-authorized H3 activation receipt. Merely supplying a "
+            "cache never enables the provider."
+        ),
+    )
+    p.add_argument("--prize-plan-h3-activation-receipt-sha256", default="")
+    p.add_argument(
+        "--prize-plan-h3-live-sidecar",
+        type=Path,
+        default=(
+            Path(os.environ["PURE_RL_PRIZE_PLAN_H3_LIVE_SIDECAR"])
+            if os.environ.get("PURE_RL_PRIZE_PLAN_H3_LIVE_SIDECAR")
+            else None
+        ),
+        help="Frozen trainer-only Prize-plan-v2 checkpoint used to materialize each sealed replay window before optimization.",
+    )
+    p.add_argument(
+        "--prize-plan-h3-live-sidecar-sha256",
+        default=os.environ.get("PURE_RL_PRIZE_PLAN_H3_LIVE_SIDECAR_SHA256", ""),
+    )
+    p.add_argument(
+        "--prize-plan-h3-live-scale-support",
+        type=Path,
+        default=(
+            Path(os.environ["PURE_RL_PRIZE_PLAN_H3_LIVE_SCALE_SUPPORT"])
+            if os.environ.get("PURE_RL_PRIZE_PLAN_H3_LIVE_SCALE_SUPPORT")
+            else None
+        ),
+    )
+    p.add_argument(
+        "--prize-plan-h3-live-scale-support-sha256",
+        default=os.environ.get("PURE_RL_PRIZE_PLAN_H3_LIVE_SCALE_SUPPORT_SHA256", ""),
+    )
+    p.add_argument(
+        "--prize-plan-h3-live-c3-support",
+        type=Path,
+        default=(
+            Path(os.environ["PURE_RL_PRIZE_PLAN_H3_LIVE_C3_SUPPORT"])
+            if os.environ.get("PURE_RL_PRIZE_PLAN_H3_LIVE_C3_SUPPORT")
+            else None
+        ),
+    )
+    p.add_argument(
+        "--prize-plan-h3-live-c3-support-sha256",
+        default=os.environ.get("PURE_RL_PRIZE_PLAN_H3_LIVE_C3_SUPPORT_SHA256", ""),
+    )
+    p.add_argument(
+        "--prize-plan-h3-live-contract",
+        type=Path,
+        default=(
+            Path(os.environ["PURE_RL_PRIZE_PLAN_H3_LIVE_CONTRACT"])
+            if os.environ.get("PURE_RL_PRIZE_PLAN_H3_LIVE_CONTRACT")
+            else None
+        ),
+    )
+    p.add_argument(
+        "--prize-plan-h3-live-contract-sha256",
+        default=os.environ.get("PURE_RL_PRIZE_PLAN_H3_LIVE_CONTRACT_SHA256", ""),
+    )
+    p.add_argument(
         "--archetype-aux-loss-weight",
         type=float,
         default=float(os.environ.get("PURE_RL_ARCHETYPE_AUX_LOSS_WEIGHT", "0.05")),
@@ -831,6 +920,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--disable-research-control-measurement",
+        action="store_true",
+        default=str(
+            os.environ.get("PURE_RL_DISABLE_RESEARCH_CONTROL_MEASUREMENT", "0")
+        ).strip().lower()
+        in {"1", "true", "yes", "on"},
+        help=(
+            "Suppress the separate research-control evaluation wave while "
+            "retaining its historical reclaimed training slots. This is valid "
+            "only with the receipt-backed derivative revision-25 migration."
+        ),
+    )
+    p.add_argument(
         "--frozen-specialist-registry",
         type=Path,
         default=Path(
@@ -987,6 +1089,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Immutable owner receipt authorizing update-0 holdout deferral "
             "and the combo-off iteration-1 continuation."
+        ),
+    )
+    p.add_argument(
+        "--r327-evaluation-boundary-receipt",
+        type=Path,
+        default=None,
+        help=(
+            "Immutable derivative revision-25 receipt authorizing a 50-game-"
+            "per-opponent formal contract and zero future research-control wave."
         ),
     )
     p.add_argument(
@@ -1211,6 +1322,36 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=int(os.environ.get("PURE_RL_EXPERT_REHEARSAL_BATCH_SIZE", "8192")),
     )
     p.add_argument(
+        "--rule-derivative-semantic-pack-completion",
+        type=Path,
+        default=(
+            Path(os.environ["POKEBOT_RULE_DERIVATIVE_SEMANTIC_PACK_COMPLETION"])
+            if os.environ.get("POKEBOT_RULE_DERIVATIVE_SEMANTIC_PACK_COMPLETION")
+            else None
+        ),
+        help=(
+            "Exact every-occurrence semantic-pack completion receipt. When set "
+            "for a derivative parent, each scheduled expert refresh trains the "
+            "semantic projection for the same number of epochs as the base pass."
+        ),
+    )
+    p.add_argument(
+        "--rule-derivative-semantic-refresh-lr",
+        type=float,
+        default=float(
+            os.environ.get("POKEBOT_RULE_DERIVATIVE_SEMANTIC_REFRESH_LR", "3e-4")
+        ),
+    )
+    p.add_argument(
+        "--rule-derivative-semantic-block-decisions",
+        type=int,
+        default=int(
+            os.environ.get(
+                "POKEBOT_RULE_DERIVATIVE_SEMANTIC_BLOCK_DECISIONS", "4096"
+            )
+        ),
+    )
+    p.add_argument(
         "--expert-manifest-workers",
         type=int,
         default=int(os.environ.get("PURE_RL_EXPERT_MANIFEST_WORKERS", "32")),
@@ -1404,6 +1545,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         p.error("--official-collect-frac must be in [0, 1]")
     if int(args.research_control_games_per_iter) < 0:
         p.error("--research-control-games-per-iter cannot be negative")
+    if bool(args.disable_research_control_measurement) and (
+        args.r327_evaluation_boundary_receipt is None
+    ):
+        p.error(
+            "--disable-research-control-measurement requires "
+            "--r327-evaluation-boundary-receipt"
+        )
     if int(args.minimum_terminal_iteration) >= 0 and not bool(
         args.continue_after_gate
     ):
@@ -2389,6 +2537,21 @@ def _write_json_exclusive(path: Path, payload: dict[str, Any]) -> None:
         raise RuntimeError(f"refusing to overwrite immutable artifact: {path}") from exc
 
 
+def _write_json_exclusive_or_verify(path: Path, payload: dict[str, Any]) -> None:
+    """Create an immutable JSON artifact, or verify an identical prior write.
+
+    This is for restartable stages whose durable output may have been committed
+    immediately before a later step failed.  It never replaces existing bytes.
+    """
+    path = Path(path)
+    data = json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n"
+    if path.exists():
+        if not path.is_file() or path.read_text(encoding="utf-8") != data:
+            raise RuntimeError(f"immutable artifact differs on resume: {path}")
+        return
+    _write_json_exclusive(path, payload)
+
+
 def _sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with Path(path).open("rb") as fh:
@@ -2716,6 +2879,87 @@ def _path_content_identity(path: Path) -> dict[str, Any]:
     }
 
 
+def _configured_prize_plan_h3_actor_provider(
+    args: argparse.Namespace,
+) -> Optional[dict[str, Any]]:
+    """Return the immutable H3 boundary identity, or exact legacy ``None``.
+
+    The cache is an optimizer-unit input rather than policy state.  Recording
+    both receipt files in the design contract prevents a crash-recovered H3
+    candidate from being accepted by a legacy unit (or vice versa).  The
+    section is deliberately absent in legacy mode so merely deploying the
+    staged source does not fork an already-running legacy lineage.
+    """
+
+    raw = (
+        getattr(args, "prize_plan_h3_cache_receipt", None),
+        str(getattr(args, "prize_plan_h3_cache_receipt_sha256", "") or ""),
+        getattr(args, "prize_plan_h3_activation_receipt", None),
+        str(getattr(args, "prize_plan_h3_activation_receipt_sha256", "") or ""),
+    )
+    live_raw = (
+        getattr(args, "prize_plan_h3_live_sidecar", None),
+        str(getattr(args, "prize_plan_h3_live_sidecar_sha256", "") or ""),
+        getattr(args, "prize_plan_h3_live_scale_support", None),
+        str(getattr(args, "prize_plan_h3_live_scale_support_sha256", "") or ""),
+        getattr(args, "prize_plan_h3_live_c3_support", None),
+        str(getattr(args, "prize_plan_h3_live_c3_support_sha256", "") or ""),
+        getattr(args, "prize_plan_h3_live_contract", None),
+        str(getattr(args, "prize_plan_h3_live_contract_sha256", "") or ""),
+    )
+    if any(raw) and any(live_raw):
+        raise RuntimeError("static and live Prize-plan H3 providers are mutually exclusive")
+    if any(live_raw):
+        if not all(live_raw):
+            raise RuntimeError(
+                "Prize-plan H3 live sidecar/scale/c3/contract paths and SHA-256 "
+                "values must be supplied as one complete boundary binding"
+            )
+        identities = [
+            _path_content_identity(Path(live_raw[index]).expanduser().resolve())
+            for index in (0, 2, 4, 6)
+        ]
+        expected = [str(live_raw[index]) for index in (1, 3, 5, 7)]
+        if [item.get("digest") for item in identities] != expected:
+            raise RuntimeError("Prize-plan H3 live input digest mismatch")
+        return {
+            "schema": "poke_bot.alakazam_prize_plan_v2_h3_actor_design/v1",
+            "mode": "receipt_bound_live_h3_additive_at_clean_optimizer_boundary",
+            "sidecar_checkpoint": identities[0],
+            "h3_scale_support": identities[1],
+            "c3_support": identities[2],
+            "owner_contract": identities[3],
+            "semantic_owner_goal_revision": 23,
+            "activation_owner_goal_revision": 26,
+            "coefficient": 0.025,
+            "h1_h6_h12_actor_coefficients": [0.0, 0.0, 0.0],
+            "exact_legacy_baseline_computed_in_batch": True,
+            "runtime_critic_calls": False,
+        }
+    if not any(raw):
+        return None
+    if not all(raw):
+        raise RuntimeError(
+            "Prize-plan H3 cache/activation paths and SHA-256 values must be "
+            "supplied as one complete boundary binding"
+        )
+    cache = _path_content_identity(Path(raw[0]).expanduser().resolve())
+    activation = _path_content_identity(Path(raw[2]).expanduser().resolve())
+    if cache.get("digest") != raw[1] or activation.get("digest") != raw[3]:
+        raise RuntimeError("Prize-plan H3 configured receipt digest mismatch")
+    return {
+        "schema": "poke_bot.alakazam_prize_plan_v2_h3_actor_design/v1",
+        "mode": "receipt_bound_h3_additive_at_clean_optimizer_boundary",
+        "cache_receipt": cache,
+        "activation_receipt": activation,
+        "semantic_owner_goal_revision": 23,
+        "coefficient": 0.025,
+        "h1_h6_h12_actor_coefficients": [0.0, 0.0, 0.0],
+        "exact_legacy_baseline_computed_in_batch": True,
+        "runtime_critic_calls": False,
+    }
+
+
 def _r241_file_identity(path: Path) -> dict[str, Any]:
     identity = _path_content_identity(path)
     if identity.get("kind") != "file":
@@ -2770,8 +3014,66 @@ def _rehashed_r260_file_identity(value: Any, *, label: str) -> dict[str, Any]:
     return observed
 
 
+def _rehashed_r260_tactical_overlay_identity(
+    value: Any, *, label: str
+) -> dict[str, Any]:
+    """Validate either historical or coverage-bearing tactical evidence.
+
+    The tactical overlay validator returns the rehashable file identity plus
+    its exact root/label/status coverage.  Scheduled rehearsal receipts retain
+    that complete result, while older receipts carried only FileIdentity.
+    """
+
+    if not isinstance(value, Mapping):
+        raise RuntimeError(f"r260 {label} identity must be an object")
+    row = dict(value)
+    file_keys = {"path", "sha256", "size_bytes"}
+    if set(row) == file_keys:
+        return _rehashed_r260_file_identity(row, label=label)
+    if set(row) != file_keys | {"roots", "labels", "status_counts"}:
+        raise RuntimeError(f"r260 {label} identity key shape changed")
+    file_identity = _rehashed_r260_file_identity(
+        {name: row[name] for name in file_keys}, label=label
+    )
+    from poke_bot.tactical_sequence_materialization import (
+        validate_tactical_target_overlay,
+    )
+
+    try:
+        observed = validate_tactical_target_overlay(
+            Path(file_identity["path"]), minimum_roots=1024
+        )
+    except Exception as exc:
+        raise RuntimeError(f"r260 {label} validation failed") from exc
+    if observed != row:
+        raise RuntimeError(f"r260 {label} coverage identity drifted")
+    return observed
+
+
+def _r260_tactical_cotrain_disabled(
+    r260_own_deck_training_inputs: Mapping[str, Any],
+) -> bool:
+    """Resolve cotrain authority from both the override and checkpoint ABI."""
+
+    explicit_disable = os.environ.get(
+        "POKEBOT_R274_DISABLE_RL_TACTICAL_COTRAIN", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if explicit_disable and not r260_own_deck_training_inputs:
+        raise RuntimeError(
+            "RL tactical cotrain override is valid only for the r274 own-deck successor"
+        )
+    checkpoint_disables = bool(r260_own_deck_training_inputs) and not bool(
+        r260_own_deck_training_inputs.get("tactical_sequence_enabled", False)
+    )
+    return bool(explicit_disable or checkpoint_disables)
+
+
 def _r241_checkpoint_state_schema_digest(payload: Mapping[str, Any]) -> str:
-    state = dict(payload.get("model_state_dict") or {})
+    state = dict(
+        payload.get("model_state_dict")
+        or payload.get("base_model_state_dict")
+        or {}
+    )
     rows = [
         {
             "name": str(name),
@@ -2816,19 +3118,75 @@ def _load_r260_own_deck_training_inputs(args: argparse.Namespace) -> dict[str, A
     fail-closed configuration error.
     """
 
+    def _path_arg_or_env(name: str, env_name: str) -> Path | None:
+        value = getattr(args, name)
+        if value is not None:
+            return Path(value)
+        text = os.environ.get(env_name, "").strip()
+        return Path(text) if text else None
+
+    def _digest_arg_or_env(name: str, env_name: str) -> str:
+        value = str(getattr(args, name) or "").strip()
+        return value or os.environ.get(env_name, "").strip()
+
     rows = (
-        ("migration", args.r241_own_deck_migration_receipt, args.r241_own_deck_migration_receipt_sha256),
-        ("canary_activation", args.r241_own_deck_canary_activation_receipt, args.r241_own_deck_canary_activation_receipt_sha256),
-        ("sidecar", args.r241_own_deck_sidecar_binding, args.r241_own_deck_sidecar_binding_sha256),
-        ("inzi_dataset", args.r241_own_deck_inzi_dataset_binding, args.r241_own_deck_inzi_dataset_binding_sha256),
+        (
+            "migration",
+            _path_arg_or_env(
+                "r241_own_deck_migration_receipt",
+                "PURE_RL_R260_MIGRATION_RECEIPT",
+            ),
+            _digest_arg_or_env(
+                "r241_own_deck_migration_receipt_sha256",
+                "PURE_RL_R260_MIGRATION_RECEIPT_SHA256",
+            ),
+        ),
+        (
+            "canary_activation",
+            _path_arg_or_env(
+                "r241_own_deck_canary_activation_receipt",
+                "PURE_RL_R260_CANARY_ACTIVATION_RECEIPT",
+            ),
+            _digest_arg_or_env(
+                "r241_own_deck_canary_activation_receipt_sha256",
+                "PURE_RL_R260_CANARY_ACTIVATION_RECEIPT_SHA256",
+            ),
+        ),
+        (
+            "sidecar",
+            _path_arg_or_env(
+                "r241_own_deck_sidecar_binding",
+                "PURE_RL_R260_SIDECAR_BINDING",
+            ),
+            _digest_arg_or_env(
+                "r241_own_deck_sidecar_binding_sha256",
+                "PURE_RL_R260_SIDECAR_BINDING_SHA256",
+            ),
+        ),
+        (
+            "inzi_dataset",
+            _path_arg_or_env(
+                "r241_own_deck_inzi_dataset_binding",
+                "PURE_RL_R260_INZI_DATASET_BINDING",
+            ),
+            _digest_arg_or_env(
+                "r241_own_deck_inzi_dataset_binding_sha256",
+                "PURE_RL_R260_INZI_DATASET_BINDING_SHA256",
+            ),
+        ),
     )
     supplied = [(path is not None, bool(str(digest or "").strip())) for _, path, digest in rows]
     if not any(any(pair) for pair in supplied):
         return {}
     if not all(path_present and digest_present for path_present, digest_present in supplied):
         raise RuntimeError("r260 own-deck receipt paths and sha256 values must be supplied together")
-    tactical_path = args.r274_expert_tactical_overlay
-    tactical_digest = str(args.r274_expert_tactical_overlay_sha256 or "")
+    tactical_path = _path_arg_or_env(
+        "r274_expert_tactical_overlay", "PURE_RL_R260_TACTICAL_OVERLAY"
+    )
+    tactical_digest = _digest_arg_or_env(
+        "r274_expert_tactical_overlay_sha256",
+        "PURE_RL_R260_TACTICAL_OVERLAY_SHA256",
+    )
     if (tactical_path is None) != (not tactical_digest):
         raise RuntimeError(
             "r274 expert tactical overlay path and sha256 must be supplied together"
@@ -2843,7 +3201,10 @@ def _load_r260_own_deck_training_inputs(args: argparse.Namespace) -> dict[str, A
     )
     if tactical_identity["sha256"] != tactical_digest:
         raise RuntimeError("r274 expert tactical overlay digest mismatch")
-    if _fixed_cycle_updates(args) == 0:
+    derivative_full_model = os.environ.get(
+        "POKEBOT_DERIVATIVE_FULL_MODEL_BOOTSTRAP", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if _fixed_cycle_updates(args) == 0 and not derivative_full_model:
         raise RuntimeError("r260 own-deck inputs are allowed only for the r241 fixed cycle")
     from poke_bot import checkpoint as checkpoint_mod
     from poke_bot.r241_own_deck_successor import (
@@ -2925,10 +3286,39 @@ def _load_r260_own_deck_training_inputs(args: argparse.Namespace) -> dict[str, A
             )
         except Exception as exc:
             raise RuntimeError(f"r274 bootstrap handoff validation failed: {exc}") from exc
-    elif initial != canary_checkpoint["sha256"]:
+    elif initial != canary_checkpoint["sha256"] and not derivative_full_model:
         raise RuntimeError(
             "r260 initial learner does not match the runtime-enabled canary checkpoint"
         )
+    if derivative_full_model and (
+        initial_model_config.get("own_deck_ledger_enabled") is not True
+        or initial_model_config.get("decision_fusion_enabled") is not True
+    ):
+        raise RuntimeError(
+            "derivative streamed rehearsal requires OwnDeck and decision Fusion"
+        )
+    tactical_sequence_enabled = bool(
+        initial_model_config.get("tactical_sequence_outcome_head_enabled", False)
+    )
+    daily_meta_sha256s: dict[str, str] = {}
+    for day, receipt in sorted(
+        dict(sidecar["daily_sidecar_meta_receipts"]).items()
+    ):
+        meta_path = Path(str(receipt.get("path") or "")).expanduser().resolve()
+        meta_identity = _r241_file_identity(meta_path)
+        if (
+            meta_identity["digest"] != str(receipt.get("sha256") or "")
+            or int(meta_identity["size_bytes"]) != int(receipt.get("size_bytes", -1))
+        ):
+            raise RuntimeError(f"r260 daily meta receipt mismatch: {day}")
+        try:
+            meta_payload = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"r260 daily meta is invalid JSON: {day}") from exc
+        embedded_digest = str(meta_payload.get("meta_sha256") or "")
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", embedded_digest):
+            raise RuntimeError(f"r260 daily meta has invalid payload identity: {day}")
+        daily_meta_sha256s[str(day)] = embedded_digest
     return {
         "owner_contract_sha256": owner.sha256,
         "migration_receipt_sha256": migration_receipt["receipt_sha256"],
@@ -2939,10 +3329,7 @@ def _load_r260_own_deck_training_inputs(args: argparse.Namespace) -> dict[str, A
         "inzi_dataset_identity": dict(inzi["inzi_joined_dataset"]),
         "inzi_sidecar_root": str(inzi["inzi_sidecar_root"]),
         "source_manifest_sha256": owner.source_manifest_sha256,
-        "daily_meta_sha256s": {
-            day: str(row["sha256"])
-            for day, row in dict(sidecar["daily_sidecar_meta_receipts"]).items()
-        },
+        "daily_meta_sha256s": daily_meta_sha256s,
         "runtime_gates": dict(canary["runtime_gates"]),
         "successor_model_config_sha256": _canonical_digest(
             dict(initial_payload.get("model_config") or {})
@@ -2957,6 +3344,8 @@ def _load_r260_own_deck_training_inputs(args: argparse.Namespace) -> dict[str, A
             tactical_free_payload
         ),
         "expert_tactical_overlay_identity": tactical_identity,
+        "tactical_sequence_enabled": tactical_sequence_enabled,
+        "derivative_streaming_only": derivative_full_model,
         "r274_bootstrap_handoff": (
             {
                 "receipt_sha256": handoff["receipt_sha256"],
@@ -3023,7 +3412,7 @@ def _validate_r260_scheduled_rehearsal_receipt(
     post = _rehashed_r260_file_identity(receipt["post_checkpoint"], label="post-checkpoint")
     index = _rehashed_r260_file_identity(receipt["index"], label="streaming index")
     dataset = _rehashed_r260_file_identity(receipt["inzi_dataset"], label="Inzi dataset")
-    tactical_overlay = _rehashed_r260_file_identity(
+    tactical_overlay = _rehashed_r260_tactical_overlay_identity(
         receipt["expert_tactical_overlay"], label="expert tactical overlay"
     )
     if pre["sha256"] == post["sha256"]:
@@ -3074,17 +3463,26 @@ def _validate_r260_scheduled_rehearsal_receipt(
         )
     except Exception as exc:
         raise RuntimeError("r260 rehearsal receipt streaming index drifted") from exc
-    if receipt["loss_weights"] != {
+    tactical_expected = (
+        "tactical_sequence_outcome" in dict(receipt.get("loss_weights") or {})
+        if expected_r260_inputs is None
+        else bool(expected_r260_inputs.get("tactical_sequence_enabled", True))
+    )
+    expected_loss_weights = {
         "visible_tutor_completion": 0.025,
         "terminal_conversion": 0.025,
-        "tactical_sequence_outcome": 0.025,
-    }:
+    }
+    if tactical_expected:
+        expected_loss_weights["tactical_sequence_outcome"] = 0.025
+    if receipt["loss_weights"] != expected_loss_weights:
         raise RuntimeError("r260 rehearsal receipt loss profile drifted")
     bounds = receipt["rl_iteration_before_after"]
     if not isinstance(bounds, list) or len(bounds) != 2 or bounds[0] != bounds[1] or int(receipt["bounded_batch_games"]) <= 0 or receipt["full_window_device_resident"] is not False:
         raise RuntimeError("r260 rehearsal receipt boundedness/iteration drifted")
-    required_prefixes = {"own_deck_ledger_adapter.", "visible_tutor_completion_head.", "terminal_conversion_head.", "tactical_sequence_outcome_head.", "visible_tutor_completion_route.", "terminal_conversion_route.", "decision_fusion."}
-    if expected_r260_inputs is not None and expected_r260_inputs.get(
+    required_prefixes = {"own_deck_ledger_adapter.", "visible_tutor_completion_head.", "terminal_conversion_head.", "visible_tutor_completion_route.", "terminal_conversion_route.", "decision_fusion."}
+    if tactical_expected:
+        required_prefixes.add("tactical_sequence_outcome_head.")
+    if tactical_expected and expected_r260_inputs is not None and expected_r260_inputs.get(
         "r274_bootstrap_handoff"
     ):
         required_prefixes.add("tactical_sequence_outcome_route.")
@@ -3094,8 +3492,16 @@ def _validate_r260_scheduled_rehearsal_receipt(
         or not receipt["sampled_keys"]
     ):
         raise RuntimeError("r260 rehearsal receipt lacks finite gradient/key evidence")
-    if int(receipt["tactical_exact_root_count"]) < 1024:
+    if tactical_expected and int(receipt["tactical_exact_root_count"]) < 1024:
         raise RuntimeError("r260 rehearsal receipt lacks tactical root coverage")
+    if (
+        not tactical_expected
+        and int(receipt["tactical_exact_root_count"]) != 0
+        and int(receipt["tactical_exact_root_count"]) < 1024
+    ):
+        raise RuntimeError(
+            "tactical-free rehearsal receipt has incomplete shadow target coverage"
+        )
     for key in receipt["sampled_keys"]:
         if (
             not isinstance(key, list)
@@ -3938,6 +4344,11 @@ def _checkpoint_contract(
             "r241_peak_r195_preserved": True,
         }
     r274_contract = dict(r274_successor_training_contract or {})
+    # The derivative borrows only the established aligned host stream. Its
+    # checkpoint remains governed by the derivative envelope rather than the
+    # historical r274 route-gate profile.
+    if r274_contract.get("derivative_streaming_only") is True:
+        r274_contract = {}
     if r274_contract:
         tactical_free = os.environ.get(
             "POKEBOT_R274_DISABLE_RL_TACTICAL_COTRAIN", ""
@@ -4341,6 +4752,7 @@ def _design_contract(
     r241_peak_r195_training_contract: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Immutable inputs whose drift would fork the experiment lineage."""
+    prize_plan_h3_actor_provider = _configured_prize_plan_h3_actor_provider(args)
     hidden_engine_raw = os.environ.get("POKEBOT_LIBCG_PATH", "").strip()
     hidden_engine = (
         _path_content_identity(Path(hidden_engine_raw).expanduser().resolve())
@@ -4410,6 +4822,11 @@ def _design_contract(
             ),
             "seed": int(args.seed),
             "continuous": True,
+            **(
+                {"prize_plan_h3_actor_provider": prize_plan_h3_actor_provider}
+                if prize_plan_h3_actor_provider is not None
+                else {}
+            ),
             "carry_min_head_to_head_wr": float(args.continuous_learner_min_wr),
             "exact_gate_regression_margin": float(
                 args.continuous_learner_exact_regression_margin
@@ -4729,11 +5146,31 @@ def _design_contract(
                 "seed_contract": dict(seed_namespace_contract),
             },
             "research_control_phase": {
-                "enabled": bool(int(args.research_control_games_per_iter) > 0),
+                "enabled": bool(
+                    int(args.research_control_games_per_iter) > 0
+                    and not bool(args.disable_research_control_measurement)
+                ),
                 "stage": "measure:research_controls",
                 "source": "research_control_registry",
-                "games_per_iteration": int(
+                "games_per_iteration": (
+                    0
+                    if bool(args.disable_research_control_measurement)
+                    else int(args.research_control_games_per_iter)
+                ),
+                "legacy_reclaimed_training_slots": int(
                     args.research_control_games_per_iter
+                ),
+                "disabled_by_revision_25": bool(
+                    args.disable_research_control_measurement
+                ),
+                "revision_25_activation_receipt": (
+                    _path_content_identity(
+                        Path(args.r327_evaluation_boundary_receipt)
+                        .expanduser()
+                        .resolve()
+                    )
+                    if args.r327_evaluation_boundary_receipt is not None
+                    else None
                 ),
                 "games_per_control": 250,
                 "seat0_games_per_control": 125,
@@ -4919,6 +5356,11 @@ def _validate_design_fingerprint(
 
 _BOUNDARY_MIGRATABLE_DESIGN_PATHS = frozenset(
     {
+        # Revision 23 may add one receipt-bound trainer-only H3 provider at a
+        # clean optimizer boundary.  Its complete identity remains in the
+        # fingerprint; later cache/activation drift requires another explicit
+        # boundary receipt and can never be recovered as legacy training.
+        "learner.prize_plan_h3_actor_provider",
         "learner.games_per_batch",
         "learner.max_decisions_per_batch",
         "learner.warmup_max_decisions_per_batch",
@@ -4978,6 +5420,7 @@ _BOUNDARY_MIGRATABLE_DESIGN_PATHS = frozenset(
         # fingerprinted and every connected endpoint still passes the hard
         # checkpoint/runtime gate before collection.
         "remotes.endpoints",
+        "remotes.disabled",
         "opponents.research_controls",
         "opponents.official_target_training",
         "measurement_deck_distribution",
@@ -5019,6 +5462,22 @@ _R284_ITERATION1_BOUNDARY_MIGRATION_PATHS = frozenset(
 
 _ALAKAZAM_R193_LARGE_REFRESH_MIGRATION_PATHS = frozenset(
     {"expert_rehearsal.one_time_override"}
+)
+
+
+_ALAKAZAM_R327_EVALUATION_MIGRATION_PATHS = frozenset(
+    {
+        "games.heldout",
+        "gates.active_contract",
+        "collection.research_control_phase",
+        "collection.strong_public_practice.seed_contract.formal_games",
+        "collection.strong_public_practice.seed_contract.research_control_games",
+    }
+)
+
+
+_ALAKAZAM_R340_EXPERT_REHEARSAL_REPAIR_PATHS = frozenset(
+    {"expert_rehearsal.minimum_decisions"}
 )
 
 
@@ -5577,6 +6036,110 @@ def _safe_alakazam_r193_large_refresh_migration(
     )
 
 
+def _safe_alakazam_r327_evaluation_migration(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Authorize only the 50/deck, no-research future evaluation migration."""
+
+    if str(reason or "").strip() != "owner_r327_future_holdout_50_no_research":
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    if not non_source or any(
+        not any(
+            path == allowed or path.startswith(allowed + ".")
+            for allowed in _ALAKAZAM_R327_EVALUATION_MIGRATION_PATHS
+        )
+        for path in non_source
+    ):
+        return False
+    before_games = dict(stored.get("games") or {})
+    after_games = dict(current.get("games") or {})
+    before_collection = dict(stored.get("collection") or {})
+    after_collection = dict(current.get("collection") or {})
+    before_research = dict(before_collection.get("research_control_phase") or {})
+    after_research = dict(after_collection.get("research_control_phase") or {})
+    before_practice = dict(before_collection.get("strong_public_practice") or {})
+    after_practice = dict(after_collection.get("strong_public_practice") or {})
+    before_seed = dict(before_practice.get("seed_contract") or {})
+    after_seed = dict(after_practice.get("seed_contract") or {})
+    return bool(
+        int(before_games.get("heldout", -1)) == 4_500
+        and int(after_games.get("heldout", -1)) == 900
+        and before_collection.get("group_games_per_iteration")
+        == after_collection.get("group_games_per_iteration")
+        and before_research.get("enabled") is True
+        and int(before_research.get("games_per_iteration", -1)) == 1_000
+        and after_research.get("enabled") is False
+        and int(after_research.get("games_per_iteration", -1)) == 0
+        and int(after_research.get("legacy_reclaimed_training_slots", -1))
+        == 1_000
+        and after_research.get("disabled_by_revision_25") is True
+        and before_research.get("registry") == after_research.get("registry")
+        and int(before_seed.get("formal_games", -1)) == 4_500
+        and int(after_seed.get("formal_games", -1)) == 900
+        and int(before_seed.get("research_control_games", -1)) == 1_000
+        and int(after_seed.get("research_control_games", -1)) == 0
+        and before_practice.get("roster") == after_practice.get("roster")
+    )
+
+
+def _safe_alakazam_r340_expert_rehearsal_migration(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Admit the exact protected 20-day Alakazam corpus at iteration 5."""
+
+    if str(reason or "").strip() != (
+        "owner_r340_protected_expert_rehearsal_threshold"
+    ):
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    if non_source != _ALAKAZAM_R340_EXPERT_REHEARSAL_REPAIR_PATHS:
+        return False
+    before = dict(stored.get("expert_rehearsal") or {})
+    after = dict(current.get("expert_rehearsal") or {})
+    manifest_path = Path(str(after.get("rolling_manifest_pointer") or ""))
+    pointer_path = manifest_path.with_name("PROTECTED_EXPERT_CORPUS.json")
+    if (
+        int(before.get("minimum_decisions") or -1) != 5_000_000
+        or int(after.get("minimum_decisions") or -1) != 2_000_000
+        or before.get("rolling_manifest_pointer")
+        != after.get("rolling_manifest_pointer")
+        or not manifest_path.is_file()
+        or not pointer_path.is_file()
+    ):
+        return False
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+        raw_manifest = str(pointer.get("manifest") or "")
+        candidate = Path(raw_manifest).expanduser()
+        protected_manifest = (
+            candidate.resolve()
+            if candidate.is_absolute()
+            else (pointer_path.parent / candidate).resolve()
+        )
+        decisions = int((manifest.get("totals") or {}).get("decisions_kept") or 0)
+        return bool(
+            manifest.get("format") == "pokebot-bootstrap-feature-manifest"
+            and pointer.get("schema") == "poke_bot.pinned_expert_corpus/v1"
+            and pointer.get("protected") is True
+            and protected_manifest == manifest_path.resolve()
+            and pointer.get("manifest_sha256") == _sha256_file(manifest_path)
+            and decisions >= 2_000_000
+            and decisions < 5_000_000
+        )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+
+
 def _changed_design_paths(before: Any, after: Any, prefix: str = "") -> set[str]:
     if isinstance(before, dict) and isinstance(after, dict):
         changed: set[str] = set()
@@ -5733,6 +6296,35 @@ def _validate_or_migrate_design_fingerprint(
             reason=migration_reason,
         )
     )
+    safe_alakazam_r327_evaluation = (
+        _safe_alakazam_r327_evaluation_migration(
+            stored=stored,
+            current=current,
+            changed=changed,
+            reason=migration_reason,
+        )
+    )
+    safe_alakazam_r340_expert_rehearsal = (
+        _safe_alakazam_r340_expert_rehearsal_migration(
+            stored=stored,
+            current=current,
+            changed=changed,
+            reason=migration_reason,
+        )
+    )
+    safe_alakazam_r334_terminal_refresh = bool(
+        str(migration_reason or "").strip()
+        == "owner_r334_terminal_one_epoch_expert_refresh"
+        and next_iteration == 14
+        and last_completed == 13
+        and {path for path in changed if not path.startswith("source.")}
+        == {
+            "run.iterations",
+            "collection.strong_public_practice.seed_contract.iterations",
+            "expert_rehearsal.every_iterations",
+            "expert_rehearsal.epochs",
+        }
+    )
     safe_current_deck_guide_weight = (
         _safe_current_deck_guide_weight_migration(
             stored=stored,
@@ -5794,6 +6386,16 @@ def _validate_or_migrate_design_fingerprint(
         and not (
             path == "run.iterations"
             and safe_marnie_revision113_ceiling_extension
+        )
+        and not (
+            safe_alakazam_r334_terminal_refresh
+            and path
+            in {
+                "run.iterations",
+                "collection.strong_public_practice.seed_contract.iterations",
+                "expert_rehearsal.every_iterations",
+                "expert_rehearsal.epochs",
+            }
         )
         and not (
             safe_decision_fusion_warmup
@@ -5941,7 +6543,13 @@ def _validate_or_migrate_design_fingerprint(
     # recovery source fix now has a different current fingerprint.
     receipt_backed_allowed_migration = bool(
         preserved_collection is not None
-        and preserved_collection_fingerprint == stored_digest
+        and (
+            preserved_collection_fingerprint == stored_digest
+            or (
+                safe_alakazam_r340_expert_rehearsal
+                and collection_was_carried_to_stored_design
+            )
+        )
         and all(
             path.startswith("source.")
             # A collection is bound to its original operational contract.
@@ -5987,6 +6595,17 @@ def _validate_or_migrate_design_fingerprint(
             or (
                 owner_r284_iteration1_boundary
                 and path in _R284_ITERATION1_BOUNDARY_MIGRATION_PATHS
+            )
+            or (
+                safe_alakazam_r327_evaluation
+                and any(
+                    path == allowed or path.startswith(allowed + ".")
+                    for allowed in _ALAKAZAM_R327_EVALUATION_MIGRATION_PATHS
+                )
+            )
+            or (
+                safe_alakazam_r340_expert_rehearsal
+                and path in _ALAKAZAM_R340_EXPERT_REHEARSAL_REPAIR_PATHS
             )
             for path in changed
         )
@@ -6035,6 +6654,11 @@ def _validate_or_migrate_design_fingerprint(
             shard_path=expected_shard,
             r241_peak_r195_training_contract=dict(
                 current.get("r241_peak_r195_training_contract") or {}
+            ),
+            expected_awr_provider=(
+                (current.get("learner") or {}).get(
+                    "prize_plan_h3_actor_provider"
+                )
             ),
         )
         if expected_research in next_artifact_set and not (
@@ -7648,6 +8272,7 @@ def _recover_interrupted_iteration(
     *,
     preserve_completed_collection: bool = True,
     research_control_registry: Optional[dict[str, Any]] = None,
+    expected_awr_provider: Optional[Mapping[str, Any]] = None,
 ) -> Optional[Path]:
     """Transactionally quarantine an uncommitted iteration so it can retry."""
     iteration = int(state.get("next_iteration", 0))
@@ -7730,6 +8355,19 @@ def _recover_interrupted_iteration(
                             "r241_peak_r195_training_contract"
                         )
                         or {}
+                    ),
+                    expected_awr_provider=(
+                        expected_awr_provider
+                        if expected_awr_provider is not None
+                        else (
+                            (
+                                (
+                                    immutable_manifest.get("design_contract")
+                                    or {}
+                                ).get("learner")
+                                or {}
+                            ).get("prize_plan_h3_actor_provider")
+                        )
                     ),
                 )
                 research_is_safe = bool(
@@ -8026,6 +8664,72 @@ def _verify_learner_lineage(
         )
 
 
+def _validate_orphan_awr_provider(
+    *,
+    extra: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    expected: Optional[Mapping[str, Any]],
+) -> None:
+    """Reject recovery across the legacy/H3 optimizer-unit boundary."""
+
+    actual = extra.get("awr_advantage_provider")
+    recorded = provenance.get("prize_plan_h3_actor_provider")
+    if expected is None:
+        if actual not in (None, {}) or recorded not in (None, {}):
+            raise RuntimeError(
+                "orphan candidate has an unrequested Prize-plan H3 provider"
+            )
+        return
+    if not isinstance(expected, Mapping):
+        raise RuntimeError("expected Prize-plan H3 provider design is malformed")
+    if expected.get("mode") == "receipt_bound_live_h3_additive_at_clean_optimizer_boundary":
+        if (
+            expected.get("schema")
+            != "poke_bot.alakazam_prize_plan_v2_h3_actor_design/v1"
+            or not isinstance(actual, Mapping)
+            or not isinstance(recorded, Mapping)
+            or actual.get("actor_activation") is not True
+            or actual.get("exact_legacy_baseline_computed_in_batch") is not True
+            or actual.get("runtime_critic_calls") is not False
+            or dict(recorded) != dict(actual.get("provider_binding") or {})
+            or dict(recorded.get("live_source_design") or {}) != dict(expected)
+        ):
+            raise RuntimeError(
+                "orphan Prize-plan H3 live provider disagrees with the "
+                "receipt-bound optimizer unit"
+            )
+        return
+    cache = expected.get("cache_receipt")
+    activation = expected.get("activation_receipt")
+    if (
+        expected.get("schema")
+        != "poke_bot.alakazam_prize_plan_v2_h3_actor_design/v1"
+        or expected.get("mode")
+        != "receipt_bound_h3_additive_at_clean_optimizer_boundary"
+        or not isinstance(cache, Mapping)
+        or not isinstance(activation, Mapping)
+        or not isinstance(actual, Mapping)
+        or not isinstance(recorded, Mapping)
+    ):
+        raise RuntimeError("orphan Prize-plan H3 provider identity is incomplete")
+    binding = actual.get("provider_binding")
+    if (
+        not isinstance(binding, Mapping)
+        or binding.get("schema")
+        != "poke_bot.alakazam_prize_plan_v2_h3_actor_provider_binding/v1"
+        or binding.get("cache_receipt_sha256") != cache.get("digest")
+        or binding.get("activation_receipt_sha256") != activation.get("digest")
+        or dict(recorded) != dict(binding)
+        or actual.get("actor_activation") is not True
+        or actual.get("exact_legacy_baseline_computed_in_batch") is not True
+        or actual.get("runtime_critic_calls") is not False
+    ):
+        raise RuntimeError(
+            "orphan candidate Prize-plan H3 provider disagrees with the "
+            "receipt-bound optimizer unit"
+        )
+
+
 def _verified_orphan_candidate_result(
     path: Path,
     *,
@@ -8035,6 +8739,7 @@ def _verified_orphan_candidate_result(
     design_fingerprint: str | Sequence[str],
     shard_path: Path,
     r241_peak_r195_training_contract: Optional[Mapping[str, Any]] = None,
+    expected_awr_provider: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """Reconstruct ``rl_train_step`` output for one exact crash window."""
     from poke_bot import checkpoint as checkpoint_mod
@@ -8064,6 +8769,11 @@ def _verified_orphan_candidate_result(
         for value in allowed_design_fingerprints
     ):
         raise RuntimeError("orphan recovery received an invalid design fingerprint set")
+    _validate_orphan_awr_provider(
+        extra=extra,
+        provenance=provenance,
+        expected=expected_awr_provider,
+    )
     if not (
         extra.get("pure_rl") is True
         and str(extra.get("parent_digest") or "") == str(parent_digest)
@@ -8081,8 +8791,16 @@ def _verified_orphan_candidate_result(
         and train_games > 0
         and validation_games > 0
         and extra.get("matchup_adapters_runtime_enabled") is False
-        and extra.get("matchup_adapter_training_enabled") is False
-        and extra.get("matchup_adapter_optimizer_included") is False
+        and (
+            (
+                extra.get("matchup_adapter_training_enabled") is False
+                and extra.get("matchup_adapter_optimizer_included") is False
+            )
+            or (
+                extra.get("matchup_adapter_training_enabled") is True
+                and extra.get("matchup_adapter_optimizer_included") is True
+            )
+        )
     ):
         raise RuntimeError("orphan candidate does not match the interrupted RL transaction")
     if fit and not (
@@ -8165,6 +8883,17 @@ def _orphan_recovery_parent_digest(
     if not receipt_path.is_file():
         return parent_digest
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if receipt.get("schema") == "poke_bot.r260_scheduled_expert_rehearsal/v1":
+        validated = _validate_r260_scheduled_rehearsal_receipt(receipt)
+        expected_bounds = [int(iteration) - 1, int(iteration) - 1]
+        if (
+            validated.get("rl_iteration_before_after") != expected_bounds
+            or str(validated["pre_checkpoint"]["sha256"]) != parent_digest
+        ):
+            raise RuntimeError(
+                "orphan recovery r260 rehearsal receipt has invalid lineage"
+            )
+        return str(validated["post_checkpoint"]["sha256"])
     if (
         int(receipt.get("before_iteration", -1)) != int(iteration)
         or str(receipt.get("parent_digest") or "") != parent_digest
@@ -10913,6 +11642,14 @@ def _build_collect_jobs(
             # cannot infer successor capabilities from a local checkpoint.
             # Bind the receipt-selected ledger route into the immutable job.
             "own_deck_ledger_enabled": bool(own_deck_ledger_enabled),
+            # The rule-derivative sidecar consumes local option-hidden states;
+            # it cannot be reconstructed from the legacy remote-leaf logits
+            # ABI.  Bind that requirement into every collection job so the
+            # worker loads the exact checkpoint locally and fails closed if
+            # the trained projection is absent.
+            "public_rule_semantic_projection_required": os.environ.get(
+                "POKEBOT_PUBLIC_RULE_SEMANTIC_PROJECTION_REQUIRED", ""
+            ).strip().lower() in {"1", "true", "yes", "on"},
         }
         if ladder_mix is not None:
             common["deck_mix"] = {
@@ -11362,6 +12099,12 @@ def _promote_replacement_spool(
                     provenance = dict(record.get("target_provenance") or {})
                     provenance["replacement_original_for_job_index"] = source_index
                     provenance["replacement_for_job_index"] = int(target_index)
+                    # The promoted bytes now occupy the missing canonical
+                    # schedule cell.  Persist that identity in the same field
+                    # used by shard receipts/resume audits; retaining the
+                    # spare attempt's job index here can make an in-memory
+                    # exact-count pass seal a durably short shard.
+                    provenance["collection_job_index"] = int(target_index)
                     record["target_provenance"] = provenance
                     rewritten_records.append(record)
                 games = [
@@ -11375,8 +12118,8 @@ def _promote_replacement_spool(
                 if not games:
                     continue
                 for game in games:
-                    writer.write_game(game)
-                    if replay_cache is not None:
+                    flushed = writer.write_game(game)
+                    if replay_cache is not None and flushed:
                         replay_cache.note_append()
                     trajectories += 1
                     decisions += len(game.decisions)
@@ -11640,6 +12383,30 @@ def _dataset_from_replay_window(
     return BootstrapDataset(sequences=seqs)
 
 
+def _replay_window_paths(
+    run_dir: Path,
+    it: int,
+    *,
+    initial_replay_shards: Optional[list[Path]] = None,
+) -> list[Path]:
+    """Return the exact ordered raw shards consumed by the replay loader."""
+
+    window = max(1, int(getattr(config.PURE_RL, "replay_window_shards", 2)))
+    paths: list[Path] = []
+    if int(it) == 0 and window > 1:
+        paths.extend(
+            Path(path).expanduser().resolve()
+            for path in list(initial_replay_shards or [])[-(window - 1) :]
+        )
+    for index in range(max(0, it - window + 1), it + 1):
+        path = (run_dir / "shards" / f"iter_{index:05d}.jsonl").resolve()
+        if path.is_file():
+            paths.append(path)
+    if not paths or any(not path.is_file() for path in paths):
+        raise RuntimeError("exact replay-window shard inventory is incomplete")
+    return paths
+
+
 def _macro_resample_family_sequences(
     dataset: Any,
     *,
@@ -11838,6 +12605,11 @@ def _consume_results(
                 ),
                 "policy_terminal_failure": bool(
                     res.get("policy_terminal_failure")
+                ),
+                "stall_terminated": bool(res.get("stall_terminated")),
+                "stall_turns": int(res.get("stall_turns") or 0),
+                "training_return_override": res.get(
+                    "training_return_override"
                 ),
                 "failed_seat": res.get("failed_seat"),
                 "error": res.get("error"),
@@ -12056,8 +12828,11 @@ def _consume_results(
             ) + written
         else:
             for _record, game in compact_records:
-                writer.write_game(game)
-                if replay_cache is not None:
+                flushed = writer.write_game(game)
+                if replay_cache is not None and flushed:
+                    # A buffered writer exposes only whole newline-terminated
+                    # records.  Do not wake the prefix cache for bytes that
+                    # are still deliberately private in its bounded RAM spool.
                     replay_cache.note_append()
                 written += 1
         if practice_contract is not None:
@@ -13029,6 +13804,12 @@ def _collect_wave(
         "execution_origin_counts": {},
         "remote_endpoint_counts": {},
         "remote_self_play_endpoint_counts": {},
+        # Default 0 preserves one append/close per completed game.  A
+        # receipt-gated throughput trial may raise this bounded value; the
+        # realized flush count is recorded before the collection receipt is
+        # committed so it can never be mistaken for a policy/data change.
+        "compact_shard_write_buffer_bytes": int(writer.buffer_bytes),
+        "compact_shard_write_flushes": 0,
     }
     practice_record_contracts: dict[int, dict[str, str]] = {}
     for job in baseline_jobs:
@@ -13795,6 +14576,46 @@ def _collect_wave(
                 f"local_fallback_count={fallback_count}"
             )
     valid_runtime_rows = [row for row in rows if not bool(row.get("invalid"))]
+    stall_rows = [row for row in valid_runtime_rows if row.get("stall_terminated")]
+    stall_rows_by_seat = Counter(
+        str(int(row.get("our_seat", -1)))
+        for row in stall_rows
+        if int(row.get("our_seat", -1)) in (0, 1)
+    )
+    # Same-checkpoint self-play retains both acting seats from one source
+    # game.  The source row's assigned seat plus its opposite seat therefore
+    # each receive the explicit -1 override; public-mix rows retain only the
+    # scheduled acting seat.
+    for row in stall_rows:
+        if bool(row.get("self_play")):
+            assigned = int(row.get("our_seat", -1))
+            if assigned in (0, 1):
+                stall_rows_by_seat[str(1 - assigned)] += 1
+    ordinary_results = Counter(
+        str(int(row["winner"]))
+        for row in valid_runtime_rows
+        if not row.get("stall_terminated") and row.get("winner") is not None
+    )
+    stagnant_turn_distribution = Counter(
+        str(int(row.get("stall_turns") or 0)) for row in stall_rows
+    )
+    stats["no_progress_stall_receipt"] = {
+        "maximum_complete_turns_without_win_progress": int(
+            os.environ.get("PURE_RL_NO_PROGRESS_MAX_TURNS", "0") or 0
+        ),
+        "stall_games": len(stall_rows),
+        "stall_rows_by_seat": dict(sorted(stall_rows_by_seat.items())),
+        "stagnant_turn_distribution": dict(
+            sorted(stagnant_turn_distribution.items())
+        ),
+        "training_return_override_counts": {
+            "-1.0": sum(stall_rows_by_seat.values())
+        },
+        "ordinary_completed_result_counts": dict(sorted(ordinary_results.items())),
+        "disabled_path_parity": not bool(
+            int(os.environ.get("PURE_RL_NO_PROGRESS_MAX_TURNS", "0") or 0)
+        ),
+    }
     stats["terminal_policy_failure_retained_source_games"] = sum(
         1
         for row in valid_runtime_rows
@@ -13844,9 +14665,16 @@ def _collect_wave(
             "activated matchup runtime collection audit failed before training: "
             f"{enforcement['assertions']}"
         )
+    # The normal collection path may opt into bounded sequential shard writes.
+    # Seal the last complete prefix before cache finalization or any caller
+    # receives the writer for shard hashing/receipt construction.
+    writer.flush()
+    stats["compact_shard_write_flushes"] = int(writer.flush_count)
+    stats["compact_shard_write_pending_bytes"] = int(writer.pending_bytes)
     if replay_cache is not None:
         # A cache failure is optimization-only: finish abandons its staging
         # directory and the normal post-collect builder retries fail-closed.
+        replay_cache.note_append()
         replay_cache.finish()
     return writer, rows, stats
 
@@ -15273,6 +16101,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
     from poke_bot.promotion import CheckpointIdentity
     from poke_bot.remote_jobs import RemoteWorkerFarm
 
+    prize_plan_h3_actor_provider = _configured_prize_plan_h3_actor_provider(args)
     fixed_cycle_updates = _validate_fixed_cycle_configuration(args)
     r274_r195_research_contract = (
         _load_r274_r195_research_baseline_contract(args)
@@ -15284,9 +16113,12 @@ def run_full_loop(args: argparse.Namespace) -> int:
         if fixed_cycle_updates
         else {}
     )
+    derivative_full_model = os.environ.get(
+        "POKEBOT_DERIVATIVE_FULL_MODEL_BOOTSTRAP", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
     r260_own_deck_training_inputs = (
         _load_r260_own_deck_training_inputs(args)
-        if fixed_cycle_updates
+        if fixed_cycle_updates or derivative_full_model
         else {}
     )
     if r260_own_deck_training_inputs.get("r274_bootstrap_handoff"):
@@ -15303,13 +16135,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
         os.environ["POKEBOT_COMBO_STATE_ROUTE_CHECKPOINT_DIGEST"] = str(
             activated.get("sha256") or activated.get("digest") or ""
         )
-    disable_rl_tactical_cotrain = os.environ.get(
-        "POKEBOT_R274_DISABLE_RL_TACTICAL_COTRAIN", ""
-    ).strip().lower() in {"1", "true", "yes", "on"}
-    if disable_rl_tactical_cotrain and not r260_own_deck_training_inputs:
-        raise RuntimeError(
-            "RL tactical cotrain override is valid only for the r274 own-deck successor"
-        )
+    disable_rl_tactical_cotrain = _r260_tactical_cotrain_disabled(
+        r260_own_deck_training_inputs
+    )
     # The peak-r195 receipt remains mandatory ancestry evidence for the fixed
     # cycle, but its serialized profile validator describes the pre-successor
     # architecture.  Once the independently validated r260/r274 handoff is
@@ -15360,6 +16188,19 @@ def run_full_loop(args: argparse.Namespace) -> int:
         raise ValueError("--expert-rehearsal-lr must be positive")
     if int(args.expert_rehearsal_batch_size) <= 0:
         raise ValueError("--expert-rehearsal-batch-size must be positive")
+    if args.rule_derivative_semantic_pack_completion is not None:
+        if int(args.expert_rehearsal_every) <= 0:
+            raise ValueError(
+                "rule-derivative semantic refresh requires expert rehearsal"
+            )
+        if float(args.rule_derivative_semantic_refresh_lr) <= 0.0:
+            raise ValueError(
+                "--rule-derivative-semantic-refresh-lr must be positive"
+            )
+        if int(args.rule_derivative_semantic_block_decisions) <= 0:
+            raise ValueError(
+                "--rule-derivative-semantic-block-decisions must be positive"
+            )
     if int(args.expert_manifest_workers) <= 0:
         raise ValueError("--expert-manifest-workers must be positive")
     if int(args.expert_min_decisions) <= 0:
@@ -15441,6 +16282,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
     formal_gate_contract: Optional[dict[str, Any]] = None
     formal_gate_contract_identity: Optional[dict[str, Any]] = None
     formal_gate: Optional[dict[str, Any]] = None
+    requested_heldout_games = args.heldout_games
     frozen_specialist_registry_path = (
         Path(args.frozen_specialist_registry).expanduser().resolve()
     )
@@ -15489,10 +16331,16 @@ def run_full_loop(args: argparse.Namespace) -> int:
         )
         active_gate = dict(active_gate_contract["next_gate"])
         contract_games = int(active_gate["evaluation"]["games_total"])
-        if args.heldout_games is not None and int(args.heldout_games) not in {
-            base_contract_games,
-            contract_games,
-        }:
+        r327_formal_override_requested = bool(
+            args.formal_holdout_contract is not None
+            and args.r327_evaluation_boundary_receipt is not None
+        )
+        if (
+            args.heldout_games is not None
+            and int(args.heldout_games)
+            not in {base_contract_games, contract_games}
+            and not r327_formal_override_requested
+        ):
             raise RuntimeError(
                 "--heldout-games disagrees with active gate contract: "
                 f"cli={args.heldout_games} base={base_contract_games} "
@@ -15514,31 +16362,92 @@ def run_full_loop(args: argparse.Namespace) -> int:
             flush=True,
         )
     r284_boundary_receipt: dict[str, Any] = {}
+    r327_evaluation_boundary_receipt: dict[str, Any] = {}
     formal_gate_contract = active_gate_contract
     formal_gate_contract_identity = active_gate_contract_identity
     formal_gate = active_gate
     if args.formal_holdout_contract is not None:
         formal_gate_path = Path(args.formal_holdout_contract).expanduser().resolve()
-        formal_gate_contract = load_active_gate_contract(formal_gate_path)
-        if (
-            formal_gate_contract.get("owner_decision_revision") != 284
-            or formal_gate_contract.get("owner_restricted_formal_only_roster")
-            is not True
-            or formal_gate_contract.get(
-                "frozen_specialist_registry_augmentation_allowed"
+        # Revision 25 preserves the sealed base contract's historical
+        # ``active_gate_semantics`` block byte-for-byte while deriving a smaller
+        # future formal gate.  The dedicated receipt validator below proves the
+        # exact permitted delta; the legacy generic loader rejects that preserved
+        # historical summary before it can reach the dedicated validator.
+        if args.r327_evaluation_boundary_receipt is not None:
+            formal_gate_contract = json.loads(
+                formal_gate_path.read_text(encoding="utf-8")
             )
-            is not False
-        ):
-            raise RuntimeError("formal holdout override is not the exact r284 contract")
+        else:
+            formal_gate_contract = load_active_gate_contract(formal_gate_path)
         formal_gate_contract_identity = _path_content_identity(formal_gate_path)
         formal_gate = dict(formal_gate_contract["next_gate"])
         formal_roster = list(formal_gate.get("roster") or [])
         formal_ids = tuple(str(row.get("opponent_id") or "") for row in formal_roster)
-        if formal_ids != (
-            "alakazam-r195-no-rtp-submission-55378392",
-            "specialist-marnie-final-format-h10-f20efb20f5c3",
-        ):
-            raise RuntimeError("r284 formal holdout roster identity changed")
+        if args.r327_evaluation_boundary_receipt is not None:
+            from poke_bot.alakazam_rule_derivative_evaluation_r327 import (
+                validate_revision25_activation_receipt,
+            )
+
+            r327_receipt_path = (
+                Path(args.r327_evaluation_boundary_receipt).expanduser().resolve()
+            )
+            r327_evaluation_boundary_receipt = json.loads(
+                r327_receipt_path.read_text(encoding="utf-8")
+            )
+            boundary_iteration = int(
+                r327_evaluation_boundary_receipt.get(
+                    "boundary_commit_iteration", -1
+                )
+            )
+            boundary_commit_path = (
+                _run_dir(args.run_name)
+                / "commits"
+                / f"iter_{boundary_iteration:05d}.json"
+            )
+            r327_evaluation_boundary_receipt = (
+                validate_revision25_activation_receipt(
+                    r327_evaluation_boundary_receipt,
+                    base_contract_path=active_gate_path,
+                    formal_contract_path=formal_gate_path,
+                    boundary_commit_path=boundary_commit_path,
+                )
+            )
+            formal_games = int(formal_gate["evaluation"]["games_total"])
+            if (
+                requested_heldout_games is not None
+                and int(requested_heldout_games) != formal_games
+            ):
+                raise RuntimeError(
+                    "--heldout-games disagrees with r327 formal contract: "
+                    f"cli={requested_heldout_games} formal={formal_games}"
+                )
+            if formal_ids != tuple(
+                str(row.get("opponent_id") or "")
+                for row in list((active_gate or {}).get("roster") or [])
+            ):
+                raise RuntimeError("r327 formal holdout roster identity changed")
+            if not bool(args.disable_research_control_measurement):
+                raise RuntimeError(
+                    "r327 formal evaluation requires zero research-control games"
+                )
+        else:
+            if (
+                formal_gate_contract.get("owner_decision_revision") != 284
+                or formal_gate_contract.get("owner_restricted_formal_only_roster")
+                is not True
+                or formal_gate_contract.get(
+                    "frozen_specialist_registry_augmentation_allowed"
+                )
+                is not False
+            ):
+                raise RuntimeError(
+                    "formal holdout override is not an authorized contract"
+                )
+            if formal_ids != (
+                "alakazam-r195-no-rtp-submission-55378392",
+                "specialist-marnie-final-format-h10-f20efb20f5c3",
+            ):
+                raise RuntimeError("r284 formal holdout roster identity changed")
         args.heldout_games = int(formal_gate["evaluation"]["games_total"])
         args.gate_wr = float(formal_gate["pass_criteria"]["skill_weighted_win_rate"])
         args.heldout_per_opponent_floor = float(
@@ -15547,41 +16456,60 @@ def run_full_loop(args: argparse.Namespace) -> int:
         print(
             "[pure_rl] FORMAL_HOLDOUT_OVERRIDE "
             f"id={formal_gate['id']} opponents={len(formal_roster)} "
-            f"games={args.heldout_games} first_iteration=1",
+            f"games={args.heldout_games} first_iteration="
+            f"{r327_evaluation_boundary_receipt.get('first_formal_holdout_iteration', 1)}",
             flush=True,
         )
-        if args.r284_iteration_boundary_receipt is None:
-            raise RuntimeError("r284 formal holdout requires its boundary receipt")
-        r284_receipt_path = (
-            Path(args.r284_iteration_boundary_receipt).expanduser().resolve()
+        if not r327_evaluation_boundary_receipt:
+            if args.r284_iteration_boundary_receipt is None:
+                raise RuntimeError("r284 formal holdout requires its boundary receipt")
+            r284_receipt_path = (
+                Path(args.r284_iteration_boundary_receipt).expanduser().resolve()
+            )
+            r284_boundary_receipt = json.loads(
+                r284_receipt_path.read_text(encoding="utf-8")
+            )
+            if (
+                r284_boundary_receipt.get("schema")
+                != "poke_bot.alakazam_r274_iteration_1_boundary_r284/v1"
+                or r284_boundary_receipt.get("owner_revision") != 284
+                or r284_boundary_receipt.get("status") != "authorized"
+                or r284_boundary_receipt.get("run_name")
+                != "alakazam_new_list_direct_policy_r274"
+                or r284_boundary_receipt.get(
+                    "defer_formal_holdout_through_iteration"
+                )
+                != 0
+                or r284_boundary_receipt.get("first_formal_holdout_iteration") != 1
+                or float(
+                    r284_boundary_receipt.get("combo_state_loss_weight", -1.0)
+                )
+                != 0.0
+                or r284_boundary_receipt.get("combo_state_route_enabled") is not False
+                or r284_boundary_receipt.get("combo_state_tensors_preserved") is not True
+                or r284_boundary_receipt.get("formal_holdout_contract_sha256")
+                != _sha256_file(formal_gate_path)
+                or r284_boundary_receipt.get("candidate_checkpoint_sha256")
+                != "sha256:645f8e6a0bc5e0cb98695e5a65151f38eef2e5011ca63f3ea4eded42cf4a11a2"
+                or int(
+                    r284_boundary_receipt.get("partial_broad_holdout_games", -1)
+                )
+                != 2142
+                or r284_boundary_receipt.get(
+                    "partial_broad_holdout_gate_eligible"
+                )
+                is not False
+            ):
+                raise RuntimeError("r284 iteration boundary receipt is invalid")
+    if args.r327_evaluation_boundary_receipt is not None and not (
+        args.formal_holdout_contract is not None
+        and r327_evaluation_boundary_receipt
+        and bool(args.disable_research_control_measurement)
+    ):
+        raise RuntimeError(
+            "r327 evaluation migration requires its formal contract and zero "
+            "research-control measurement"
         )
-        r284_boundary_receipt = json.loads(
-            r284_receipt_path.read_text(encoding="utf-8")
-        )
-        if (
-            r284_boundary_receipt.get("schema")
-            != "poke_bot.alakazam_r274_iteration_1_boundary_r284/v1"
-            or r284_boundary_receipt.get("owner_revision") != 284
-            or r284_boundary_receipt.get("status") != "authorized"
-            or r284_boundary_receipt.get("run_name")
-            != "alakazam_new_list_direct_policy_r274"
-            or r284_boundary_receipt.get("defer_formal_holdout_through_iteration")
-            != 0
-            or r284_boundary_receipt.get("first_formal_holdout_iteration") != 1
-            or float(r284_boundary_receipt.get("combo_state_loss_weight", -1.0))
-            != 0.0
-            or r284_boundary_receipt.get("combo_state_route_enabled") is not False
-            or r284_boundary_receipt.get("combo_state_tensors_preserved") is not True
-            or r284_boundary_receipt.get("formal_holdout_contract_sha256")
-            != _sha256_file(formal_gate_path)
-            or r284_boundary_receipt.get("candidate_checkpoint_sha256")
-            != "sha256:645f8e6a0bc5e0cb98695e5a65151f38eef2e5011ca63f3ea4eded42cf4a11a2"
-            or int(r284_boundary_receipt.get("partial_broad_holdout_games", -1))
-            != 2142
-            or r284_boundary_receipt.get("partial_broad_holdout_gate_eligible")
-            is not False
-        ):
-            raise RuntimeError("r284 iteration boundary receipt is invalid")
     if int(args.heldout_games) <= 0:
         raise ValueError("heldout game count must be positive")
     seed_namespace_contract = _assert_seed_namespace_contract(
@@ -15589,7 +16517,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
         iterations=int(args.iterations),
         games_per_iteration=int(args.games_per_iter),
         formal_games=int(args.heldout_games),
-        research_control_games=int(args.research_control_games_per_iter),
+        research_control_games=(
+            0
+            if bool(args.disable_research_control_measurement)
+            else int(args.research_control_games_per_iter)
+        ),
     )
     if active_gate is not None and float(args.official_adaptive_min_share) > (
         1.0 / len(active_gate["roster"])
@@ -16243,7 +17175,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
             r241_peak_r195_training_contract
         ),
     )
-    if r260_own_deck_training_inputs:
+    if r260_own_deck_training_inputs and not r260_own_deck_training_inputs.get(
+        "derivative_streaming_only"
+    ):
         # The zero-safe migration remains historical provenance; update zero
         # uses only the separately verified runtime-enabled canary checkpoint.
         # Recording the complete Inzi transport chain cannot itself enable a
@@ -16377,6 +17311,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
         _write_json_exclusive(run_dir / "manifest.json", manifest)
     else:
         assert loop_state is not None and immutable_manifest is not None
+        effective_before_migration, _effective_digest, _migration_receipts = (
+            _load_design_migration_chain(run_dir, immutable_manifest)
+        )
         # Quarantine any uncommitted partial N+1 attempt before evaluating a
         # clean-boundary gate migration. Otherwise a stale partial shard can
         # block the very launch that is supposed to replace its bad contract.
@@ -16384,15 +17321,17 @@ def run_full_loop(args: argparse.Namespace) -> int:
             run_dir,
             loop_state,
             research_control_registry=research_control_registry,
+            expected_awr_provider=(
+                (effective_before_migration.get("learner") or {}).get(
+                    "prize_plan_h3_actor_provider"
+                )
+            ),
         )
         if recovery is not None:
             print(
                 f"[pure_rl] recovered interrupted iteration into {recovery}",
                 flush=True,
             )
-        effective_before_migration, _effective_digest, _migration_receipts = (
-            _load_design_migration_chain(run_dir, immutable_manifest)
-        )
         # An already-receipted N+1 transaction remains governed by the design
         # in force when its games were collected.  The migration below governs
         # newly collected work only; using it to reopen this receipt would
@@ -17030,8 +17969,16 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 practice_plan["research_controls"] = {
                     "training_eligible": False,
                     "replay_eligible": False,
-                    "additive_measurement_games": int(
+                    "additive_measurement_games": (
+                        0
+                        if bool(args.disable_research_control_measurement)
+                        else int(args.research_control_games_per_iter)
+                    ),
+                    "legacy_reclaimed_training_slots": int(
                         args.research_control_games_per_iter
+                    ),
+                    "disabled_by_revision_25": bool(
+                        args.disable_research_control_measurement
                     ),
                     "stage": "measure:research_controls",
                 }
@@ -17600,7 +18547,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     flush=True,
                 )
                 return prepared, record
-            if r260_own_deck_training_inputs and not disable_rl_tactical_cotrain:
+            if r260_own_deck_training_inputs:
                 # The successor never enters the resident corpus path: its
                 # Inzi-only index streams and exact-key attaches one bounded
                 # host batch at a time.
@@ -17644,7 +18591,13 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     amp=train_dev.type == "cuda", max_decisions_per_batch=int(args.expert_rehearsal_batch_size),
                     visible_tutor_completion_loss_weight=0.025,
                     terminal_conversion_loss_weight=0.025,
-                    tactical_sequence_outcome_loss_weight=0.025,
+                    tactical_sequence_outcome_loss_weight=(
+                        0.025
+                        if r260_own_deck_training_inputs[
+                            "tactical_sequence_enabled"
+                        ]
+                        else 0.0
+                    ),
                     collect_own_deck_promotion_metrics=True,
                 )
                 result = streaming_r260_host_rehearsal_step(
@@ -17654,10 +18607,20 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     cfg=stream_cfg, seed=corpus_split_seed, max_context=rehearsal_context,
                     batch_games=max(1, int(args.expert_rehearsal_batch_size) // 128),
                     manifest_workers=int(args.expert_manifest_workers),
-                    tactical_overlay_path=r260_own_deck_training_inputs[
-                        "expert_tactical_overlay_identity"
-                    ]["path"],
+                    tactical_overlay_path=(
+                        None
+                        if disable_rl_tactical_cotrain
+                        else r260_own_deck_training_inputs[
+                            "expert_tactical_overlay_identity"
+                        ]["path"]
+                    ),
                 )
+                rehearsal_loss_weights = {
+                    "visible_tutor_completion": 0.025,
+                    "terminal_conversion": 0.025,
+                }
+                if r260_own_deck_training_inputs["tactical_sequence_enabled"]:
+                    rehearsal_loss_weights["tactical_sequence_outcome"] = 0.025
                 record = {
                     "schema": "poke_bot.r260_scheduled_expert_rehearsal/v1",
                     "status": "passed",
@@ -17701,11 +18664,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                             ]
                         ),
                     },
-                    "loss_weights": {
-                        "visible_tutor_completion": 0.025,
-                        "terminal_conversion": 0.025,
-                        "tactical_sequence_outcome": 0.025,
-                    },
+                    "loss_weights": rehearsal_loss_weights,
                     "rl_iteration_before_after": [
                         int(result["rl_iteration"]),
                         int(result["rl_iteration"]),
@@ -17804,6 +18763,18 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     )
             if record is None:
                 rehearsal_checkpoint, _receipt_path = rehearsal_paths(run_dir, it)
+                derivative_semantic_refresh = (
+                    args.rule_derivative_semantic_pack_completion is not None
+                    and parent_checkpoint.get("schema")
+                    == "poke_bot.alakazam_rule_derivative_composite_candidate_initialization/v1"
+                )
+                base_rehearsal_checkpoint = rehearsal_checkpoint
+                if derivative_semantic_refresh:
+                    base_rehearsal_checkpoint = rehearsal_checkpoint.with_name(
+                        rehearsal_checkpoint.stem
+                        + f".base-only-{parent.digest[7:19]}"
+                        + rehearsal_checkpoint.suffix
+                    )
                 print(
                     f"[pure_rl] expert rehearsal begin before_iter={it} "
                     f"decisions={manifest_identity.decisions} "
@@ -17817,7 +18788,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     return supervised_rehearsal_step(
                         corpus,
                         base_ckpt=parent.path,
-                        output_path=rehearsal_checkpoint,
+                        output_path=base_rehearsal_checkpoint,
                         parent_digest=parent.digest,
                         rehearsal_iteration=it,
                         manifest_identity=manifest_identity.as_dict(),
@@ -17889,6 +18860,39 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         loss_weights["alakazam_guide"]
                     )
                 rehearsal_result = _run_supervised_rehearsal(rehearsal_args)
+                semantic_refresh_record: Optional[dict[str, Any]] = None
+                if derivative_semantic_refresh:
+                    from scripts.train_alakazam_rule_derivative_full_r10 import (
+                        refresh_semantic_checkpoint,
+                    )
+
+                    semantic_refresh_record = refresh_semantic_checkpoint(
+                        base_checkpoint=base_rehearsal_checkpoint,
+                        output=rehearsal_checkpoint,
+                        completion_path=Path(
+                            args.rule_derivative_semantic_pack_completion
+                        ),
+                        device=train_dev,
+                        epochs=rehearsal_epochs,
+                        block_decisions=int(
+                            args.rule_derivative_semantic_block_decisions
+                        ),
+                        learning_rate=float(
+                            args.rule_derivative_semantic_refresh_lr
+                        ),
+                        seed=args.seed + 5_200_000 + it,
+                        before_iteration=it,
+                    )
+                    rehearsal_result = {
+                        **rehearsal_result,
+                        "candidate_path": semantic_refresh_record[
+                            "checkpoint_path"
+                        ],
+                        "candidate_digest": semantic_refresh_record[
+                            "checkpoint_sha256"
+                        ],
+                        "semantic_refresh": semantic_refresh_record,
+                    }
                 record = commit_rehearsal_receipt(
                     run_dir,
                     before_iteration=it,
@@ -17913,6 +18917,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         r241_peak_r195_training_contract
                     ),
                 )
+                if semantic_refresh_record is not None:
+                    record = {
+                        **record,
+                        "semantic_refresh": semantic_refresh_record,
+                    }
             prepared = _verified_checkpoint_identity(record["checkpoint_identity"])
             print(
                 f"[pure_rl] expert rehearsal committed before_iter={it} "
@@ -18464,7 +19473,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         checkpoint_digest=behavior_before.digest,
                         minimum_roots=1024,
                     )
-                _write_json_exclusive(
+                _write_json_exclusive_or_verify(
                     run_dir
                     / "tactical_sequence_overlay_receipts"
                     / f"iter_{it:05d}.json",
@@ -18520,6 +19529,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     shard_path=shard_path,
                     r241_peak_r195_training_contract=(
                         r241_peak_r195_training_contract
+                    ),
+                    expected_awr_provider=(
+                        (design_contract.get("learner") or {}).get(
+                            "prize_plan_h3_actor_provider"
+                        )
                     ),
                 )
                 print(
@@ -18593,6 +19607,130 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     flush=True,
                 )
             n_train_sequences = len(dataset.sequences)
+            h3_advantage_cache = None
+            h3_advantage_provider_receipt = None
+            live_h3_mode = bool(
+                prize_plan_h3_actor_provider is not None
+                and prize_plan_h3_actor_provider.get("mode")
+                == "receipt_bound_live_h3_additive_at_clean_optimizer_boundary"
+            )
+            h3_inputs = (
+                args.prize_plan_h3_cache_receipt,
+                str(args.prize_plan_h3_cache_receipt_sha256 or ""),
+                args.prize_plan_h3_activation_receipt,
+                str(args.prize_plan_h3_activation_receipt_sha256 or ""),
+            )
+            if any(h3_inputs) and not all(h3_inputs):
+                raise RuntimeError(
+                    "Prize-plan H3 cache/activation paths and SHA-256 values "
+                    "must be supplied as one complete boundary binding"
+                )
+            if live_h3_mode and any(h3_inputs):
+                raise RuntimeError("live and static Prize-plan H3 providers cannot mix")
+            if live_h3_mode:
+                from poke_bot.prize_plan_live_cache import materialize_live_h3_cache
+
+                live_root = run_dir / "prize_plan_h3_live" / f"iter_{it:05d}"
+                if live_root.exists():
+                    cache_receipt_path = live_root / "cache-receipt.json"
+                    activation_receipt_path = live_root / "activation-receipt.json"
+                    cache_receipt_sha256 = _sha256_file(cache_receipt_path)
+                    activation_receipt_sha256 = _sha256_file(
+                        activation_receipt_path
+                    )
+                    live_summary = {
+                        "recovered_create_only_cache": True,
+                        "cache_receipt_sha256": cache_receipt_sha256,
+                        "activation_receipt_sha256": activation_receipt_sha256,
+                    }
+                else:
+                    (
+                        cache_receipt_path,
+                        cache_receipt_sha256,
+                        activation_receipt_path,
+                        activation_receipt_sha256,
+                        live_summary,
+                    ) = materialize_live_h3_cache(
+                        sequences=dataset.sequences,
+                        replay_shards=_replay_window_paths(
+                            run_dir,
+                            it,
+                            initial_replay_shards=initial_replay_shards,
+                        ),
+                        learner_checkpoint_sha256=learner_before.digest,
+                        sidecar_checkpoint=Path(args.prize_plan_h3_live_sidecar),
+                        sidecar_checkpoint_sha256=str(
+                            args.prize_plan_h3_live_sidecar_sha256
+                        ),
+                        scale_support=Path(
+                            args.prize_plan_h3_live_scale_support
+                        ),
+                        scale_support_sha256=str(
+                            args.prize_plan_h3_live_scale_support_sha256
+                        ),
+                        c3_support=Path(args.prize_plan_h3_live_c3_support),
+                        c3_support_sha256=str(
+                            args.prize_plan_h3_live_c3_support_sha256
+                        ),
+                        contract=Path(args.prize_plan_h3_live_contract),
+                        contract_sha256=str(
+                            args.prize_plan_h3_live_contract_sha256
+                        ),
+                        output_dir=live_root,
+                        device=train_dev,
+                    )
+                from poke_bot.prize_plan_actor_boundary import load_h3_actor_provider
+
+                h3_advantage_cache, h3_advantage_provider_receipt = (
+                    load_h3_actor_provider(
+                        sequences=dataset.sequences,
+                        policy_checkpoint_sha256=learner_before.digest,
+                        cache_receipt_path=cache_receipt_path,
+                        cache_receipt_sha256=cache_receipt_sha256,
+                        activation_receipt_path=activation_receipt_path,
+                        activation_receipt_sha256=activation_receipt_sha256,
+                    )
+                )
+                h3_advantage_provider_receipt["provider_binding"][
+                    "live_source_design"
+                ] = dict(prize_plan_h3_actor_provider)
+                print(
+                    "[pure_rl] PRIZE_PLAN_H3_LIVE_BOUNDARY_PROVIDER "
+                    f"iter={it} rows={len(h3_advantage_cache)} "
+                    f"cache={cache_receipt_sha256} "
+                    f"summary={json.dumps(live_summary, sort_keys=True)}",
+                    flush=True,
+                )
+            if all(h3_inputs):
+                from poke_bot.prize_plan_actor_boundary import load_h3_actor_provider
+
+                h3_advantage_cache, h3_advantage_provider_receipt = (
+                    load_h3_actor_provider(
+                        sequences=dataset.sequences,
+                        policy_checkpoint_sha256=learner_before.digest,
+                        cache_receipt_path=Path(args.prize_plan_h3_cache_receipt),
+                        cache_receipt_sha256=str(
+                            args.prize_plan_h3_cache_receipt_sha256
+                        ),
+                        activation_receipt_path=Path(
+                            args.prize_plan_h3_activation_receipt
+                        ),
+                        activation_receipt_sha256=str(
+                            args.prize_plan_h3_activation_receipt_sha256
+                        ),
+                    )
+                )
+                if bool(args.train_device_resident):
+                    raise RuntimeError(
+                        "Prize-plan H3 activation requires the receipt-auditable "
+                        "host replay path; device-resident training is unsupported"
+                    )
+                print(
+                    "[pure_rl] PRIZE_PLAN_H3_BOUNDARY_PROVIDER "
+                    f"iter={it} rows={len(h3_advantage_cache)} "
+                    f"cache={args.prize_plan_h3_cache_receipt_sha256}",
+                    flush=True,
+                )
             train_metrics = {
                 "mean_advantage": 0.0,
                 "raw_advantage_mean": 0.0,
@@ -18687,6 +19825,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 r241_peak_r195_training_contract=(
                     r241_peak_r195_training_contract
                 ),
+                optimizer_sparse_prefetch_batches=(
+                    1 if bool(args.train_optimizer_sparse_prefetch) else 0
+                ),
             )
             if family_training_contract is not None:
                 train_cfg.archetype_residual_loss_weights = dict(
@@ -18770,6 +19911,17 @@ def run_full_loop(args: argparse.Namespace) -> int:
                             for entry in opponent_pool
                         ],
                         "design_fingerprint": design_fingerprint,
+                        **(
+                            {
+                                "prize_plan_h3_actor_provider": dict(
+                                    h3_advantage_provider_receipt[
+                                        "provider_binding"
+                                    ]
+                                )
+                            }
+                            if h3_advantage_provider_receipt is not None
+                            else {}
+                        ),
                         "dormant_matchup_adapter_ticketing": adapter_ticketing,
                         "archetype_family": (
                             {
@@ -18807,6 +19959,10 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     device_resident=bool(args.train_device_resident),
                     device_resident_min_free_gib=float(
                         args.train_device_resident_min_free_gib
+                    ),
+                    awr_advantage_cache=h3_advantage_cache,
+                    awr_advantage_provider_receipt=(
+                        h3_advantage_provider_receipt
                     ),
                 )
             finally:
@@ -19054,8 +20210,52 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 and os.environ.get("POKEBOT_R307_SKIP_TERMINAL_EVAL", "0")
                 == "1"
             )
+            r329_holdout_waiver: dict[str, Any] = {}
+            r329_holdout_waiver_path_raw = os.environ.get(
+                "POKEBOT_R329_ITER3_HOLDOUT_WAIVER_RECEIPT", ""
+            ).strip()
+            # The r329 receipt waives only iteration 3.  Keep the immutable
+            # receipt configured for resume provenance, but do not rebind it
+            # to later candidates when their normal formal holdout begins.
+            if r329_holdout_waiver_path_raw and int(it) == 3:
+                r329_holdout_waiver_path = Path(
+                    r329_holdout_waiver_path_raw
+                ).expanduser().resolve()
+                r329_holdout_waiver = json.loads(
+                    r329_holdout_waiver_path.read_text(encoding="utf-8")
+                )
+                r329_contract_path = Path(
+                    os.environ["POKEBOT_R329_GOAL_CONTRACT"]
+                ).expanduser().resolve()
+                r329_contract_sha256 = _sha256_file(r329_contract_path)
+                expected_waiver = {
+                    "schema": "poke_bot.alakazam_rule_derivative_iter3_holdout_waiver/v1",
+                    "owner_goal_revision": 27,
+                    "root_owner_revision": 329,
+                    "run_name": str(args.run_name),
+                    "iteration": 3,
+                    "candidate_checkpoint_sha256": str(candidate.digest),
+                    "formal_holdout_games_skipped": int(args.heldout_games),
+                    "formal_holdout_only": True,
+                    "promotion_comparison_preserved": True,
+                    "measured_holdout_pass_claim_allowed": False,
+                    "future_holdouts_unchanged": True,
+                    "goal_contract_sha256": r329_contract_sha256,
+                }
+                for key, expected_value in expected_waiver.items():
+                    if r329_holdout_waiver.get(key) != expected_value:
+                        raise RuntimeError(
+                            "invalid r329 iteration-3 holdout waiver field "
+                            f"{key}: expected={expected_value!r} "
+                            f"actual={r329_holdout_waiver.get(key)!r}"
+                        )
+            r329_holdout_waived = bool(
+                int(it) == 3 and bool(r329_holdout_waiver)
+            )
             formal_holdout_deferred = bool(
-                formal_holdout_deferred or terminal_eval_waived
+                formal_holdout_deferred
+                or terminal_eval_waived
+                or r329_holdout_waived
             )
             if terminal_eval_waived:
                 print(
@@ -19065,7 +20265,19 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     "measured_pass_claim=0 owner_revision=307",
                     flush=True,
                 )
-            if formal_holdout_deferred and not terminal_eval_waived:
+            if r329_holdout_waived:
+                print(
+                    "[pure_rl] FORMAL_HOLDOUT_OWNER_WAIVED "
+                    f"iter={it} candidate={candidate.digest[:19]}… "
+                    "formal_holdout=skipped measured_pass_claim=0 "
+                    "owner_revision=329 scope=iteration_3_only",
+                    flush=True,
+                )
+            if (
+                formal_holdout_deferred
+                and not terminal_eval_waived
+                and not r329_holdout_waived
+            ):
                 print(
                     "[pure_rl] FORMAL_HOLDOUT_OWNER_DEFERRED "
                     f"iter={it} candidate={candidate.digest[:19]}… "
@@ -19105,6 +20317,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 )
                 if (
                     int(args.research_control_games_per_iter) > 0
+                    and not bool(args.disable_research_control_measurement)
                     and not formal_holdout_deferred
                 ):
                     research_control_result = _research_control_measurement(
@@ -19255,10 +20468,14 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     "partial_broad_holdout_games": 2142,
                     "partial_broad_holdout_planned_games": 4500,
                     "partial_broad_holdout_gate_eligible": False,
-                    "boundary_receipt": str(
-                        Path(args.r284_iteration_boundary_receipt)
-                        .expanduser()
-                        .resolve()
+                    "boundary_receipt": (
+                        str(
+                            Path(args.r284_iteration_boundary_receipt)
+                            .expanduser()
+                            .resolve()
+                        )
+                        if args.r284_iteration_boundary_receipt is not None
+                        else None
                     ),
                 }
                 if terminal_eval_waived:
@@ -19274,12 +20491,30 @@ def run_full_loop(args: argparse.Namespace) -> int:
                             "evaluation_waiver_scope": "r274_iteration_1_only",
                         }
                     )
+                elif r329_holdout_waived:
+                    deferred_record.update(
+                        {
+                            "owner_revision": 329,
+                            "owner_deferred": False,
+                            "owner_waived": True,
+                            "reason": "owner_r329_iteration_3_formal_holdout_waiver",
+                            "formal_holdout_skipped": True,
+                            "research_control_measurement_skipped": True,
+                            "measured_pass_claim_allowed": False,
+                            "evaluation_waiver_scope": "derivative_iteration_3_only",
+                            "waiver_receipt": str(r329_holdout_waiver_path),
+                        }
+                    )
                 active_gate_result.update(deferred_record)
                 gate.passed = False
                 gate.reason = (
                     "owner_terminal_evaluation_waiver"
                     if terminal_eval_waived
-                    else "owner_deferred_to_iteration_1"
+                    else (
+                        "owner_iteration_3_formal_holdout_waiver"
+                        if r329_holdout_waived
+                        else "owner_deferred_to_iteration_1"
+                    )
                 )
                 raw_heldout_gate = dict(active_gate_result)
             heldout_champion_updated = False
@@ -19387,7 +20622,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 learner_carry_reason = (
                     "owner_r307_terminal_evaluation_waiver_carry"
                     if terminal_eval_waived
-                    else "owner_r284_deferred_holdout_promotion_carry"
+                    else (
+                        "owner_r329_iteration_3_holdout_waiver_carry"
+                        if r329_holdout_waived
+                        else "owner_r284_deferred_holdout_promotion_carry"
+                    )
                 )
             exact_gate_regression = {
                 "enabled": False,

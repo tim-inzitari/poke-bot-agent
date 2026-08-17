@@ -1,0 +1,148 @@
+--- poke_bot/train.py
++++ poke_bot/train.py
+@@ -2731,6 +2731,7 @@
+     awr_normalize_advantages: bool = True,
+     entropy_bonus: float = 0.0,
+     awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None,
++    awr_advantage_cache: Optional[Mapping[tuple[int, int, int], float]] = None,
+     awr_capture_baseline: Optional[dict[tuple[int, int, int], float]] = None,
+     awr_weight_sink: Optional[list[float]] = None,
+     prediction_sink: Optional[list[int]] = None,
+@@ -3527,10 +3528,33 @@
+         # Capture raw diagnostics before whitening. The compatibility
+         # ``mean_advantage`` signal intentionally uses mean(abs(A)) so symmetric
+         # positive/negative learning signal cannot look dead by cancellation.
++        # Preserve the existing terminal z-V term and add only the frozen,
++        # receipt-bound H3 contribution supplied for each selected stage.
+         raw_advantages = v_target - baseline_pred.detach()
++        if awr_advantage_cache is not None:
++            if not pure_rl:
++                raise ValueError("a frozen AWR advantage cache requires pure_rl=True")
++            missing_advantages = [
++                key for key in awr_baseline_keys if key not in awr_advantage_cache
++            ]
++            if missing_advantages:
++                raise KeyError(
++                    "frozen AWR advantage cache is missing "
++                    f"{len(missing_advantages)} decision-stage row(s)"
++                )
++            supplied = [float(awr_advantage_cache[key]) for key in awr_baseline_keys]
++            if any(not math.isfinite(value) for value in supplied):
++                raise FloatingPointError(
++                    "frozen AWR advantage cache contains non-finite values"
++                )
++            raw_advantages = raw_advantages + torch.tensor(
++                supplied,
++                device=device,
++                dtype=raw_advantages.dtype,
++            )
+         raw_stats = raw_advantages.detach().float()
+         raw_adv_mean = float(raw_stats.mean().item())
+         raw_adv_std = float(raw_stats.std(unbiased=False).item())
+@@ -6449,6 +6473,7 @@
+     cfg: TrainConfig,
+     desc: str = "val",
+     awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None,
++    awr_advantage_cache: Optional[Mapping[tuple[int, int, int], float]] = None,
+ ) -> BatchMetrics:
+     model.eval()
+     parts: list[BatchMetrics] = []
+@@ -6523,6 +6548,7 @@
+                 awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
+                 entropy_bonus=float(cfg.entropy_bonus),
+                 awr_baseline_cache=awr_baseline_cache,
++                awr_advantage_cache=awr_advantage_cache,
+                 awr_weight_sink=exact_awr_weights,
+                 history_identity_weight=float(
+                     cfg.history_identity_loss_weight
+@@ -10306,6 +10332,8 @@
+     device_resident_min_free_gib: float = DEFAULT_MIN_FREE_GIB,
+     preserve_rl_iteration: bool = False,
+     checkpoint_pure_rl_override: Optional[bool] = None,
++    awr_advantage_cache: Optional[Mapping[tuple[int, int, int], float]] = None,
++    awr_advantage_provider_receipt: Optional[Mapping[str, Any]] = None,
+ ) -> dict[str, Any]:
+     """One immutable history-policy candidate fit for the RL loop.
+@@ -10354,6 +10382,39 @@
+             "exact shadow AWR weight quantiles currently require host-batched "
+             "temporal training"
+         )
++    if (awr_advantage_cache is None) != (awr_advantage_provider_receipt is None):
++        raise ValueError(
++            "frozen AWR advantage cache and provider receipt must be supplied together"
++        )
++    if awr_advantage_cache is not None:
++        if not cfg.pure_rl:
++            raise ValueError("frozen AWR advantage provider requires pure RL")
++        if device_resident:
++            raise ValueError(
++                "frozen H3 advantage provider is not authorized for the resident corpus"
++            )
++        from .prize_plan_actor_boundary import (
++            replay_membership_sha256,
++            validate_activation_receipt,
++        )
++
++        receipt = dict(awr_advantage_provider_receipt or {})
++        binding = receipt.get("provider_binding")
++        if not isinstance(binding, Mapping):
++            raise ValueError("frozen H3 advantage provider lacks its boundary binding")
++        validate_activation_receipt(
++            receipt,
++            cache_receipt_sha256=str(binding.get("cache_receipt_sha256") or ""),
++            cache_artifact_sha256=str(binding.get("cache_artifact_sha256") or ""),
++            policy_checkpoint_sha256=actual_parent_digest,
++            replay_membership_digest=replay_membership_sha256(dataset.sequences),
++        )
++        expected_stage_rows = sum(
++            len(decision.policy_stages)
++            for sequence in dataset.sequences
++            for decision in sequence.decisions
++        )
++        if len(awr_advantage_cache) != expected_stage_rows:
++            raise ValueError("frozen H3 advantage provider lacks exact stage coverage")
+     if device_resident and cfg.collect_own_deck_promotion_metrics:
+         raise ValueError(
+             "own-deck promotion metric collection requires host GameSequence "
+@@ -10965,6 +11026,7 @@
+                         awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
+                         entropy_bonus=float(cfg.entropy_bonus),
+                         awr_baseline_cache=awr_baseline_cache,
++                        awr_advantage_cache=awr_advantage_cache,
+                         awr_weight_sink=chunk_awr_weights,
+                     )
+                 applied = _apply_update(total, bm)
+@@ -11096,6 +11158,7 @@
+                 cfg=cfg,
+                 desc=f"rl-val ep{epoch}",
+                 awr_baseline_cache=awr_baseline_cache,
++                awr_advantage_cache=awr_advantage_cache,
+             )
+             metric = val_m.total_loss
+         else:
+@@ -11532,6 +11595,12 @@
+                 if resident_baseline is not None
+                 else len(awr_baseline_cache or {})
+             ),
++            "awr_advantage_provider": (
++                dict(awr_advantage_provider_receipt or {})
++                if awr_advantage_cache is not None
++                else None
++            ),
++            "awr_advantage_rows": len(awr_advantage_cache or {}),
+             "awr_baseline_implementation": (
+                 "device_resident"
+                 if resident_baseline is not None
+@@ -11687,6 +11756,12 @@
+             if awr_baseline_cache is not None
+             else "detached_online"
+         ),
++        "awr_advantage_provider": (
++            dict(awr_advantage_provider_receipt or {})
++            if awr_advantage_cache is not None
++            else None
++        ),
++        "awr_advantage_rows": len(awr_advantage_cache or {}),
+         "awr_baseline_implementation": (
+             "device_resident"
+             if resident_baseline is not None

@@ -1,0 +1,60 @@
+\section{Problem Formulation and Threat Model}
+
+\subsection{Information set and legal action set}
+
+Let $I_t$ be the complete information legally available to the acting seat at
+decision time $t$. It includes the acting player's own hand and other
+legitimately private state, the public board and zones, public action history,
+legally revealed card information, and the current legal-option list. It does
+not include the opponent's hidden hand identities, either deck order, or
+unrevealed Prize identities. A deterministic observation builder produces
+$x_t=f(I_t)$ and a causal history $h_t=(x_{\leq t},a_{<t})$.
+
+The pinned simulator returns a variable set
+\begin{equation}
+  \mathcal{A}_t = \mathcal{A}(I_t)=\{o_{t,1},\ldots,o_{t,n_t}\}.
+\end{equation}
+The policy chooses only among these current options. Some conceptual actions
+span several engine prompts, so a complete action is a finite sequence
+$a_t=(o_{t,i_1},\ldots,o_{t,i_K},\textsc{stop})$ in which the simulator
+recomputes legality after each stage. The policy never caches an old option
+index as a future command. This distinction matters because an index is an
+address inside one transient list, not an action identity.
+
+We use the terminal return $z\in\{-1,0,+1\}$ for loss, draw, and win. Auxiliary
+targets may describe public resources, Prize potential, or short-horizon
+outcomes, but they are masked when the required causal interval is incomplete
+or ambiguous. Missing supervision is not encoded as a numerical zero.
+
+\subsection{Threat model}
+
+We consider four classes of failure.
+
+\textbf{Representation collision.} Two publicly distinguishable options with
+different simulator semantics share one feature key. Harmless permutations are
+not actionable collisions; the criterion is a semantic difference, not byte
+inequality.
+
+\textbf{Privileged-input dependence.} A pre-transition choice changes when
+only hidden opponent cards, deck order, unrevealed Prizes, or future events are
+changed. Metamorphic pairs must leave sanitized observations, option features,
+and policy logits identical.
+
+\textbf{Authority inversion.} A learned rule or legality predictor adds,
+removes, or rewrites simulator options. Such a model may be a diagnostic head,
+but it is never an execution authority.
+
+\textbf{Evidence conflation.} An integration receipt, training diagnostic,
+public score, descriptive replay slice, or shadow-model metric is reported as a
+formal policy result. We control this with visible claim labels---\Measured,
+\Verified, \Configured, \Historical, and \NotMeasured---and with receipt-bound
+tables whose disposition accompanies the number.
+
+\subsection{Scope}
+
+The active derivative uses a greedy, factorized policy. RTP, MCTS, online
+search, and the recursive PokeRLM roadmap are excluded from the packaged action
+path. A separately trained shadow planner may supply research diagnostics, but
+its presence does not imply action authority. Likewise, the Prize-plan v2
+sidecar is a trainer-only advantage provider. It is absent from the policy state
+dictionary, runtime Fusion, selector, serving bundle, and Kaggle package.

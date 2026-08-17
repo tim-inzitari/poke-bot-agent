@@ -1,0 +1,22 @@
+\begin{figure}[htbp]
+\centering
+\begin{tabularx}{\linewidth}{>{\centering\arraybackslash}X c >{\centering\arraybackslash}X c >{\centering\arraybackslash}X c >{\centering\arraybackslash}X}
+\boxcell{pale}{Visible state\\$I_t$} & $\longrightarrow$ &
+\boxcell{mint}{Engine legal set\\$\mathcal A(I_t)$} & $\longrightarrow$ &
+\boxcell{sand}{Factorized stage\\$C_t(p)$} & $\longrightarrow$ &
+\boxcell{pale}{Masked policy\\$\pi_\theta$} \\
+$\Big\downarrow$ && $\Big\downarrow$ && $\Big\downarrow$ && $\Big\downarrow$ \\
+\boxcell{mint}{Causal state and\\option vectors} & $\longrightarrow$ &
+\boxcell{sand}{Semantic key and\\features $\kappa,x_i$} & $\longrightarrow$ &
+\boxcell{pale}{Bounded additive\\score $\ell_i^{+}$} & $\longrightarrow$ &
+\boxcell{mint}{Append option\\or \textsc{stop}}
+\end{tabularx}
+\vspace{0.25em}
+
+{\small\color{statusgray}
+Training only: public Prize counts $\rightarrow \Phi \rightarrow
+(Q^{\mathrm{plan}}_3,V^{\mathrm{plan}}_3) \rightarrow$ AWR weights.
+This path does not supply a runtime action.}
+\caption{Mathematical and architectural boundary of the direct controller.}
+\label{fig:math-controller}
+\end{figure}

@@ -2300,6 +2300,9 @@ class RemoteWorkerInfo:
     #: means the worker started without an adjacent activation marker and must
     #: not receive games when production matchup routing is required.
     matchup_runtime: Optional[dict[str, Any]] = None
+    #: Storage-local path of the currently resident checkpoint. New workers
+    #: advertise this so a fleet controller can safely enroll by IP alone.
+    checkpoint_path: Optional[str] = None
 
 
 def _env_float(name: str, default: float) -> float:
@@ -2409,6 +2412,11 @@ class RemoteJobClient:
             matchup_runtime=(
                 copy.deepcopy(reply.get("matchup_runtime"))
                 if isinstance(reply.get("matchup_runtime"), dict)
+                else None
+            ),
+            checkpoint_path=(
+                str(reply.get("checkpoint_path"))
+                if reply.get("checkpoint_path")
                 else None
             ),
         )

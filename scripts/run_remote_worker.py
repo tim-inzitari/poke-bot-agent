@@ -281,6 +281,7 @@ def _activate_matchup_runtime_from_marker(
 
     from poke_bot import checkpoint as checkpoint_mod
     from poke_bot.matchup_adapter_routes import (
+        MatchupAdapterRouteContract,
         require_runtime_route_binding,
         resolve_matchup_adapter_route_contract,
     )
@@ -295,12 +296,30 @@ def _activate_matchup_runtime_from_marker(
     extra = dict(saved.get("extra") or {})
     dormant = dict(extra.get("dormant_matchup_adapter_bank") or {})
     adapter_config = dict(extra.get("matchup_adapter_config") or {})
-    route_contract = resolve_matchup_adapter_route_contract(adapter_config)
-    if tuple(tree.targets) != route_contract.target_ids:
+    checkpoint_route_contract = resolve_matchup_adapter_route_contract(adapter_config)
+    tree_route_contract = MatchupAdapterRouteContract(
+        adapter_format=str(tree.adapter_format),
+        target_ids=tuple(tree.targets),
+        physical_slots=tuple(tree.route_physical_slots),
+        slot_capacity=int(payload.get("physical_slot_capacity") or 0),
+        slot_registry_digest=tree.slot_registry_digest,
+    )
+    tree_route_count = len(tree_route_contract.target_ids)
+    if not (
+        tree_route_count > 0
+        and tree_route_contract.adapter_format
+        == checkpoint_route_contract.adapter_format
+        and tree_route_contract.target_ids
+        == checkpoint_route_contract.target_ids[:tree_route_count]
+        and tree_route_contract.physical_slots
+        == checkpoint_route_contract.physical_slots[:tree_route_count]
+        and tree_route_contract.slot_capacity
+        == checkpoint_route_contract.slot_capacity
+    ):
         raise ValueError("checkpoint and runtime tree route rosters differ")
     require_runtime_route_binding(
         payload,
-        route_contract,
+        tree_route_contract,
         allow_legacy_v5=True,
     )
     route_decisions = {
@@ -308,7 +327,7 @@ def _activate_matchup_runtime_from_marker(
     }
     fully_trained = bool(
         fit.get("schema") == "poke_bot.dormant_matchup_adapter_fit/v1"
-        and set(accepted).issubset(set(route_contract.target_ids))
+        and set(accepted).issubset(set(checkpoint_route_contract.target_ids))
         and all(route_decisions.get(archetype_id, 0) > 0 for archetype_id in accepted)
     )
     dormant_config = dict(dormant.get("adapter_config") or {})
@@ -317,7 +336,7 @@ def _activate_matchup_runtime_from_marker(
         and dormant.get("schema") == "poke_bot.zero_dormant_matchup_adapter/v1"
         and dormant.get("zero_output") is True
         and dormant.get("runtime_enabled") is False
-        and set(accepted).issubset(set(route_contract.target_ids))
+        and set(accepted).issubset(set(checkpoint_route_contract.target_ids))
         and (not dormant_config or dormant_config == adapter_config)
     )
     # Once the first isolated adapter pass runs, the checkpoint is a hybrid:
@@ -331,14 +350,18 @@ def _activate_matchup_runtime_from_marker(
         and fit.get("schema") == "poke_bot.dormant_matchup_adapter_fit/v1"
         and fit.get("zero_example_routes_remain_dormant") is True
     ):
-        physical_slot_by_target = route_contract.physical_slot_by_target
-        model_state = dict(saved.get("model_state_dict") or {})
+        physical_slot_by_target = checkpoint_route_contract.physical_slot_by_target
+        model_state = dict(
+            saved.get("model_state_dict")
+            or saved.get("base_model_state_dict")
+            or {}
+        )
         dormant_ids = {
             str(value)
             for value in fit.get("dormant_no_example_archetype_ids") or ()
         }
         hybrid_covered = set(accepted).issubset(
-            set(route_contract.target_ids)
+            set(checkpoint_route_contract.target_ids)
         )
         for archetype_id in accepted:
             if not hybrid_covered or route_decisions.get(archetype_id, 0) > 0:
@@ -356,7 +379,43 @@ def _activate_matchup_runtime_from_marker(
                     break
             if not hybrid_covered:
                 break
-    if not accepted or not (fully_trained or zero_bank or hybrid_covered):
+    # Composite derivative checkpoints use ``base_model_state_dict`` and do
+    # not carry the older fit sidecar.  In that schema, prove the same runtime
+    # property directly from the serialized bank: every accepted tree route
+    # maps to its checkpoint-bound physical slot and has a materialized output
+    # projection.  A route with both output weight and bias exactly zero is an
+    # inert adapter and cannot satisfy this gate.
+    materialized_covered = bool(accepted)
+    model_state = dict(
+        saved.get("model_state_dict")
+        or saved.get("base_model_state_dict")
+        or {}
+    )
+    physical_slot_by_target = checkpoint_route_contract.physical_slot_by_target
+    for archetype_id in accepted:
+        if not materialized_covered or archetype_id not in physical_slot_by_target:
+            materialized_covered = False
+            break
+        route_index = physical_slot_by_target[archetype_id]
+        up_weight = model_state.get(
+            f"matchup_adapter_bank.experts.{route_index}.up.weight"
+        )
+        up_bias = model_state.get(
+            f"matchup_adapter_bank.experts.{route_index}.up.bias"
+        )
+        if (
+            up_weight is None
+            or up_bias is None
+            or not (
+                bool(up_weight.detach().count_nonzero().item())
+                or bool(up_bias.detach().count_nonzero().item())
+            )
+        ):
+            materialized_covered = False
+            break
+    if not accepted or not (
+        fully_trained or zero_bank or hybrid_covered or materialized_covered
+    ):
         raise ValueError("active checkpoint does not contain every accepted adapter")
     runtime = {
         "marker": str(marker),
@@ -370,7 +429,7 @@ def _activate_matchup_runtime_from_marker(
         "unknown_route_exact_bypass": True,
         "zero_materialized_adapters_allowed": bool(zero_bank or hybrid_covered),
         "consecutive_required": int(tree.runtime_consecutive_required),
-        **route_contract.runtime_binding(),
+        **tree_route_contract.runtime_binding(),
     }
     if apply_environment:
         _apply_matchup_runtime_environment(runtime)
@@ -1732,6 +1791,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             "gpu_name": _gpu_name(leaf_gpu),
             "device": leaf_gpu,
             "checkpoint_digest": advertised_digest,
+            "checkpoint_path": (
+                str(state["checkpoint"]) if advertised_digest else None
+            ),
             "checkpoint_version": advertised_version,
             "pinned_digests": [advertised_digest] if advertised_digest else [],
             "controller_healthy": health["ok"],

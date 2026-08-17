@@ -1,0 +1,16 @@
+Rendered PDF: main.pdf
+Build date: 2026-08-14
+Pages: 4
+Conservative extracted word count: 1,890
+Ceiling: 2,000
+Headroom: 110 words
+
+Method:
+- Extracted every page with pdfplumber 0.11.10 using x_tolerance=2 and
+  y_tolerance=3.
+- Counted tokens matching the Unicode-aware regular expression
+  word-boundary plus letters/digits/underscore/apostrophe/hyphen.
+- The count includes title metadata, repeated headers, section headings,
+  prose, equation tokens, figure and table text, captions, bibliography text,
+  and page numbers. It is intentionally more conservative than a prose-only
+  count.

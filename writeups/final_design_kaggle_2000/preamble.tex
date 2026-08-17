@@ -1,0 +1,57 @@
+% Shared formatting for the compact Kaggle manuscript.
+% Keep this file presentation-only; substantive prose belongs in sections/.
+\usepackage[letterpaper,left=0.70in,right=0.70in,top=0.58in,bottom=0.58in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{ink}{HTML}{17233B}
+\definecolor{blue}{HTML}{2457A6}
+\definecolor{pale}{HTML}{EAF1FB}
+\definecolor{mint}{HTML}{E8F5EF}
+\definecolor{sand}{HTML}{FFF3D9}
+\definecolor{statusgreen}{HTML}{1E6B48}
+\definecolor{statusorange}{HTML}{955D00}
+\definecolor{statusgray}{HTML}{555B66}
+\definecolor{statusred}{HTML}{9D2A2A}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue,
+  pdftitle={Mathematical Design of a Legal-Action Alakazam Controller},
+  pdfsubject={Kaggle 2000-word math-and-design manuscript template; evidence snapshot 2026-08-14}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\footnotesize Mathematical Alakazam Controller}
+\rhead{\footnotesize Math-and-design manuscript template}
+\cfoot{\footnotesize\thepage}
+\setlength{\headheight}{14pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.34em}
+\setlist[itemize]{leftmargin=1.25em,itemsep=0.08em,topsep=0.15em}
+\renewcommand{\arraystretch}{1.12}
+
+% Evidence labels used throughout the manuscript.
+\newcommand{\Measured}{\textcolor{statusgreen}{\textbf{Measured}}}
+\newcommand{\Verified}{\textcolor{blue}{\textbf{Receipt-verified}}}
+\newcommand{\Configured}{\textcolor{statusorange}{\textbf{Configured}}}
+\newcommand{\Historical}{\textcolor{statusgray}{\textbf{Historical}}}
+\newcommand{\NotMeasured}{\textcolor{statusred}{\textbf{Not measured}}}
+\newcommand{\boxcell}[2]{%
+  \cellcolor{#1}\parbox[c][0.55in][c]{0.92\linewidth}{\centering\small #2}}
+
+\newcommand{\statusbox}[1]{%
+  \noindent\fcolorbox{blue}{pale}{\parbox{0.965\linewidth}{\small #1}}%
+  \par\vspace{0.30em}}

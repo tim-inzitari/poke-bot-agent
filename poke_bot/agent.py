@@ -277,6 +277,23 @@ class PolicyAgent:
         default=None,
         kw_only=True,
     )
+    #: Revision-9 Alakazam public-rule semantic sidecar.  This is supplied
+    #: explicitly by the checksum-bound derivative runtime; ordinary/r274
+    #: agents never infer or instantiate it from deck identity or ambient
+    #: environment state.
+    public_rule_semantic_projection: Optional[Any] = field(
+        default=None,
+        kw_only=True,
+        repr=False,
+    )
+    public_rule_semantic_projection_enabled: bool = field(
+        default=False,
+        kw_only=True,
+    )
+    public_rule_semantic_projection_gate: float = field(
+        default=1.0,
+        kw_only=True,
+    )
     #: Formal training/eval must propagate model/runtime errors so the caller
     #: invalidates the game instead of counting random fallback play.
     strict_runtime: bool = False
@@ -340,8 +357,31 @@ class PolicyAgent:
     last_turn_checklist_logit_trace: Optional[dict[str, Any]] = field(
         default=None, init=False, repr=False
     )
+    public_rule_semantic_projection_apply_count: int = field(
+        default=0, init=False
+    )
 
     def __post_init__(self) -> None:
+        self.public_rule_semantic_projection_enabled = bool(
+            self.public_rule_semantic_projection_enabled
+        )
+        if self.public_rule_semantic_projection_enabled:
+            if self.public_rule_semantic_projection is None or not callable(
+                getattr(self.public_rule_semantic_projection, "apply_to_logits", None)
+            ):
+                raise ValueError(
+                    "enabled public-rule semantic projection requires a valid sidecar"
+                )
+            if self.model is None:
+                raise ValueError(
+                    "public-rule semantic projection requires a local policy model"
+                )
+            gate = float(self.public_rule_semantic_projection_gate)
+            if not math.isfinite(gate) or gate == 0.0:
+                raise ValueError(
+                    "enabled public-rule semantic projection requires a finite nonzero gate"
+                )
+            self.public_rule_semantic_projection_gate = gate
         # The checklist route is consciously policy-side and default-off.  It
         # cannot be inferred from deck identity, model metadata, or config
         # presence: an operator must choose the constructor flag or the named
@@ -907,6 +947,58 @@ class PolicyAgent:
         if not callable(option_features):
             return None
         return option_features(obs_dict, candidates)
+
+    @staticmethod
+    def _public_rule_factorized_stage_representation(
+        obs_dict: dict,
+        candidates: list[list[int]],
+        factorized_prefix: list[int],
+    ) -> dict[str, Any]:
+        """Align r298 public semantics to the live factorized candidate rows.
+
+        The adapter describes the simulator's atomic option menu, whereas the
+        policy scores complete factorized prefixes.  At one factorized stage
+        every candidate is either the exact STOP suffix or appends exactly one
+        atomic option.  Reusing that appended option's normalized public
+        semantics gives the sidecar one row per policy logit without encoding
+        the candidate ordinal or a private/global serial.
+        """
+
+        from .alakazam_public_rule_adapter_r298 import (
+            build_public_rule_representation,
+        )
+
+        representation = build_public_rule_representation(obs_dict).to_dict()
+        raw_options = list(representation.get("options") or [])
+        stage_options: list[dict[str, Any]] = []
+        prefix = list(factorized_prefix)
+        for candidate in candidates:
+            row = list(candidate)
+            if row == prefix:
+                stage_options.append(
+                    {
+                        "semantic": {
+                            "selection": copy.deepcopy(representation["selection"]),
+                            "option": {"option_type": "pass"},
+                        },
+                        "semantic_key_sha256": None,
+                        "referenced_card_ids": [],
+                        "referenced_attack_ids": [],
+                    }
+                )
+                continue
+            if row[: len(prefix)] != prefix or len(row) != len(prefix) + 1:
+                raise RuntimeError(
+                    "public-rule sidecar received a malformed factorized candidate"
+                )
+            option_index = int(row[-1])
+            if option_index < 0 or option_index >= len(raw_options):
+                raise RuntimeError(
+                    "public-rule sidecar candidate is outside the simulator option menu"
+                )
+            stage_options.append(copy.deepcopy(raw_options[option_index]))
+        representation["options"] = stage_options
+        return representation
 
     def _record_turn_checklist_not_evaluated(
         self,
@@ -1503,6 +1595,10 @@ class PolicyAgent:
                 raise RuntimeError(
                     "greedy inference requires a model or remote leaf backend"
                 )
+            semantic_projection_enabled = bool(
+                self.public_rule_semantic_projection_enabled
+            )
+            option_hidden = None
             if cached_state is None or cached_spatial is None:
                 if (
                     self.model.decision_context == "history"
@@ -1558,19 +1654,72 @@ class PolicyAgent:
                 cached_fusion_state = model_out["state_vec"]
                 cached_spatial = model_out["spatial_memory"]
                 logits = model_out["policy_logits"][0, : len(candidates)]
+                if semantic_projection_enabled:
+                    # The ordinary forward API deliberately does not retain
+                    # shared option states.  Re-decode the same already-
+                    # encoded board/state once with return_hidden=True; this
+                    # is deterministic and leaves every frozen model tensor
+                    # untouched.
+                    decoded = _call_with_optional_ledger(
+                        self.model.decode_options,
+                        options,
+                        cached_spatial,
+                        cached_state,
+                        n_options=[len(candidates)],
+                        return_hidden=True,
+                        decision_fusion_state_vec=cached_fusion_state,
+                        ledger_kwargs={
+                            "ledger_option_features": [ledger_option_features],
+                        },
+                        allow_legacy_fallback=allow_legacy_ledger_fallback,
+                    )
+                    if not isinstance(decoded, tuple):
+                        raise RuntimeError(
+                            "public-rule sidecar requires option-hidden decoder output"
+                        )
+                    decoded_logits, option_hidden = decoded
+                    logits = decoded_logits[0, : len(candidates)]
             else:
-                logits = _call_with_optional_ledger(
+                decoded = _call_with_optional_ledger(
                     self.model.decode_options,
                     options,
                     cached_spatial,
                     cached_state,
                     n_options=[len(candidates)],
+                    return_hidden=semantic_projection_enabled,
                     decision_fusion_state_vec=cached_fusion_state,
                     ledger_kwargs={
                         "ledger_option_features": [ledger_option_features],
                     },
                     allow_legacy_fallback=allow_legacy_ledger_fallback,
-                )[0, : len(candidates)]
+                )
+                if semantic_projection_enabled:
+                    if not isinstance(decoded, tuple):
+                        raise RuntimeError(
+                            "public-rule sidecar requires option-hidden decoder output"
+                        )
+                    decoded_logits, option_hidden = decoded
+                    logits = decoded_logits[0, : len(candidates)]
+                else:
+                    logits = decoded[0, : len(candidates)]
+            if semantic_projection_enabled:
+                if option_hidden is None:
+                    raise RuntimeError(
+                        "public-rule sidecar option-hidden state is unavailable"
+                    )
+                representation = self._public_rule_factorized_stage_representation(
+                    obs_dict,
+                    candidates,
+                    factorized_prefix,
+                )
+                logits = self.public_rule_semantic_projection.apply_to_logits(
+                    logits.unsqueeze(0),
+                    option_hidden[:, : len(candidates)],
+                    [representation],
+                    runtime_enabled=True,
+                    gate=self.public_rule_semantic_projection_gate,
+                )[0]
+                self.public_rule_semantic_projection_apply_count += 1
             logits = _apply_checklist_logits(
                 logits,
                 candidates,
@@ -2380,6 +2529,7 @@ def play_game(
     deck1: list[int],
     *,
     max_steps: int = 4000,
+    max_no_progress_turns: int | None = None,
 ) -> dict[str, Any]:
     """Play one local game; returns winner + length.
 
@@ -2393,8 +2543,19 @@ def play_game(
     steps = 0
     failed_seat: Optional[int] = None
     error: Optional[str] = None
+    stalled = False
+    stall_turns = 0
+    stall_tracker = None
+    if max_no_progress_turns is not None:
+        from .pure_rl.no_progress import NoProgressTracker
+
+        stall_tracker = NoProgressTracker(int(max_no_progress_turns))
     try:
         while obs is not None and not cg_env.is_finished(obs) and steps < max_steps:
+            if stall_tracker is not None and stall_tracker.observe(obs):
+                stalled = True
+                stall_turns = stall_tracker.stagnant_turns
+                break
             cur = obs.get("current") or {}
             seat = int(cur.get("yourIndex", 0))
             agent = agent0 if seat == 0 else agent1
@@ -2444,9 +2605,13 @@ def play_game(
             "failed_seat": failed_seat,
             "error": error,
             "incomplete": incomplete,
+            "stall_terminated": stalled,
+            "stall_turns": stall_turns,
             "termination": (
                 "agent_failure"
                 if failed_seat is not None
+                else "no_progress_stall"
+                if stalled
                 else "max_steps"
                 if incomplete
                 else "completed"

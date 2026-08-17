@@ -17,6 +17,7 @@ import statistics
 import time
 from contextlib import nullcontext as _nullcontext
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any, Optional, Sequence
 
 import torch
@@ -25,6 +26,53 @@ import torch.nn.functional as F
 from . import cg_env, config, features
 from .matchup_adapters import UNKNOWN_ROUTE
 from .model import TemporalCabtTransformer
+
+
+def _immutable_deck_encoding_cache_enabled() -> bool:
+    """Whether a simulator worker may reuse immutable own-deck bag tokens.
+
+    This remains default-off because the generic feature API accepts arbitrary
+    lists.  The pure-RL collector passes one fixed 60-card starting deck per
+    policy agent, so a receipt-gated collection deployment can opt in without
+    changing the feature schema or any policy/replay semantics.
+    """
+
+    return os.environ.get(
+        "POKEBOT_IMMUTABLE_DECK_ENCODING_CACHE", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
+
+@lru_cache(maxsize=256)
+def _cached_immutable_deck_bag(
+    card_count: int, card_ids: tuple[object, ...]
+) -> "features.ImmutableDeckBag":
+    """Build one content-addressed static deck bag per worker process."""
+
+    bag = features.immutable_deck_bag(card_ids)
+    if int(bag.card_count) != int(card_count):
+        # Vocabulary discovery is process-global and stable during a game. A
+        # mismatch would make a cache key lie about its feature width.
+        raise RuntimeError("immutable deck bag vocabulary changed during leaf work")
+    return bag
+
+
+def _maybe_cached_immutable_deck_bag(
+    deck: Sequence[object],
+) -> Optional["features.ImmutableDeckBag"]:
+    """Return a safe content-keyed bag or fall back to normal featurization."""
+
+    if not _immutable_deck_encoding_cache_enabled():
+        return None
+    try:
+        card_ids = tuple(deck)
+        hash(card_ids)
+        card_count = int(features.card_vocab_size())
+    except (TypeError, ValueError, OverflowError):
+        # Preserve the normal builder's validation/error shape for unusual
+        # deck objects rather than turning a throughput hint into new policy
+        # behavior.
+        return None
+    return _cached_immutable_deck_bag(card_count, card_ids)
 
 
 def _mps_cache_release_interval() -> int:
@@ -188,7 +236,18 @@ def featurize_packets(packets: Sequence[LeafPacket]) -> FeaturizedLeaves:
     any_ledger_option_features = False
     for p in packets:
         features.assert_info_set(p.obs)
-        board = features.build_board_tokens(p.obs, p.your_deck)
+        immutable_deck_bag = _maybe_cached_immutable_deck_bag(p.your_deck)
+        if immutable_deck_bag is None:
+            # Preserve the exact legacy two-argument call in the default-off
+            # path; some isolated evaluators deliberately substitute a tiny
+            # feature builder with that historical ABI.
+            board = features.build_board_tokens(p.obs, p.your_deck)
+        else:
+            board = features.build_board_tokens(
+                p.obs,
+                p.your_deck,
+                immutable_deck_bag=immutable_deck_bag,
+            )
         boards.append(board)
         history = list(p.history_boards) if p.history_boards else [board]
         histories.append(history)

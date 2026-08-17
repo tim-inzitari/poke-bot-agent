@@ -1,0 +1,21 @@
+[Unit]
+Description=Pokebot checksum-gated elastic remote fleet gateway (template only)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/pokebot/remote-fleet-gateway.active.json
+
+[Service]
+Type=simple
+User=inzi
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/inzi/poke-bot-agent/.venv/bin/python -m poke_bot.remote_fleet_gateway --manifest /etc/pokebot/remote-fleet-gateway.active.json
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

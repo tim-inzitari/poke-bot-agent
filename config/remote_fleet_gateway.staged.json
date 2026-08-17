@@ -1,0 +1,11 @@
+{
+  "schema": "poke_bot.remote_fleet_gateway/v1",
+  "gateway_id": "inzi-elastic-simulation-fleet",
+  "activation_allowed": false,
+  "bind_host": "127.0.0.1",
+  "bind_port": 8770,
+  "default_workers": 16,
+  "fleet_worker_ceiling": 512,
+  "registry_poll_seconds": 2.0,
+  "backends": []
+}

@@ -1,0 +1,34 @@
+{
+  "id": "aws-g6-16xl-01",
+  "endpoint": "127.0.0.1:18765",
+  "enabled": false,
+  "capacity": 48,
+  "expected_hostname": "ip-10-0-10-42",
+  "required_checkpoint_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "checkpoint_paths": {
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000": "/opt/pokebot/checkpoint/active.pt"
+  },
+  "checkpoint_path_template": "/opt/pokebot/checkpoint/sha256-{digest}-{basename}",
+  "required_job_kinds": [
+    "play",
+    "self_play",
+    "self_play_multi"
+  ],
+  "required_capabilities": [
+    "checkpoint_digest_verify_v1"
+  ],
+  "path_rewrites": [
+    {
+      "from": "/home/inzi/poke-bot-agent/",
+      "to": "/opt/pokebot/app/"
+    }
+  ],
+  "checkpoint_stage": {
+    "mode": "ssm_ssh_v1",
+    "ssh_host": "127.0.0.1",
+    "ssh_port": 19022,
+    "ssh_user": "ec2-user",
+    "identity_file": "/home/inzi/.config/pokebot/aws-remote-fleet/pokebot-aws-remote-fleet/id_ed25519",
+    "known_hosts_file": "/home/inzi/.config/pokebot/aws-remote-fleet/pokebot-aws-remote-fleet/known_hosts"
+  }
+}

@@ -43,6 +43,22 @@ def main() -> int:
             "Required with --profile pure_rl_r197; never combined with --shard."
         ),
     )
+    parser.add_argument("--recent20-rtp-overlay-manifest", type=Path, default=None)
+    parser.add_argument("--recent20-rtp-overlay-manifest-digest", default="")
+    parser.add_argument("--recent20-rtp-base-pack-root", type=Path, default=None)
+    parser.add_argument("--recent20-rtp-base-pack-completion-digest", default="")
+    parser.add_argument("--rtp-warm-start-checkpoint", type=Path, default=None)
+    parser.add_argument("--rtp-warm-start-digest", default="")
+    parser.add_argument("--recent20-hidden-width", type=int, default=128)
+    parser.add_argument(
+        "--recent20-gradient-accumulation-stages", type=int, default=32
+    )
+    parser.add_argument("--recent20-max-train-programs", type=int, default=0)
+    parser.add_argument("--recent20-max-validation-programs", type=int, default=4096)
+    parser.add_argument("--recent20-max-train-programs-per-day", type=int, default=0)
+    parser.add_argument(
+        "--recent20-max-validation-programs-per-day", type=int, default=0
+    )
     parser.add_argument(
         "--parent-digest",
         type=str,
@@ -139,8 +155,19 @@ def main() -> int:
     )
     parser.add_argument("--also-poke-rlm", action="store_true")
     args = parser.parse_args()
-    if args.shard is not None and args.complete_action_corpus is not None:
-        parser.error("--shard and --complete-action-corpus are mutually exclusive")
+    supplied_sources = sum(
+        value is not None
+        for value in (
+            args.shard,
+            args.complete_action_corpus,
+            args.recent20_rtp_overlay_manifest,
+        )
+    )
+    if supplied_sources > 1:
+        parser.error(
+            "--shard, --complete-action-corpus, and --recent20-rtp-overlay-manifest "
+            "are mutually exclusive"
+        )
 
     job = ArchetypeRTPJob(
         specialist_id=str(args.specialist_id),
@@ -166,6 +193,30 @@ def main() -> int:
         ),
         complete_action_corpus_heldout_selection_digest=str(
             args.complete_action_corpus_heldout_selection_digest
+        ),
+        recent20_rtp_overlay_manifest=str(args.recent20_rtp_overlay_manifest or ""),
+        recent20_rtp_overlay_manifest_digest=str(
+            args.recent20_rtp_overlay_manifest_digest
+        ),
+        recent20_rtp_base_pack_root=str(args.recent20_rtp_base_pack_root or ""),
+        recent20_rtp_base_pack_completion_digest=str(
+            args.recent20_rtp_base_pack_completion_digest
+        ),
+        rtp_warm_start_checkpoint=str(args.rtp_warm_start_checkpoint or ""),
+        rtp_warm_start_digest=str(args.rtp_warm_start_digest),
+        recent20_hidden_width=int(args.recent20_hidden_width),
+        recent20_gradient_accumulation_stages=int(
+            args.recent20_gradient_accumulation_stages
+        ),
+        recent20_max_train_programs=int(args.recent20_max_train_programs),
+        recent20_max_validation_programs=int(
+            args.recent20_max_validation_programs
+        ),
+        recent20_max_train_programs_per_day=int(
+            args.recent20_max_train_programs_per_day
+        ),
+        recent20_max_validation_programs_per_day=int(
+            args.recent20_max_validation_programs_per_day
         ),
         profile=str(args.profile),
         d_model=int(args.d_model),

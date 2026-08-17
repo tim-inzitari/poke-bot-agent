@@ -1,0 +1,142 @@
+[Unit]
+Description=Alakazam rule derivative g5 rev25 20-iteration direct-policy loop
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r327-eval-cc6e93009e9605b35e430ea46295343802b725d8b6bca358525e0db2a590c8c8
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r327-eval-cc6e93009e9605b35e430ea46295343802b725d8b6bca358525e0db2a590c8c8
+Environment=POKEBOT_OUTPUTS_DIR=/home/inzi/poke-bot-agent/outputs
+Environment=POKEBOT_CACHE_DIR=/home/inzi/poke-bot-agent/outputs/cache/alakazam-rule-derivative-g5-r12
+# Elmo's worker bind is read-only inside the container.  Publish each new
+# content-addressed checkpoint to its host-side bind source over the existing
+# authenticated LAN SSH path, then require the worker-local digest verifier.
+Environment=POKEBOT_ELMO_SSH_STAGE=1
+Environment=POKEBOT_ELMO_SSH=admin@elmo
+Environment=POKEBOT_ELMO_CHECKPOINT_HOST_DIR=/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/checkpoint
+Environment=POKEBOT_BASELINES_DIR=/home/inzi/poke-bot-agent-deployments/r241-baseline-payloads/alakazam-new-list-direct-r241-baselines-056e776f6dd617fc
+Environment=POKEBOT_BASELINES_MANIFEST_PATH=/home/inzi/poke-bot-agent-deployments/r241-baseline-payloads/alakazam-new-list-direct-r281-r195-admitted-v2/manifest.json
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/cg-r236
+Environment=POKEBOT_R241_DIRECT_POLICY_ONLY=1
+Environment=POKEBOT_R241_DIRECT_POLICY_ADAPTER_RECEIPT=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r241/runtime/marnie-h10-direct-policy-adapter-r251-v8.json
+Environment=POKEBOT_OWN_DECK_LEDGER_RUNTIME=1
+Environment=POKEBOT_PUBLIC_RULE_SEMANTIC_PROJECTION_REQUIRED=1
+# The revision-10 bootstrap optimizer contains every architecture-present
+# non-combo tensor.  Keep that exact optimizer membership in self-play so its
+# Adam state restores without dropping the frozen-at-load matchup bank.
+Environment=POKEBOT_DERIVATIVE_FULL_MODEL_BOOTSTRAP=1
+Environment=POKEBOT_USE_RECURSIVE_TURN_PLANNER=0
+Environment=POKEBOT_SEARCH_MODE=policy
+Environment=POKEBOT_SUBMISSION_SEARCH_DISABLE=1
+Environment=POKEBOT_SPECIALIST_DECK_PATH=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r10-runtime-e241f15408c7/decks/archetype-samples/alakazam-new-list-direct-r241.csv
+Environment=POKEBOT_PARTIAL_COLLECTION_RESUME_SIDECAR=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/runtime/r315-iter0-envelope-repair-partial-resume.json
+Environment=POKEBOT_SPECIALIST_DECK_SHA256=sha256:d834c66c5a3629dd79c8533a04fde770a22ca8590ac55c9868440121b6df5fba
+Environment=POKEBOT_SPECIALIST_DECK_MULTISET_SHA256=sha256:a42e047c45c419a599a31f2e20a6209d324558082f27e12091ade8918376d182
+Environment=POKEBOT_CURRENT_DECK_GUIDE=alakazam
+Environment=POKEBOT_CURRENT_DECK_GUIDE_TARGETS=1
+Environment=POKEBOT_CURRENT_DECK_GUIDE_VERSION=powerful-hand-new-list-r241-v1
+Environment=POKEBOT_ACTIVE_SPECIALIST=alakazam
+Environment=POKEBOT_MATCHUP_ADAPTER_RUNTIME=1
+Environment=POKEBOT_PUBLIC_MATCHUP_TREE_PATH=/home/inzi/poke-bot-agent/outputs/submissions/alakazam-rule-derivative-g5/package-r10-full-8b59af9af1d7-d/stage/matchup_tree.json
+Environment=POKEBOT_COMBO_STATE_ROUTE_ENABLED=0
+Environment=PURE_RL_SELF_PLAY_FRAC=0.12493899463152758
+Environment=PURE_RL_PUBLIC_MIX_LOCAL_ONLY=0
+Environment=PURE_RL_SELF_PLAY_PROCS=24
+Environment=SIM_WORKERS=24
+Environment=FEATURE_WORKERS=32
+Environment=TORCH_THREADS=32
+Environment=OMP_NUM_THREADS=16
+Environment=MKL_NUM_THREADS=16
+Environment=PURE_RL_PARAM_FAIL_MAX=100000000
+Environment=PURE_RL_PARAM_TARGET_MAX=100000000
+Environment=PURE_RL_SPATIAL_LAYERS=7
+Environment=PURE_RL_TEMPORAL_LAYERS=3
+Environment=PURE_RL_OPTION_DECODER_LAYERS=7
+Environment=PURE_RL_FF_DIM=2496
+Environment=PURE_RL_DECISION_CONTEXT=history
+Environment=POKEBOT_MATCHUP_ADAPTER_FORMAT=poke-bot-matchup-adapter-bank-v6
+Environment=POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH=/home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/submissions/bootstrap-r281-v3/build/stage/state/matchup_adapter_roster.json
+Environment=POKEBOT_EXPANDED_HEADS_ENABLED=1
+Environment=POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED=1
+Environment=POKEBOT_COMBO_STATE_HEAD_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_RUNTIME_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_RUNTIME_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_TYPED_OUTPUT_CENTERED_ROUTES_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_ACTION_TYPE_RELIABILITY_CAP=0.25
+Environment=POKEBOT_H10_CAPACITY_ENABLED=1
+Environment=POKEBOT_OWN_DECK_LEDGER_ENABLED=1
+Environment=POKEBOT_OWN_DECK_LEDGER_RUNTIME_ENABLED=1
+Environment=POKEBOT_VISIBLE_TUTOR_COMPLETION_HEAD_ENABLED=1
+Environment=POKEBOT_VISIBLE_TUTOR_COMPLETION_ROUTE_ENABLED=1
+Environment=POKEBOT_VISIBLE_TUTOR_COMPLETION_ROUTE_RUNTIME_ENABLED=1
+Environment=POKEBOT_TERMINAL_CONVERSION_HEAD_ENABLED=1
+Environment=POKEBOT_TERMINAL_CONVERSION_ROUTE_ENABLED=1
+Environment=POKEBOT_TERMINAL_CONVERSION_ROUTE_RUNTIME_ENABLED=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/train_pure_rl.py \
+  --run-name alakazam_rule_derivative_g5_r12 \
+  --mode specialist \
+  --specialist-archetype alakazam \
+  --base-checkpoint /home/inzi/poke-bot-agent/outputs/bootstrap/alakazam-rule-derivative-r10-full-25epochs-c/alakazam-rule-derivative-r10-full-bootstrap.pt \
+  --initial-learner-checkpoint /home/inzi/poke-bot-agent/outputs/bootstrap/alakazam-rule-derivative-r10-full-25epochs-c/alakazam-rule-derivative-r10-full-bootstrap.pt \
+  --iterations 20 \
+  --fixed-cycle-updates 0 \
+  --continue-after-gate \
+  --games-per-iter 8196 \
+  --require-exact-training-seat-split \
+  --official-collect-frac 0.5 \
+  --official-adaptive-min-share 0.045 \
+  --research-control-games-per-iter 1000 \
+  --disable-research-control-measurement \
+  --active-gate-contract /home/inzi/poke-bot-agent-deployments/final-format-alakazam-marnie-splusplus-r192/runtime/final_format_alakazam_gate_r192_marnie_splusplus.json \
+  --formal-holdout-contract /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r327-eval-cc6e93009e9605b35e430ea46295343802b725d8b6bca358525e0db2a590c8c8/runtime/formal-holdout-r327-50-per-deck.json \
+  --r327-evaluation-boundary-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/runtime/r327-evaluation-boundary-activation.json \
+  --heldout-games 900 \
+  --measurement-decks alakazam \
+  --frozen-specialist-registry /home/inzi/poke-bot-agent-deployments/final-format-alakazam-marnie-splusplus-r192/ops/frozen_specialist_registry_alakazam_r192_marnie_splusplus.json \
+  --research-control-registry /home/inzi/poke-bot-agent/outputs/state/research_control_registry_snapshots/registry_v000001_910eddc734e3fb2c.json \
+  --expert-manifest /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_new_list_direct_policy_r274/runtime/expert-elmo-d23e-v4/manifest.json \
+  --expert-manifest-workers 32 \
+  --expert-rehearsal-every 5 \
+  --expert-rehearsal-epochs 5 \
+  --terminal-expert-rehearsal \
+  --no-expert-rehearsal-before-first \
+  --expert-rehearsal-one-time-before -1 \
+  --expert-rehearsal-one-time-epochs 0 \
+  --expert-rehearsal-batch-size 2048 \
+  --rule-derivative-semantic-pack-completion /home/inzi/poke-bot-agent/outputs/bootstrap/alakazam-rule-derivative-r10-semantic-pack-all20-v3/COMPLETE.json \
+  --rule-derivative-semantic-refresh-lr 3e-4 \
+  --rule-derivative-semantic-block-decisions 4096 \
+  --expert-rehearsal-guide-loss-weight 0.0 \
+  --current-deck-guide-loss-weight 0.05 \
+  --current-deck-guide-training-mode strategic_directional_v2 \
+  --current-deck-guide-curriculum-spec /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r10-runtime-e241f15408c7/state/alakazam-new-list-direct-r241-strategic-curriculum.json \
+  --current-deck-guide-head-role-map /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r10-runtime-e241f15408c7/state/alakazam-new-list-direct-r241-strategic-head-roles.json \
+  --current-deck-guide-curriculum-validation-receipt /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r10-runtime-e241f15408c7/state/alakazam-new-list-direct-r241-strategic-curriculum-validation.json \
+  --archetype-aux-loss-weight 0.05 \
+  --opp-hand-loss-weight 0.05 \
+  --opp-remainder-loss-weight 0.05 \
+  --lethal-threat-loss-weight 0.025 \
+  --prize-race-loss-weight 0.025 \
+  --setup-board-outcome-loss-weight 0.025 \
+  --combo-state-loss-weight 0.0 \
+  --train-max-decisions-per-batch 2048 \
+  --multi-env-per-worker 4 \
+  --leaf-eval gpu-server \
+  --remote-worker-endpoints 192.168.1.143:8765 \
+  --resume auto \
+  --allow-clean-boundary-design-migration \
+  --boundary-design-migration-reason owner_r327_future_holdout_50_no_research \
+  --seed 312
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=300
+KillMode=control-group
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=default.target

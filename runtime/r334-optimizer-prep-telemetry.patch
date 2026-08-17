@@ -1,0 +1,94 @@
+--- poke_bot/train.py
++++ poke_bot/train.py
+@@ -10860,6 +10860,13 @@
+             )
+     awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None
+     if resident_corpus is not None:
++        baseline_started = time.perf_counter()
++        print(
++            "[rl-prep] baseline begin "
++            f"sequences={resident_corpus.total_samples} "
++            f"rows={resident_corpus.total_samples} mode=device_resident",
++            flush=True,
++        )
+         resident_baseline = _device_exact_value_cache(
+             model,
+             resident_corpus,
+@@ -10867,14 +10874,50 @@
+             batch_size=resident_batch_size,
+             desc="rl-prep baseline",
+         )
++        print(
++            "[rl-prep] baseline complete "
++            f"rows={int(resident_baseline.numel())} "
++            f"seconds={time.perf_counter() - baseline_started:.3f}",
++            flush=True,
++        )
+     elif cfg.pure_rl and cfg.awr_freeze_baseline:
++        baseline_sequences = [*train_seqs, *val_seqs]
++        baseline_rows = sum(
++            len(decision.policy_stages or [None])
++            for sequence in baseline_sequences
++            for decision in sequence.decisions
++        )
++        baseline_started = time.perf_counter()
++        print(
++            "[rl-prep] baseline begin "
++            f"sequences={len(baseline_sequences)} rows={baseline_rows} "
++            f"mode={'value_only' if cfg.awr_value_only_baseline else 'reference'}",
++            flush=True,
++        )
+         awr_baseline_cache = _precompute_awr_baseline_cache(
+             model,
+-            [*train_seqs, *val_seqs],
++            baseline_sequences,
+             cfg=cfg,
+             desc="rl-prep baseline",
+         )
++        print(
++            "[rl-prep] baseline complete "
++            f"rows={len(awr_baseline_cache)} "
++            f"seconds={time.perf_counter() - baseline_started:.3f}",
++            flush=True,
++        )
+     agreement_sequences = [*train_seqs, *val_seqs]
++    agreement_rows = sum(
++        len(decision.policy_stages or [None])
++        for sequence in agreement_sequences
++        for decision in sequence.decisions
++    )
++    agreement_started = time.perf_counter()
++    print(
++        "[rl-agreement] parent begin "
++        f"sequences={len(agreement_sequences)} rows={agreement_rows}",
++        flush=True,
++    )
+     if resident_corpus is not None:
+         parent_predictions: Union[list[int], torch.Tensor] = (
+             _device_exact_policy_predictions(
+@@ -10893,6 +10936,12 @@
+             awr_baseline_cache=awr_baseline_cache,
+             desc="rl-agreement parent",
+         )
++    print(
++        "[rl-agreement] parent complete "
++        f"predictions={int(parent_predictions.numel()) if isinstance(parent_predictions, torch.Tensor) else len(parent_predictions)} "
++        f"seconds={time.perf_counter() - agreement_started:.3f}",
++        flush=True,
++    )
+     patience = max(0, int(cfg.early_stop_patience))
+     patience_left = patience
+     best_metric = float("inf")
+@@ -10916,6 +10965,12 @@
+     last_epoch_optimizer_sps = 0.0
+     stepped_epochs = 0
+     step = base_step
++    print(
++        "[rl-train] optimizer begin "
++        f"epochs={max(1, epochs)} train_sequences={len(train_seqs)} "
++        f"validation_sequences={len(val_seqs)} parent_step={base_step}",
++        flush=True,
++    )
+     epoch_bar = tqdm(range(max(1, epochs)), desc="rl-epochs", leave=False, unit="ep")
+     for epoch in epoch_bar:
+         model.train()

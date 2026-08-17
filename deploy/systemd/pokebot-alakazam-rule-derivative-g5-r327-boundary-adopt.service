@@ -1,0 +1,16 @@
+[Unit]
+Description=Adopt derivative revision-25 evaluation at iteration-1 commit
+After=network-online.target pokebot-alakazam-rule-derivative-g5-rl.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r327-eval-8537f168af63
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r327-eval-8537f168af63
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/activate_alakazam_evaluation_r327.py --commit /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/commits/iter_00001.json --expected-main-pid 2997504 --training-unit pokebot-alakazam-rule-derivative-g5-rl.service --run-name alakazam_rule_derivative_g5_r12 --base-gate-contract /home/inzi/poke-bot-agent-deployments/final-format-alakazam-marnie-splusplus-r192/runtime/final_format_alakazam_gate_r192_marnie_splusplus.json --formal-gate-contract /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r327-eval-8537f168af63/runtime/formal-holdout-r327-50-per-deck.json --receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/runtime/r327-evaluation-boundary-activation.json --elmo-endpoint 192.168.1.143:8765 --poll-seconds 0.25
+Restart=no
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target

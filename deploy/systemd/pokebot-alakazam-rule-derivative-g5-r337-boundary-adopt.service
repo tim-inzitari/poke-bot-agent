@@ -1,0 +1,16 @@
+[Unit]
+Description=Adopt buffered shard writes and immutable deck cache after derivative iteration 5 commits
+After=network-online.target pokebot-alakazam-rule-derivative-g5-rl.service pokebot-alakazam-rule-derivative-g5-r332-boundary-adopt.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r337-gps-throughput
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r337-gps-throughput
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/activate_gps_throughput_r337.py --r336-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/runtime/r336-h3-parallel-agreement-activation.json --commit /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/commits/iter_00005.json --iteration 5 --training-unit pokebot-alakazam-rule-derivative-g5-rl.service --deployment-root /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r337-gps-throughput --source-manifest-sha256 sha256:ccb9db493bcfdfa9f4563f80e1de46e0870d2d6401211c49d55664cac81276d6 --prestage-receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/runtime/r337-gps-throughput-prestage.json --prestage-receipt-sha256 sha256:78cc5111461f8abc64a5304a2424e4ddee24b58f12987e37e91d250fd3f36407 --drop-in-source /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/runtime/pending-r337/337-gps-throughput.conf --drop-in-sha256 sha256:35aebacd924b9e88eb420e0e9d66f76d27f6366dabb51c5d3f10608412d2fe61 --drop-in-destination /home/inzi/.config/systemd/user/pokebot-alakazam-rule-derivative-g5-rl.service.d/337-gps-throughput.conf --receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/runtime/r337-gps-throughput-activation.json --poll-seconds 1.0
+Restart=no
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target

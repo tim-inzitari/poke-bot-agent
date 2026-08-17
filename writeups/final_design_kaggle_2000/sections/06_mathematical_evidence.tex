@@ -1,0 +1,15 @@
+\section*{5. Mathematical checks}
+
+The main representation check used 18,412,973 option records from 2,351,208
+decisions. The legacy key merged 255,398 records into 127,641 actionable
+collision groups, affecting 1.387\% of all option rows. The repaired quotient
+left 99 duplicate groups; simulator witnesses classified every one as a
+harmless permutation, leaving zero unresolved actionable groups.
+
+The H3 sidecar was evaluated offline on 380,499 complete validation actions.
+Exact three-segment targets existed for 358,344 actions (94.18\%). Its
+action-value MSE was 0.0040745 versus 0.0046184 for the empirical-mean
+baseline, an 11.78\% reduction. This is prediction evidence, not a win-rate
+claim. On the same 2,146,670-decision replay membership, adding H3 left the AWR
+weight distribution essentially unchanged: effective-sample-size fraction
+moved from 0.251337 to 0.251758 and clip fraction from 0.076078 to 0.075819.

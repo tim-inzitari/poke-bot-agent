@@ -1,0 +1,14 @@
+[Unit]
+Description=Adopt Alakazam derivative 64-turn stall reward at sealed iteration-5 boundary
+After=pokebot-alakazam-rule-derivative-g5-rl.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r344-rehearsal-receipt-validator-51a65c92a635
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r344-rehearsal-receipt-validator-51a65c92a635
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/activate_alakazam_stall_reward_r333.py --commit /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/commits/iter_00005.json --run-name alakazam_rule_derivative_g5_r12 --training-unit pokebot-alakazam-rule-derivative-g5-rl.service --expected-main-pid 91740 --deployment-root /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r344-rehearsal-receipt-validator-51a65c92a635 --source-manifest-sha256 sha256:037cf83f6b30f517edb243985fa7b9b7ad4565becd0d96a750ca7637a0ab548c --goal-contract /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r344-rehearsal-receipt-validator-51a65c92a635/goals/alakazam-elmo-rule-derivative/contract.json --goal-contract-sha256 sha256:cc6c791a512bcfb2fa6ccff76fd22f4001e7cbcc5a2ecb2e54e93b26d800121e --drop-in-source /home/inzi/poke-bot-agent-deployments/alakazam-rule-derivative-g5-r344-rehearsal-receipt-validator-51a65c92a635/deploy/systemd/pokebot-alakazam-rule-derivative-g5-rl.service.d/342-stall-reward.conf --drop-in-destination /home/inzi/.config/systemd/user/pokebot-alakazam-rule-derivative-g5-rl.service.d/342-stall-reward.conf --receipt /home/inzi/poke-bot-agent/outputs/pure_rl/alakazam_rule_derivative_g5_r12/runtime/r333-stall-reward-boundary-activation.json --max-no-progress-turns 64 --wait-for-commit-seconds 86400 --commit-poll-seconds 0.05
+Restart=no
+
+[Install]
+WantedBy=default.target

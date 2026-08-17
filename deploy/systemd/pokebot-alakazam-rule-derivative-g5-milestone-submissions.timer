@@ -1,0 +1,12 @@
+[Unit]
+Description=Check for Alakazam derivative five-iteration submission milestones
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=60s
+AccuracySec=5s
+Persistent=true
+Unit=pokebot-alakazam-rule-derivative-g5-milestone-submissions.service
+
+[Install]
+WantedBy=timers.target

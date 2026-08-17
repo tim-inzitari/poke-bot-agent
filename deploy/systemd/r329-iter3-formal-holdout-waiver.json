@@ -1,0 +1,17 @@
+{
+  "schema": "poke_bot.alakazam_rule_derivative_iter3_holdout_waiver/v1",
+  "owner_goal_revision": 27,
+  "root_owner_revision": 329,
+  "run_name": "alakazam_rule_derivative_g5_r12",
+  "iteration": 3,
+  "candidate_checkpoint_sha256": "sha256:0078f6a652a68f02d715e3025fa025bfc9bbe67309145b2fbf5bcdca9a810ed8",
+  "formal_holdout_games_skipped": 900,
+  "formal_holdout_only": true,
+  "promotion_comparison_preserved": true,
+  "measured_holdout_pass_claim_allowed": false,
+  "future_holdouts_unchanged": true,
+  "goal_contract_sha256": "sha256:68c4e6578db5fe7c1b4d24fe7138f81705a17c8d136e47d7239198a5087c4eba",
+  "trained_candidate_reused_without_retraining": true,
+  "research_control_games": 0,
+  "recorded_at_utc": "2026-08-14T13:38:00Z"
+}

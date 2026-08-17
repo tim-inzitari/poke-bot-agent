@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import itertools
 import math
+from dataclasses import dataclass
 from typing import Any, Mapping, Optional, Sequence, Union
 
 from . import cg_env
@@ -470,6 +471,43 @@ class SparseVector:
         return len(self.offset)
 
 
+@dataclass(frozen=True)
+class ImmutableDeckBag:
+    """Validated static own-deck bag reusable across policy leaf requests.
+
+    The own-deck spatial word is identical for every decision in one game.
+    A caller may construct this object only for a deck it treats as immutable;
+    the usual ``build_board_tokens`` path remains the default and continues to
+    validate the supplied list at every call.  Reusing the validated ids avoids
+    60 Python card-id validations per simulator leaf without changing any
+    sparse index, value, order, or duplicate-card multiplicity.
+    """
+
+    card_count: int
+    card_ids: tuple[int, ...]
+
+    def append_to(self, vector: SparseVector) -> None:
+        """Append the exact historical own-deck bag word to ``vector``."""
+
+        base = int(vector.pos)
+        vector.index.extend(base + int(card_id) for card_id in self.card_ids)
+        vector.value.extend(0.25 for _ in self.card_ids)
+        vector.add_pos(self.card_count)
+
+
+def immutable_deck_bag(your_deck: Sequence[int]) -> ImmutableDeckBag:
+    """Validate one immutable 60-card list and return its reusable bag word."""
+
+    cc = card_vocab_size()
+    return ImmutableDeckBag(
+        card_count=int(cc),
+        card_ids=tuple(
+            _validated_card_id(card_id, cc, field="own deck card id")
+            for card_id in your_deck
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Encoder (spatial board) feature builders
 # ---------------------------------------------------------------------------
@@ -565,7 +603,12 @@ def _add_player(sv: SparseVector, ps, card_count: int) -> None:
     _add_cards(sv, ps.discard, 0.25, card_count)
 
 
-def build_board_tokens(obs, your_deck: list[int]) -> SparseVector:
+def build_board_tokens(
+    obs,
+    your_deck: list[int],
+    *,
+    immutable_deck_bag: Optional[ImmutableDeckBag] = None,
+) -> SparseVector:
     """Build the 24 spatial board tokens for observation ``obs``.
 
     ``obs`` may be a raw observation dict or a :class:`cg.api.Observation`.
@@ -613,18 +656,27 @@ def build_board_tokens(obs, your_deck: list[int]) -> SparseVector:
     sv.word_start()
     _add_cards(sv, state.players[your_index].hand, 0.25, cc)
 
-    # Own deck pool (bag).
+    # Own deck pool (bag). A named opt-in caller may reuse a validated static
+    # deck word. The normal path intentionally remains per-call validation so
+    # generic callers cannot accidentally cache a mutable deck list.
     sv.word_start()
-    for cid in your_deck:
-        sv.add(
-            _validated_card_id(
-                cid,
-                cc,
-                field="own deck card id",
-            ),
-            0.25,
-        )
-    sv.add_pos(cc)
+    if immutable_deck_bag is not None:
+        if int(immutable_deck_bag.card_count) != int(cc):
+            raise FeatureContractError(
+                "immutable own-deck bag card vocabulary does not match observation"
+            )
+        immutable_deck_bag.append_to(sv)
+    else:
+        for cid in your_deck:
+            sv.add(
+                _validated_card_id(
+                    cid,
+                    cc,
+                    field="own deck card id",
+                ),
+                0.25,
+            )
+        sv.add_pos(cc)
 
     # Stadium.
     sv.word_start()

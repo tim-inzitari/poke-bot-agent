@@ -85,6 +85,31 @@ def test_dashboard_subprocess_telemetry_replaces_non_utf8_output(
     assert observed["errors"] == "replace"
 
 
+def test_managed_journal_tail_decodes_binary_tqdm_messages(monkeypatch) -> None:
+    text_frame = "[pure_rl] train begin iter=13"
+    binary_frame = (
+        b"\rrl-train ep1:  38%|###| 188/501 "
+        b"[10:18<15:59, 3.07s/batch, sps=699]\x1b[A"
+    )
+
+    def fake_run(argv, **_kwargs):
+        assert argv[-2:] == ["json", "--output-fields=MESSAGE"]
+        payload = (
+            json.dumps({"MESSAGE": text_frame}).encode("utf-8")
+            + b"\n"
+            + json.dumps({"MESSAGE": list(binary_frame)}).encode("utf-8")
+            + b"\n"
+        )
+        return types.SimpleNamespace(stdout=payload)
+
+    monkeypatch.setattr(dashboard_snapshot_module.subprocess, "run", fake_run)
+
+    decoded = dashboard_snapshot_module._managed_unit_journal_tail("trainer")
+    assert text_frame in decoded
+    assert "rl-train ep1" in decoded
+    assert "188/501" in decoded
+
+
 def test_marnie_shadow_guide_projection_survives_bootstrap_service_exit() -> None:
     boundary = {
         "current": False,
@@ -849,6 +874,103 @@ def test_replay_cache_tqdm_is_live_training_preparation() -> None:
     assert parsed["total"] == 374
     assert parsed["unit"] == "parts"
     assert parsed["metrics"]["replay_shard"] == "iter_00000.jsonl"
+
+
+def test_optimizer_preparation_plain_markers_cover_each_subphase() -> None:
+    baseline = parse_curriculum_progress(
+        "",
+        "[rl-prep] baseline begin sequences=16392 rows=1305951 mode=value_only",
+        iteration_hint=4,
+    )
+    assert baseline["stage"] == "train:prep:baseline"
+    assert baseline["metrics"]["baseline_rows"] == 1305951
+    assert baseline["eta"] == "snapshotting frozen V(s)"
+
+    agreement = parse_curriculum_progress(
+        "",
+        "\n".join(
+            [
+                baseline["line"],
+                "[rl-prep] baseline complete rows=1305951 seconds=641.250",
+                "[rl-agreement] parent begin sequences=16392 rows=1305951",
+            ]
+        ),
+        iteration_hint=4,
+    )
+    assert agreement["stage"] == "train:agreement:parent"
+    assert agreement["metrics"]["prediction_rows"] == 1305951
+    assert agreement["eta"] == "freezing parent argmaxes"
+
+    optimizer = parse_curriculum_progress(
+        "",
+        "[rl-train] optimizer begin epochs=2 train_sequences=14753 "
+        "validation_sequences=1639 parent_step=2015",
+        iteration_hint=4,
+    )
+    assert optimizer["stage"] == "train:policy"
+    assert optimizer["percent"] == 0.0
+    assert optimizer["metrics"]["parent_step"] == 2015
+
+
+def test_derivative_journal_does_not_freeze_at_completed_replay_cache() -> None:
+    journal = "\n".join(
+        [
+            "[pure_rl] RESUME next_iteration=4 champion=/checkpoint.pt",
+            "replay-cache load iter_00004.jsonl: 100%|##########| "
+            "57/57 [02:15<00:00, 2.37s/part]",
+            "[rl-train] current-deck guide rows=576724 weight=0.0500",
+        ]
+    )
+    progress, source = dashboard_snapshot_module.derivative_rl_journal_progress(
+        {}, journal, iteration_hint=4
+    )
+    assert progress["stage"] == "train:prep:baseline_or_agreement"
+    assert progress["percent"] is None
+    assert progress["metrics"]["replay_cache_complete"] is True
+    assert progress["metrics"]["exact_subphase_markers_available"] is False
+    assert source.endswith(
+        dashboard_snapshot_module.ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE
+    )
+
+
+def test_derivative_journal_uses_current_optimizer_bar_after_resume_rolls_out() -> None:
+    progress, source = dashboard_snapshot_module.derivative_rl_journal_progress(
+        {},
+        "rl-train ep1:  38%|###| 188/501 "
+        "[10:18<15:59, 3.07s/batch, acc=91.22%, loss=1.105, sps=699]",
+        iteration_hint=13,
+    )
+
+    assert progress["stage"] == "train:policy"
+    assert progress["iteration"] == 13
+    assert progress["epoch"] == 2
+    assert progress["current"] == 188
+    assert progress["total"] == 501
+    assert progress["percent"] == 38.0
+    assert progress["sps"] == 699.0
+    assert source.endswith(
+        dashboard_snapshot_module.ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE
+    )
+
+
+def test_current_train_begin_supersedes_stale_incomplete_collection_alias() -> None:
+    stale = parse_curriculum_progress(
+        "",
+        "pure_rl collect:public_mix iter=0:   9%|██| 617/7127 "
+        "[09:10<1:39:25, 1.09game/s]",
+        iteration_hint=0,
+    )
+    reconciled = dashboard_snapshot_module.infer_between_bar_progress(
+        stale,
+        "[pure_rl] train begin iter=0 seqs=9220 behavior=sha256:abc",
+        iteration_hint=0,
+        train_epochs=2,
+    )
+
+    assert reconciled["stage"] == "train:preparing"
+    assert reconciled["iteration"] == 0
+    assert reconciled["remotes"] == 0
+    assert "train begin iter=0" in reconciled["line"]
 
 
 def test_resident_rl_corpus_pack_is_live_training_progress() -> None:
@@ -12228,3 +12350,309 @@ def test_dashboard_renders_live_pure_rl_tqdm_heartbeat() -> None:
     assert b"Trained vs used vs shadow" in html
     assert "COLLECTING · NO GRADIENTS".encode() in html
     assert b"SHADOW ONLY" in html
+
+
+def test_rule_derivative_full_bootstrap_is_live_curriculum_and_exact_tqdm(
+    monkeypatch,
+) -> None:
+    service_name = (
+        dashboard_snapshot_module.ALAKAZAM_RULE_DERIVATIVE_BOOTSTRAP_SERVICE
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "unit_state",
+        lambda name, user=False: {
+            "name": name,
+            "active": True,
+            "active_state": "active",
+            "sub_state": "running",
+            "pid": 4242,
+            "memory_bytes": 12_345,
+            "exec_start": "python train_alakazam_rule_derivative_full_r10.py",
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "read_tail",
+        lambda *_args, **_kwargs: (
+            "expert rehearsal before iter0 ep8/25:  32%|███▏| 322/1007 "
+            "[01:13<02:40, 4.27batch/s, acc=78.52%, loss=0.818, "
+            "policy=0.618, value=0.191]"
+        ),
+    )
+
+    state = dashboard_snapshot_module.alakazam_rule_derivative_bootstrap_state()
+
+    assert dashboard_snapshot_module._is_curriculum_service_unit(service_name)
+    assert state["status"] == "running"
+    assert state["service"]["pid"] == 4242
+    assert state["phase"] == "train:expert"
+    assert state["epoch"] == 8
+    assert state["epochs"] == 25
+    assert state["current"] == 322
+    assert state["total"] == 1007
+    assert state["pure_rl_progress"]["outer"]["kind"] == "epochs"
+    assert state["pure_rl_progress"]["outer"]["completed_epochs"] == 7
+    assert state["pure_rl_progress"]["inner"]["elapsed"] == "01:13"
+    assert state["pure_rl_progress"]["inner"]["eta"] == "02:40"
+
+
+def test_rule_derivative_play_loop_binds_pid_cwd_status_only(
+    monkeypatch, tmp_path
+) -> None:
+    service_name = dashboard_snapshot_module.ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE
+    log_dir = tmp_path / "outputs/logs"
+    log_dir.mkdir(parents=True)
+    status = log_dir / "pure_rl_core.progress.status"
+    status.write_text(
+        "pure_rl collect:public_mix iter=0: 3%| | 195/7127 "
+        "[02:21<1:23:28, 1.38game/s]",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_managed_process_cwd",
+        lambda pid: tmp_path if pid == 4242 else None,
+    )
+
+    status_path, log_path = dashboard_snapshot_module._curriculum_progress_paths(
+        "alakazam_rule_derivative_g5_r12",
+        [service_name],
+        [4242],
+    )
+
+    assert dashboard_snapshot_module._is_curriculum_service_unit(service_name)
+    assert status_path == status
+    assert log_path is None
+
+
+def test_rule_derivative_play_loop_exposes_outer_and_inner_progress() -> None:
+    state = dashboard_snapshot_module.alakazam_rule_derivative_rl_progress(
+        {
+            "active": True,
+            "active_units": [
+                dashboard_snapshot_module.ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE
+            ],
+            "run": "alakazam_rule_derivative_g5_r12",
+            "last_completed_iteration": -1,
+            "next_iteration": 0,
+            "progress_source": "/runtime/outputs/logs/pure_rl_core.progress.status",
+            "progress": {
+                "line": "pure_rl collect:public_mix iter=0: 195/7127",
+                "stage": "collect:public_mix",
+                "iteration": 0,
+                "current": 195,
+                "total": 7127,
+                "percent": 3.0,
+                "elapsed": "02:21",
+                "eta": "1:23:28",
+            },
+        }
+    )
+
+    assert state["available"] is True
+    assert state["outer"]["total_iterations"] == 20
+    assert state["outer"]["active_iteration"] == 0
+    assert state["inner"]["current"] == 195
+    assert state["active_step_index"] == 1
+    assert state["steps"][1]["status"] == "active"
+
+
+def test_dashboard_labels_epoch_outer_progress_for_derivative_bootstrap() -> None:
+    html = rendered_index()
+
+    assert b"pureOuter.kind==='epochs'" in html
+    assert b"active epoch" in html
+
+
+def test_derivative_bootstrap_integrity_ignores_unrelated_rl_panels() -> None:
+    now = time.time()
+    payload = {
+        "observed_at": now,
+        "dashboard_sampled_at": now,
+        "service": {
+            "name": (
+                "pokebot-alakazam-rule-derivative-g5-full-bootstrap-r10.service"
+            ),
+            "active": True,
+            "pid": 4242,
+            "restart_count": 0,
+        },
+        "training": {
+            "mode": "alakazam_rule_derivative_r10_full_bootstrap",
+            "status": "running",
+            "run": "alakazam-rule-derivative-r10-full-25epochs-c",
+            "phase": "train:expert",
+            "source": "/bootstrap/current.log",
+        },
+        "bootstrap": {
+            "compatibility_alias": True,
+            "alias_of": "training",
+            "phase": "train:expert",
+        },
+        "curriculum": {
+            "active": True,
+            "source_current": True,
+            "run": "alakazam-rule-derivative-r10-full-25epochs-c",
+            "stage": "train:expert",
+            "iteration": 0,
+            "progress_source": "/bootstrap/current.log",
+            "progress": {"line": "expert rehearsal ep9/25", "stage": "train:expert"},
+        },
+        "model": {
+            "checkpoint_structure": {"verified": False},
+        },
+        "gpus": [{"index": 1}],
+        "fleet": {
+            "inzi": {
+                "reachable": True,
+                "name": "Inzi",
+                "worker": {"active": True, "command": "managed trainer"},
+            },
+            "elmo": {"reachable": False, "name": "Elmo", "worker": {}},
+            "bert": {"reachable": False, "name": "Bert", "worker": {}},
+        },
+        "specialist_protocol": {"available": False},
+        "specialist_handoff": {"active": False},
+        "terminal_completion": {"available": True},
+        "expert_refresh": {"available": False},
+        "transition": {"active": False, "historical": True},
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    integrity = payload["source_integrity"]
+    assert integrity["current"] is True
+    assert integrity["failed"] == []
+    for key in ("protocol", "latest10", "terminal", "outcomes", "nextgate"):
+        assert integrity["rows"][key]["required"] is False
+    assert integrity["rows"]["fleet_elmo"]["required"] is False
+    assert integrity["rows"]["fleet_bert"]["required"] is False
+
+
+def test_derivative_play_loop_integrity_uses_live_local_run_scope() -> None:
+    now = time.time()
+    checkpoint = "/checkpoints/alakazam-rule-derivative.pt"
+    digest = "sha256:" + "8b59af9af1d7" * 5 + "8b59"
+    payload = {
+        "observed_at": now,
+        "dashboard_sampled_at": now,
+        "service": {
+            "name": "pokebot-alakazam-rule-derivative-g5-rl.service",
+            "active": True,
+            "pid": 4242,
+            "restart_count": 0,
+        },
+        "training": {
+            "mode": "alakazam_rule_derivative_g5_rl",
+            "status": "running",
+            "run": "alakazam_rule_derivative_g5_r12",
+            "phase": "collect:public_mix",
+        },
+        "bootstrap": {
+            "compatibility_alias": True,
+            "alias_of": "training",
+            "phase": "collect:public_mix",
+        },
+        "curriculum": {
+            "active": True,
+            "source_current": True,
+            "run": "alakazam_rule_derivative_g5_r12",
+            "stage": "collect:public_mix",
+            "iteration": 0,
+            "last_completed_iteration": -1,
+            "next_iteration": 0,
+            "progress_source": "/runtime/pure_rl_core.progress.status",
+            "progress_status_source": "/runtime/pure_rl_core.progress.status",
+            "progress": {
+                "line": "pure_rl collect:public_mix iter=0: 623/7127",
+                "stage": "collect:public_mix",
+                "remotes": 0,
+            },
+            "gate_program": {"next_gate": {"contract_valid": False}},
+            "formal_holdout_waiver": {
+                "verified": True,
+                "run_name": "alakazam_rule_derivative_g5_r12",
+                "iteration": 0,
+                "candidate_checkpoint_sha256": digest,
+                "measured_holdout_pass_claim_allowed": False,
+                "source": "/runtime/r329-iter3-formal-holdout-waiver.json",
+            },
+        },
+        "model": {
+            "run": "alakazam_rule_derivative_g5_r12",
+            "active_checkpoint": checkpoint,
+            "active_checkpoint_digest": digest,
+            "checkpoint_structure": {
+                "verified": False,
+                "checkpoint": checkpoint,
+                "checkpoint_digest": digest,
+            },
+        },
+        "scheduler_queues": {
+            "available": True,
+            "updated_at": now,
+        },
+        "gpus": [{"index": 1}],
+        "fleet": {
+            "inzi": {
+                "reachable": True,
+                "name": "Inzi",
+                "worker": {"active": True, "command": "managed trainer"},
+            },
+            "elmo": {"reachable": False, "name": "Elmo", "worker": {}},
+            "bert": {"reachable": False, "name": "Bert", "worker": {}},
+        },
+        "specialist_protocol": {"available": False},
+        "specialist_handoff": {"active": False},
+        "terminal_completion": {"available": True},
+        "expert_refresh": {"available": False},
+        "transition": {"active": False, "historical": True},
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    integrity = payload["source_integrity"]
+    assert integrity["current"] is True
+    assert integrity["failed"] == []
+    assert integrity["rows"]["model"]["current"] is True
+    assert integrity["rows"]["nextgate"]["current"] is True
+    assert integrity["rows"]["nextgate"]["source"].endswith(
+        "r329-iter3-formal-holdout-waiver.json"
+    )
+    for key in ("protocol", "latest10", "terminal"):
+        assert integrity["rows"][key]["required"] is False
+    assert integrity["rows"]["fleet_elmo"]["required"] is False
+    assert integrity["rows"]["fleet_bert"]["required"] is False
+
+
+def test_derivative_current_attempt_recovery_overrides_old_tqdm() -> None:
+    old = {
+        "line": "pure_rl heldout:strong_public_gate iter=3: 103/900",
+        "stage": "heldout:strong_public_gate",
+        "iteration": 3,
+        "current": 103,
+        "total": 900,
+    }
+    journal = "\n".join(
+        [
+            "[pure_rl] RESUME next_iteration=3 champion=/checkpoint.pt",
+            "[pure_rl] resume completed collection iter=3 games=8196",
+            "[pure_rl] RECOVER_TRAINED_CANDIDATE iter=3 "
+            "digest=sha256:0078f6a652a6… skip_retrain=1 "
+            "resume=promotion/heldout",
+        ]
+    )
+
+    progress, source = dashboard_snapshot_module.derivative_rl_journal_progress(
+        old,
+        journal,
+        iteration_hint=3,
+    )
+
+    assert progress["stage"] == "recovery:trained_candidate"
+    assert progress["current"] == progress["total"] == 1
+    assert "retraining skipped" in progress["line"]
+    assert source.endswith(
+        dashboard_snapshot_module.ALAKAZAM_RULE_DERIVATIVE_RL_SERVICE
+    )

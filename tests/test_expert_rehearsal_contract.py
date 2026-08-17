@@ -161,6 +161,29 @@ def test_exact_manifest_contract_fails_closed(tmp_path: Path) -> None:
         )
 
 
+def test_direct_manifest_requires_exact_sibling_protected_pointer(tmp_path: Path) -> None:
+    pointer, identity = _protected_manifest(tmp_path)
+    manifest = Path(identity.path)
+
+    direct_identity = resolve_expert_manifest(
+        manifest,
+        min_decisions=100,
+        require_protected=True,
+        required_archetype="alakazam",
+        required_compact_mode="temporal-expert-v1",
+        required_max_context=320,
+        required_target_coverage=REQUIRED_TARGETS,
+    )
+    assert direct_identity.digest == identity.digest
+    assert direct_identity.path == identity.path
+
+    pointer_payload = json.loads(pointer.read_text(encoding="utf-8"))
+    pointer_payload["manifest_sha256"] = "sha256:" + "0" * 64
+    pointer.write_text(json.dumps(pointer_payload) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="sibling protected pointer is invalid"):
+        resolve_expert_manifest(manifest, require_protected=True)
+
+
 def test_receipt_binds_manifest_losses_and_split_seed(tmp_path: Path) -> None:
     _pointer, identity = _protected_manifest(tmp_path)
     checkpoint = tmp_path / "expert.pt"

@@ -1,0 +1,19 @@
+[Unit]
+Description=Alakazam revision-16 recent20 RTP shadow bootstrap (no action authority)
+After=network.target
+
+[Service]
+Type=oneshot
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=200%
+MemoryMax=6G
+TimeoutStopSec=120
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=append:/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-recent20-rtp-shadow-r16-bootstrap-v3/service.log
+StandardError=append:/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-recent20-rtp-shadow-r16-bootstrap-v3/service.log
+ExecStart=/usr/bin/sudo /usr/bin/docker run --rm --name pokebot-alakazam-r16-rtp-shadow --network none --gpus device=0 --cpus 2 --memory 6g --pids-limit 256 --entrypoint python3 -v /mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-recent20-rtp-shadow-r16-source-sha256-7536da12d70fe2cdd8d2c22153c6a6a6be856e7a9c1a6df94deafde14691763a:/workspace:ro -v /mnt/Main/main/poke-bot-agent:/mnt/Main/main/poke-bot-agent:ro -v /mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-recent20-rtp-shadow-r16-bootstrap-v3:/mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-recent20-rtp-shadow-r16-bootstrap-v3:rw -e PYTHONPATH=/workspace poke-bot-truenas-worker:r125-checkpoint-digest-verify-v2 /workspace/scripts/train_recursive_turn_planner.py --out-dir /mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-recent20-rtp-shadow-r16-bootstrap-v3 --specialist-id alakazam-r16-shadow --checkpoint /mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-recent20-rtp-shadow-r16-inputs/sha256-8b59af9af1d715639bd3d63a84df7d608cee686c27aadf1c6dac3c971631a248.pt --parent-digest sha256:8b59af9af1d715639bd3d63a84df7d608cee686c27aadf1c6dac3c971631a248 --recent20-rtp-overlay-manifest /mnt/Main/main/poke-bot-agent/outputs/experiments/alakazam-recent20-rtp-overlay-v1-attempt4/manifests/sha256-081e40d9b9cc98714abaa8945c8d176a9143bdb8e87aeeee0327878642b118bd.overlay-manifest.json --recent20-rtp-overlay-manifest-digest sha256:081e40d9b9cc98714abaa8945c8d176a9143bdb8e87aeeee0327878642b118bd --recent20-rtp-base-pack-root /mnt/Main/main/poke-bot-agent/archive/alakazam-rule-derivative/.incoming/r11-inzi-sealed-20260813T141600Z-d74152bc/home/inzi/poke-bot-agent/outputs/bootstrap/alakazam-rule-derivative-r10-semantic-pack-all20-v3 --recent20-rtp-base-pack-completion-digest sha256:e9756ba8fbf6f813778c4ce03af44b22b653e00586bfdb0c917a7313380ce5ba --epochs 1 --lr 0.0001 --seed 31816 --device cuda:0 --recent20-hidden-width 128 --recent20-gradient-accumulation-stages 32 --recent20-max-train-programs 0 --recent20-max-train-programs-per-day 4096 --recent20-max-validation-programs 4096 --recent20-max-validation-programs-per-day 1024
+ExecStop=-/usr/bin/sudo /usr/bin/docker stop --time 90 pokebot-alakazam-r16-rtp-shadow
+
+[Install]
+WantedBy=default.target

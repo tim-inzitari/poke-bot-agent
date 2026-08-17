@@ -1,0 +1,19 @@
+\begin{figure}[t]
+\centering
+\footnotesize
+\begin{tabularx}{\columnwidth}{>{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X}
+\cellcolor{mint}\textbf{Runtime-eligible} &
+\cellcolor{pale}\textbf{Target-only or forbidden} \\
+\cellcolor{mint}Own hand and legally known private state &
+\cellcolor{pale}Opponent hidden hand identities \\
+\cellcolor{mint}Public board, zones, flags, counts &
+\cellcolor{pale}Either deck's future order \\
+\cellcolor{mint}Public history and current legal options &
+\cellcolor{pale}Unrevealed Prize identities \\
+\cellcolor{mint}Pinned public catalog metadata &
+\cellcolor{pale}Future transitions and terminal result \\
+\end{tabularx}
+\caption{Information-flow boundary. Offline labels remain separate typed
+objects and cannot enter the deployment observation.}
+\label{fig:information-boundary}
+\end{figure}

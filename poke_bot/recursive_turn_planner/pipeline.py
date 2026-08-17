@@ -76,6 +76,23 @@ class ArchetypeRTPJob:
     complete_action_corpus_selection_plan_digest: str = ""
     complete_action_corpus_train_selection_digest: str = ""
     complete_action_corpus_heldout_selection_digest: str = ""
+    #: Checkpoint-independent recent-20 feature-pack overlay.  This adapter is
+    #: iterable before a frozen parent is selected; it does not itself grant
+    #: sidecar-training authority or synthesize parent encoder states.
+    recent20_rtp_overlay_manifest: str = ""
+    recent20_rtp_overlay_manifest_digest: str = ""
+    recent20_rtp_base_pack_root: str = ""
+    recent20_rtp_base_pack_completion_digest: str = ""
+    #: Optional existing planner-only sidecar used as a checksum-bound weight
+    #: initialization. It grants no serving authority to the new checkpoint.
+    rtp_warm_start_checkpoint: str = ""
+    rtp_warm_start_digest: str = ""
+    recent20_hidden_width: int = 128
+    recent20_gradient_accumulation_stages: int = 32
+    recent20_max_train_programs: int = 0
+    recent20_max_validation_programs: int = 4096
+    recent20_max_train_programs_per_day: int = 0
+    recent20_max_validation_programs_per_day: int = 0
     profile: str = "pure_rl"
     d_model: int = 96
     max_games: int = 256
@@ -188,6 +205,30 @@ class ArchetypeRTPJob:
                 raise ValueError("pure_rl_r197 requires max_heldout_batches=8000")
         if int(self.max_runtime_action_combos) < 1:
             raise ValueError("max_runtime_action_combos must be positive")
+        if int(self.recent20_hidden_width) < 1:
+            raise ValueError("recent20_hidden_width must be positive")
+        if int(self.recent20_gradient_accumulation_stages) < 1:
+            raise ValueError(
+                "recent20_gradient_accumulation_stages must be positive"
+            )
+        if int(self.recent20_max_train_programs) < 0:
+            raise ValueError("recent20_max_train_programs must be nonnegative")
+        if int(self.recent20_max_validation_programs) < 1:
+            raise ValueError("recent20_max_validation_programs must be positive")
+        if int(self.recent20_max_train_programs_per_day) < 0:
+            raise ValueError(
+                "recent20_max_train_programs_per_day must be nonnegative"
+            )
+        if int(self.recent20_max_validation_programs_per_day) < 0:
+            raise ValueError(
+                "recent20_max_validation_programs_per_day must be nonnegative"
+            )
+        warm_fields = (
+            bool(str(self.rtp_warm_start_checkpoint or "").strip()),
+            bool(str(self.rtp_warm_start_digest or "").strip()),
+        )
+        if any(warm_fields) and not all(warm_fields):
+            raise ValueError("RTP warm-start checkpoint binding is incomplete")
         for field_name in (
             "max_train_games",
             "max_heldout_games",
@@ -202,8 +243,23 @@ class ArchetypeRTPJob:
     @property
     def ready_for_host_train(self) -> bool:
         return bool(self.parent_checkpoint) and bool(
-            self.complete_action_corpus or self.training_shard
+            self.complete_action_corpus
+            or self.training_shard
+            or self.ready_for_recent20_dataset
         )
+
+    @property
+    def ready_for_recent20_dataset(self) -> bool:
+        values = (
+            self.recent20_rtp_overlay_manifest,
+            self.recent20_rtp_overlay_manifest_digest,
+            self.recent20_rtp_base_pack_root,
+            self.recent20_rtp_base_pack_completion_digest,
+        )
+        supplied = [bool(str(value or "").strip()) for value in values]
+        if any(supplied) and not all(supplied):
+            raise ValueError("recent20 RTP dataset binding is incomplete")
+        return all(supplied)
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -1623,6 +1679,33 @@ def load_batches_for_job(
     return finish(batches, "shard", provenance)
 
 
+def iter_dataset_samples_for_job(
+    job: ArchetypeRTPJob,
+    *,
+    split: str,
+    verify_overlay_shards: bool = True,
+) -> Iterable[dict[str, Any]]:
+    """Stream checkpoint-independent samples declared by an RTP job.
+
+    This is deliberately separate from ``load_batches_for_job``: the latter
+    requires a selected frozen checkpoint and produces encoded training
+    tensors.  The recent-20 adapter proves deterministic base/overlay joins
+    now, while leaving parent encoding and sidecar training for a future
+    receipt-backed action.
+    """
+    if not job.ready_for_recent20_dataset:
+        raise ValueError("job has no complete recent20 RTP dataset binding")
+    from poke_bot.recursive_turn_planner.recent20_overlay import (
+        iter_recent20_overlay_samples_for_job,
+    )
+
+    return iter_recent20_overlay_samples_for_job(
+        job,
+        split=split,
+        verify_overlay_shards=verify_overlay_shards,
+    )
+
+
 def run_archetype_rtp_pipeline(
     job: ArchetypeRTPJob,
     *,
@@ -1633,6 +1716,87 @@ def run_archetype_rtp_pipeline(
     """Train RTP (+ optional PokeRLM) for one specialist_id."""
     out_dir = Path(out_root) / job.specialist_id
     out_dir.mkdir(parents=True, exist_ok=True)
+    if job.ready_for_recent20_dataset:
+        if synthetic:
+            raise ValueError("recent20 RTP overlay training cannot use synthetic mode")
+        if job.complete_action_corpus or job.training_shard:
+            raise ValueError(
+                "recent20 RTP overlay is mutually exclusive with legacy training inputs"
+            )
+        if not job.parent_checkpoint or not job.parent_digest:
+            raise ValueError(
+                "recent20 RTP shadow training requires a digest-bound frozen parent"
+            )
+        from poke_bot.recursive_turn_planner.recent20_shadow import (
+            Recent20ShadowConfig,
+            train_recent20_shadow,
+        )
+
+        shadow = train_recent20_shadow(
+            manifest_path=job.recent20_rtp_overlay_manifest,
+            manifest_sha256=job.recent20_rtp_overlay_manifest_digest,
+            base_pack_root=job.recent20_rtp_base_pack_root,
+            base_completion_sha256=job.recent20_rtp_base_pack_completion_digest,
+            parent_checkpoint=job.parent_checkpoint,
+            parent_checkpoint_sha256=job.parent_digest,
+            output_root=out_dir / "rtp",
+            config=Recent20ShadowConfig(
+                d_model=int(job.d_model),
+                hidden_width=int(job.recent20_hidden_width),
+                epochs=int(job.epochs),
+                learning_rate=float(job.lr),
+                gradient_accumulation_stages=int(
+                    job.recent20_gradient_accumulation_stages
+                ),
+                max_train_programs=int(job.recent20_max_train_programs),
+                max_validation_programs=int(job.recent20_max_validation_programs),
+                max_train_programs_per_day=int(
+                    job.recent20_max_train_programs_per_day
+                ),
+                max_validation_programs_per_day=int(
+                    job.recent20_max_validation_programs_per_day
+                ),
+                seed=int(job.seed),
+                device=str(job.device),
+            ),
+            warm_start_checkpoint=(job.rtp_warm_start_checkpoint or None),
+            warm_start_checkpoint_sha256=job.rtp_warm_start_digest,
+        )
+        result = ArchetypeRTPResult(
+            specialist_id=job.specialist_id,
+            source="recent20_rtp_overlay",
+            out_dir=str(out_dir.resolve()),
+            n_batches=int(shadow["train_stages"]),
+            rtp_checkpoint=str(shadow["checkpoint_path"]),
+            rtp_receipt=str(shadow["completion_path"]),
+            metrics={
+                "rtp": dict(shadow["metrics"]),
+                "rtp_heldout": dict(shadow["validation"]),
+            },
+            env={
+                "POKEBOT_USE_RECURSIVE_TURN_PLANNER": "0",
+                "POKEBOT_RTP_SHADOW_CHECKPOINT": str(shadow["checkpoint_path"]),
+                "POKEBOT_RTP_SPECIALIST_ID": job.specialist_id,
+                "POKEBOT_RTP_SHADOW_ONLY": "1",
+            },
+            serving_eligible=False,
+        )
+        summary = {
+            "schema": PIPELINE_SCHEMA,
+            "generated_at_unix": time.time(),
+            "job": job.to_json(),
+            "source": "recent20_rtp_overlay",
+            "shadow_completion": shadow,
+            "result": result.to_json(),
+            "serving_eligible": False,
+            "selector_authority": False,
+            "action_authority_enabled": False,
+            "shadow_only": True,
+        }
+        (out_dir / "pipeline_summary.json").write_text(
+            json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return result
     batches, source, provenance, pre_split_heldout = load_batches_for_job(
         job,
         synthetic=synthetic,
@@ -1882,6 +2046,7 @@ __all__ = [
     "load_archetype_registry",
     "load_batches_for_job",
     "load_r197_complete_action_corpus",
+    "iter_dataset_samples_for_job",
     "plan_r197_complete_action_selection",
     "run_archetype_rtp_pipeline",
     "run_registry",

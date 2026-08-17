@@ -1,0 +1,37 @@
+\section*{2. Semantic quotient and bounded policy design}
+
+Legality alone does not guarantee distinguishability. Let $\kappa_0(I,o)$ be
+the legacy option key and $\sigma(I,o)$ the simulator semantics of choosing
+$o$. Its collision class is
+\[
+ C_k=\{(I,o):\kappa_0(I,o)=k\}.
+\]
+A collision is actionable exactly when there exist $x,y\in C_k$ with
+$\sigma(x)\neq\sigma(y)$. Duplicate payloads that differ only by a harmless
+permutation are one semantic equivalence class, not an error.
+
+The repaired key $\kappa$ uses acting-player-visible fields that can alter the
+meaning of a choice: exact number and count, selection type and context,
+effect identity, minimum and maximum count, remaining damage-counter and
+Energy budgets, and stable source, target, area, and slot bindings. It includes
+no candidate ordinal, blind global serial, card prose, or future outcome.
+Reordering non-semantic menu options therefore only reorders their rows.
+
+The base Transformer~\cite{vaswani2017attention} produces option state $h_i$
+and typed state/option predictions. A compact fusion summary can be written as
+\[
+ c_t=\operatorname{LN}\!\left(
+   \frac{1}{m}\sum_{r=1}^{m}\alpha_r\tanh(W_rs_r)\right),\qquad
+ \ell_i^0=\operatorname{MLP}([h_i,c_t,\tanh(q_i)]) .
+\]
+Here $s_r$ denotes typed state heads and $q_i$ option-conditioned heads. The
+rule-semantic path is parallel to the preserved card embedding:
+\[
+ h_i^+=h_i+g f_\psi(x_i),\qquad
+ \ell_i^+=\ell_i^0+g\Delta\tanh(r_\psi(h_i^+)),\quad \Delta=0.25 .
+\]
+The final layers begin at zero. When $g=0$, the implementation returns the
+baseline tensor by identity before inspecting semantic features. The adapter
+therefore cannot invent legality and is not a second rules engine; it only
+separates meanings already exposed by the simulator. Unsupported checklist
+and metadata routes stay at exact zero.

@@ -1,0 +1,48 @@
+\section*{4. Alakazam as constrained card-count optimization}
+
+The deck guide~\cite{projectAlakazamGuide2026} supplies an unusually clean
+control variable. Powerful Hand places two damage counters per card in hand,
+so, when no visible effect blocks the attack,
+\[
+ D(h)=20h,\qquad
+ h_{\mathrm{KO}}(H)=\left\lceil\frac{H}{20}\right\rceil .
+\]
+Ordinary Weakness and Resistance do not alter placed counters. A visible
+effect that prevents attack effects makes the route infeasible until removed
+or avoided. Against a full-health 330-HP Mega Lopunny ex,
+$h_{\mathrm{KO}}=\lceil330/20\rceil=17$; the visible card class also makes
+the knockout worth three Prizes.
+
+Let $h$ be the current hand. The maximum hand slack that can be spent without
+losing the present knockout is
+\[
+ b_{\mathrm{spend}}=\max(0,h-h_{\mathrm{KO}}).
+\]
+That scalar is necessary, not sufficient: spending a card can still destroy
+the next attacker or recovery line. For a planned route $r$, let $D$ be the
+visible current deck count, $u_r$ unavoidable draws, $v_r$ publicly guaranteed
+recycled cards, $\rho_r$ indicate a Benched Alakazam with
+Psychic-providing Energy, $b_r$ occupied Bench slots, and $B$ the Bench
+maximum. The default feasible set is
+\[
+ \mathcal F(I_t)=\{r:\ h_r\ge h_{\mathrm{KO}}(H_r),\ 
+ u_r\le D+v_r,\ \rho_r=1,\ b_r\le B-1\}.
+\]
+The Bench reserve may be released for an already exact winning line. If play
+must continue to another turn, draw continuity strengthens the constraint to
+$u_r+1\le D+v_r$ for the next mandatory draw. Equality in the first
+constraint is safe only when the route ends before that draw.
+
+Let $q_j\in\{1,2,3\}$ be the visible Prize value of target $j$ and
+$P_{\mathrm{need}}$ the Prizes still required. The primary route problem is
+\[
+ T^*=\min_{r\in\mathcal F(I_t)}T(r)
+ \quad\text{subject to}\quad
+ \sum_{j=1}^{T(r)}q_j\ge P_{\mathrm{need}} .
+\]
+Among equal-turn routes, the guide prefers fewer forced draws, less two-Prize
+Bench exposure, and preservation of recovery. Deterministic search precedes
+broad draw because removing a known target changes the remaining distribution
+without spending unnecessary deck depth. Hidden Prize identities are never
+guessed: a route that requires an unknown key card is rejected until public
+evidence makes it feasible.

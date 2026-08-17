@@ -1,0 +1,40 @@
+\section{Deck Strategy and Interpretability}
+
+Alakazam's Powerful Hand provides an unusually interpretable local objective:
+two damage counters are placed for each card in hand. For a visible target with
+remaining HP $H$, the basic hand threshold is
+\begin{equation}
+  h_{\mathrm{KO}}=\left\lceil H/20\right\rceil,
+\end{equation}
+modified only by visible, applicable effects. Public deck guides provide useful
+context~\cite{tcgplayerAlakazamGuide,ptcgoAlakazamGuide}, but the project guide
+is training curriculum metadata, not a serving action source. It cannot read
+hidden facts, provide policy cross-entropy, or override the learned option
+score.
+
+The strategy is resource-constrained card-count control, not unconstrained
+draw. A stable board maintains a current attacker route, a replacement Abra or
+evolved line, a Dunsparce draw/recycle route when it solves a defined problem,
+and a flexible bench slot. Deterministic search normally precedes broad draw
+when the target is already known. Rare Candy is preserved when evolving through
+Kadabra keeps multiple routes live. Boss's Orders is spent for a prize-changing
+or tempo-winning target; Enhanced Hammer is used when a visible Special Energy
+actually prevents damage or changes the prize race. Near deck-out, mandatory
+turn draw and every unavoidable attachment, evolution, or ability draw are
+counted before committing the line.
+
+The 14 August matchup supplement illustrates how semantic features connect to
+human reasoning without introducing hidden inference. A visible 330-HP Mega
+Lopunny ex requires 17 hand cards for a full-health Powerful Hand knockout and
+gives up three Prizes. A visibly attached Mist Energy prevents the attack effect,
+so Enhanced Hammer or a gust-around line is valuable. The controller may use
+visible HP, card class, attachment, and legal options. It may not infer a hidden
+Mist Energy or healing card merely because the opponent revealed Buneary.
+
+Interpretability follows the same causal boundary. For each current option the
+trace can expose the base logit, structured rule residual, masks, bounded route
+reliabilities, and final score. Leave-one-route-out logit changes measure
+decision sensitivity, not counterfactual win effect. A route should be
+reweighted only after paired fixed-seed intervention. Likewise, checklist
+records explain what evidence was available, but their exact-zero gates at this
+snapshot mean they did not change the deployed action.

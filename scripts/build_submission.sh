@@ -330,7 +330,10 @@ def write_profile(value: dict) -> None:
 
 model = stage / "model.pt"
 model_digest = digest(model)
-base = {"schema": "poke_bot.submission_runtime_profile/v1"}
+base = {
+    "schema": "poke_bot.submission_runtime_profile/v1",
+    "no_progress_escape_turns": 512,
+}
 if mode == "default_off":
     pass
 elif mode == "disabled":
@@ -360,16 +363,25 @@ elif mode == "enabled":
         }
     )
 elif mode == "off":
-    write_profile(
-        {
-            **base,
-            "rtp_mode": "off",
-            "recursive_turn_planner": "disabled",
-            "display": "NO RTP",
-            "rtp_sidecar_packaged": False,
-            "model_checkpoint_sha256": model_digest,
-        }
-    )
+    profile = {
+        **base,
+        "rtp_mode": "off",
+        "recursive_turn_planner": "disabled",
+        "display": "NO RTP",
+        "rtp_sidecar_packaged": False,
+        "model_checkpoint_sha256": model_digest,
+    }
+    if os.environ.get("POKEBOT_SUBMISSION_RULE_DERIVATIVE", "0") == "1":
+        profile.update(
+            {
+                "public_rule_semantic_projection": "enabled",
+                "public_rule_semantic_projection_gate": 1.0,
+                "public_rule_metadata_residual": "disabled_exact_zero",
+                "repaired_auxiliary_heads": "disabled_exact_zero",
+                "eight_checklist_provenance_gates": "disabled_exact_zero",
+            }
+        )
+    write_profile(profile)
 elif mode == "direct":
     if sidecar_source is None or not sidecar_source.is_file():
         raise SystemExit("ERROR: direct RTP submission lacks POKEBOT_SUBMISSION_RTP_CHECKPOINT")
@@ -749,6 +761,21 @@ if runtime_profile_path.is_file():
         assert os.environ["POKEBOT_USE_RECURSIVE_TURN_PLANNER"] == "0"
         assert "POKEBOT_RTP_CHECKPOINT" not in os.environ
         assert not (stage / "rtp_shadow_planner.pt").exists()
+        if runtime_profile.get("public_rule_semantic_projection") == "enabled":
+            assert checkpoint_payload["schema"] == (
+                "poke_bot.alakazam_rule_derivative_composite_candidate_initialization/v1"
+            )
+            assert runtime_profile["public_rule_semantic_projection_gate"] == 1.0
+            assert agent_mod._POLICY.public_rule_semantic_projection_enabled is True
+            assert agent_mod._POLICY.public_rule_semantic_projection is not None
+            assert not any(
+                parameter.requires_grad
+                for parameter in agent_mod._POLICY.public_rule_semantic_projection.parameters()
+            )
+            assert runtime_profile["public_rule_metadata_residual"] == "disabled_exact_zero"
+            assert runtime_profile["repaired_auxiliary_heads"] == "disabled_exact_zero"
+            assert runtime_profile["eight_checklist_provenance_gates"] == "disabled_exact_zero"
+            print("OK: submitted public-rule semantic projection is enabled + frozen")
         print("OK: submitted runtime is NO RTP despite hostile inherited RTP env")
     elif rtp_mode == "direct":
         assert runtime_profile["display"] == "DIRECT RTP"
@@ -876,6 +903,14 @@ while obs is not None and steps < 80:
 battle_finish()
 assert steps > 0
 assert go_first_seen, "isolated engine battle never exercised IsFirst"
+if runtime_profile_path.is_file() and runtime_profile.get(
+    "public_rule_semantic_projection"
+) == "enabled":
+    assert agent_mod._POLICY.public_rule_semantic_projection_apply_count > 0
+    print(
+        "OK: submitted public-rule semantic projection applied stages=",
+        agent_mod._POLICY.public_rule_semantic_projection_apply_count,
+    )
 print(f"OK: Kaggle-style neural battle steps={steps}")
 PY
 )
@@ -961,8 +996,32 @@ print(
 PY
 )
 
+# The short smokes above prove import/action legality, but they cannot detect a
+# legal deterministic loop.  Before attesting/uploading the final tarball, run
+# two independent instances of that exact package through 64 mirror games and
+# require a real terminal result every time.  Official libcg takes shuffle
+# entropy from the OS and exposes no seed setter, so seed 0 is recorded as the
+# framework request but never misrepresented as native shuffle control.
+# The package itself begins an immediate legal-END escape at 512 stagnant
+# turns. Timeout, incomplete play, policy failure, illegal action, or failure
+# to resolve before 768 stagnant turns is a hard package-build failure.
+MIRROR_EVIDENCE="$OUT_DIR/submission-seed0-mirror-evidence.json"
+rm -f "$MIRROR_EVIDENCE"
+env -u PYTHONPATH -u CG_LIB_PATH \
+  -u POKEBOT_MATCHUP_ADAPTER_RUNTIME \
+  -u POKEBOT_PUBLIC_MATCHUP_TREE_PATH \
+  "$PYTHON" -I "$ROOT/scripts/validate_submission_seed0_mirror.py" \
+    --stage "$SMOKE_DIR" \
+    --package "$TARBALL" \
+    --evidence "$MIRROR_EVIDENCE" \
+    --seed 0 \
+    --wall-timeout-seconds 600 \
+    --max-engine-steps 10000 \
+    --max-stagnant-turns 768 \
+    --mirror-games 64
+
 echo ">> isolated smoke dir: $SMOKE_DIR"
-"$PYTHON" - "$TARBALL" <<'PY'
+"$PYTHON" - "$TARBALL" "$MIRROR_EVIDENCE" <<'PY'
 import datetime as dt
 import hashlib
 import json
@@ -971,8 +1030,20 @@ from pathlib import Path
 import sys
 
 bundle = Path(sys.argv[1]).resolve()
+mirror_evidence_path = Path(sys.argv[2]).resolve()
 digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
 receipt = Path(str(bundle) + ".go-first-verified.json")
+mirror_evidence = json.loads(mirror_evidence_path.read_text())
+if (
+    mirror_evidence.get("passed") is not True
+    or mirror_evidence.get("requested_framework_seed") != 0
+    or mirror_evidence.get("native_shuffle_seed_controlled") is not False
+    or mirror_evidence.get("same_exact_package_both_seats") is not True
+    or mirror_evidence.get("mirror_games_completed") != 64
+    or mirror_evidence.get("max_stagnant_turns") != 768
+    or mirror_evidence.get("package_sha256") != "sha256:" + digest
+):
+    raise SystemExit("ERROR: exact-package seed-0 mirror evidence is invalid")
 turn_order = json.loads(
     (bundle.parent / "stage" / "turn_order_profile.json").read_text()
 )["turn_order_preference"]
@@ -1025,7 +1096,32 @@ payload = {
         "integer_enum",
         "string_enum_reversed_options",
         "live_engine_prompt",
+        "64_exact_package_mirrors_all_terminal",
     ],
+    "seed0_mirror_evidence_path": str(mirror_evidence_path),
+    "seed0_mirror_evidence_sha256": "sha256:" + hashlib.sha256(
+        mirror_evidence_path.read_bytes()
+    ).hexdigest(),
+    "seed0_mirror_native_shuffle_seed_controlled": False,
+    "seed0_mirror_games_completed": mirror_evidence["mirror_games_completed"],
+    "seed0_mirror_terminal_result_counts": mirror_evidence[
+        "terminal_result_counts"
+    ],
+    "seed0_mirror_max_engine_steps_observed": mirror_evidence[
+        "max_engine_steps_observed"
+    ],
+    "seed0_mirror_max_final_turn_observed": mirror_evidence[
+        "max_final_turn_observed"
+    ],
+    "seed0_mirror_max_stagnant_turns": mirror_evidence[
+        "max_stagnant_turns"
+    ],
+    "seed0_mirror_policy_action_timing_by_seat": mirror_evidence[
+        "policy_action_timing_by_seat"
+    ],
+    "submission_no_progress_escape_turns": runtime_profile.get(
+        "no_progress_escape_turns"
+    ),
     "verified_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
 }
 temporary = receipt.with_name(f".{receipt.name}.{os.getpid()}.tmp")

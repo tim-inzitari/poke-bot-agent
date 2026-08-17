@@ -135,14 +135,28 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from poke_bot.engine_rebuild.interfaces import Action, ResetSpec
     from poke_bot.engine_rebuild.libcg_multi_env import LibcgMultiEnv
     from poke_bot.pure_rl.leaf_self_play import plan_self_play_leaf_wiring
+    from poke_bot.pure_rl.no_progress import (
+        NoProgressTracker,
+        STALL_TRAINING_RETURN,
+        configured_max_stagnant_turns,
+    )
     from poke_bot.remote_sim_jobs import load_round_robin_module
-    from poke_bot.train import load_model_from_checkpoint
+    from poke_bot.train import (
+        load_model_from_checkpoint,
+        public_rule_runtime_kwargs_for_model,
+    )
 
     if not jobs:
         return []
 
     install_quiet_stdout(_config.agent_verbose())
     leaf_backend = batched_infer.remote_leaf_backend_from_worker()
+    if any(
+        bool(job.get("public_rule_semantic_projection_required")) for job in jobs
+    ):
+        # The trained sidecar consumes local option-hidden states and cannot be
+        # reconstructed from the legacy remote-leaf logits ABI.
+        leaf_backend = None
     rr = load_round_robin_module()
     state = rr._WORKER_STATE
     model_cache: dict[str, Any] = state.setdefault("multi_env_models", {})
@@ -158,6 +172,15 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     failed_seat: list[Optional[int]] = [None] * n
     errors: list[Optional[str]] = [None] * n
     finished = [False] * n
+    stalled = [False] * n
+    stall_trackers = [
+        (
+            NoProgressTracker(limit)
+            if (limit := configured_max_stagnant_turns(job)) is not None
+            else None
+        )
+        for job in jobs
+    ]
     t0 = time.perf_counter()
 
     def _base(job: dict[str, Any], **over: Any) -> dict[str, Any]:
@@ -228,6 +251,14 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
             us_leaf = leaf_backend if plan.use_leaf_for_us else None
             them_leaf = leaf_backend if plan.use_leaf_for_them else None
+            us_rule_runtime = public_rule_runtime_kwargs_for_model(us_model)
+            them_rule_runtime = public_rule_runtime_kwargs_for_model(them_model)
+            if bool(job.get("public_rule_semantic_projection_required")) and not (
+                us_rule_runtime
+            ):
+                raise RuntimeError(
+                    "derivative self-play job did not load its trained rule sidecar"
+                )
             temp = float(job.get("action_temperature", 1.0))
             sample = bool(job.get("sample_actions", True))
             ctx = int(job.get("model_max_context") or _config.MODEL.max_context)
@@ -250,6 +281,7 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 own_deck_ledger_enabled=bool(
                     job.get("own_deck_ledger_enabled", False)
                 ),
+                **us_rule_runtime,
             )
             them_agent = PolicyAgent(
                 model=them_model,
@@ -269,6 +301,7 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 own_deck_ledger_enabled=bool(
                     job.get("own_deck_ledger_enabled", False)
                 ),
+                **them_rule_runtime,
             )
             us_agent.reset_game()
             them_agent.reset_game()
@@ -295,6 +328,10 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     continue
                 cur = obs.get("current") or {}
                 if int(cur.get("result", -1)) != -1:
+                    finished[i] = True
+                    continue
+                if stall_trackers[i] is not None and stall_trackers[i].observe(obs):
+                    stalled[i] = True
                     finished[i] = True
                     continue
                 if steps[i] >= max_steps:
@@ -394,6 +431,7 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             assert them_agent is not None
             terminal_policy_failure = failed_seat[i] is not None
             terminal_failure_error = None
+            stall_terminated = bool(stalled[i])
             if terminal_policy_failure:
                 failed = int(failed_seat[i])
                 winner, value = terminal_policy_failure_outcome(
@@ -405,7 +443,7 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 cur = obs.get("current") or {}
                 result_code = cur.get("result", -1)
                 incomplete = int(result_code) == -1
-                if incomplete:
+                if incomplete and not stall_terminated:
                     results.append(
                         _base(
                             job,
@@ -423,9 +461,15 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     )
                     continue
 
-                winner = int(result_code)
+                winner = 2 if stall_terminated else int(result_code)
                 value = (
-                    0.0 if winner == 2 else (1.0 if winner == our_seat else -1.0)
+                    STALL_TRAINING_RETURN
+                    if stall_terminated
+                    else (
+                        0.0
+                        if winner == 2
+                        else (1.0 if winner == our_seat else -1.0)
+                    )
                 )
             matchup_runtime_audit = us_agent.matchup_adapter_shadow_snapshot()
             opponent_matchup_runtime_audit = (
@@ -454,6 +498,17 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             if terminal_policy_failure
                             else None
                         ),
+                        "training_return_override_reason": (
+                            "no_progress_stall" if stall_terminated else None
+                        ),
+                        "training_return_override": (
+                            value if stall_terminated else None
+                        ),
+                        "stall_turns": (
+                            stall_trackers[i].stagnant_turns
+                            if stall_trackers[i] is not None
+                            else 0
+                        ),
                         "matchup_runtime_audit": matchup_runtime_audit,
                     },
                     opp_archetype=(
@@ -471,7 +526,11 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             )
             if collect_both and them_agent.targets:
                 opp_deck = list(job.get("opp_deck") or job["our_deck"])
-                opp_value = 0.0 if winner == 2 else -value
+                opp_value = (
+                    value
+                    if stall_terminated
+                    else (0.0 if winner == 2 else -value)
+                )
                 opp_record = rr._build_selfplay_record(
                     them_agent.targets,
                     our_deck=opp_deck,
@@ -496,6 +555,17 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             int(failed_seat[i])
                             if terminal_policy_failure
                             else None
+                        ),
+                        "training_return_override_reason": (
+                            "no_progress_stall" if stall_terminated else None
+                        ),
+                        "training_return_override": (
+                            opp_value if stall_terminated else None
+                        ),
+                        "stall_turns": (
+                            stall_trackers[i].stagnant_turns
+                            if stall_trackers[i] is not None
+                            else 0
                         ),
                         "matchup_runtime_audit": opponent_matchup_runtime_audit,
                     },
@@ -532,6 +602,15 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         opponent_matchup_runtime_audit
                     ),
                     "policy_terminal_failure": terminal_policy_failure,
+                    "stall_terminated": stall_terminated,
+                    "stall_turns": (
+                        stall_trackers[i].stagnant_turns
+                        if stall_trackers[i] is not None
+                        else 0
+                    ),
+                    "training_return_override": (
+                        value if stall_terminated else None
+                    ),
                     "failed_seat": (
                         int(failed_seat[i]) if terminal_policy_failure else None
                     ),
@@ -602,13 +681,20 @@ def run_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from poke_bot.engine_rebuild.libcg_multi_env import LibcgMultiEnv
     from poke_bot.pure_rl.leaf_self_play import rtp_requires_local_model
     from poke_bot.remote_sim_jobs import load_round_robin_module
-    from poke_bot.train import load_model_from_checkpoint
+    from poke_bot.train import (
+        load_model_from_checkpoint,
+        public_rule_runtime_kwargs_for_model,
+    )
 
     if not jobs:
         return []
 
     install_quiet_stdout(_config.agent_verbose())
     leaf_backend = batched_infer.remote_leaf_backend_from_worker()
+    if any(
+        bool(job.get("public_rule_semantic_projection_required")) for job in jobs
+    ):
+        leaf_backend = None
     force_rtp_local = rtp_requires_local_model()
     if force_rtp_local:
         leaf_backend = None
@@ -715,6 +801,13 @@ def run_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     model_cache[key] = load_model_from_checkpoint(us, device=device)
                 us_model = model_cache[key]
                 us_leaf = None
+            us_rule_runtime = public_rule_runtime_kwargs_for_model(us_model)
+            if bool(job.get("public_rule_semantic_projection_required")) and not (
+                us_rule_runtime
+            ):
+                raise RuntimeError(
+                    "derivative baseline job did not load its trained rule sidecar"
+                )
             temp = float(job.get("action_temperature", 1.0))
             sample = bool(job.get("sample_actions", True))
             ctx = int(job.get("model_max_context") or _config.MODEL.max_context)
@@ -737,6 +830,7 @@ def run_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 own_deck_ledger_enabled=bool(
                     job.get("own_deck_ledger_enabled", False)
                 ),
+                **us_rule_runtime,
             )
             them_agent = _CallableSeat(opp_fn)
             us_agent.reset_game()

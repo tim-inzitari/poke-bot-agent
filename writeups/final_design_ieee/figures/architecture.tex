@@ -1,0 +1,20 @@
+\begin{figure*}[t]
+\centering
+\begin{tabularx}{0.97\textwidth}{>{\centering\arraybackslash}X c >{\centering\arraybackslash}X c >{\centering\arraybackslash}X}
+\archbox{pale}{Acting-seat information set\\own-private + public history} &
+$\longrightarrow$ &
+\archbox{mint}{Causal state/history encoder\\preserved card representation} &
+$\longrightarrow$ &
+\archbox{sand}{Factorized legal-option decoder\\greedy current-index choice} \\
+& & $\Big\uparrow$ & & $\Big\downarrow$ \\
+\archbox{pale}{Pinned simulator\\legality, transitions, terminal truth} &
+$\longrightarrow$ &
+\archbox{mint}{Zero-gated public-rule residual\\typed bounded Fusion routes} &
+$\longrightarrow$ &
+\archbox{sand}{Execution wrapper\\re-query legality or seeded fallback}
+\end{tabularx}
+\caption{Final direct-policy system boundary. The simulator is authoritative;
+the policy ranks only the current legal options. Prize-plan critics, human
+guide, RTP, and recursive planning do not provide runtime action logits.}
+\label{fig:architecture}
+\end{figure*}
