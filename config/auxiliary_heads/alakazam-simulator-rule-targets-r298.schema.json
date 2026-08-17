@@ -1,0 +1,135 @@
+{
+  "schema": "poke_bot.alakazam_simulator_rule_targets_schema_manifest/v1",
+  "version": 1,
+  "revision": 298,
+  "canonical_authority": {
+    "goal_path": "goals/alakazam-elmo-rule-derivative/GOAL.md",
+    "goal_sha256": "sha256:7a829abebd348d0ffdf0a73c8b559fe9c799af3d3aff49a64efdfa85a08051b6",
+    "goal_revision": 5,
+    "contract_path": "goals/alakazam-elmo-rule-derivative/contract.json",
+    "contract_sha256": "sha256:dbbd4dbcc057b631d61fa867e45c393d594550b3b45f306f465b6ee5b4428891"
+  },
+  "root_handoff": {
+    "root_owner_revision": 303,
+    "production_typed_source": "state/alakazam-new-list-direct-policy-r241.json",
+    "production_typed_source_sha256": "sha256:8d83f5e9eafc8e554f33dcbfbda7e1b337b8f65dc2e49109be4acdd829850c1e",
+    "semantic_owner": "dedicated_goal_contract",
+    "production_transition_owner": "production_typed_source_only",
+    "immediate_runtime_or_service_authority": false
+  },
+  "revision_4_predecessor": {
+    "goal_revision": 4,
+    "goal_sha256": "sha256:2af67560510ca7ffd9fe0bc6ff37cdbbd74f5a78d6c5237091bb527d49ce4ed8",
+    "contract_sha256": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+    "historical_evidence_only": true,
+    "schema_or_catalog_bytes_may_be_reused_only_if_checksum_identical": true,
+    "blind_hash_substitution_allowed": false,
+    "satisfies_revision_5_schema_freeze_alone": false
+  },
+  "target_schema": {
+    "schema": "poke_bot.alakazam_simulator_rule_targets/v1",
+    "version": 1,
+    "schema_digest": "sha256:6b9544fa7285edad25e34ab7fca08bfa4cf9c395e1748178c73708d3377f354f",
+    "compiler": "poke_bot.alakazam_simulator_rule_targets_r298.compile_simulator_rule_targets",
+    "target_only": true,
+    "policy_feature_eligible": false,
+    "selected_action_only": true,
+    "unchosen_counterfactual_labels": false,
+    "public_predecision_fingerprint_only": true,
+    "realized_trajectory_hash_is_target_only": true,
+    "catalog_metadata": "revision_5_sealed_public_catalog_only_unsealed_masked",
+    "privileged_belief": "target_only_and_masked_until_sealed_private_payload_ledger_extension",
+    "public_snapshot_identity": "semantic_representation_serial_invariant_no_global_serial_or_option_ordinal",
+    "observed_trajectory": "all_trainable_masks_false_without_exact_sealed_r5_ledger_schema_freeze_and_handoff_validator"
+  },
+  "prompt_chain": {
+    "schema": "poke_bot.alakazam_selected_action_prompt_chain/v1",
+    "version": 1,
+    "pinned_simulator_required": true,
+    "event_log_complete_required": true,
+    "complete_to_next_strategic_decision_required": true,
+    "restored_source_requires_provenance_schema": "poke_bot.alakazam_selected_action_target_provenance/v1",
+    "restored_source_requires_public_information_seed": true,
+    "receipt_public_observation_identity": "semantic_representation_serial_invariant",
+    "observed_trajectory_receipt_schema": "poke_bot.alakazam_observed_selected_action_trajectory_receipt/v1",
+    "sealed_ledger_schema": "poke_bot.alakazam_selected_action_trajectory_ledger/v1",
+    "training_authorization_schema": "poke_bot.alakazam_selected_action_target_training_authorization/v1",
+    "revision_5_schema_freeze_receipt_schema": "poke_bot.alakazam_rule_derivative_schema_freeze_receipt/v1",
+    "revision_5_handoff_activation_receipt_schema": "poke_bot.alakazam_rule_derivative_inzi_training_handoff_activation_receipt/v1",
+    "observed_trajectory_external_validator_required_for_trainable_masks": true,
+    "unverified_observed_trajectory": "diagnostic_target_only_all_trainable_masks_false",
+    "opaque_or_private_event_facts": "dropped_before_target_hash_or_output"
+  },
+  "fixed_layouts": {
+    "lethal_threat": ["selected_action_prize_conversion"],
+    "prize_race": [
+      "acting_prizes_remaining",
+      "opponent_prizes_remaining",
+      "acting_visible_prize_liability",
+      "opponent_visible_prize_liability",
+      "acting_known_prize_modifier",
+      "opponent_known_prize_modifier"
+    ],
+    "action_utility": [
+      "damage_dealt",
+      "damage_counters_placed",
+      "cards_drawn",
+      "attached_energy_delta",
+      "open_bench_delta",
+      "own_prize_delta",
+      "opponent_knockout",
+      "forced_promotion_count",
+      "terminal_own_win"
+    ],
+    "turn_resources": [
+      "supporter_played",
+      "stadium_played",
+      "energy_attached",
+      "retreated",
+      "turn_action_count_delta"
+    ],
+    "game_phase_classes": ["setup", "stabilize", "pressure", "prize_race", "closeout", "terminal"],
+    "terminal_conversion": [
+      "terminal_class.nonterminal",
+      "terminal_class.own_win",
+      "terminal_class.own_loss",
+      "terminal_class.draw",
+      "prize_closeout_after_forced_chain",
+      "opponent_knockout_after_forced_chain"
+    ],
+    "attack_readiness": [
+      "selected_option_is_attack",
+      "attack_legal_in_simulator_option_list",
+      "typed_cost_known",
+      "typed_cost_satisfied"
+    ]
+  },
+  "option_conditioned_targets": {
+    "families": ["action_utility", "terminal_conversion", "turn_resources", "attack_readiness"],
+    "selected_option_indices_field": "selected_option_indices",
+    "loss_semantics": "pool_exact_selected_action_rows_only_no_unchosen_option_labels"
+  },
+  "auxiliary_heads": {
+    "schema": "poke_bot.alakazam_rule_aux_heads/v1",
+    "schema_digest": "sha256:201df5a6332d6dd5b1afc2ccfaad1b9808cc06ff9d3064875544c07c1a54d386",
+    "module": "poke_bot.alakazam_rule_aux_heads_r298.R298RuleAuxiliaryHeads",
+    "all_new_prediction_projections_zero_initialized": true,
+    "policy_route_final_projection_zero_initialized": true,
+    "policy_gate_default": 0.0,
+    "runtime_wired": false,
+    "disabled_path_complete_bypass": true,
+    "baseline_logits_bit_identical_when_off": true,
+    "legal_option_set_change": false
+  },
+  "materialization_gate": {
+    "exact_30_day_window": ["2026-07-13", "2026-08-11"],
+    "utc_partition_count_exact": 30,
+    "validated_deduplicated_raw_manifest_sha256_required": true,
+    "source_day_group_disjoint_splits_required": true,
+    "revision_5_schema_freeze_receipt_required": true,
+    "revision_5_handoff_activation_required": true,
+    "candidate_training_host_after_handoff": "inzi_blackwell",
+    "production_serving_selector_authority": false,
+    "nonzero_activation_training_or_bo250_before_corpus_census": false
+  }
+}

@@ -1,0 +1,114 @@
+schema_version: poke_bot.current_deck_guide/v1
+specialist_id: alakazam
+display_name: "Alakazam — owner new list direct policy"
+status: staged_for_checksum_bound_validation
+guide_version: powerful-hand-new-list-r241-v1
+teacher_module: poke_bot.alakazam_new_list_heuristics
+teacher_module_sha256: sha256:d91b9031be71dc38e2dbd4e57eab16b2afb7f912d4048644b31d02ac798c932e
+guide_research_mode: owner_supplied_pilot_guide
+new_strategy_research_performed: false
+
+owner_guide_source:
+  supplied_attachment_sha256: sha256:6c53bc2d8cfb90bee4fd64dbb0159bb3a715ce989649218b10b9e9dce3750c76
+  adaptation_scope:
+    - exact_new_deck_identity_and_counts
+    - remove_absent_shaymin_and_nighttime_mine_assumptions
+    - bind_battle_cage_card_id_1264
+    - correct_names_and_powerful_hand_counter_mechanics
+  alternative_strategy_substitution_allowed: false
+
+policy_target:
+  type: sparse_causal_curriculum_with_pairwise_route_direction
+  training_mode: strategic_directional_v2
+  parameterized_head: false
+  target_logits: none
+  direct_policy_cross_entropy_allowed: false
+  guide_preference_index_role: selected_causal_route_pairwise_direction_only
+  guide_preference_index_may_affect_loss_or_gradient: true
+  guide_pairwise_route_heads:
+    - action_q
+    - action_resource
+    - action_utility
+    - setup_board_outcome
+  final_policy_logits_are_guide_targets: false
+  serving_authority: false
+  runtime_input_allowed: false
+  runtime_action_logit_route_allowed: false
+  override_authoritative_policy: false
+
+representative_binding:
+  deck_id: alakazam-new-list-direct-r241
+  path: decks/archetype-samples/alakazam-new-list-direct-r241.csv
+  file_sha256: sha256:d834c66c5a3629dd79c8533a04fde770a22ca8590ac55c9868440121b6df5fba
+  ordered_cards_sha256: sha256:e61c0a4ffcfeb730808ac561f39c1efa9de5f80aec577d3be82f3fc790b7dab2
+  canonical_multiset_sha256: sha256:a42e047c45c419a599a31f2e20a6209d324558082f27e12091ade8918376d182
+  card_count: 60
+  exact_multiset_required: true
+  historical_r175_representative_allowed: false
+
+expert_writeup:
+  path: docs/deck_guides/alakazam-new-list-direct-r241-expert-brief.md
+  sha256: sha256:41cd5867186d4f8e35bb402559960f4abe90719b8ccb0d0586c2bb5e69567019
+  word_count: 2134
+  maximum_words: 10000
+  primary_document_type: owner_supplied_human_deck_pilot_guide
+
+causal_heuristic_contract:
+  implementation: poke_bot.alakazam_new_list_heuristics
+  implementation_version: powerful-hand-new-list-r241-v1
+  exact_deck_gate_required: true
+  causal_public_state_only: true
+  hidden_or_future_information_allowed: false
+  complete_legal_stage_scoring_required: true
+  incomplete_or_ambiguous_stage_behavior: mask_entire_stage
+  runtime_action_override_allowed: false
+  runtime_authority: none
+  predicates:
+    - powerful_hand_exact_knockout
+    - powerful_hand_visible_effect_block
+    - preserve_post_spend_threshold
+    - setup_replacement_alakazam
+    - rare_candy_attack_and_continuity
+    - deterministic_search_before_draw
+    - run_away_draw_exact_need
+    - enriching_energy_attachment
+    - boss_immediate_prize_shortening
+    - narrowest_exact_recovery
+    - hammer_counter_immunity_energy
+    - mirror_xerosic_compression
+    - battle_cage_visible_counter_threat
+    - battle_cage_stadium_denial
+
+strategic_curriculum:
+  training_mode: strategic_directional_v2
+  ordinary_rl_guide_loss_weight: 0.05
+  expert_soft_refresh_guide_loss_weight: 0.0
+  expert_soft_refresh_zero_reason: historical_rows_not_exact_new_deck
+  setup_board_outcome_base_loss_weight: 0.025
+  combo_state_loss_weight: 0.0
+  combo_state_route_enabled: false
+
+expert_replay_schedule:
+  window_start: 2026-07-22
+  window_end: 2026-08-10
+  calendar_days_inclusive: 20
+  cadence_completed_updates: 5
+  soft_refresh_epochs: 5
+  boundaries: [5, 10]
+  terminal_boundary_is_submission_parent: true
+  no_eleventh_collection: true
+
+runtime_exclusions:
+  mcts: true
+  recursive_turn_planner: true
+  guide2vec: true
+  guide_logit_bias: true
+  hidden_state_fork: true
+
+activation_authority:
+  training_preparation_only: true
+  selector: false
+  production: false
+  freeze: false
+  registration: false
+  kaggle_submission: false

@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "profiles": {
+    "quick": {
+      "budget_seconds": 60,
+      "network": false,
+      "gpu": false,
+      "native_games": false,
+      "pytest_expression": "unit and not (native or gpu or integration or slow)"
+    },
+    "canary": {
+      "budget_seconds": 1200,
+      "network": false,
+      "gpu": true,
+      "native_games": true,
+      "representative_opponents": ["dedquoc-rule-based"],
+      "balanced_games_per_opponent": 2,
+      "iterations": 2,
+      "trusted_simulations_per_decision": 128,
+      "baseline_compatibility_games_each": 1
+    },
+    "full": {
+      "budget_seconds": 10800,
+      "network": false,
+      "gpu": true,
+      "native_games": true,
+      "manual_only": true,
+      "full_roster": true
+    }
+  },
+  "invariants": {
+    "large_action_complete_ordered_support": [
+      "tests/test_belief_mcts.py::test_large_ordered_action_space_uses_exact_hierarchical_support"
+    ],
+    "belief_card_conservation_and_support": [
+      "tests/test_belief_mcts.py::test_unsupported_public_card_uses_history_consistent_repaired_prior",
+      "tests/test_belief_mcts.py::test_truly_empty_setup_support_is_clean_belief_failure",
+      "tests/test_belief_particle_priors.py"
+    ],
+    "deployment_information_set_and_action_aggregation": [
+      "tests/test_belief_mcts.py",
+      "tests/test_mcts_correctness.py"
+    ],
+    "chance_and_actor_correct_minimax": [
+      "tests/test_mcts_correctness.py"
+    ],
+    "writer_exactly_once_shutdown_resume": [
+      "tests/test_replay_writer.py",
+      "tests/test_worker_pool_lifecycle.py"
+    ],
+    "clean_iteration_contract_migration": [
+      "tests/test_iteration_contract.py",
+      "tests/test_round_robin_migration.py",
+      "tests/test_core_pipeline.py::test_core_contract_migration_quarantines_partial_at_phase_boundary"
+    ],
+    "model_generation_and_reload_barrier": [
+      "tests/test_two_iteration_lifecycle.py",
+      "tests/test_remote_leaf_routing.py"
+    ],
+    "native_gpu0_trusted_targets": [
+      "tests/test_native_canary.py::test_native_prelaunch_canary"
+    ],
+    "native_gpu1_trusted_targets": [
+      "tests/test_native_canary.py::test_native_prelaunch_canary"
+    ],
+    "full_baseline_compatibility": [
+      "scripts/baseline_compat_canary.py"
+    ]
+  }
+}

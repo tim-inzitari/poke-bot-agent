@@ -1,0 +1,104 @@
+{
+  "schema": "poke_bot.alakazam_public_rule_adapter_config/v1",
+  "revision": 298,
+  "implementation_scope": "isolated_elmo_only_parallel_derivative",
+  "authority": {
+    "canonical_goal": "goals/alakazam-elmo-rule-derivative/GOAL.md",
+    "canonical_contract": "goals/alakazam-elmo-rule-derivative/contract.json",
+    "canonical_contract_sha256": "sha256:dbbd4dbcc057b631d61fa867e45c393d594550b3b45f306f465b6ee5b4428891",
+    "canonical_goal_sha256": "sha256:7a829abebd348d0ffdf0a73c8b559fe9c799af3d3aff49a64efdfa85a08051b6",
+    "root_handoff_revision": 303,
+    "revision_5_consumer_migration": {
+      "goal_revision": 5,
+      "predecessor_goal_revision": 4,
+      "predecessor_gateway_sha256": "sha256:2af67560510ca7ffd9fe0bc6ff37cdbbd74f5a78d6c5237091bb527d49ce4ed8",
+      "predecessor_contract_sha256": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+      "revision_4_catalog_is_immutable_predecessor_evidence": true,
+      "revision_5_schema_freeze_receipt_required_before_nonzero_or_materializer_eligibility": true,
+      "blind_revision_4_hash_substitution_allowed": false
+    },
+    "this_file": "non_authoritative_implementation_config"
+  },
+  "owner_attachment": {
+    "path": "external/owner-attachments/alakazam-rule-derivative-goal.txt",
+    "sha256": "sha256:0f440fc71043b4352e6401a3187c9d582c1c5614d76e186095e0eef51017af6f"
+  },
+  "baselines": {
+    "r241_r274_same_architecture_baseline": {
+      "role": "receipt_bound_unchanged_fair_baseline_for_derivative",
+      "candidate_id": "alakazam-new-list-direct-policy-r274",
+      "checkpoint_identity": "required_in_candidate_and_benchmark_receipts",
+      "policy_and_checkpoint_tensors_preserved": true
+    },
+    "r195_operational_reference": {
+      "role": "immutable_older_architecture_different_native_list_reference",
+      "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+      "derivative_parent": false
+    },
+    "checkpoint_tensor_mutation": false,
+    "legacy_feature_mutation": false
+  },
+  "runtime": {
+    "enabled_default": false,
+    "runtime_wired": false,
+    "production_or_inzi_authority": false,
+    "legal_action_set_change": false,
+    "search_or_teacher_action_authority": false,
+    "zero_gates": {
+      "card_metadata_residual": 0.0,
+      "attack_metadata_residual": 0.0,
+      "option_logit_residual": 0.0
+    },
+    "layer_off_contract": "bit_exact_baseline_logits_complete_object_bypass"
+  },
+  "information_set": {
+    "opponent_hand_identities": "forbidden",
+    "opponent_deck_order": "forbidden",
+    "unrevealed_prize_identities": "forbidden",
+    "terminal_result_and_reason": "target_only_not_policy_representation",
+    "future_transitions": "target_only_not_policy_representation"
+  },
+  "representation": {
+    "schema": "poke_bot.alakazam_public_rule_representation/v1",
+    "candidate_ordinal": "not_encoded",
+    "raw_global_serial": "not_encoded",
+    "stable_within_observation_source_binding": "owner_area_slot_and_visible_attachment_locator",
+    "simulator_discriminator": "allowed_only_after_semantic_collision",
+    "ordinal_fallback": "disabled_until_phase_a_or_official_api_receipt_proves_semantic_distinction",
+    "number_semantics": {
+      "maximum_exact_value": 64,
+      "overflow": "fail_closed"
+    },
+    "metadata": "receipt_sealed_structured_engine_catalog_only_no_text_hash_rules_parser"
+  },
+  "sealed_public_catalog": {
+    "schema": "poke_bot.alakazam_public_catalog_r298/v1",
+    "receipt_schema": "poke_bot.alakazam_public_catalog_r298_receipt/v1",
+    "structured_vectors_schema": "poke_bot.alakazam_structured_rule_vectors_r298/v1",
+    "catalog_file_sha256": "sha256:4d1c35124cdeeddcaca34a7d0ab3f2fc94e4257fe4578a03c8608ac561d00df6",
+    "vectors_file_sha256": "sha256:2e1a817dac1d17d0131056ead9669b76803b41f5864d4e9cd82d7f34a9180e09",
+    "receipt_file_sha256": "sha256:9ca7534281dd08d1804babe223fa0779a84a1f5a7ee6f609497d595dca10b4d1",
+    "structured_vectors_semantic_sha256": "sha256:6602af831128364a7a33ea3e691a73e4cac7e39ad037855ada7b13c80f87ebb1",
+    "engine_cards_sha256": "sha256:5e92642577d5e61324e4d4095b883fb7926e4d7e822967b48778ecd1996998f4",
+    "engine_attacks_sha256": "sha256:97834eb17429fbacfedcf563d43753b129103c0a1d1941d1ee9c9af36392be3f",
+    "libcg_sha256": "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7",
+    "libcg_size_bytes": 1342400,
+    "typed_libcg_receipt_sha256": "sha256:d75ff752808ead08f3ae20f7f2f8a034c9e6163109188a46d3b877bf1910ae2d",
+    "csv_identity_join_sha256": "sha256:408bc978661c8b0628e5f17b27693dc8da9c732472168f5574999be4774031c1",
+    "execution_host_role": "elmo",
+    "execution_hostname": "truenas",
+    "authority_status": "immutable_revision_4_predecessor_evidence_only",
+    "revision_5_schema_freeze_receipt_required_before_policy_or_materializer_eligibility": true,
+    "raw_mapping_policy_or_materializer_eligible": false,
+    "legacy_text_hashed_metadata_eligible": false,
+    "missing_or_mismatched_provenance_behavior": "unavailable_and_exact_zero"
+  },
+  "activation_prerequisites": [
+    "revision_5_schema_freeze_receipt",
+    "phase_a_collision_census_receipt",
+    "phase_b_schema_and_hidden_information_receipt",
+    "engine_and_metamorphic_test_receipt",
+    "frozen_backbone_elmo_only_receipt",
+    "explicit_future_owner_activation"
+  ]
+}

@@ -1,0 +1,168 @@
+{
+  "schema": "poke_bot.alakazam_checklist_provenance_r298_config/v1",
+  "revision": 298,
+  "implementation_scope": "isolated_elmo_only_strict_checklist_provenance_filter",
+  "authority": {
+    "canonical_goal": "goals/alakazam-elmo-rule-derivative/GOAL.md",
+    "canonical_goal_sha256": "sha256:7a829abebd348d0ffdf0a73c8b559fe9c799af3d3aff49a64efdfa85a08051b6",
+    "canonical_contract": "goals/alakazam-elmo-rule-derivative/contract.json",
+    "canonical_contract_sha256": "sha256:dbbd4dbcc057b631d61fa867e45c393d594550b3b45f306f465b6ee5b4428891",
+    "canonical_r241_typed_source": "state/alakazam-new-list-direct-policy-r241.json",
+    "canonical_r241_typed_source_sha256": "sha256:8d83f5e9eafc8e554f33dcbfbda7e1b337b8f65dc2e49109be4acdd829850c1e",
+    "canonical_libcg_contract": "state/canonical-libcg-r236.json",
+    "canonical_libcg_contract_sha256": "sha256:d75ff752808ead08f3ae20f7f2f8a034c9e6163109188a46d3b877bf1910ae2d",
+    "this_file": "non_authoritative_frozen_implementation_config"
+  },
+  "canonical_libcg": {
+    "kaggle_environments_version": "1.32.6",
+    "member": "cg/libcg.so",
+    "sha256": "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7",
+    "size_bytes": 1342400,
+    "legal_option_authority": "pinned_libcg_emitted_complete_ordered_legal_options"
+  },
+  "catalog_sealer": {
+    "source": "scripts/seal_alakazam_public_catalog_r298.py",
+    "source_sha256": "sha256:dfe952531ad372b970522a11d9c60d1a18375caeb006fe0410989967dba66b4d",
+    "receipt_schema": "poke_bot.alakazam_public_catalog_r298_receipt/v1",
+    "catalog_schema": "poke_bot.alakazam_public_catalog_r298/v1",
+    "receipt_filename": "receipt.json",
+    "catalog_filename": "catalog.json",
+    "fixed_vectors_filename": "fixed-vectors.pt",
+    "required_execution_host": "elmo",
+    "allowed_execution_hostnames": ["elmo", "truenas"],
+    "resource_peak_schema": "poke_bot.alakazam_elmo_rule_derivative_resource_peak/v1",
+    "resource_peak_required_fields": [
+      "experiment_ram_measurement_method",
+      "experiment_ram_peak_bytes",
+      "cpu_process_or_utilization_peak",
+      "gpu_memory_peak_bytes_per_device_or_not_applicable",
+      "gpu_utilization_peak_per_device_or_not_applicable"
+    ],
+    "csv_identity_join_sha256": "sha256:408bc978661c8b0628e5f17b27693dc8da9c732472168f5574999be4774031c1",
+    "immutable_artifact_pins": {
+      "receipt_file_sha256": "sha256:9ca7534281dd08d1804babe223fa0779a84a1f5a7ee6f609497d595dca10b4d1",
+      "receipt_file_size_bytes": 3556,
+      "receipt_payload_sha256": "sha256:89271e51000fae3abeb4227d1b870b4976f592a571edbbef83f4aee343c9355d",
+      "ready_file_sha256": "sha256:b0e14b770ca8fd5152583769bed79d2f676fa8f7c931473d548ebead6fc4bffb",
+      "ready_file_size_bytes": 574,
+      "catalog_file_sha256": "sha256:4d1c35124cdeeddcaca34a7d0ab3f2fc94e4257fe4578a03c8608ac561d00df6",
+      "catalog_file_size_bytes": 707563,
+      "catalog_semantic_sha256": "sha256:bae13f773d27f305dff4774b9ddae32e0c02da8023fc8f142be7a8634c3fd3a9",
+      "fixed_vectors_file_sha256": "sha256:2e1a817dac1d17d0131056ead9669b76803b41f5864d4e9cd82d7f34a9180e09",
+      "fixed_vectors_file_size_bytes": 451416,
+      "structured_rule_vectors_sha256": "sha256:6602af831128364a7a33ea3e691a73e4cac7e39ad037855ada7b13c80f87ebb1",
+      "engine_cards_sha256": "sha256:5e92642577d5e61324e4d4095b883fb7926e4d7e822967b48778ecd1996998f4",
+      "engine_attacks_sha256": "sha256:97834eb17429fbacfedcf563d43753b129103c0a1d1941d1ee9c9af36392be3f"
+    },
+    "historical_predecessor_only": true,
+    "eligible_without_revision_5_consumer_migration": false
+  },
+  "revision_5_consumer_migration": {
+    "schema": "poke_bot.alakazam_checklist_provenance_r298_consumer_migration/v1",
+    "predecessor_goal_revision": 4,
+    "predecessor_gateway_sha256": "sha256:2af67560510ca7ffd9fe0bc6ff37cdbbd74f5a78d6c5237091bb527d49ce4ed8",
+    "predecessor_contract_sha256": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+    "consumer_goal_revision": 5,
+    "consumer_root_handoff_revision": 303,
+    "consumer_r241_typed_source_sha256": "sha256:8d83f5e9eafc8e554f33dcbfbda7e1b337b8f65dc2e49109be4acdd829850c1e",
+    "catalog_reuse_policy": "only_after_explicit_checksum_bound_revision_5_consumer_validation",
+    "revision_4_catalog_receipt_alone_satisfies_revision_5_schema_freeze": false,
+    "immutable_anchor": {
+      "status": "pinned_immutable_artifact",
+      "receipt_file_sha256": "sha256:d33aa897f244c18203bf3851b70b7269cae928fc6e8e2447e5a363b8817f77de",
+      "receipt_payload_sha256": "sha256:d33aa897f244c18203bf3851b70b7269cae928fc6e8e2447e5a363b8817f77de"
+    },
+    "required_assertions": [
+      "read_revision_5_gateway_and_contract_completely",
+      "revision_4_catalog_classified_immutable_predecessor_evidence",
+      "no_blind_goal_or_contract_hash_substitution",
+      "revision_5_config_goal_contract_and_r241_bindings_validated",
+      "zero_inert_layer_off_and_card2vec_tests_passed",
+      "unit_engine_information_set_layer_off_and_contract_binding_tests_passed",
+      "q1_q2_q8_pinned_provenance_or_zero_unavailable",
+      "revision_5_validation_receipt_checksum_bound_by_consumer"
+    ]
+  },
+  "simulator_fact_witness": {
+    "receipt_schema": "poke_bot.alakazam_checklist_simulator_fact_witness_r298/v1",
+    "engine_evidence_schema": "poke_bot.alakazam_simulator_rules_r298_engine_evidence/v1",
+    "status": "passed_elmo_only_nonproduction",
+    "execution_kind": "pinned_libcg_r236_public_frame",
+    "required_execution_host": "elmo",
+    "required_public_information_attestation": {
+      "acting_player_public_information_only": true,
+      "opponent_hand_identities_used": false,
+      "opponent_deck_order_used": false,
+      "unrevealed_prize_identities_used": false,
+      "future_transition_used": false
+    },
+    "immutable_anchor": {
+      "status": "not_issued_fail_closed",
+      "receipt_file_sha256": null,
+      "receipt_payload_sha256": null,
+      "engine_evidence_file_sha256": null,
+      "engine_evidence_payload_sha256": null
+    }
+  },
+  "runtime": {
+    "enabled_default": false,
+    "runtime_wired": false,
+    "production_or_inzi_authority": false,
+    "strict_filter_output_residual_gate": 0.0,
+    "guide_or_prose_mechanics_authority": false,
+    "unpinned_csv_mechanics_authority": false,
+    "layer_off_contract": "exact_zero_final_residuals_and_baseline_logits"
+  },
+  "strict_channels": {
+    "ko_hand_threshold": {
+      "required_fact_kinds": [
+        "legal_attack_option",
+        "damage_formula",
+        "defender_remaining_hp",
+        "attack_effect_prevention"
+      ]
+    },
+    "safe_spend_above_threshold": {
+      "required_fact_kinds": [
+        "post_cost_hand_delta",
+        "acting_hand_count",
+        "ko_hand_threshold"
+      ]
+    },
+    "terminal_before_forced_draw": {
+      "required_fact_kinds": [
+        "legal_attack_option",
+        "knockout_resolution",
+        "terminal_prize_or_last_pokemon",
+        "forced_draw_timing"
+      ]
+    }
+  },
+  "fact_authority_by_kind": {
+    "legal_attack_option": "pinned_libcg_legal_option",
+    "damage_formula": "receipt_bound_simulator_mechanics",
+    "defender_remaining_hp": "public_observation",
+    "attack_effect_prevention": "receipt_bound_public_catalog",
+    "post_cost_hand_delta": "receipt_bound_simulator_mechanics",
+    "acting_hand_count": "public_observation",
+    "ko_hand_threshold": "receipt_bound_simulator_mechanics",
+    "knockout_resolution": "receipt_bound_simulator_mechanics",
+    "terminal_prize_or_last_pokemon": "receipt_bound_public_catalog",
+    "forced_draw_timing": "receipt_bound_simulator_mechanics"
+  },
+  "trace_only_channels": {
+    "bench_prize_exposure": 0.0,
+    "immediate_disruption_outcome": 0.0,
+    "guide_support": 0.0
+  },
+  "q3": {
+    "bench_only_required": true,
+    "accepted_classifications": [
+      "ready",
+      "completable",
+      "not_live",
+      "unavailable"
+    ]
+  },
+  "phase_4_assertion_required": "q1_q2_q8_pinned_provenance_or_zero_unavailable"
+}

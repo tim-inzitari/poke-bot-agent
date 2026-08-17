@@ -1,0 +1,497 @@
+THWACKEY / FESTIVAL LEAD
+PRACTICAL PILOT GUIDE FOR SUBJECT-MATTER-EXPERT REVIEW
+
+Guide identity: thwackey
+Compatible physical matchup route and corpus identity: festival-lead
+Guide version: thwackey-festival-lead-north-star-v1
+Prepared: 2026-07-27
+Status: research draft for world-champion SME review
+
+PURPOSE AND SCOPE
+
+This is a how-to-play guide for the current Thwackey / Festival Lead
+single-Prize deck. It uses the current post-rotation shell documented by
+Natalie Millar, recent tournament lists collected by Limitless, the exact card
+text, and current Festival Lead analysis. It is not a claim that every flex
+slot is solved. The list changes rapidly, so the pilot should preserve the
+engine principles while updating the protection and damage-modifier package
+for the event.
+
+The project calls the logical specialist "thwackey" because Thwackey is the
+deck's repeatable search engine. The actual attacking shell is conventionally
+called Festival Lead. Those names refer to the same strategy here. Do not
+confuse this with a generic Grass pile or Hydrapple deck that happens to play
+Dipplin.
+
+THE CORE PLAN
+
+The deck wins by combining three effects:
+
+1. A Festival Lead Pokémon is Active.
+2. One or more Thwackey use Boom Boom Groove to search exact combo pieces.
+3. Festival Grounds is in play, allowing Festival Lead attackers to attack
+   twice.
+
+Dipplin is the main attacker. Do the Wave does 20 damage for each of your
+Benched Pokémon. A full five-Pokémon Bench therefore gives 100 damage before
+modifiers. Festival Lead allows Dipplin to attack twice while Festival Grounds
+is in play. If the first attack Knocks Out the opposing Active, the opponent
+promotes and Dipplin can attack the new Active. This creates two distinct
+prize-taking modes:
+
+- concentrate both attacks into one large target; or
+- Knock Out a smaller Active with the first attack and use the second attack
+  against the newly promoted Pokémon.
+
+This is a one-Prize tempo deck. Your ideal game is not to build one durable
+attacker. It is to present a new one-Prize Festival Lead attacker every turn,
+take one- or two-Prize knockouts efficiently, and force a multi-Prize opponent
+to win an unfavorable exchange. A developed Thwackey engine converts each turn
+from "draw the combination" into "search the exact missing cards."
+
+CORE CARDS AND WHAT THEY DO
+
+Grookey and Thwackey
+
+Thwackey's Boom Boom Groove may be used once during your turn if your Active
+Pokémon has the Festival Lead Ability. It searches any one card. Multiple
+Thwackey can each use their Ability once. A two-Thwackey board usually gives
+enough precise search to assemble the attacker, Energy, Stadium, damage
+modifier, recovery, or gust effect needed that turn.
+
+Protect the engine, but do not preserve it at the cost of never attacking.
+Thwackey is also a liability when gusted Active because it has Retreat Cost
+two. Millar specifically identifies Boss's Orders on Thwackey as a major way
+opponents buy time. Air Balloon, Kieran, an Energy attachment plan, or another
+switching out should be mapped before committing the turn.
+
+Applin and Dipplin
+
+Dipplin's Do the Wave is the primary attack. Its damage depends on your own
+Bench, so each empty Bench space costs 20 damage per attack, or 40 total damage
+over the doubled attack. Do not treat Bench space as free. A support Pokémon
+must justify both its slot and any damage it displaces.
+
+Keep a replacement Applin or Dipplin available whenever the opponent can
+Knock Out the Active. The deck is strongest when the next attacker, not just
+the current attacker, is already represented on the board.
+
+Festival Grounds
+
+Festival Grounds is what permits the doubled attack. It is not merely a
+generic Stadium. Before attacking, verify that the correct Stadium is still in
+play. Because opposing Stadium replacement turns off the double-attack plan,
+preserve access to another Festival Grounds when the matchup can remove it.
+
+The Stadium's printed effect also clears and prevents Special Conditions on
+Pokémon with Energy attached. That can matter, but it is secondary to enabling
+Festival Lead.
+
+Goldeen and Seaking
+
+Goldeen has Festival Lead while still a Basic. This matters because it can
+turn on Boom Boom Groove before Dipplin is established. It is often a clean
+opening Active and can bridge awkward setups. Current lists also use Seaking
+as a backup Festival Lead attacker. The exact Seaking print varies by list;
+confirm its attack text before the event rather than assuming an old list's
+math.
+
+Search package
+
+Buddy-Buddy Poffin builds the low-HP Basic board. Bug Catching Set looks at the
+top seven cards and can take up to two Grass Pokémon and/or Basic Grass Energy,
+which makes it strong but non-deterministic. Boom Boom Groove is deterministic
+once active.
+
+Secret Box is the leading ACE SPEC in the cited strategy guide. It turns one
+Boom Boom Groove search into access to an Item, Tool, Supporter, and Stadium,
+at the cost of discarding three other cards. Millar's guide emphasizes that
+this can assemble an entire knockout turn, especially when only one Thwackey
+is available. Plan all four categories before paying the discard cost. Do not
+discard a recovery card or the only replacement attacker merely because Secret
+Box can find the current-turn damage package.
+
+Damage modifiers
+
+Brave Bangle adds damage against Pokémon ex when attached to a Pokémon without
+a Rule Box. Kieran and Black Belt's Training can also add damage against
+eligible opposing Pokémon. Because Dipplin attacks twice, a modifier that
+applies to attacks can contribute on both attacks. This multiplication is the
+deck's key knockout mechanism.
+
+Use exact math. With five Benched Pokémon, Do the Wave begins at 100. A +30
+modifier makes each attack 130; a +40 modifier makes each attack 140. Multiple
+legal modifiers can raise the number further. Weakness, Resistance, the
+opponent's remaining HP, and whether the first attack changes the Active all
+matter. Never call a two-attack knockout from the printed base number alone.
+
+OPENING SETUP
+
+Before choosing the opening Active, inspect the hand for:
+
+- a Festival Lead Active now or an immediate Dipplin route;
+- at least one Grookey route;
+- at least one Applin route;
+- a way to fill the Bench;
+- a Festival Grounds route;
+- the first attacker and its Energy;
+- whether a prized or missing piece changes the plan.
+
+Goldeen is generally the cleanest opening Active because Festival Lead is
+already online, which makes future Thwackey immediately useful. An Applin start
+is acceptable if it becomes Dipplin on schedule. Avoid opening Thwackey's line
+Active when possible; Grookey does not turn on Boom Boom Groove, and a stranded
+Thwackey later costs two to retreat.
+
+The default early Bench is built around two engine lines and two attacker
+lines:
+
+- two Grookey that can become Thwackey;
+- two Applin that can become Dipplin;
+- the remaining space reserved for an additional attacker, Festival Lead
+  pivot, or matchup-specific protector.
+
+This is a target, not an automatic law. If the opponent has immediate spread
+or multi-Knock-Out pressure, exposing four fragile Basics may be worse than
+staging one protected line at a time. If the opponent cannot punish the Bench,
+filling it raises Do the Wave damage and improves redundancy.
+
+GOING FIRST
+
+Going first is the natural default for an evolution-heavy engine: establish
+Grookey and Applin, then evolve into Thwackey and Dipplin on the next turn.
+Your first turn cannot be evaluated only by hand size. The success criterion is
+whether the next turn can produce:
+
+- a Festival Lead Active;
+- at least one live Boom Boom Groove;
+- Festival Grounds;
+- one Energy on the attacker; and
+- enough Bench Pokémon and modifiers for the required damage.
+
+Attach Energy with the next turn's pivot in mind. If the current Active is a
+likely Boss's Orders or retreat liability, preserve the switching route.
+
+GOING SECOND
+
+Going second gives access to an attack on the first turn, but the central
+Stage 1 engine still cannot evolve immediately. Use the extra action only when
+it improves the real setup. A low-value attack should not consume the Energy or
+Active position needed for the first meaningful Dipplin turn.
+
+Against a slow opponent, prioritize the same redundant board as when going
+first. Against immediate Item lock or aggressive Basic pressure, use Poffin and
+other Item search before the lock arrives, and consider whether the first
+attack protects tempo. There is not enough public evidence to claim a universal
+first/second choice for the current list; the first-turn default should be
+confirmed by SME testing and matchup data.
+
+TURN SEQUENCING
+
+Use this sequence as a baseline:
+
+1. Read the current prize map and opponent's possible response.
+2. Count available Festival Lead attackers, Grookey, Thwackey, and recovery.
+3. Confirm whether a Festival Lead Pokémon can remain or become Active.
+4. Use non-search information first when it can change what Boom Boom Groove
+   should find.
+5. Activate every Thwackey that is legal and useful before evolving it away or
+   changing the Active to a Pokémon without Festival Lead.
+6. Search the most constrained piece first.
+7. Establish or replace Festival Grounds.
+8. Attach Energy and Tool to the intended attacker.
+9. Play the Supporter only after confirming whether it is needed for damage,
+   gust, pivoting, or recovery.
+10. Recalculate damage for the first and second attacks separately.
+11. Preserve the next attacker and at least one route out of a gusted
+    Thwackey.
+
+The "most constrained piece" is the card with the fewest remaining routes. If
+Festival Grounds is absent and only Boom Boom Groove can guarantee it, search
+the Stadium before spending that search on a card Bug Catching Set or Poffin
+can find. If Secret Box is available, identify its four search categories
+before choosing the first Boom target.
+
+ATTACK AND PRIZE PLANNING
+
+At the start of every attack turn, write the prize plan in concrete numbers:
+
+- prizes remaining for both players;
+- first-attack damage;
+- second-attack damage;
+- prizes available from the current Active;
+- likely promoted targets if the first attack Knocks Out;
+- whether Boss's Orders or another gust changes the shortest route.
+
+When both attacks are needed to Knock Out one target, compare that exchange
+against taking a smaller Knock Out first. Festival Lead explicitly permits a
+second attack after the opponent promotes, so a two-target line can outperform
+overkilling a large Active.
+
+Do not assume the opponent will promote the target you want. If the second
+attack must hit a particular Pokémon, gusting before the first attack or
+changing the prize order may be necessary. Conversely, if every promotion
+loses a Prize, attacking the current small target is powerful.
+
+Maintain the one-Prize exchange. Benching a multi-Prize tech changes the
+opponent's route and should be justified by a concrete matchup need, not by
+generic power.
+
+RESOURCE MANAGEMENT AND RECOVERY
+
+The deck's Energy count is low in current lists, but each main attack costs
+only one Grass Energy. Track Energy in the board, discard, deck, and prizes.
+Do not strand an Energy on Thwackey unless it is part of the retreat plan.
+
+Track these resources explicitly:
+
+- remaining Festival Grounds;
+- remaining Applin and Dipplin;
+- remaining Grookey and Thwackey;
+- recovery cards such as Night Stretcher or Lana's Aid;
+- remaining damage modifiers;
+- remaining gust effects;
+- Secret Box and the cards it would need to discard;
+- pivot cards for a gusted Thwackey.
+
+Recovery is a role choice. In most games, recovering the next Dipplin line is
+more important than recovering a support Pokémon. In spread matchups, Rabsca
+or Shaymin may become the critical recovery target. Decide from the opponent's
+actual route to six Prizes.
+
+BENCH MANAGEMENT
+
+Every Bench slot carries three values:
+
+- 20 base damage for each Do the Wave;
+- the function of the Pokémon occupying it;
+- the risk that the opponent can take a Prize from it.
+
+Two Thwackey plus two Dipplin lines is a strong stable core. The fifth slot can
+be a replacement attacker, Goldeen, Seaking, Shaymin, Rabsca line, Psyduck, or
+another tech depending on the matchup. Do not fill the final slot before
+checking whether a protector or pivot will be mandatory.
+
+Protection pieces overlap but are not identical. Rabsca prevents both damage
+and effects of attacks to the Bench. Shaymin prevents attack damage to Benched
+Pokémon without Rule Boxes. Millar's cited Dragapult plan uses Psyduck plus
+Rabsca, while also warning that the package constricts the board to roughly
+two Dipplin and two Thwackey lines. Confirm the exact card texts and current
+opposing threats before selecting the protection package.
+
+MATCHUP PLANS
+
+Dragapult variants
+
+The matchup turns on preserving the fragile Bench while maintaining enough
+slots for damage. Rabsca is the broadest attack-based protection. Shaymin is
+useful against attack damage to non-Rule-Box Benched Pokémon, but it does not
+cover every effect. The cited TCGplayer guide identifies Psyduck plus Rabsca as
+a strong wall against Dragapult/Dusknoir, with the explicit cost of a cramped
+Bench.
+
+Build the protection line before the opponent's spread turn, not afterward.
+Keep two attacker and two engine lines where possible. Use exact modifiers to
+one-shot Dragapult ex; the one-Prize-for-two-Prize exchange is how Festival
+Lead compensates for its fragile board.
+
+Be aware of Thwackey gust traps. A Dragapult player can buy a turn by bringing
+Thwackey Active, and some lines can pressure two Dipplin at once. Air Balloon,
+Kieran, or a mapped Energy retreat prevents a search engine from becoming a
+tempo loss.
+
+Two-Prize decks
+
+This is the deck's preferred exchange. Develop the board quickly, calculate
+the modifier needed to Knock Out an ex, and trade one-Prize Dipplin for two
+Prizes. Do not bench an unnecessary multi-Prize Pokémon. If the opponent cannot
+take multiple Prizes in a turn, a continuous stream of attackers should force
+them to win three attacks after you need only three effective knockout turns.
+
+Single-Prize decks
+
+The prize advantage disappears. Focus on double-knockout possibilities and
+engine efficiency. A first attack that Knocks Out a small Active followed by a
+second attack into the new Active can create the tempo advantage that raw prize
+value does not provide.
+
+Item lock
+
+Use Poffin, Bug Catching Set, Secret Box, and other critical Items before the
+lock when possible. Thwackey remains valuable because Boom Boom Groove itself
+is an Ability, but the card it finds must still be playable. Search for the
+piece that remains legal under the current lock rather than a theoretical
+future combo.
+
+Spread and bench-snipe decks
+
+Identify whether the threat is attack damage, an attack effect, an Ability
+effect, or damage counters. Rabsca and Shaymin cover different subsets. Never
+assume "Bench protection" is universal. If protection is ineffective against
+the actual text, reduce exposed Basics and prioritize the prize race.
+
+RECOVERY LINES
+
+If the Active Dipplin is Knocked Out:
+
+1. Promote a pivot that preserves access to Boom Boom Groove if possible.
+2. Count remaining attacker lines before searching.
+3. Use Thwackey to find the scarcest missing component.
+4. Recover only the piece needed for the next complete attacker.
+5. Restore Festival Grounds if it was removed.
+6. Attach Energy and rebuild the next replacement before attacking.
+
+If a Thwackey is gusted:
+
+1. Use every legal Boom Boom Groove before moving it if the Active still has
+   Festival Lead; if Thwackey is Active, the condition is normally off.
+2. Check Air Balloon, Kieran's switch mode, Switch, or manual retreat.
+3. Do not spend the turn building damage until the Active is solved.
+4. After pivoting, recalculate whether the remaining search and Supporter use
+   can still reach the knockout.
+
+If Festival Grounds is removed:
+
+1. Treat the replacement Stadium as the first constrained combo piece.
+2. Use Boom Boom Groove for Festival Grounds if no other guaranteed route
+   exists.
+3. Do not announce a double-attack knockout until the Stadium is actually in
+   play.
+
+COMMON MISTAKES
+
+- Starting or benching too many Grookey while leaving no Applin replacement.
+- Evolving the only Festival Lead Active without preserving another active
+  Festival Lead Pokémon.
+- Forgetting that Boom Boom Groove requires a Festival Lead Pokémon Active.
+- Treating Festival Grounds as optional after calculating two attacks.
+- Leaving Bench slots empty and then using damage numbers from a full Bench.
+- Using a damage modifier without applying its target restriction.
+- Spending both attacks on one target when the first attack could take a Prize
+  and unlock a second target.
+- Assuming the opponent will promote the desired second target.
+- Discarding irreplaceable recovery or attackers to Secret Box.
+- Using all Boom Boom Groove searches before gathering information from the
+  hand or top-deck effects.
+- Allowing Thwackey to be trapped Active without a pivot route.
+- Benching every protection Pokémon and losing the space required for damage
+  and replacement attackers.
+- Assuming Rabsca, Shaymin, or Psyduck covers a threat without reading whether
+  it is damage, effects, Abilities, or counters.
+- Recovering a support Pokémon when the immediate loss condition is having no
+  attacker.
+
+TURN CHECKLIST
+
+Before search:
+
+- Is a Festival Lead Pokémon Active?
+- How many Boom Boom Groove uses are available?
+- What information can I reveal before choosing search targets?
+- What is the one card no other effect can guarantee?
+
+Before committing the Bench:
+
+- How many Grookey/Thwackey lines are live?
+- How many Applin/Dipplin lines are live?
+- Does the fifth slot need to remain open?
+- What exact spread or gust punish can the opponent use?
+
+Before attacking:
+
+- Is Festival Grounds in play?
+- Is the correct attacker Active with the correct Energy?
+- What is Do the Wave's base damage from my current Bench?
+- Which modifiers legally apply to attack one and attack two?
+- Can attack one take a Knock Out?
+- What can the opponent promote?
+- Is there a higher-prize two-target route?
+- Is next turn's attacker protected?
+
+After attacking:
+
+- What piece is most likely to be removed?
+- What Stadium, Energy, attacker, and recovery remain?
+- Can a gusted Thwackey be moved?
+- What is the opponent's shortest remaining prize route?
+
+EVIDENCE GAPS FOR SME REVIEW
+
+The following should be resolved by expert testing rather than asserted:
+
+- universal choice to go first or second in the current format;
+- ideal two-versus-three Thwackey board across matchups;
+- exact current flex package after the newest set;
+- whether Secret Box remains optimal over every competing ACE SPEC;
+- protection package by current Dragapult variant;
+- damage-modifier counts for each expected field;
+- which Seaking print and count should be canonical;
+- matchup-specific prize maps against the current top field.
+
+SHORT TRAINING-HEURISTIC APPENDIX
+
+The machine guide should supervise only choices that are exact from the current
+legal stage: choose a visible Festival Lead Basic as opening Active, create
+redundant Grookey and Applin lines, evolve visible lines, deploy Festival
+Grounds when a Festival Lead Active needs it, use a legal Thwackey Ability, and
+fill exact Poffin or Boom Boom Groove engine gaps.
+
+It should mask attack math, modifier selection, recovery, gusting, protection,
+and matchup tech decisions unless the complete legal stage exposes all
+required identities, damage, prize, and effect information. It must never use
+future outcomes, hidden opposing information, or whether the game was won to
+construct a target.
+
+SOURCES
+
+[S1] Natalie Millar, "Festival Lead Deck Guide (Pokémon TCG)," TCGplayer,
+May 5, 2026.
+https://www.tcgplayer.com/content/article/Festival-Lead-Deck-Guide-Pok%C3%A9mon-TCG/0193ad25-046f-4766-906d-d9161462cbe1/
+
+[S2] "Festival Lead - Deck Overview," Limitless TCG. Current archetype
+overview and tournament links, reviewed July 27, 2026.
+https://limitlesstcg.com/decks/336
+
+[S3] "Festival Lead - Cards," Limitless TCG. Current aggregate card counts,
+reviewed July 27, 2026.
+https://limitlesstcg.com/decks/336/cards
+
+[S4] "Festival Lead by Leighton Catton," 164th at NAIC 2026, Limitless TCG.
+https://limitlesstcg.com/decks/list/28371
+
+[S5] "Festival Lead - Deck Tournament History," Limitless TCG.
+https://limitlesstcg.com/decks/336/results
+
+[S6] JustInBasil, "Twilight Masquerade (TWM, Pre-Rotation)," Festival Grounds
+basic strategy and example list.
+https://www.justinbasil.com/new-decks/sv6
+
+[S7] Grant Manley, "Booming and Grooving — Festival Lead Analysis,"
+PokeBeach, May 30, 2026.
+https://www.pokebeach.com/2026/05/booming-and-grooving-festival-lead-analysis
+
+[S8] "Thwackey - Twilight Masquerade #15," Limitless TCG. Exact Boom Boom
+Groove card text.
+https://limitlesstcg.com/cards/TWM/15
+
+[S9] "Dipplin - Twilight Masquerade #18," Limitless TCG. Exact Festival Lead
+and Do the Wave card text.
+https://limitlesstcg.com/cards/TWM/18
+
+[S10] "Festival Grounds - Twilight Masquerade #149," Limitless TCG. Exact
+Stadium text.
+https://limitlesstcg.com/cards/TWM/149
+
+[S11] "Goldeen - Twilight Masquerade #44," Limitless TCG. Exact Festival Lead
+card text.
+https://limitlesstcg.com/cards/TWM/44
+
+[S12] "Rabsca - Temporal Forces #24," Limitless TCG. Exact Spherical Shield
+card text.
+https://limitlesstcg.com/cards/TEF/24
+
+[S13] "Shaymin - Destined Rivals #10," Limitless TCG. Exact Flower Curtain
+card text.
+https://limitlesstcg.com/cards/DRI/10
+
+END

@@ -1,0 +1,112 @@
+{
+  "schema": "poke_bot.alakazam_collision_census_r298_config/v3",
+  "owner_revision": 298,
+  "goal_revision": 5,
+  "root_handoff_revision": 303,
+  "status": "revision_5_migrated_create_only_elmo_only_off",
+  "enabled": false,
+  "runtime_active": false,
+  "host_scope": "elmo_only",
+  "execution_host_role": "elmo",
+  "canonical_execution_hostname": "truenas",
+  "container_execution_permitted": false,
+  "production_authority": false,
+  "inzi_mutation": false,
+  "training_eligible": false,
+  "learned_baseline_mutation": false,
+  "owner_goal_sha256": "sha256:0f440fc71043b4352e6401a3187c9d582c1c5614d76e186095e0eef51017af6f",
+  "rule_derivative_contract_sha256": "sha256:dbbd4dbcc057b631d61fa867e45c393d594550b3b45f306f465b6ee5b4428891",
+  "rule_derivative_goal_sha256": "sha256:7a829abebd348d0ffdf0a73c8b559fe9c799af3d3aff49a64efdfa85a08051b6",
+  "revision_5_predecessor_classification": {
+    "schema": "poke_bot.alakazam_collision_census_r298_rev5_predecessor_classification/v1",
+    "predecessor_goal_revision": 4,
+    "predecessor_gateway_sha256": "sha256:2af67560510ca7ffd9fe0bc6ff37cdbbd74f5a78d6c5237091bb527d49ce4ed8",
+    "predecessor_contract_sha256": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+    "revision_4_receipts_are_immutable_historical_evidence": true,
+    "revision_4_receipts_satisfy_revision_5_schema_freeze": false,
+    "revision_4_schema_or_catalog_bytes_reusable_only_when_checksum_identical": true,
+    "consumed_predecessor_receipts": []
+  },
+  "mechanics_attachment_sha256": "sha256:d3f06071663dde2ae7012da72b407b410c7facd06d09ab723cad05af44ddb2cb",
+  "r274_features_source_sha256": "sha256:ce0eb08ca74e337fe6ee1eaeb678eb42bd7f413bbfab04f8a228c3cfd3ce3db5",
+  "canonical_libcg_sha256": "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7",
+  "canonical_libcg_size_bytes": 1342400,
+  "raw_expert_corpus": {
+    "window_start_utc": "2026-07-13",
+    "window_end_utc": "2026-08-11",
+    "distinct_utc_day_count": 30,
+    "twenty_day_fallback_permitted": false,
+    "adjacent_window_fallback_permitted": false,
+    "subset_final_census_permitted": false,
+    "recollection_authorized": false,
+    "source_receipts": [
+      "sha256:e29bfe45b092e291924300b12600be7f68f3ace59a931a5edff7f3a09150d8ee",
+      "sha256:85b05efac8192d43123450fc296c14fcfa55668c1b54b651037793e6e015fd59"
+    ],
+    "episode_deduplication_required": true
+  },
+  "phase_a_schema_inventory": {
+    "raw_replay_inventory_scope": "all_raw_replay_observations",
+    "actor_visible_selection_inventory_scope": "all_masked_actor_visible_selection_observations",
+    "all_raw_two_seat_outer_observations_required": true,
+    "all_actor_visible_and_forced_selection_frames_required": true,
+    "raw_values_persisted": false,
+    "rejected_raw_observations_permitted": false
+  },
+  "resource_envelope": {
+    "hard_memory_bytes": 103079215104,
+    "one_memory_heavy_phase_at_a_time": true,
+    "bounded_streaming_and_disk_buckets_required": true,
+    "all_elmo_cpu_gpu_eligible": true,
+    "normal_existing_cache_permitted": true,
+    "zfs_arc_l2arc_tuning_authorized": false,
+    "managed_service_change_authorized": false,
+    "actual_peak_rss_cpu_gpu_io_required_in_receipt": true
+  },
+  "transfer_staging": {
+    "this_runner_performs_inzi_transfer": false,
+    "completed_shards_are_quarantined_staging_eligible_only": true,
+    "artifact_shard_maximum_bytes": 100663296,
+    "content_addressed_filename_required": true,
+    "later_transfer_parallel_lane_maximum": 4,
+    "runtime_or_training_use_authorized": false
+  },
+  "frozen_schema_gate": {
+    "required_before_refeaturization": true,
+    "schema_manifest": "poke_bot.alakazam_collision_census_r298_frozen_schema_manifest/v1",
+    "zero_bypass_receipt": "poke_bot.alakazam_collision_census_r298_zero_bypass_receipt/v1",
+    "nonzero_adapter_or_checklist_gate_allowed": false
+  },
+  "collision_contract": {
+    "current_token_abi": "poke_bot.alakazam_collision_census_r298_current_option_token_abi/v1",
+    "record_schema": "poke_bot.alakazam_collision_census_r298_option_record/v1",
+    "record_raw_option_payload": true,
+    "raw_option_payload_audit_only": true,
+    "record_legacy_token_hash": true,
+    "record_complete_semantic_option_key": true,
+    "semantic_identity_uses_normalized_r298_slot_bindings": true,
+    "record_successor_event_chain_hash": true,
+    "fail_on_equal_model_encoding_distinct_public_successor_or_outcome": true,
+    "hidden_true_world_branching_permitted": false,
+    "classifications": [
+      "intentional_hidden_information_equivalence",
+      "intentional_permutation_equivalence",
+      "simulator_legality_proxy",
+      "genuine_public_state_option_non_identifiability"
+    ]
+  },
+  "limits": {
+    "sample_max_episodes": 2,
+    "bucket_count": 4096,
+    "full_mode_max_episodes_must_be_zero": true,
+    "complete_day_shard_required": true
+  },
+  "runtime_boundaries": {
+    "battle_start_allowed": false,
+    "search_begin_allowed": false,
+    "training_allowed": false,
+    "checkpoint_load_allowed": false,
+    "archive_write_allowed": false,
+    "output_create_only": true
+  }
+}

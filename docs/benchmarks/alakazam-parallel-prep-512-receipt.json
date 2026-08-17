@@ -1,0 +1,40 @@
+{
+  "code_sha256": "sha256:6943b958d47284a947cfa60d6a9f01b48545a5ee3e3d15d42b6eda0a5500d2e1",
+  "counts": {
+    "decisions": 12288,
+    "games": 512,
+    "rows": 512
+  },
+  "created_at_unix": 1786565205.014744,
+  "memory": {
+    "parallel_peak_rss_bytes": 657997824,
+    "serial_peak_rss_bytes": 449495040
+  },
+  "output_digest": "sha256:0b88ca973c3598f693dcee2e2b4f127dc6f88a65c98e3adfe2bf9f3e44ac0608",
+  "receipt_sha256": "sha256:cb537e3dd7f0772f10a4dd2fbd6d6c80322b467ee70258b878bdfb120cea7a9f",
+  "schema": "poke_bot.parallel_replay_validation_receipt/v1",
+  "source": {
+    "path": "/private/tmp/pokebot-parallel-prep-512.SzAc7b/fixture-512.jsonl",
+    "sha256": "sha256:a9a7129f1143a4ef157f563bf66fd92e3bcc48eda5b64a1e765c8b57f8cb7258",
+    "size_bytes": 58140416
+  },
+  "status": "passed",
+  "timing": {
+    "cache_reuse_seconds": 0.0688060000538826,
+    "parallel_seconds": 3.043136749882251,
+    "serial_seconds": 4.951685749925673
+  },
+  "validation": {
+    "cross_worker_output_digest_equal": true,
+    "identical_seeded_one_step_optimizer_result": true,
+    "recommended_workers": 8,
+    "serial_parallel_tensor_parity": true,
+    "worker_counts": [
+      1,
+      8,
+      16,
+      32
+    ]
+  },
+  "worker_count": 8
+}

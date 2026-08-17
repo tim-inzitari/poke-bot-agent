@@ -1,0 +1,347 @@
+{
+  "schema": "poke_bot.alakazam_turn_checklist_heuristic_logit_layer_config/v1",
+  "owner_decision_revision": 288,
+  "latest_owner_clarification_revision": 295,
+  "configuration_role": "staged_default_off_policy_side_residual_and_offline_calibration_contract",
+  "active": false,
+  "selected_by_runtime_without_explicit_receipt": false,
+  "selected_by_submission_builder": false,
+  "selected_by_submission_entrypoint": false,
+  "exact_new_list": {
+    "deck_id": "alakazam-new-list-direct-r241",
+    "canonical_multiset_sha256": "sha256:a42e047c45c419a599a31f2e20a6209d324558082f27e12091ade8918376d182",
+    "require_exact_match_for_nonzero_residual": true
+  },
+  "weight_parent": {
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "submission_id": 55378392,
+    "rtp_enabled": false,
+    "immutable": true,
+    "identical_to_exact_new_list": false
+  },
+  "guide_attachment": {
+    "owner_revision": 295,
+    "path": "external/owner-attachments/alakazam-turn-checklist-guide.txt",
+    "sha256": "sha256:5cc092c9ed93b3e0e4ecae9fca9d50409bea6979e8d92e358f684091e0cdff8b",
+    "corrected_exact_inventory": {
+      "pokemon": 17,
+      "trainers": 36,
+      "energy": 7,
+      "alakazam": 3
+    },
+    "matches_exact_new_list_canonical_multiset": true,
+    "supersedes_prior_attachment_for_scorer_semantics_only": true,
+    "runtime_action_authority": false,
+    "guide_selected_action_override": false
+  },
+  "runtime": {
+    "kind": "parameter_free_deterministic_post_neural_logit_residual",
+    "enabled_default": false,
+    "checkpoint_tensor_change": false,
+    "legal_action_set_change": false,
+    "application_order": [
+      "current_neural_policy_and_all_active_heads",
+      "learned_fusion_effects",
+      "own_deck_effects",
+      "matchup_adapter_effects",
+      "turn_checklist_residual",
+      "legal_action_selection"
+    ],
+    "channel_order": [
+      "ko_hand_threshold",
+      "safe_spend_above_threshold",
+      "replacement_alakazam_line",
+      "unavoidable_draws_before_attack",
+      "bench_prize_exposure",
+      "immediate_disruption_outcome",
+      "unknown_prize_robust_line",
+      "terminal_before_forced_draw"
+    ],
+    "guide_support_channel": "guide_support",
+    "guide_support_policy": {
+      "owner_revision": 293,
+      "mode": "trace_only",
+      "runtime_residual_authority": false,
+      "runtime_gate_required": 0.0,
+      "calibration_eligible": false,
+      "nonzero_gate_requires": [
+        "source_disjoint_corrected_guide_validation",
+        "semantic_contradictions_resolved_and_receipted",
+        "separate_corrected_guide_eligibility_contract",
+        "future_explicit_owner_activation_decision"
+      ],
+      "validated_deterministic_attachment_rules_may_inform": "eight_named_checklist_channels_only"
+    },
+    "gate_order": [
+      "ko_hand_threshold_gate",
+      "safe_spend_above_threshold_gate",
+      "replacement_alakazam_line_gate",
+      "unavoidable_draws_before_attack_gate",
+      "bench_prize_exposure_gate",
+      "immediate_disruption_outcome_gate",
+      "unknown_prize_robust_line_gate",
+      "terminal_before_forced_draw_gate",
+      "separate_guide_gate"
+    ],
+    "residual_enabled_gate_order": [
+      "ko_hand_threshold_gate",
+      "safe_spend_above_threshold_gate",
+      "replacement_alakazam_line_gate",
+      "unavoidable_draws_before_attack_gate",
+      "unknown_prize_robust_line_gate",
+      "terminal_before_forced_draw_gate"
+    ],
+    "gate_channel_map": {
+      "ko_hand_threshold_gate": "ko_hand_threshold",
+      "safe_spend_above_threshold_gate": "safe_spend_above_threshold",
+      "replacement_alakazam_line_gate": "replacement_alakazam_line",
+      "unavoidable_draws_before_attack_gate": "unavoidable_draws_before_attack",
+      "bench_prize_exposure_gate": "bench_prize_exposure",
+      "immediate_disruption_outcome_gate": "immediate_disruption_outcome",
+      "unknown_prize_robust_line_gate": "unknown_prize_robust_line",
+      "terminal_before_forced_draw_gate": "terminal_before_forced_draw",
+      "separate_guide_gate": "guide_support"
+    },
+    "per_stage_vector_contract": {
+      "kind": "centered_linf_normalized_signed_evidence",
+      "center_over": "legal_options_with_per_option_causal_evidence",
+      "normalizer": "maximum_absolute_centered_value",
+      "zero_or_unavailable_vector": "all_zero",
+      "malformed_unknown_hidden_or_noncausal_evidence": "all_zero_with_unavailable_reason",
+      "requires_action_order_alignment": true,
+      "requires_per_option_availability_mask": true,
+      "channel_available_means": "has_a_nonflat_safe_action_distinction",
+      "channel_unavailable_with_nonempty_mask": "permitted_only_for_exact_flat_zero_vector",
+      "maximum_absolute_component": 1.0
+    },
+    "residual_formula": {
+      "kind": "strongest_absolute_gated_contribution_per_option_per_group",
+      "grouped_aggregation": "for each option and each residual group, retain the nonzero gated channel contribution with greatest absolute magnitude; break equal-magnitude ties by runtime.channel_order; an exactly-zero group has no winner and contributes zero",
+      "group_order": [
+        "closure",
+        "continuity"
+      ],
+      "group_gate_members": {
+        "closure": [
+          "ko_hand_threshold_gate",
+          "immediate_disruption_outcome_gate",
+          "terminal_before_forced_draw_gate"
+        ],
+        "continuity": [
+          "safe_spend_above_threshold_gate",
+          "replacement_alakazam_line_gate",
+          "unavoidable_draws_before_attack_gate",
+          "unknown_prize_robust_line_gate"
+        ]
+      },
+      "tie_break": "runtime.channel_order_first",
+      "exact_zero_group_winner": null,
+      "pre_clip": "closure_winner_contribution[option_index] + continuity_winner_contribution[option_index]",
+      "post_clip_trace_required": true,
+      "clip_min": -0.1,
+      "clip_max": 0.1,
+      "neutral_when_all_vectors_zero": true,
+      "guide_support_is_separate_gate": true
+    },
+    "existing_route_overlap_deduplication": {
+      "owner_revision": 293,
+      "status": "required_before_any_nonproduction_candidate_evaluation",
+      "existing_learned_logic_modification_allowed": false,
+      "existing_surfaces": [
+        "current_neural_policy_and_all_active_r274_heads",
+        "learned_fusion_routes",
+        "own_deck_ledger_and_option_effects",
+        "active_matchup_adapter_effects"
+      ],
+      "resolution_owner": "new_checklist_gate_attenuation_or_suppression_only",
+      "overlap_groups": {
+        "closure": [
+          "ko_hand_threshold",
+          "immediate_disruption_outcome",
+          "terminal_before_forced_draw"
+        ],
+        "continuity": [
+          "safe_spend_above_threshold",
+          "replacement_alakazam_line",
+          "unavoidable_draws_before_attack",
+          "unknown_prize_robust_line"
+        ],
+        "board": [
+          "bench_prize_exposure"
+        ]
+      },
+      "initial_channel_eligibility": {
+        "ko_hand_threshold": "calibration_eligible",
+        "safe_spend_above_threshold": "calibration_eligible",
+        "replacement_alakazam_line": "calibration_eligible",
+        "unavoidable_draws_before_attack": "calibration_eligible",
+        "bench_prize_exposure": "trace_only_fixed_zero",
+        "immediate_disruption_outcome": "trace_only_fixed_zero_until_predicate_separation",
+        "unknown_prize_robust_line": "calibration_eligible",
+        "terminal_before_forced_draw": "calibration_eligible"
+      },
+      "immediate_disruption_predicate_boundary": {
+        "generic_xerosic_or_cage_branch": "trace_only",
+        "exact_immediate_boss_or_hammer_outcome_proof": "may_share_closure_group_after_separate_predicate_level_validation",
+        "aggregate_channel_gate_currently": "fixed_zero"
+      },
+      "trace_metadata_required": [
+        "existing_route_overlap_audit",
+        "per_channel_overlap_or_distinct_reason",
+        "new_layer_gate_or_attenuation_decision",
+        "per_option_group_winner_gate_and_channel",
+        "per_option_group_winner_gated_contribution",
+        "post_deduplication_signed_residual"
+      ],
+      "calibration_vectors_must_be_post_deduplication": true,
+      "calibration_rows_must_carry_post_deduplication_provenance": true,
+      "overlap_audit_receipt_binding_supported_when_available": true,
+      "missing_receipt_must_not_be_represented_by_placeholder_sha256": true
+    },
+    "total_residual_cap": 0.1,
+    "scalar_gates": {
+      "ko_hand_threshold_gate": 0.01,
+      "safe_spend_above_threshold_gate": 0.01,
+      "replacement_alakazam_line_gate": 0.01,
+      "unavoidable_draws_before_attack_gate": 0.01,
+      "bench_prize_exposure_gate": 0.0,
+      "immediate_disruption_outcome_gate": 0.0,
+      "unknown_prize_robust_line_gate": 0.01,
+      "terminal_before_forced_draw_gate": 0.01,
+      "separate_guide_gate": 0.0
+    }
+  },
+  "offline_calibration": {
+    "permitted": true,
+    "role": "isolated_validation_only",
+    "host_scope": "elmo_isolated_only",
+    "runtime_activation_authority": false,
+    "production_loop_authority": false,
+    "learner_or_checkpoint_training_authority": false,
+    "selector_or_submission_authority": false,
+    "elmo_production_readmission_authority": false,
+    "all_neural_model_and_checkpoint_tensors_frozen": true,
+    "trainable_scalars_exact": 6,
+    "trainable_gate_order": [
+      "ko_hand_threshold_gate",
+      "safe_spend_above_threshold_gate",
+      "replacement_alakazam_line_gate",
+      "unavoidable_draws_before_attack_gate",
+      "unknown_prize_robust_line_gate",
+      "terminal_before_forced_draw_gate"
+    ],
+    "fixed_trace_only_gates": {
+      "bench_prize_exposure_gate": 0.0,
+      "immediate_disruption_outcome_gate": 0.0,
+      "separate_guide_gate": 0.0
+    },
+    "guide_support_calibration": {
+      "eligible": false,
+      "trace_collection_allowed": true,
+      "fit_or_nonzero_artifact_allowed": false,
+      "eligibility_may_change_only_by": "separate_source_disjoint_corrected_guide_validation_and_owner_contract",
+      "current_artifact_must_emit_exact_zero_gate": true
+    },
+    "gate_bounds": {
+      "minimum": 0.0,
+      "maximum": 0.1
+    },
+    "optimizer": {
+      "kind": "deterministic_full_batch_projected_gradient_descent",
+      "maximum_steps": 512,
+      "learning_rate": 0.05,
+      "l2_anchor_to_default": 0.001,
+      "selection_metric": "source_disjoint_validation_group_cross_entropy",
+      "early_stopping_patience": 64,
+      "piecewise_group_subgradient": "likelihood_differentiates_only_the_deterministic_current_group_winner_and_zeroes_globally_clipped_options_then_adds_the_declared_l2_anchor_to_all_trainable_gates",
+      "no_model_or_checkpoint_optimizer_state": true
+    },
+    "input": {
+      "schema": "poke_bot.alakazam_turn_checklist_calibration_row/v1",
+      "format": "jsonl",
+      "precomputed_runtime_vector_stage": "centered_linf_normalized_pre_gate",
+      "requires_base_logits": true,
+      "requires_exact_new_list_multiset_sha256": true,
+      "requires_corrected_guide_attachment_sha256": true,
+      "requires_existing_route_overlap_deduplication_provenance": true,
+      "requires_frozen_neural_policy_identity": true,
+      "requires_channel_availability_or_unavailable_reason": true,
+      "requires_channel_option_availability": true,
+      "requires_target_chosen_option_or_target_chosen_option_group": true,
+      "requires_source_id": true,
+      "requires_source_group_id": true,
+      "requires_source_split_id": true,
+      "requires_seed_identity": true,
+      "training_split_ids": ["train"],
+      "validation_split_ids": ["validation"],
+      "source_id_overlap_between_train_and_validation": "fail_closed",
+      "source_group_id_overlap_between_train_and_validation": "fail_closed",
+      "seed_identity_overlap_between_train_and_validation": "fail_closed",
+      "input_rows_must_be_training_ineligible": true,
+      "input_rows_must_be_production_ineligible": true,
+      "input_rows_must_be_replay_ineligible": true
+    },
+    "future_bo250_seed_disjointness": {
+      "calibration_rows_must_carry_seed_identity": true,
+      "receipt_must_expose_excluded_seed_identities_when_bound": true,
+      "overlap_behavior": "fail_closed",
+      "unbound_calibration_artifact_may_not_authorize_bo250": true,
+      "bo250_bound_calibration_receipt_required_before_launch": true,
+      "isolated_unit_test_or_shadow_trace_may_use_unbound_artifact": true
+    },
+    "minimum_nonflat_rows_per_gate_per_split": 1,
+    "minimum_distinct_source_ids_per_split": 1,
+    "minimum_distinct_source_groups_per_split": 1,
+    "artifact": {
+      "schema": "poke_bot.alakazam_turn_checklist_gate_calibration_artifact/v1",
+      "receipt_schema": "poke_bot.alakazam_turn_checklist_gate_calibration_receipt/v1",
+      "runtime_active": false,
+      "requires_separate_receipt_backed_activation": true,
+      "write_mode": "create_only",
+      "canonical_json": "utf8_sorted_keys_compact_newline",
+      "self_digest_field": "artifact_sha256",
+      "receipt_self_digest_field": "receipt_sha256"
+    },
+    "future_calibrated_artifact_loading": {
+      "default": "not_loaded",
+      "requires_separate_receipt_backed_activation": true,
+      "artifact_schema": "poke_bot.alakazam_turn_checklist_gate_calibration_artifact/v1",
+      "permitted_runtime_override": "runtime.scalar_gates_for_currently_calibration_eligible_six_checklist_gates_only",
+      "fixed_trace_only_gate_override_allowed": false,
+      "separate_guide_gate_override_allowed": false,
+      "must_match": [
+        "artifact_sha256_self_digest",
+        "runtime_contract.layer_schema",
+        "runtime_contract.config_file_sha256",
+        "runtime_contract.exact_new_list_multiset_sha256",
+        "runtime_contract.corrected_guide_attachment_sha256",
+        "runtime_contract.corrected_guide_exact_inventory",
+        "runtime_contract.channel_order",
+        "runtime_contract.guide_support_channel",
+        "runtime_contract.gate_order",
+        "runtime_contract.fitted_gate_order",
+        "runtime_contract.fixed_trace_only_gates",
+        "runtime_contract.gate_channel_map",
+        "runtime_contract.grouped_aggregation",
+        "runtime_contract.vector_stage",
+        "runtime_contract.post_deduplication_vectors_required",
+        "runtime_contract.total_residual_cap",
+        "runtime_contract.gate_bounds"
+      ],
+      "artifact_runtime_active_must_be_false": true,
+      "ambient_or_implicit_artifact_discovery_allowed": false
+    }
+  },
+  "forbidden": {
+    "hidden_information_inference": false,
+    "search": false,
+    "rollout": false,
+    "mcts": false,
+    "rtp": false,
+    "managed_service_changes": false,
+    "service_start": false,
+    "service_stop": false,
+    "selector_change": false,
+    "kaggle_submission": false
+  }
+}

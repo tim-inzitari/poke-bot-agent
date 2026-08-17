@@ -1,0 +1,213 @@
+"""Correctness and crash-safety checks for compact pure-RL replay caching."""
+
+from __future__ import annotations
+
+import json
+import pickle
+import threading
+from pathlib import Path
+
+import pytest
+
+from poke_bot import config
+from poke_bot.pure_rl.dataset_bridge import (
+    StreamingReplayCache,
+    _load_cached_parts,
+    _prune_stale_stream_staging,
+    _range_worker,
+    dataset_from_shard,
+    validated_replay_cache_manifest,
+)
+from poke_bot.pure_rl.shards import CompactGame, CompactShardWriter
+
+
+def _write_empty_games(path: Path, count: int) -> None:
+    writer = CompactShardWriter(path)
+    for index in range(count):
+        writer.write_game(
+            CompactGame(
+                episode_id=f"episode-{index:04d}",
+                seat=index % 2,
+                archetype="core",
+                opp_archetype="core",
+                deck=[1] * 60,
+                value=float(index % 2),
+                decisions=[],
+            )
+        )
+
+
+def test_byte_ranges_cover_each_json_row_once(tmp_path: Path) -> None:
+    shard = tmp_path / "range.jsonl"
+    _write_empty_games(shard, 37)
+    split = shard.stat().st_size // 2 + 17  # intentionally inside a JSON row
+    outputs = [tmp_path / "a.pkl", tmp_path / "b.pkl"]
+    first = _range_worker(str(shard), 0, split, str(outputs[0]), False, 64)
+    second = _range_worker(
+        str(shard), split, shard.stat().st_size, str(outputs[1]), False, 64
+    )
+    assert first["records"] + second["records"] == 37
+    assert first["bytes"] + second["bytes"] == shard.stat().st_size
+    assert first["dropped"] + second["dropped"] == 37
+
+
+def test_range_worker_fails_closed_on_malformed_json(tmp_path: Path) -> None:
+    shard = tmp_path / "bad.jsonl"
+    shard.write_text("{not-json}\n")
+    with pytest.raises(json.JSONDecodeError):
+        _range_worker(
+            str(shard), 0, shard.stat().st_size, str(tmp_path / "bad.pkl"), False, 64
+        )
+
+
+def test_completed_cache_is_reused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    shard = tmp_path / "run" / "shards" / "iter_00000.jsonl"
+    _write_empty_games(shard, 41)
+    monkeypatch.setattr(config.HARDWARE, "cache_dir", tmp_path / "cache")
+    monkeypatch.setenv("PURE_RL_REPLAY_CACHE_PARALLEL_MIN_MIB", "0")
+    monkeypatch.setenv("PURE_RL_REPLAY_FEATURIZE_WORKERS", "2")
+
+    first = dataset_from_shard(shard, verify_info_set=False, max_context=64)
+    assert len(first.sequences) == 0
+    manifests = list((tmp_path / "cache").rglob("manifest.json"))
+    assert len(manifests) == 1
+    payload = json.loads(manifests[0].read_text())
+    assert payload["records"] == 41
+    assert payload["dropped"] == 41
+
+    def _must_not_rebuild(*_args, **_kwargs):
+        raise AssertionError("valid replay cache was rebuilt")
+
+    monkeypatch.setattr(
+        "poke_bot.pure_rl.dataset_bridge._build_parallel_cache", _must_not_rebuild
+    )
+    second = dataset_from_shard(shard, verify_info_set=False, max_context=64)
+    assert len(second.sequences) == 0
+
+
+def test_cached_parts_load_in_manifest_order_with_bounded_parallelism(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shard = tmp_path / "run" / "shards" / "iter_00000.jsonl"
+    shard.parent.mkdir(parents=True)
+    shard.write_text("")
+    parts = []
+    for index in range(9):
+        path = tmp_path / f"part_{index:03d}.pkl"
+        with path.open("wb") as handle:
+            pickle.dump({"sequences": [index]}, handle)
+        parts.append({"index": index, "path": str(path)})
+    monkeypatch.setenv("PURE_RL_REPLAY_CACHE_LOAD_WORKERS", "4")
+    from poke_bot.pure_rl import dataset_bridge
+
+    original_read = dataset_bridge._read_cached_part
+    lock = threading.Lock()
+    four_active = threading.Event()
+    active = 0
+    max_active = 0
+
+    def tracked_read(path: Path):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+            if active == 4:
+                four_active.set()
+        four_active.wait(timeout=2.0)
+        try:
+            return original_read(path)
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(dataset_bridge, "_read_cached_part", tracked_read)
+
+    assert _load_cached_parts(shard, {"parts": parts}) == list(range(9))
+    assert max_active == 4
+
+
+def test_stream_cache_publishes_only_complete_source(tmp_path: Path, monkeypatch) -> None:
+    shard = tmp_path / "run" / "shards" / "iter_00003.jsonl"
+    monkeypatch.setattr(config.HARDWARE, "cache_dir", tmp_path / "cache")
+    cache = StreamingReplayCache(
+        shard,
+        verify_info_set=False,
+        max_context=64,
+        workers=1,
+        chunk_mib=1,
+    )
+    _write_empty_games(shard, 29)
+    cache.note_append()
+    manifest = cache.finish()
+    assert manifest is not None
+    assert manifest["stream_built"] is True
+    assert manifest["records"] == 29
+    assert manifest["dropped"] == 29
+    assert sum(int(part["bytes"]) for part in manifest["parts"]) == shard.stat().st_size
+    for part in manifest["parts"]:
+        with Path(part["path"]).open("rb") as handle:
+            assert len(pickle.load(handle)["sequences"]) == 0
+
+    verified = validated_replay_cache_manifest(
+        shard, verify_info_set=False, max_context=64
+    )
+    assert verified is not None
+    assert verified["covered_bytes"] == shard.stat().st_size
+
+    manifest_path = Path(str(verified["manifest_path"]))
+    broken = json.loads(manifest_path.read_text())
+    broken["records"] += 1
+    manifest_path.write_text(json.dumps(broken))
+    assert (
+        validated_replay_cache_manifest(
+            shard, verify_info_set=False, max_context=64
+        )
+        is None
+    )
+
+
+def test_completed_shard_writer_restores_counters_but_cannot_append(
+    tmp_path: Path,
+) -> None:
+    shard = tmp_path / "iter_00005.jsonl"
+    _write_empty_games(shard, 3)
+    recovered = CompactShardWriter.from_completed_shard(
+        shard,
+        n_games=3,
+        n_decisions=17,
+        elapsed_sec=2.0,
+    )
+    assert recovered.n_games == 3
+    assert recovered.n_decisions == 17
+    with pytest.raises(RuntimeError, match="immutable"):
+        recovered.write_game(
+            CompactGame(
+                episode_id="late",
+                seat=0,
+                archetype="core",
+                opp_archetype="core",
+                deck=[1] * 60,
+                value=1.0,
+                decisions=[],
+            )
+        )
+
+
+def test_stream_cache_startup_prunes_only_dead_pid_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(config.HARDWARE, "cache_dir", tmp_path / "cache")
+    root = tmp_path / "cache" / "pure_rl_compact_staging" / "run-key"
+    dead = root / "iter_00000.99999999.123"
+    live = root / f"iter_00001.{__import__('os').getpid()}.456"
+    unrelated = root / "do-not-touch"
+    for directory in (dead, live, unrelated):
+        directory.mkdir(parents=True)
+        (directory / "part.pkl").write_bytes(b"cache")
+
+    report = _prune_stale_stream_staging()
+
+    assert report == {"removed": 1, "reclaimed_bytes": 5, "kept": 1}
+    assert not dead.exists()
+    assert (live / "part.pkl").is_file()
+    assert (unrelated / "part.pkl").is_file()

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "poke-bot-agent"
+version = "0.2.0"
+description = "Source release of a Pokemon TCG self-play policy agent"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Tim Inzitari"}]
+dependencies = [
+  "jsonschema>=4.21,<5",
+  "numpy>=1.26,<3",
+  "orjson>=3.9,<4",
+  "psutil>=5.9,<8",
+  "PyYAML>=6,<7",
+  "requests>=2.31,<3",
+  "scikit-learn>=1.3,<2",
+  "scipy>=1.11,<2",
+  "tqdm>=4.66,<5",
+]
+
+[project.optional-dependencies]
+torch = ["torch>=2.2"]
+kaggle = ["kaggle>=1.6", "kaggle-environments>=1.20"]
+dev = [
+  "pytest>=8,<9",
+  "ruff>=0.6,<1",
+]
+
+[tool.setuptools.packages.find]
+include = ["poke_bot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+  "unit: pure deterministic unit or fixture test; no native engine, GPU, or network",
+  "native: uses the native competition engine or installed baseline payloads",
+  "gpu: requires a CUDA GPU",
+  "integration: crosses process, engine, checkpoint, or launcher boundaries",
+  "slow: exceeds the quick-suite latency budget",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = ["kaggle", "dist", "outputs"]

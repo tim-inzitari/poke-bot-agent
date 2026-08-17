@@ -1,0 +1,932 @@
+MARNIE'S GRIMMSNARL EX
+PRACTICAL PILOT GUIDE FOR EXPERT REVIEW
+
+Specialist ID: marnie-s-grimmsnarl-ex
+Guide version: marnie-grimmsnarl-north-star-v1
+Prepared: 2026-07-25
+Audience: world-champion and equivalent Pokémon TCG subject-matter experts
+Status: pilot; not yet expert-approved
+
+
+HOW TO READ THIS PILOT
+
+This is primarily a practical guide to piloting Marnie's Grimmsnarl ex. It is
+not a claim that one list or one line is universally correct.
+
+The evidence is date-sensitive. The TCGplayer guide was published in October
+2025. The PokéBeach matchup article was published in February 2026. The
+Limitless archetype page was reviewed in July 2026. Card pools, common lists,
+and matchups can move quickly, so every dated recommendation should be checked
+against the exact event format and 60-card list.
+
+Labels used in this guide:
+
+SOURCE: directly supported by one of the three sources listed at the end.
+
+INFERENCE: practical reasoning from the sourced structure, but not stated as a
+universal rule by the sources. These are the most important lines for experts
+to correct.
+
+LIST CHECK: depends on cards actually present in the pilot's list.
+
+SME CHECK: deliberately unresolved question for expert review.
+
+This guide describes card interactions at a strategic level. Always use the
+current printed card text and current rulings for exact costs, limits, timing,
+damage, and legal targets.
+
+
+QUICK START: THE DECK IN ONE MINUTE
+
+SOURCE: Marnie's Grimmsnarl ex is the central attacker and acceleration engine.
+Spikemuth Gym searches Marnie's Pokémon, making the evolution line unusually
+accessible. The common shell pairs Grimmsnarl with Froslass and Munkidori:
+Froslass creates damage around Ability-bearing boards, and Darkness-powered
+Munkidori converts damage on your side into pressure on the opponent's side.
+The October 2025 TCGplayer guide calls Secret Box the glue that holds this
+otherwise setup-heavy package together.
+
+Practical default:
+
+1. Establish at least one credible Marnie's Impidimp evolution line.
+2. Decide early whether this matchup wants Froslass or a Froslass-free board.
+3. Preserve enough bench space for the attackers, Munkidori, pivots, and
+   matchup techs the chosen plan actually needs.
+4. Use the Grimmsnarl evolution and Punk Up turn to solve more than the current
+   attack. Build the next attacker and enable the support board.
+5. Treat Shadow Bullet's bench pressure as part of a knockout plan, not free
+   decorative damage.
+6. Recalculate the prize route before each gust, damage move, evolution, and
+   attack.
+
+The deck is strongest when its three systems agree:
+
+- Grimmsnarl applies reliable active pressure.
+- Froslass/Munkidori reshape the damage map.
+- disruption, gust, or a single-Prize board makes the opponent take an
+  inefficient route.
+
+It is weakest when those systems compete for bench slots, Energy, or turns
+without producing a coherent prize plan.
+
+
+STRATEGIC IDENTITY
+
+SOURCE: The October 2025 TCGplayer list is a Grimmsnarl/Froslass/Munkidori
+spread deck. Its author describes Grimmsnarl as an efficient Darkness attacker,
+Froslass as a source of damage on Ability-bearing Pokémon, and Munkidori as a
+way to move damage back toward the opposing board. The article also emphasizes
+Spikemuth Gym, Technical Machine: Evolution, Secret Box, and early Arven as the
+setup framework.
+
+SOURCE: The February 2026 PokéBeach article describes Grimmsnarl as capable of
+passive or aggressive play and highlights its ability to use versatile
+single-Prize boards. That is an important warning against treating the deck as
+a linear "evolve ex, attack every turn" deck.
+
+INFERENCE: Think of the deck as a prize-map deck with an attacker attached,
+not merely an attacker with incidental spread. Grimmsnarl supplies tempo and
+Energy. Froslass and Munkidori create thresholds. Single-Prize Pokémon,
+disruption, and gust decide whether those thresholds turn into a favorable
+exchange.
+
+Your plan should answer four questions:
+
+- What is the first meaningful attack or denial turn?
+- Which Pokémon is the opponent expected to Knock Out first?
+- Where should incidental and moved damage sit one turn before it matters?
+- Which board survives long enough to take the last prizes?
+
+If the answers conflict, reduce the board to the part that advances the
+clearest prize route.
+
+
+LIKELY VARIANTS AND CARD ROLES
+
+The core evolution line
+
+SOURCE: The October 2025 TCGplayer example played a 3-2-2 Marnie's
+Impidimp/Morgrem/Grimmsnarl ex line. Recent Limitless results continue to group
+the archetype primarily as Grimmsnarl/Froslass. This establishes a common
+shape, not a mandatory count.
+
+Marnie's Impidimp is the starting point for the main attacker. Marnie's
+Morgrem provides the ordinary evolution route. Marnie's Grimmsnarl ex turns the
+evolution turn into both an attacking and an Energy-development turn through
+Punk Up.
+
+INFERENCE: One line is the minimum plan. A second line is insurance and often
+the bridge to a second attacking turn. A third Basic can improve access but
+may be the wrong bench commitment when the matchup wants several Munkidori,
+Froslass, or a tech attacker.
+
+Froslass/Munkidori spread
+
+SOURCE: Both the TCGplayer guide and recent Limitless variant labeling support
+Froslass/Munkidori as a central, common build. The TCGplayer guide describes
+Froslass placing damage around Ability-bearing boards and Munkidori moving
+damage from your side to the opponent's side. It specifically says the deck
+wants multiple Munkidori in play in many games.
+
+INFERENCE: Froslass is not an automatic bench card. It is a matchup switch.
+Before evolving it, identify which opposing Pokémon will accumulate meaningful
+damage, which of your own Pokémon will carry damage, and whether Munkidori can
+convert that damage before it becomes a liability.
+
+Setup package
+
+SOURCE: The October 2025 example used Spikemuth Gym, Technical Machine:
+Evolution, Buddy-Buddy Poffin, Arven, Secret Box, Artazon, Rare Candy, and
+Ultra Ball. The author calls Spikemuth arguably the strongest part of the deck,
+describes Arven as especially strong early, and says Arven becomes weaker after
+Secret Box has been used.
+
+Practical roles:
+
+- Spikemuth Gym: repeated core-line access. Search for the piece that solves
+  the next actual evolution, not simply the highest-stage card.
+- Technical Machine: Evolution: compresses Stage 1 setup, especially when the
+  game allows a slower development turn.
+- Buddy-Buddy Poffin and Artazon: Basic Pokémon access, with exact priorities
+  determined by whether the plan needs Impidimp, Snorunt, Munkidori, or a tech.
+- Arven and Secret Box: assemble the early Item/Tool/Supporter/Stadium package.
+  Secret Box has a real discard cost, so the cards paid must be less important
+  than the line it creates.
+- Rare Candy: an alternate route into Grimmsnarl ex. It changes which
+  evolution pieces must be preserved.
+
+Draw and recovery
+
+SOURCE: The October 2025 example included Iono, Lillie's Determination,
+Professor's Research, Fezandipiti ex, Night Stretcher, and Super Rod. Its author
+notes that the deck lacks a strong on-board draw engine and includes
+Fezandipiti ex for that reason. The same article says Fezandipiti's two-Prize
+liability matters less in matchups where aggressive decks already Knock Out
+Grimmsnarl ex in one attack.
+
+INFERENCE: Draw Pokémon and aggressive hand refresh solve consistency but can
+also consume bench space or discard future evolution/recovery pieces. Before
+using a discard-heavy line, name the cards needed for:
+
+- the next Grimmsnarl;
+- the next Darkness attachment or Munkidori activation;
+- recovery after the expected Knock Out; and
+- the gust or disruption required for the planned prize turn.
+
+Tech and control slots
+
+SOURCE: The October 2025 list used Yveltal, Counter Catcher, Boss's Orders,
+Technical Machine: Devolution, Energy Switch, and Iono. The author presented
+Boss's Orders as important against slower decks, Counter Catcher as useful when
+the deck falls behind aggressive decks, and Devolution as complementary to
+spread damage.
+
+SOURCE: PokéBeach's February 2026 article discusses Budew as an early disruptor
+for the then-current fast Dawn Charizard matchup, and Toedscruel as a tech used
+in a Regional-winning list to address Gholdengo. The author also calls parts of
+that winning list questionable. Treat both as dated tech evidence, not settled
+deck canon.
+
+LIST CHECK: Do not plan a trap, free-retreat pivot, bench protection, item
+lock, devolution turn, or alternate attacker unless the exact list contains the
+needed card and the current card text supports the line.
+
+
+SETUP AND OPENING PRIORITIES
+
+Before drawing an opening line
+
+INFERENCE: Decide the intended board shape from the matchup evidence already
+visible. Use one of three starting templates:
+
+Core pressure:
+- two Impidimp lines or one line plus access to the replacement;
+- enough Munkidori to convert the expected self-damage;
+- no Froslass unless its damage materially improves the matchup.
+
+Spread pressure:
+- one or two Impidimp lines;
+- Snorunt into Froslass;
+- multiple Munkidori over time;
+- one flexible slot for pivot, protection, or a closing attacker.
+
+Single-Prize/disruption:
+- minimum necessary Grimmsnarl commitment;
+- the relevant single-Prize attacker or disruptor;
+- support Pokémon that make the opponent's prize route awkward;
+- a delayed two-Prize bench until it produces immediate value.
+
+Opening search order
+
+SOURCE: Spikemuth Gym provides direct access to Marnie's Pokémon, while the
+Secret Box/Arven/Technical Machine: Evolution package supplies broader setup.
+
+INFERENCE: Search in dependency order:
+
+1. Secure a legal Basic and a credible evolution line.
+2. Secure the engine that reaches the next stage.
+3. Add Froslass/Munkidori only after choosing the spread plan.
+4. Preserve a pivot or recovery route.
+5. Add the second attacker before filling the last bench slot.
+
+Do not search for Grimmsnarl ex merely because it is available if the board
+still lacks the lower evolution, the hand cannot protect the card, or a
+different search target unlocks more of the turn.
+
+Bench discipline from turn zero
+
+Every bench placement spends a scarce resource. Ask:
+
+- Does this Pokémon take prizes, prevent prizes, move damage, draw cards, or
+  unlock an evolution?
+- On which turn does it create value?
+- Can it become an easy final target?
+- Does placing it remove space for the second Grimmsnarl or second/third
+  Munkidori?
+- Does Froslass make this Ability-bearing Pokémon carry dangerous damage?
+
+If the value is only "it might be useful," keep the slot open.
+
+
+GOING FIRST
+
+The reviewed sources do not give a universal first-versus-second declaration.
+The following is inference and must be checked against the exact format.
+
+INFERENCE: Going first favors raw board establishment and a natural evolution
+on the next turn. Prioritize:
+
+- at least one Impidimp;
+- the search chain for Morgrem or Grimmsnarl ex;
+- only those support Basics the matchup has already justified;
+- a Darkness attachment that remains valuable if the intended Active changes;
+  and
+- a hand that can evolve and continue drawing next turn.
+
+Because the first turn may not allow every Trainer or attack-based development
+line available when going second, avoid a hand plan that depends on an illegal
+sequence. Use the current rules, not this document, to verify what is legal.
+
+Strong first-turn outcome:
+
+- the opponent cannot remove the only meaningful evolution line;
+- next turn has access to Grimmsnarl or the missing stage;
+- the bench still has room for the chosen support package; and
+- the Energy placement contributes to the next two turns.
+
+Common going-first error:
+
+Filling the bench with every available Basic, then discovering that the second
+Grimmsnarl, a required Munkidori, or the matchup tech has no slot.
+
+
+GOING SECOND
+
+INFERENCE from the TCGplayer setup discussion: Going second can make an early
+Arven/Secret Box/Technical Machine: Evolution development line more attractive,
+because the setup package was built to compress Stage 1 development. It can
+also support an early disruption plan in lists that contain the relevant
+single-Prize card.
+
+Prioritize:
+
+- an Active that can execute the intended development or disruption line;
+- enough Basics before committing the Tool/search sequence;
+- an Arven or Secret Box line whose discard and search targets are all named in
+  advance;
+- evolution targets that survive the opponent's likely second turn; and
+- a next-turn hand that reaches Grimmsnarl ex rather than merely producing a
+  pretty turn-one board.
+
+Before using Secret Box, say aloud:
+
+"I discard these cards; I fetch these exact categories; this is my next-turn
+Supporter; this Pokémon evolves next turn; this is the bench slot I am
+preserving."
+
+If any blank remains, reassess the line.
+
+Common going-second error:
+
+Using the full setup package to establish Froslass automatically, even in a
+matchup where the source guide recommends a Froslass-free board.
+
+
+TURN-BY-TURN SEQUENCING
+
+Turn 1: choose the board, not just the cards
+
+1. Identify whether the matchup wants core pressure, spread pressure, or
+   single-Prize/disruption.
+2. Count necessary bench slots through the next Grimmsnarl turn.
+3. Establish the minimum safe Impidimp line.
+4. Establish Snorunt only if Froslass has a concrete target map.
+5. Establish Munkidori according to when Darkness Energy and movable damage
+   will exist.
+6. Preserve the next-turn evolution and draw route.
+
+INFERENCE: A slightly smaller board with two live next-turn routes is usually
+better than a full board whose only payoff loses to one gust or one Knock Out.
+
+Turn 2: convert setup into a two-turn clock
+
+Before evolving Grimmsnarl:
+
+- identify the intended Active attacker this turn;
+- identify the intended attacker next turn;
+- count Darkness Energy already in play and in hand;
+- decide how many Munkidori must be enabled this turn versus later;
+- account for retreat or pivot needs;
+- decide whether a second Grimmsnarl line must receive Energy now; and
+- confirm that the evolution does not close a better Rare Candy or ordinary
+  evolution route.
+
+Then use Punk Up with a distribution plan, not by habit.
+
+After acceleration:
+
+- execute any damage movement whose target is already decided;
+- use gust only if the new Active improves the prize map or buys a necessary
+  turn;
+- reassess Shadow Bullet's bench target after all public damage has changed;
+  and
+- end with a named response to the expected return Knock Out.
+
+Midgame: one turn ahead is not enough
+
+At every midgame decision, write the next two attackers in order. If the second
+name is "whatever I draw," the board is not stable.
+
+Recalculate:
+
+- remaining prizes on both sides;
+- which of your Pokémon concede one versus multiple prizes;
+- which opposing target can be finished by attack, bench pressure, moved
+  damage, Devolution, or gust;
+- whether putting the opponent ahead enables your Counter Catcher line;
+- whether taking a small Knock Out disables that comeback resource; and
+- whether the opponent can win by ignoring Grimmsnarl and taking easier bench
+  prizes.
+
+Closeout: stop developing when the win is already available
+
+Do not spend a final turn improving a board that already has a legal winning
+route. Sequence only the draw, gust, damage movement, retreat, and attack
+needed to make that route resilient to the information currently visible.
+
+INFERENCE: When several closeout routes exist, prefer the one with fewer
+independent failure points, not the one that displays the most damage.
+
+
+PUNK UP AND ENERGY PLANNING
+
+SOURCE: TCGplayer identifies Punk Up as a central reason to play Grimmsnarl and
+describes the deck as sharing Darkness Energy efficiently with Munkidori. The
+October 2025 list also used Energy Switch as a way to enable additional
+Munkidori use when Darkness Energy was not already placed correctly.
+
+Punk Up checklist:
+
+1. What must attack this turn?
+2. What must attack after the expected Knock Out?
+3. Which Munkidori need Darkness now?
+4. Which Energy placement preserves a retreat or pivot?
+5. Is any target likely to be removed before spending the Energy?
+6. Does the distribution expose an avoidable multi-Prize target?
+7. Will the deck still have enough Energy/recovery for the last attacker?
+
+INFERENCE: Allocate in layers.
+
+Layer 1: satisfy the current legal attack or necessary retreat.
+
+Layer 2: enable the damage-movement package that changes this turn's prize
+math.
+
+Layer 3: pre-load the next Grimmsnarl or alternate attacker.
+
+Layer 4: place only the remaining Energy whose future value is robust.
+
+Do not distribute Energy evenly merely because multiple targets are legal.
+Do not load the entire future onto a Pokémon that the opponent can remove
+before it acts. Do not starve Munkidori if moved damage is the reason the
+spread plan works.
+
+SME CHECK: Which default split best survives common gust and Knock Out
+patterns? Which matchups justify putting nearly all acceleration into one
+Grimmsnarl, and which require a wider distribution?
+
+
+SHADOW BULLET AND ATTACK DECISIONS
+
+SOURCE: Grimmsnarl's signature attack applies meaningful Active damage and
+additional Bench pressure. The wider TCGplayer plan uses that bench pressure
+with Froslass, Munkidori, and sometimes Technical Machine: Devolution.
+
+Choose the bench target by future threshold, not current HP alone.
+
+Priority questions:
+
+- Does the bench damage complete a Knock Out this turn after Munkidori?
+- Does it create a guaranteed next-turn Knock Out even if the Active changes?
+- Does it prepare multiple evolved Pokémon for a Devolution turn?
+- Does it force the opponent to retreat, evolve, heal, or change the intended
+  attacker?
+- Does it threaten the final prizes through gust?
+- Can the opponent move or exploit the damage better than you can?
+
+INFERENCE: A good bench target has a scheduled payoff. Name the payoff and the
+turn. If neither can be named, place damage only according to the most robust
+threshold and mark the decision as uncertain.
+
+Do not automatically hit:
+
+- the largest Pokémon;
+- the lowest-HP Pokémon;
+- an Ability Pokémon already taking Froslass damage;
+- a two-Prize target simply because it is worth two prizes; or
+- the same target as last turn after the prize map has changed.
+
+Attack versus develop:
+
+SOURCE: PokéBeach describes the archetype as capable of passive and aggressive
+lines. Therefore attacking at the first opportunity is not automatically
+correct.
+
+Attack when it takes prizes, protects the board through tempo, or creates a
+specific forced response. Develop or disrupt when an attack produces no useful
+threshold and the extra turn materially improves the next two turns.
+
+
+FROSLASS, MUNKIDORI, AND SUPPORT-PACKAGE USE
+
+When to use Froslass
+
+SOURCE: The October 2025 TCGplayer guide warns that there are many matchups
+where putting Froslass into play is incorrect, especially against opposing
+Munkidori or boards that exploit Froslass damage. It specifically names
+Dragapult ex and Gardevoir ex without Drifloon as examples in that format.
+
+Use Froslass only after answering:
+
+- Which opposing Ability Pokémon are valuable damage recipients?
+- Which of your own Ability Pokémon will receive damage?
+- How many Munkidori activations can realistically convert that damage?
+- Does the opponent have better damage movement, healing, or prize access?
+- Does evolving Froslass remove a safer single-Prize board or bench slot?
+
+When to use multiple Munkidori
+
+SOURCE: The TCGplayer guide says the deck often wants multiple Munkidori. They
+turn self-damage into precise opposing pressure and share the Darkness Energy
+plan.
+
+INFERENCE: Build the number that the damage supply and Energy plan can use.
+Three inactive Munkidori are not a plan; one under-supported Munkidori may fail
+to convert enough damage. Count available movable damage, legal destinations,
+Darkness requirements, and bench space before adding another.
+
+Froslass-free board
+
+SOURCE: Against the TCGplayer guide's named Froslass-avoid matchups, it suggests
+a board centered on two Grimmsnarl ex and three Darkness-powered Munkidori,
+played passively early to avoid enabling Counter Catcher.
+
+Treat that as an October 2025 list-specific blueprint, not a universal count.
+The core lesson is durable: if Froslass benefits the opponent more than you,
+remove it from the plan and use Grimmsnarl plus controlled Munkidori pressure.
+
+Budew, Yveltal, Fezandipiti ex, and other support
+
+SOURCE: PokéBeach presents Budew as a February 2026 answer to fast Dawn
+Charizard/Dusknoir setup and as broadly useful early disruption. TCGplayer's
+October 2025 list used Yveltal as a low-retreat trapping/pivot-style inclusion,
+and Fezandipiti ex for draw.
+
+LIST CHECK: These roles and even the legal card pool may have changed. Verify
+the exact card, current format, and matchup before adopting the role.
+
+INFERENCE: Every support Pokémon must repay its bench slot. Prefer it when its
+effect changes the opponent's next turn or repairs your own consistency
+immediately. Delay it when the liability appears before the value.
+
+
+BENCH MANAGEMENT
+
+Use a six-role bench budget before placing cards:
+
+- current attacker;
+- next attacker;
+- Munkidori conversion slot(s);
+- Froslass slot(s), if enabled for the matchup;
+- pivot/draw/tech slot;
+- one flexible or recovery slot.
+
+Not every role receives a slot in every game.
+
+Before benching:
+
+1. Count the opponent's easiest remaining prizes.
+2. Identify your required second attacker.
+3. Decide whether Froslass is on or off.
+4. Reserve the needed number of Munkidori slots.
+5. Check whether a draw Pokémon becomes the opponent's cleanest closeout.
+6. Check whether the new Pokémon carries an Ability that interacts badly with
+   Froslass.
+
+Common failure pattern:
+
+An early bench contains Impidimp, Snorunt, Munkidori, draw Pokémon, and tech.
+After one evolution there is no space for the replacement attacker or the
+second Munkidori that makes the damage math work.
+
+Correction:
+
+Bench for the chosen plan, not for all possible plans.
+
+
+PRIZE MAPPING
+
+At the start of each turn, write two routes:
+
+Your route:
+- target sequence;
+- prizes per target;
+- damage source for each Knock Out;
+- required gust/disruption;
+- earliest winning turn.
+
+Opponent's route:
+- easiest targets on your board;
+- prizes per target;
+- whether they can bypass Grimmsnarl;
+- what gust or spread closes the game;
+- earliest winning turn.
+
+Then compare routes.
+
+INFERENCE: Use spread and moved damage to reduce the number of full attacks
+required, not simply to maximize total damage. A counter on three targets is
+valuable only if it changes a later Knock Out, forces a response, or supports
+Devolution.
+
+Counter Catcher tension
+
+SOURCE: The October 2025 guide says the deck expects to fall behind against
+aggressive decks and plays multiple Counter Catcher, while some passive lines
+avoid giving the opponent its own Counter Catcher window.
+
+Before taking a small prize, ask whether moving from behind to tied/ahead turns
+off your best gust line. Before passing, ask whether staying behind gives the
+opponent too much tempo. The correct choice depends on whether the saved gust
+creates more prizes than the available Knock Out.
+
+Single-Prize tension
+
+SOURCE: PokéBeach highlights Grimmsnarl's flexible single-Prize boards.
+
+INFERENCE: A single-Prize line is best when it forces an extra attack without
+delaying your own prize route by more than that attack. It is not automatically
+good merely because it gives up one prize.
+
+
+MATCHUP PLANS
+
+All matchup claims below are dated. Use the observed opposing list, not just
+the archetype name.
+
+Gholdengo ex
+
+SOURCE, February 2026: PokéBeach calls this a poor matchup and says Budew alone
+did not materially solve it. The article discusses Toedscruel in Rajveer
+Singh's Regional-winning variant as an attempted answer, while questioning
+other elements of that list.
+
+Practical plan:
+
+- decide at deck registration whether the list contains a real Gholdengo plan;
+- use early disruption only when it measurably delays the opponent;
+- avoid a slow spread board that loses before thresholds matter;
+- map whether the tech attacker actually changes the prize race; and
+- do not treat a single tech card as proof the matchup is fixed.
+
+SME CHECK: What is the current, list-specific Gholdengo plan, and what evidence
+shows the tech improves the matchup rather than consuming consistency?
+
+Dawn Charizard/Dusknoir
+
+SOURCE, February 2026: PokéBeach describes the deck's speed and repeated
+Dusknoir pressure as difficult for Grimmsnarl, and cites Budew as a strong
+single-card response in that snapshot.
+
+Practical plan:
+
+- protect multiple evolution routes rather than one perfect board;
+- value early disruption before the opponent's engine is assembled;
+- avoid exposing low-HP support Pokémon without a recovery plan;
+- plan for an evolution line to disappear before it attacks; and
+- use a smaller board if extra liabilities enable a multi-prize turn.
+
+Dragapult ex
+
+SOURCE, February 2026: PokéBeach describes the broader matchup as favorable.
+SOURCE, October 2025: TCGplayer warns that Froslass can be incorrect because
+Dragapult lists with Munkidori can exploit the damage and recommends a more
+passive Grimmsnarl/Munkidori board in that context.
+
+These claims are compatible only when list details are respected.
+
+Practical plan:
+
+- identify opposing Munkidori before enabling Froslass;
+- protect small evolution pieces from spread thresholds;
+- use your own Munkidori to undo or redirect damaging math;
+- avoid giving a useful Counter Catcher window without payoff; and
+- map the two-turn exchange around the opponent's spread, not only Active
+  damage.
+
+Gardevoir ex
+
+SOURCE, February 2026: PokéBeach calls the matchup generally favorable.
+SOURCE, October 2025: TCGplayer says Froslass can be incorrect against
+Gardevoir lists without Drifloon because opposing Munkidori can exploit the
+damage and Grimmsnarl may otherwise force two-hit Knock Outs.
+
+Practical plan:
+
+- classify the actual Gardevoir variant;
+- do not bench Froslass from archetype habit;
+- pressure the opponent's damage movers and setup pieces at useful thresholds;
+- preserve the board shape that forces inefficient attacks; and
+- track whether your own spread turns their damage movement into an advantage.
+
+Slower Stage 2 decks
+
+SOURCE: PokéBeach describes a natural advantage into several Stage 2 decks.
+TCGplayer emphasizes Boss's Orders pressure against slower decks and notes that
+Secret Box can fetch a future Supporter while assembling Grimmsnarl.
+
+Practical plan:
+
+- use setup compression to attack their evolution bottleneck;
+- gust only when it removes a scarce stage, buys a turn, or advances prizes;
+- place Shadow Bullet pressure where Devolution or a later gust can cash it;
+  and
+- avoid overdeveloping after you have established the tempo lead.
+
+Fast aggressive decks
+
+SOURCE: TCGplayer describes Grimmsnarl as an answer to aggressive decks in its
+spread shell and expects Counter Catcher to become live while behind.
+
+Practical plan:
+
+- accept that the first Grimmsnarl may be traded;
+- pre-load the second attacker through Punk Up;
+- keep the bench free of unnecessary multi-Prize targets;
+- use Counter Catcher to turn a losing tempo into a better prize exchange; and
+- do not spend two turns building spread if the game ends before it pays off.
+
+
+RECOVERY LINES
+
+SOURCE: The October 2025 example contains Night Stretcher and Super Rod, which
+shows that recovery is a planned part of the shell.
+
+Recovery is not "get back the strongest card." Recover the missing link in the
+next legal sequence.
+
+After a Knock Out:
+
+1. Identify the next attacker already closest to ready.
+2. Count which evolution stages remain in deck, hand, board, and discard.
+3. Decide whether recovery needs a Basic, Stage 1, Stage 2, Energy, or support
+   Pokémon.
+4. Check whether Spikemuth already solves a Marnie's Pokémon gap.
+5. Preserve the recovery card if ordinary search solves the current turn.
+6. Do not recover Froslass automatically if the matchup plan has switched
+   Froslass off.
+
+INFERENCE: Recovery should restore a two-turn chain whenever possible:
+replacement attacker plus the support board that makes its attack meaningful.
+
+When the first Grimmsnarl survives damaged:
+
+- decide whether the opponent benefits from leaving it in play;
+- move available damage only when doing so improves a threshold;
+- prepare the replacement before spending resources on a marginal heal or
+  retreat; and
+- consider whether forcing a two-hit Knock Out is more valuable than switching
+  attackers.
+
+
+COMMON MISTAKES
+
+1. Building Froslass in every matchup.
+
+Correction: decide Froslass on/off from opposing damage movement and the
+actual threshold map.
+
+2. Treating Punk Up as "power the Active."
+
+Correction: fund the current attack, required Munkidori, retreat plan, and next
+attacker in that order.
+
+3. Filling the bench during setup.
+
+Correction: reserve slots for the second attacker and the support count the
+chosen plan requires.
+
+4. Searching by card strength instead of dependency.
+
+Correction: fetch the missing stage or Basic that makes the next legal
+evolution possible.
+
+5. Moving damage because the Ability is available.
+
+Correction: name the Knock Out, forced response, or prize threshold created by
+the movement.
+
+6. Placing Shadow Bullet pressure without a cash-out turn.
+
+Correction: name when and how the bench damage becomes prizes.
+
+7. Using Secret Box without valuing the discard.
+
+Correction: identify every fetched category and the next-turn sequence before
+paying the cost.
+
+8. Assuming a favorable archetype label means every variant is favorable.
+
+Correction: check opponent Munkidori, Dusknoir, healing, snipe, and techs.
+
+9. Taking an easy prize that turns off Counter Catcher.
+
+Correction: compare the immediate prize with the later gust route.
+
+10. Recovering the biggest Pokémon rather than the missing link.
+
+Correction: rebuild the exact attacker chain.
+
+11. Benching a draw Pokémon after the hand is already stable.
+
+Correction: compare consistency value with the opponent's easiest final
+prizes.
+
+12. Continuing setup after a verified winning line exists.
+
+Correction: minimize failure points and close the game.
+
+
+PHONE-SIDE DECISION CHECKLISTS
+
+Before setup
+
+- What variant am I playing?
+- Is Froslass on or off?
+- How many Impidimp lines do I need?
+- How many Munkidori can I actually power and use?
+- Which bench slot must remain open?
+
+Before search
+
+- What exact future action needs this card?
+- Do I already hold the next stage?
+- Does Spikemuth solve the gap?
+- Am I searching a package I cannot fit on the bench?
+- What is the second-best target if prizes changed the list?
+
+Before Secret Box or a major discard
+
+- What four roles am I fetching?
+- What is next turn's Supporter?
+- Which discarded cards are needed for recovery?
+- Does this line still work after one gust or Knock Out?
+
+Before evolving Grimmsnarl
+
+- Current attacker?
+- Next attacker?
+- Darkness for Munkidori?
+- Retreat/pivot Energy?
+- Expected return Knock Out?
+- Recovery route?
+
+Before using Froslass/Munkidori
+
+- Where is the damage coming from?
+- Where is it going?
+- Which Knock Out or forced response does it create?
+- Can the opponent exploit the same damage better?
+- Does the movement preserve my own key Pokémon?
+
+Before Shadow Bullet
+
+- Which Active outcome matters?
+- Which Bench target has a scheduled payoff?
+- Does the target support Devolution, gust, or closeout?
+- Can healing/evolution erase the investment?
+- Has the prize route changed since the last attack?
+
+Before taking a prize
+
+- What does the prize enable in hand?
+- Does taking it turn off Counter Catcher?
+- What is the opponent's easiest reply?
+- Which side wins the resulting two-turn exchange?
+
+Before ending the turn
+
+- Name the opponent's strongest reply.
+- Name the next attacker.
+- Name the recovery card or search route.
+- Count open bench slots.
+- Count both players' fastest remaining prize routes.
+
+
+TARGETED QUESTIONS FOR WORLD-CHAMPION SME REVIEW
+
+1. What is the best current default board when the opponent is unknown?
+
+2. When is one Impidimp line enough, and when is the second line mandatory?
+
+3. Does going first or second materially change the preferred variant or setup
+package in the current format?
+
+4. What are the highest-frequency Arven/Secret Box sequences, and which cards
+must never be discarded in each matchup?
+
+5. What is the expert default Punk Up Energy distribution by board state?
+
+6. Which apparently safe Punk Up targets are common gust traps?
+
+7. What exact public thresholds make a Shadow Bullet bench target correct?
+
+8. In which current matchups is Froslass mandatory, optional, or actively
+wrong?
+
+9. How many Munkidori are normally needed, and what signals justify the next
+bench slot?
+
+10. When should the deck intentionally stay behind for Counter Catcher?
+
+11. Which single-Prize boards genuinely add an attack to the opponent's route?
+
+12. What is the current Gholdengo plan, and is any tech package supported by
+enough results to recommend?
+
+13. Which Dragapult and Gardevoir variants reverse the broad matchup label?
+
+14. What recovery sequence is most often missed after the first Grimmsnarl is
+Knocked Out?
+
+15. Which matchup plans in this guide are obsolete as of the next event?
+
+16. Which advice should remain qualitative because no safe observable
+predicate captures expert judgment?
+
+
+SHORT APPENDIX: TRAINING-HEURISTIC STATUS
+
+This practical guide is broader than the implemented training heuristic.
+
+The current heuristic labels only:
+
+- Marnie's Impidimp in exact initial setup or Buddy-Buddy Poffin prompts, with
+  a conservative visible-line cap;
+- legal Marnie's Morgrem or Marnie's Grimmsnarl ex evolution options;
+- exact Spikemuth Gym search prompts that fill a visible core-line gap; and
+- all supplied legal combinations in a supported stage, never only the action
+  taken.
+
+It masks the entire stage when the prompt origin is unknown, an option cannot
+be resolved, a legal combination is malformed, or the score margin is below
+the declared threshold.
+
+It does not currently label Punk Up Energy placement, manual attachment,
+Shadow Bullet targets, Froslass/Munkidori damage placement, prize maps,
+recovery, disruption, or matchup-specific actions. Those practical sections
+are proposals for SME review, not runtime rules.
+
+The heuristic has no gameplay authority. It is a sparse auxiliary training
+target only. It cannot change runtime selection, opponents, holdouts, gates, or
+checkpoint promotion. Missing labels remain masked.
+
+
+SOURCES
+
+1. Natalie Millar, "Marnie's Grimmsnarl ex Deck Guide (Pokémon TCG),"
+TCGplayer, published October 14, 2025.
+https://www.tcgplayer.com/content/article/Marnie-s-Grimmsnarl-ex-Deck-Guide-Pokemon-TCG/bc476f13-b374-4602-ae4a-ff8513490c46
+
+2. "Marnie's Grimmsnarl - Deck Overview," Limitless TCG, reviewed July 25,
+2026. The page reported 39 Regional top eights including seven wins, 10
+International top eights including two wins, and recent Grimmsnarl/Froslass
+result rows at review time.
+https://limitlesstcg.com/decks/329
+
+3. Grant Manley, "Grimm's Green Glow-Up — Marnie's Grimmsnarl for EUIC,"
+PokéBeach, published February 13, 2026. Only the public portion was reviewed.
+https://www.pokebeach.com/2026/02/grimms-green-glow-up-marnies-grimmsnarl-for-euic
+
+
+END OF PILOT

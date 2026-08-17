@@ -1,0 +1,11 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      g++ libarchive-dev libsimdjson-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY replay_ingest_probe.cpp /src/replay_ingest_probe.cpp
+RUN g++ -std=c++20 -O3 -DNDEBUG -pthread /src/replay_ingest_probe.cpp \
+      -lsimdjson -larchive -o /usr/local/bin/replay_ingest_probe

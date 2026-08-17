@@ -1,0 +1,892 @@
+CYNTHIA'S GARCHOMP EX
+PRACTICAL PILOT GUIDE FOR EXPERT REVIEW
+
+Specialist ID: garchomp
+Guide version: cynthias-garchomp-north-star-v1
+Prepared: 2026-07-26
+Audience: world-champion and equivalent Pokémon TCG subject-matter experts
+Status: research pilot; not yet expert-approved
+
+
+HOW TO READ THIS PILOT
+
+This document is a practical guide to piloting Cynthia's Garchomp ex. It is
+not a claim that one 60-card list, turn order, or matchup plan is universally
+correct.
+
+The evidence is date-sensitive. The public PokéBeach article was published
+April 17, 2026. The Limitless tournament and deck pages were reviewed July 26,
+2026. The community matchup report was published June 30, 2026. Lists and
+matchups can change rapidly, so verify every card against the exact list and
+event format.
+
+Labels used below:
+
+SOURCE: directly supported by a source listed at the end.
+
+INFERENCE: strategic reasoning from sourced card text, successful lists, or
+the deck's public structure. Experts should challenge these statements.
+
+LIST CHECK: advice that applies only if the registered list contains the card.
+
+SME CHECK: an unresolved question intentionally left for expert review.
+
+Use current printed card text and current rulings for exact costs, legality,
+damage, and timing. This guide paraphrases mechanics rather than replacing the
+cards or rulebook.
+
+
+QUICK START: THE DECK IN ONE MINUTE
+
+SOURCE: Cynthia's Garchomp ex is a 330-HP Stage 2. Corkscrew Dive attacks for
+100 and may refill the pilot's hand to six. Draconic Buster attacks for 260
+and discards all Energy from Garchomp. Cynthia's Gabite can search one
+Cynthia's Pokémon once during each turn. Cynthia's Roserade makes attacks by
+Cynthia's Pokémon deal 30 additional damage to the opposing Active. Cynthia's
+Power Weight adds 70 HP to the Cynthia's Pokémon holding it.
+
+The deck's basic plan is:
+
+1. Open multiple Cynthia's Gible while keeping enough bench space for
+   Roselia/Roserade.
+2. Evolve at least one Gible into Gabite quickly. Use Champion's Call to
+   chain more Cynthia's Pokémon and stabilize the whole board.
+3. Establish the number of Roserade needed for the relevant damage threshold.
+4. Attach Energy every turn. Protect the attachments and evolution pieces
+   with Power Weight where that changes the opponent's route.
+5. Use Corkscrew Dive to attack, refill, and bridge to the next turn.
+6. Use Draconic Buster only when the larger hit produces enough value to repay
+   the Energy discard.
+7. Always prepare the next Garchomp before the current one is removed.
+
+The deck wins by combining three kinds of pressure:
+
+- consistency from Gabite chains and Corkscrew Dive;
+- durability from naturally high HP plus Power Weight; and
+- damage thresholds from one or more Roserade.
+
+The deck loses structure when it misses the first Gabite, benches too few
+Gible to replace an attacker, exposes every Roserade to an easy gust route, or
+uses Draconic Buster without a credible next Energy turn.
+
+
+STRATEGIC IDENTITY
+
+SOURCE: Grant Manley's public PokéBeach article describes the deck as simple,
+consistent, and naturally strong into much of the April 2026 field. It
+identifies Gabite's search chain, Garchomp's attack-based draw, and Power
+Weight's protection as the central engine. It recommends prioritizing
+consistency over speculative tech cards when the natural matchup spread is
+already favorable.
+
+SOURCE: Neddy Kosek's third-place Prague Regional list played four Gible, four
+Gabite, three Garchomp ex, four Roselia, three Roserade, one Spiritomb, four
+Power Weight, nine Energy, and a dense consistency package. That result
+supports a linear, redundant board as a competitive baseline, not as the only
+valid build.
+
+INFERENCE: Think of Cynthia's Garchomp as a resilient tempo deck. It is not a
+pure one-hit-knockout deck, even though Draconic Buster can deliver a large
+hit. The usual advantage comes from making the opponent solve a 330- or
+400-HP attacker while your first attack repairs the hand and your Stage 1s
+search the next pieces.
+
+At the start of a game, answer four questions:
+
+- How many Garchomp attackers will this prize race require?
+- How many Roserade are needed for the important damage threshold?
+- Which Pokémon must receive early Energy and Power Weight?
+- Is the win based on repeated Corkscrew Dive pressure, a timed Draconic
+  Buster, or a Spiritomb counterattack?
+
+If the answers require more bench slots than exist, reduce the plan before
+placing the next Basic.
+
+
+THE CORE ENGINE AND CARD ROLES
+
+The Gible-Gabite-Garchomp line
+
+SOURCE: Successful lists repeatedly use a thick 4-4-3 evolution line. The
+public PokéBeach article says the deck wants many Gible and at least one Gabite
+as soon as possible. Gabite's Champion's Call searches any Cynthia's Pokémon,
+including another Gabite or the Garchomp needed next.
+
+Practical role:
+
+- Gible is both the future attacker and the container for early Energy.
+- Gabite is the deck's search engine. One Gabite starts the chain; multiple
+  Gabite make the board resilient and turn future Cynthia's Pokémon into
+  known access rather than hopeful draws.
+- Garchomp is the attacker, hand repair, and wall.
+
+INFERENCE: Do not evolve every Gabite into Garchomp merely because the option
+is available. An unevolved Gabite may be the search action that finds the
+replacement Garchomp or missing Roserade. Evolve according to the next attack
+and prize map, while preserving enough Champion's Call access for the turn.
+
+The Roselia-Roserade line
+
+SOURCE: Cynthia's Roserade's Cheer On to Glory adds 30 damage to attacks used
+by Cynthia's Pokémon against the opposing Active. The Prague list used a 4-3
+line. Manley's public article emphasizes consistency rather than narrow techs.
+
+Practical thresholds from the printed Garchomp attacks:
+
+- no Roserade: Corkscrew Dive 100; Draconic Buster 260;
+- one Roserade: 130 and 290;
+- two Roserade: 160 and 320;
+- three Roserade: 190 and 350;
+
+before Weakness, Resistance, and other modifiers.
+
+INFERENCE: Build backward from the target, not forward from the maximum number
+of Roserade. A second Roserade is valuable when 320 rather than 290 changes a
+knockout, or when redundancy matters because the opponent can gust the first.
+A third is valuable when 350 is a real threshold or when prizes/search make
+two unreliable. It is not free: each Roserade consumes a bench slot that
+could hold the replacement Garchomp line.
+
+Cynthia's Power Weight
+
+SOURCE: Power Weight adds 70 HP to the Cynthia's Pokémon holding it. Manley
+highlights its value on both Garchomp and the pre-evolutions: it can protect an
+Energy-bearing Gible or Gabite from early pressure and later make Garchomp a
+400-HP attacker.
+
+INFERENCE: The default attachment is not automatically the Active Garchomp.
+Attach where the extra 70 HP changes the opponent's next public damage route:
+
+- an Energy-bearing Gible that otherwise disappears before evolving;
+- the only Gabite and search engine;
+- the Garchomp expected to absorb the next attack; or
+- a Roserade whose survival preserves an exact knockout threshold.
+
+Do not spend the Tool merely because a target is legal. Name which knockout,
+gust line, or damage threshold it denies.
+
+Energy package
+
+SOURCE: Kosek's Prague list used five basic Fighting Energy and four Rocky
+Fighting Energy. Later lists vary and may use Neo Upper Energy, Fighting Gong,
+or recovery cards. Garchomp's second attack discards all Energy attached to
+it, so the timing of the second hit matters.
+
+INFERENCE: Treat every early attachment as part of a two-attacker plan:
+
+- Energy one establishes the first Corkscrew Dive.
+- The next attachment either enables Draconic Buster on the current Garchomp
+  or begins the replacement attacker.
+- If Draconic Buster is scheduled, identify the exact method of rebuilding
+  Energy on the following turn before committing.
+
+LIST CHECK: Rocky Fighting Energy, Neo Upper Energy, Fighting Gong, and
+recovery effects have list- and card-specific conditions. Do not assume they
+are interchangeable.
+
+Cynthia's Spiritomb
+
+SOURCE: Spiritomb's Raging Curse does 10 damage for every damage counter on
+all of the pilot's Benched Cynthia's Pokémon, without applying Weakness. The
+Prague list included one Spiritomb. A June 2026 community pilot report
+describes it as a retaliation option after spread damage accumulates.
+
+INFERENCE: Spiritomb is a conditional closer or tempo reversal, not a required
+opening bench. It is strongest when public damage already exists on multiple
+Cynthia's Pokémon and the opponent cannot remove or neutralize the setup
+before Spiritomb attacks. Bench it too early and it may become an easy prize
+without changing the game.
+
+Consistency and disruption
+
+SOURCE: The Prague list used Lillie's Determination, Larry's Skill,
+Buddy-Buddy Poffin, Poké Pad, Fighting Gong, Pokégear, Boss's Orders, and
+Unfair Stamp. Manley argues that consistency cards effectively function as
+matchup techs when the deck's natural board is already strong.
+
+INFERENCE: Use search in dependency order:
+
+1. legal Basic and at least one Gible line;
+2. first Gabite;
+3. a second Gible/Gabite line;
+4. Roserade count for the immediate damage threshold;
+5. Garchomp and Energy for the current attack;
+6. recovery, gust, or disruption for the next exchange.
+
+LIST CHECK: A supporter that discards or replaces cards should be sequenced
+only after identifying the Garchomp, Energy, recovery, and future supporter
+that must survive the cost.
+
+
+SETUP AND OPENING PRIORITIES
+
+Opening board target
+
+SOURCE: Manley says the deck needs many Gible and at least one Gabite quickly.
+The successful Prague list supports high counts of both the Garchomp and
+Roserade lines.
+
+INFERENCE: A robust generic opening aims for:
+
+- two Gible when possible, with a third when the matchup threatens early gust
+  or spread;
+- one or two Roselia according to the known threshold and expected targeting;
+- at least one future Gabite route;
+- one open bench slot until the attack and matchup plan are clear.
+
+Avoid opening Spiritomb unless the matchup and damage map already justify it.
+
+Prize checking
+
+The first search effect should answer:
+
+- How many Garchomp, Gabite, Roserade, and Power Weight are available?
+- Is the ACE SPEC available?
+- Is Spiritomb available if the matchup wants it?
+- How many Energy and recovery cards remain?
+
+INFERENCE: Adjust immediately. If one Garchomp is prized, protect the other
+lines. If Roserade is constrained, do not plan damage that only the missing
+copy creates. If Energy is constrained, value Corkscrew Dive and avoid an
+unnecessary Draconic Buster discard.
+
+Bench discipline
+
+Every placement must serve one of five jobs:
+
+- current attacker;
+- next attacker;
+- search engine;
+- damage modifier;
+- conditional closer or recovery line.
+
+A common ideal-looking board of three Gabite and three Roserade is impossible.
+Choose the balance that serves the matchup:
+
+- three attacker/search slots plus two damage-modifier slots;
+- four attacker/search slots plus one damage-modifier slot; or
+- a reduced attacker or modifier count with Spiritomb as a scheduled closer.
+
+Do not fill the last slot without naming the next two attacks.
+
+
+GOING FIRST
+
+The reviewed authoritative sources do not declare a universal first-or-second
+choice. The following is an inference for expert review.
+
+INFERENCE: Going first favors the natural Gabite engine because Gible placed
+on the first turn can evolve on the next turn. Prioritize:
+
+- two or more Gible when public options permit;
+- a protected Energy attachment to a Gible likely to survive;
+- only the Roselia count the initial threshold plan requires;
+- a hand or known search path to Gabite; and
+- an open bench slot.
+
+The first strong attacking turn should ideally contain:
+
+- at least one Champion's Call before evolving the attacker further;
+- a Garchomp ready for Corkscrew Dive;
+- another Gible or Gabite in development;
+- the needed Roserade threshold; and
+- Power Weight placed where it changes the response.
+
+Common going-first error:
+
+Attaching Energy to the Active Gible by habit when a Benched Gible is safer
+and Switch/free-retreat resources can later promote the attacker.
+
+SME CHECK: Under the current official first-turn rules and common field, is
+going first the default choice? Which matchup exceptions prefer second?
+
+
+GOING SECOND
+
+INFERENCE: Going second trades the earliest natural evolution advantage for
+access to the format's legal turn-one supporter and attack options. It may be
+correct when the exact list has a strong supporter-driven setup or when an
+early single-Prize attack changes the opponent's development.
+
+Prioritize:
+
+- maximum legal Basic development without consuming all bench space;
+- a supporter line that guarantees, rather than merely hopes for, the first
+  Gabite;
+- a protected Energy attachment;
+- an Active that can retreat or attack without trapping the board; and
+- a next-turn hand that reaches Garchomp plus continued search.
+
+Do not force an attack that leaves only one Gible and no replacement. A small
+turn-one attack is valuable only if it advances prizes or protects the future
+board better than pure setup.
+
+Common going-second error:
+
+Using every available search card before deciding how many Roselia are
+actually required, then lacking a slot for the second Gible.
+
+
+TURN-BY-TURN SEQUENCING
+
+Turn 1: build a chain, not a display
+
+1. Identify the target number of Garchomp attacks.
+2. Count the Roserade needed for the first meaningful damage threshold.
+3. Establish multiple Gible.
+4. Establish Roselia only to that target plus justified redundancy.
+5. Attach Energy to the line most likely to survive and attack.
+6. Preserve an open slot when the matchup is not fully identified.
+
+Turn 2: use every Champion's Call before hiding it
+
+1. Evolve available Gible into Gabite.
+2. Use each available Champion's Call in an order that leaves alternative
+   searches open.
+3. Find the missing attacker, next Gabite, Roserade, or Spiritomb required by
+   the public board.
+4. Evolve only the Gabite that must become Garchomp now.
+5. Attach Power Weight after comparing all legal targets.
+6. Attach Energy according to current and replacement attacks.
+7. Choose Corkscrew Dive or Draconic Buster from the prize map, not maximum
+   printed damage.
+
+INFERENCE: If the hand is already functional, Champion's Call should often
+build the next board rather than overfill the current hand. If the hand is
+fragile, search the piece that makes Corkscrew Dive legal and lets the attack
+repair it.
+
+Midgame: preserve the loop
+
+At the start of every turn:
+
+- use Champion's Call before evolving away the final Gabite;
+- count Energy in play, discard, and known recovery;
+- count Roserade currently contributing;
+- update damage after any Roserade is removed;
+- name the current attack and the next attack;
+- identify whether the opponent wins faster by gusting Roserade, Gabite, or a
+  damaged Garchomp.
+
+Closeout
+
+Stop building once an exact legal winning route exists. Use only the search,
+gust, Energy, switch, Tool, and attack needed to make that route resilient to
+the currently observable reply.
+
+
+CORKSCREW DIVE VERSUS DRACONIC BUSTER
+
+Corkscrew Dive
+
+SOURCE: Corkscrew Dive does 100 damage and may draw until the hand reaches six
+cards.
+
+Prefer it when:
+
+- its modified damage takes the needed knockout;
+- the hand refill is important;
+- preserving Energy maintains the next turn;
+- a two-hit route forces the opponent through 400 HP; or
+- Draconic Buster's extra damage does not change prizes.
+
+INFERENCE: Sequence playable low-value cards before Corkscrew Dive only when
+doing so improves the refill without weakening recovery. Do not burn a useful
+Boss, Energy, Power Weight, or evolution piece merely to draw one extra card.
+
+Draconic Buster
+
+SOURCE: Draconic Buster does 260 and discards all Energy from Garchomp.
+
+Prefer it when:
+
+- the modified damage takes a high-value knockout;
+- the extra damage denies an opponent's next attack or draw engine;
+- the game ends;
+- another Garchomp is already funded; or
+- a verified recovery/acceleration line restores tempo.
+
+Avoid it when:
+
+- Corkscrew Dive already takes the same prizes;
+- the target survives both attacks;
+- discarding Energy removes the only next-turn attack;
+- the opponent can answer with an easy two-Prize knockout while the
+  replacement is unready; or
+- the attack is being chosen only because 260 is larger than 100.
+
+Decision checklist:
+
+- Exact damage with current Roserade and visible modifiers?
+- Exact opposing HP and damage?
+- Prizes taken now?
+- Energy discarded?
+- Next legal attacker?
+- Opponent's easiest response?
+- Does Corkscrew refill prevent a later failure?
+
+
+RESOURCE AND ATTACK PLANNING
+
+Energy
+
+Plan attachments over three turns:
+
+- current attack;
+- post-knockout replacement;
+- recovery after Draconic Buster.
+
+Protect the attachment with Power Weight when that changes an exact threshold.
+Do not attach the special Energy required for a later burst to a line likely to
+be gusted before evolving.
+
+Power Weight
+
+Before attaching:
+
+- Which legal Cynthia's Pokémon is most likely to be attacked from the public
+  board?
+- Does +70 HP cross the opponent's exact visible damage?
+- Does protecting this Pokémon preserve Energy, Champion's Call, Roserade
+  damage, or the current attacker?
+- Is a different Tool required on that target?
+- Does Stadium/tool removal make this line unreliable?
+
+Search
+
+Champion's Call is flexible. Keep the choice tied to a named action:
+
+- Gabite to create another search;
+- Garchomp to attack now or next;
+- Roserade to hit an exact threshold;
+- Gible/Roselia to rebuild;
+- Spiritomb only for a calculable Raging Curse.
+
+Gust
+
+Use Boss's Orders when the target:
+
+- produces more prizes than attacking the Active;
+- removes an engine that breaks the durability plan;
+- removes the Roserade/Gabite hunter before it acts;
+- creates an exact two-turn win; or
+- prevents the opponent from resetting the prize exchange.
+
+Do not gust a small target if doing so gives up the durable Active exchange and
+does not improve the final prize count.
+
+
+BENCH AND PRIZE MAPPING
+
+Before placing each Basic, write the opponent's easiest six prizes. Garchomp
+gives two. Roserade, Gabite, Gible, and Spiritomb usually give one, but their
+value as gust targets differs.
+
+INFERENCE: The opponent often does not need to defeat two 400-HP Garchomp if
+the bench offers four or six easier prizes. Therefore:
+
+- protect the only Gabite when it controls future search;
+- build Roserade redundancy only to the threshold needed;
+- delay Spiritomb until its attack is live;
+- do not strand damaged pre-evolutions after their role is gone;
+- prepare a second Garchomp before promoting the first.
+
+Your prize map should list:
+
+- target order;
+- prizes per target;
+- exact modified damage;
+- Energy cost and discard;
+- gust required;
+- earliest winning turn.
+
+The opponent's map should list:
+
+- Garchomp knockouts required;
+- easier bench prizes;
+- ability to remove Roserade and lower damage;
+- ability to remove Gabite and stop search;
+- Grass Weakness pressure;
+- earliest winning turn.
+
+Update both after every knockout, gust, evolution, Tool attachment, and
+Roserade change.
+
+
+RECOVERY LINES
+
+SOURCE: Competitive lists differ on recovery. The Prague list was very lean,
+while later public lists commonly include Night Stretcher or other recovery.
+Treat recovery as list-specific.
+
+After losing Garchomp:
+
+1. Identify the closest surviving Gible/Gabite line.
+2. Use remaining Champion's Call before evolving it.
+3. Count Garchomp and Energy in every causally visible zone.
+4. Recover the missing link, not automatically the highest-stage Pokémon.
+5. Recalculate Roserade damage after the opponent's turn.
+6. Decide whether the next attack is a rebuilding Corkscrew Dive or a decisive
+   Draconic Buster.
+
+After losing Gabite:
+
+- determine whether another Champion's Call remains;
+- use direct search or recovery to restore the Stage 1;
+- do not evolve the final Gabite away unless the immediate attack is worth
+  losing the search engine.
+
+After losing Roserade:
+
+- reduce all planned damage by 30 before choosing actions;
+- rebuild only if the restored threshold changes prizes;
+- otherwise spend the turn on the attacker and Energy chain.
+
+After Draconic Buster:
+
+- promote or prepare the already funded attacker;
+- recover Energy only if the list permits it;
+- avoid using a recovery supporter if Corkscrew Dive can rebuild the hand and
+  an ordinary attachment keeps the attack loop alive.
+
+
+MATCHUP PLANS
+
+These are dated plans, and several rely on one community pilot rather than
+large controlled samples. Use observed cards, not the archetype label alone.
+
+Grass decks
+
+SOURCE: Garchomp is Grass-weak. Manley identified Meganium as the clearest
+April 2026 obstacle. A June 2026 community pilot described Grass matchups as
+extremely unfavorable.
+
+Plan:
+
+- avoid investing in a Power Weight plan that Weakness still defeats;
+- establish the fastest meaningful damage threshold;
+- take easy multi-Prize targets if the opponent exposes them;
+- use non-Garchomp attackers only when the exact list contains a credible
+  route;
+- force the opponent to have repeated Grass attackers rather than one.
+
+SME CHECK: Which current Grass archetypes are merely unfavorable and which are
+functionally unwinnable? Which tech changes enough games to justify reducing
+core consistency?
+
+Dragapult variants
+
+SOURCE: The June community pilot calls the matchup close and notes that two
+Roserade raise Draconic Buster to 320. It also highlights Spiritomb's damage
+after the opponent spreads damage. This is anecdotal, not a formal matchup
+rate.
+
+Plan:
+
+- establish multiple Gible so spread does not remove the only line;
+- protect vulnerable pre-evolutions with Power Weight where it crosses the
+  spread threshold;
+- build at least the Roserade count needed for the relevant knockout;
+- expect Roserade to be gusted and preserve redundancy;
+- calculate Spiritomb only from exact current Benched damage.
+
+Alakazam
+
+SOURCE: One June community pilot reported poor results and identified Energy
+denial as a problem. This is weak evidence and should not be generalized
+without controlled games.
+
+Plan:
+
+- prefer basic Energy when special-Energy removal is publicly established and
+  the list permits;
+- spread attachments across viable attackers when one removal would otherwise
+  end the turn;
+- use Corkscrew Dive to recover hand quality after disruption;
+- do not attach or discard Energy without mapping the next attack.
+
+Mega Lucario ex and fast Fighting pressure
+
+SOURCE: Manley specifically cites Power Weight as protection against fast
+attacks such as Mega Lucario ex's Aura Jab.
+
+Plan:
+
+- Power Weight the evolution piece whose survival preserves the next turn;
+- build a second Gible immediately;
+- avoid exposing an unprotected sole Gabite;
+- use the first Corkscrew Dive to stabilize rather than overextend.
+
+Dudunsparce and ability engines
+
+SOURCE: A June community list recommends Team Rocket's Watchtower partly
+because Dudunsparce-style draw engines were common. The Prague discussion also
+notes that such disruption can matter but may be nonessential when Garchomp is
+already established.
+
+LIST CHECK:
+
+- use Stadium disruption only when the list contains it and the observed
+  opposing engine depends on it;
+- do not delay the Garchomp engine merely to deploy a marginal tech;
+- remove or strand the opponent's engine when it produces a concrete tempo
+  gain.
+
+Generic two-hit opponents
+
+SOURCE: Garchomp plus Power Weight reaches 400 HP, and Manley says much of the
+field struggles to remove it in one attack.
+
+Plan:
+
+- force the opponent to spend two attacks on one Garchomp;
+- use Corkscrew Dive between hits to keep the hand functional;
+- prepare the replacement while the first absorbs damage;
+- deny easy bench prizes that bypass the wall.
+
+Generic one-hit opponents
+
+Plan:
+
+- do not assume Power Weight saves Garchomp;
+- trade Draconic Buster for the highest-value knockout;
+- pre-fund the next attacker;
+- reduce expendable one-Prize liabilities;
+- use disruption only when it changes the opponent's next attack.
+
+
+COMMON MISTAKES
+
+1. Opening only one Gible when more are legally available.
+
+Correction: build attacker redundancy before optional support.
+
+2. Evolving every Gabite into Garchomp.
+
+Correction: use every Champion's Call and preserve a search engine when the
+immediate attack does not require all Garchomp.
+
+3. Benching maximum Roselia without checking thresholds.
+
+Correction: calculate 260/290/320/350 and 100/130/160/190 first.
+
+4. Attaching Power Weight automatically to the Active.
+
+Correction: protect the Pokémon whose survival changes the opponent's route.
+
+5. Using Draconic Buster whenever it is legal.
+
+Correction: compare prizes and the next attack after discarding Energy.
+
+6. Using Corkscrew Dive before playing safe expendable cards.
+
+Correction: sequence for a useful refill, but never burn resources only to
+increase draw count.
+
+7. Treating Spiritomb as an opening consistency Pokémon.
+
+Correction: bench it only when exact public damage makes Raging Curse relevant.
+
+8. Forgetting that losing Roserade changes all damage math.
+
+Correction: recalculate before selecting the attack or gust target.
+
+9. Filling all five bench slots before the opponent's plan is visible.
+
+Correction: keep one slot open unless every role is named.
+
+10. Planning around a prized or discarded evolution piece.
+
+Correction: prize-check on the first search and count visible zones each turn.
+
+11. Letting the opponent bypass 400 HP through one-Prize bench targets.
+
+Correction: map the opponent's easiest six prizes before placing a Basic.
+
+12. Adding narrow techs that reduce the first-Gabite rate.
+
+Correction: demand matchup evidence strong enough to justify lost consistency.
+
+
+DECISION CHECKLISTS
+
+Before setup
+
+- How many Garchomp attacks are required?
+- How many Gible can I establish?
+- How many Roserade does the first threshold need?
+- Which bench slot must remain open?
+- Is Spiritomb part of a real plan or merely available?
+
+Before Champion's Call
+
+- Have I used every Gabite Ability this turn?
+- Which exact next action does the searched Pokémon enable?
+- Do I need another Gabite before Garchomp?
+- Does Roserade cross a real damage threshold?
+- Can I preserve a Gabite after evolving the attacker?
+
+Before Power Weight
+
+- Which target is threatened?
+- Does 70 HP change exact public damage?
+- What Energy, Ability, or threshold survives?
+- Is another Tool required?
+- Can the opponent remove or ignore the Tool?
+
+Before Corkscrew Dive
+
+- Does 100 plus modifiers take the needed knockout?
+- Which safe cards should be played before drawing?
+- What must remain in hand?
+- Does the refill repair disruption or just add volume?
+- Is preserving Energy worth more than extra damage?
+
+Before Draconic Buster
+
+- Exact damage after all current modifiers?
+- Exact prizes gained?
+- Energy discarded?
+- Next funded attacker?
+- Recovery route?
+- Would Corkscrew Dive produce the same prize result?
+
+Before benching Roselia
+
+- Which damage threshold needs it?
+- Can it evolve in time?
+- Can the opponent gust it?
+- Does it displace the second Garchomp line?
+- Is existing Roserade enough?
+
+Before benching Spiritomb
+
+- Exact total damage counters on Benched Cynthia's Pokémon?
+- Is Raging Curse legal and relevant next turn?
+- Can the opponent remove Spiritomb first?
+- Does it improve the prize exchange?
+- Does it consume the recovery slot?
+
+Before ending the turn
+
+- Name the opponent's best reply.
+- Name the next attacker.
+- Count current Roserade and exact attack damage.
+- Count Energy required after a knockout.
+- Count the opponent's easiest remaining prizes.
+- Confirm that the final Gabite Ability was used.
+
+
+QUESTIONS FOR WORLD-CHAMPION SME REVIEW
+
+1. Is going first the current default? Which matchups prefer second?
+
+2. What is the ideal unknown-opponent opening board?
+
+3. When are two Gible enough, and when is the third mandatory?
+
+4. When should the last Gabite remain unevolved for Champion's Call?
+
+5. Which current HP thresholds make one, two, or three Roserade optimal?
+
+6. How should Roserade redundancy change against strong gust decks?
+
+7. What is the correct Power Weight priority among Gible, Gabite, Garchomp,
+   and Roserade?
+
+8. Which Draconic Buster knockouts are worth losing all Energy?
+
+9. Which sequencing mistakes most often reduce Corkscrew Dive's hand refill?
+
+10. When should Spiritomb be benched before damage exists?
+
+11. What is the exact recovery plan after consecutive Draconic Busters?
+
+12. Which Grass matchup techs have enough evidence to justify consistency
+    loss?
+
+13. Which Dragapult variants make Spiritomb a core plan rather than a backup?
+
+14. Which current decks can realistically one-hit a 400-HP Garchomp?
+
+15. Which matchup claims above are already obsolete?
+
+16. Which expert decisions cannot be represented safely from exact causal
+    state and should remain masked?
+
+
+SHORT APPENDIX: TRAINING-HEURISTIC BOUNDARY
+
+This human guide is intentionally broader than the staged machine contract.
+
+The staged causal contract may label only decisions derived from the exact
+current legal stage, exact visible board/discard/log history, and current
+public counters. It can conservatively prefer:
+
+- Cynthia's Gible in supported opening or Basic-search stages while the
+  visible board lacks a resilient attacker line;
+- Cynthia's Gabite evolution and Champion's Call targets that fill an exact
+  visible evolution gap;
+- Cynthia's Roserade evolution when its +30 creates an exact immediate attack
+  threshold;
+- Draconic Buster when its exact current damage produces a knockout and the
+  action is legal;
+- Corkscrew Dive when it produces the same prizes without the Energy discard;
+- Spiritomb only when exact current Benched damage makes Raging Curse
+  calculable.
+
+It must mask Power Weight destination, Energy placement, future prize mapping,
+matchup-specific techs, recovery, and attack choices whenever the necessary
+facts are unavailable or the preference margin is ambiguous.
+
+The guide is auxiliary only. It never overrides the flat or fused policy,
+never authorizes runtime selection, and never consumes hidden opponent state
+or future outcomes. All legal combinations in a supported decision stage must
+be scored; one unresolved option masks the entire stage.
+
+
+SOURCES
+
+1. The Pokémon Company International, "Cynthia's Garchomp ex," official
+Pokémon TCG card database, Destined Rivals 232/182, reviewed July 26, 2026.
+Card text: 330 HP; Corkscrew Dive 100 with optional draw to six; Draconic
+Buster 260 with all Energy discarded.
+https://www.pokemon.com/uk/pokemon-tcg/pokemon-cards/series/sv10/232/
+
+2. Grant Manley, "The Knowers' Underrated Deck: Garchomp Is the Real Deal,"
+PokéBeach, April 17, 2026. Only the public portion was reviewed.
+https://www.pokebeach.com/2026/04/the-knowers-underrated-deck-garchomp-is-the-real-deal
+
+3. "Cynthia's Garchomp — Deck Overview," Limitless TCG, reviewed July 26,
+2026. Used for current tournament adoption and successful-player context.
+https://limitlesstcg.com/decks/332
+
+4. "Cynthia's Garchomp by Neddy Kosek," Limitless TCG. Third place at the
+2026 Prague Regional; reviewed July 26, 2026. Used as a successful 60-card
+structural reference.
+https://limitlesstcg.com/decks/list/26245
+
+5. Bulbapedia contributors, "Cynthia's Roserade (Destined Rivals 8),"
+reviewed July 26, 2026. Used for Cheer On to Glory's +30 attack modifier.
+https://bulbapedia.bulbagarden.net/wiki/Cynthia%27s_Roserade_%28Destined_Rivals_184%29
+
+6. PokémonCard.io, "Cynthia's Gabite (sv10-103)," reviewed July 26, 2026.
+Used for the Champion's Call wording.
+https://pokemoncard.io/card/cynthia-s-gabite-sv10-103
+
+7. Bulbapedia contributors, "Cynthia's Power Weight (Destined Rivals 162),"
+reviewed July 26, 2026. Used for the +70 HP Tool text.
+https://bulbapedia.bulbagarden.net/wiki/Cynthia%27s_Power_Weight_%28Start_Deck_100_Battle_Collection_682%29
+
+8. Bulbapedia contributors, "Cynthia's Spiritomb (Destined Rivals 129),"
+reviewed July 26, 2026. Used for Raging Curse's current-damage scaling.
+https://bulbapedia.bulbagarden.net/wiki/Cynthia%27s_Spiritomb_%28Together_in_Pursuit_of_Glory_138%29
+
+9. Reddit user darth_yeeter, "Finally stopped procrastinating and hit Master
+rank with Cynthia's Garchomp," June 30, 2026. This is community experience,
+not authoritative matchup data; used only for explicitly labeled anecdotal
+matchup and sequencing observations.
+https://www.reddit.com/r/PTCGL/comments/1ujg6a0/finally_stopped_procrastinating_and_hit_master/
+
+
+END OF PILOT

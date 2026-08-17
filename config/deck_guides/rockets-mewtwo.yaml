@@ -1,0 +1,388 @@
+# Checksum-ready research and causal-target contract for one specialist guide.
+# This artifact has no runtime, training, selector, or serving authority.
+schema_version: poke_bot.current_deck_guide/v1
+specialist_id: rockets-mewtwo
+display_name: "Team Rocket's Mewtwo ex"
+status: research_and_sparse_teacher_validated_corpus_targets_pending
+guide_version: rockets-mewtwo-north-star-v1
+teacher_module: poke_bot.rockets_mewtwo_heuristics
+implementation_status: sparse_causal_teacher_validated
+teacher_module_sha256: sha256:ba1e5f330360f014ae3df34f0f06e101c562e62bc7336560e3d5892f1b5962ad
+
+policy_target:
+  type: sparse_confidence_weighted_legal_action_preference
+  parameterized_head: false
+  target_logits: shared_flat_or_fused_policy
+  serving_authority: false
+  override_authoritative_policy: false
+
+deck_signature:
+  minimum_card_counts:
+    431: 2 # Team Rocket's Mewtwo ex; verified project-internal card ID
+    400: 2 # Team Rocket's Tarountula; project card CSV
+    401: 2 # Team Rocket's Spidops; project card CSV
+  supporting_card_ids:
+    414: "Team Rocket's Articuno"
+    434: "Team Rocket's Mimikyu"
+    1134: "Team Rocket's Transceiver"
+    1216: "Team Rocket's Ariana"
+    1218: "Team Rocket's Giovanni"
+    1220: "Team Rocket's Proton"
+    1257: "Team Rocket's Factory"
+  supporting_card_names:
+    - "Lillie's Clefairy ex"
+  internal_card_identity_source:
+    path: /home/pokebot/poke-bot-agent/cards/EN_Card_Data.csv
+    verified_at_utc: 2026-07-26T06:42:00Z
+    unresolved_internal_card_ids: []
+
+strategy_sources:
+  - title: "Rocket's Mewtwo - Deck Overview"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/337
+    evidence_role: current_results_and_archetype_adoption
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+  - title: "Rocket's Mewtwo by Juho Kallama"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/list/28254
+    evidence_role: successful_NAIC_2026_seventh_place_reference_list
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+  - title: "Team Rocket's Mewtwo ex"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/81
+    evidence_role: mewtwo_exact_card_text
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+  - title: "Team Rocket's Spidops"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/20
+    evidence_role: spidops_exact_card_text
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+  - title: "Team Rocket's Articuno"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/51
+    evidence_role: articuno_exact_card_text
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+  - title: "Team Rocket's Mimikyu"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/87
+    evidence_role: mimikyu_exact_card_text
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+  - title: "Team Rocket's Proton"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/177
+    evidence_role: proton_exact_card_text_and_first_turn_exception
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+  - title: "Team Rocket's Giovanni"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/174
+    evidence_role: giovanni_exact_double_switch_text
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+  - title: "Team Rocket's Ariana"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/171
+    evidence_role: ariana_exact_conditional_draw_text
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+  - title: "Team Rocket's Factory"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/173
+    evidence_role: factory_exact_conditional_draw_text
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+  - title: "Rocket's Mewtwo - Regional Championship Indianapolis"
+    publisher: Limitless Labs
+    url: https://labs.limitlesstcg.com/0068/decks/rocket-mewtwo-ex/matchups
+    evidence_role: current_event_level_matchup_evidence
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+  - title: "Team Rocket's Mewtwo Deck"
+    publisher: Reddit r/pkmntcg
+    url: https://www.reddit.com/r/pkmntcg/comments/1tt0m9j/team_rockets_mewtwo_deck/
+    evidence_role: explicitly_anecdotal_pilot_sequencing_and_matchup_observations
+    reviewed_at_utc: 2026-07-26T17:00:00Z
+
+expert_writeup:
+  path: docs/deck_guides/rockets-mewtwo-expert-brief.txt
+  sha256: sha256:a964c500cad7ba08a6b77d5be693dbf0f5e5b94fc65dad757cd0c105d1f93f47
+  word_count: 4829
+  maximum_words: 10000
+  audience: world_champion_subject_matter_experts
+  guide_identity: rockets-mewtwo
+  cites_same_strategy_source_set: true
+  primary_document_type: practical_human_deck_pilot_guide
+
+high_confidence_principles:
+  - establish_at_least_four_exact_visible_Team_Rocket_Pokemon_before_enabling_Mewtwo
+  - develop_redundant_visible_Tarountula_and_Spidops_lines
+  - use_every_exactly_available_Charging_Up_before_it_is_lost
+  - prefer_the_smallest_Erasure_Ball_energy_discard_that_takes_the_same_current_prizes
+  - use_Giovanni_only_with_an_exact_legal_own_switch_and_opposing_target_pair
+  - prefer_Maximum_Belt_only_when_plus_50_crosses_an_exact_current_ex_knockout_threshold
+  - bench_non_Team_Rocket_Clefairy_only_for_an_exact_current_Dragon_or_attack_threshold
+
+causal_heuristic_contract:
+  schema_version: poke_bot.causal_deck_guide_heuristics/v1
+  stage_completeness_rule: score_every_supplied_legal_combo_or_mask_entire_stage
+  minimum_preference_margin: 0.25
+  supported_predicates:
+    - id: exact_team_rocket_setup_and_proton_search
+      supported_stages:
+        - initial_setup
+        - exact_Team_Rockets_Proton_search_prompt
+        - exact_basic_bench_prompt
+      exact_inputs:
+        - select.context
+        - select.effect_or_contextCard
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+        - exact_current_Team_Rocket_Pokemon_flags
+        - current_combo_card_ids
+      preference:
+        prefer_complete_legal_combos_that_reach_four_visible_Team_Rocket_Pokemon_then_add_redundant_Tarountula
+      abstain_if:
+        - prompt_origin_not_exactly_resolved
+        - any_card_Team_Rocket_identity_unresolved
+        - any_legal_option_unresolved
+        - legal_combo_set_incomplete
+
+    - id: exact_spidops_evolution_for_current_action
+      supported_stages:
+        - legal_evolution_action
+      exact_inputs:
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+        - exact_current_Tarountula_and_Spidops_identities
+        - exact_current_discard_basic_energy
+        - exact_current_attack_legality
+        - exact_engine_current_attack_damage
+      preference:
+        prefer_evolving_a_visible_Tarountula_when_the_new_Spidops_creates_an_exact_current_attack_or_Charging_Up_resource
+      abstain_if:
+        - evolution_target_identity_ambiguous
+        - exact_current_attack_damage_unavailable
+        - hidden_hand_or_deck_contents_required
+        - future_turn_value_required_to_rank_options
+        - any_legal_option_unresolved
+
+    - id: exact_charging_up_activation
+      supported_stages:
+        - legal_ability_selection
+        - exact_Charging_Up_energy_prompt
+      exact_inputs:
+        - exact_current_legal_options
+        - exact_current_Spidops_identity
+        - own_public_discard_card_ids
+        - exact_current_basic_energy_flags
+        - exact_current_attached_energy
+        - exact_current_attack_legality
+      preference:
+        prefer_Charging_Up_when_an_exact_basic_energy_target_creates_or_preserves_a_current_legal_attack
+      abstain_if:
+        - ability_origin_not_exactly_resolved
+        - basic_energy_status_unresolved
+        - future_draw_or_future_knockout_required
+        - any_legal_option_unresolved
+
+    - id: exact_rocket_rush_current_damage
+      supported_stages:
+        - legal_attack_selection
+      exact_inputs:
+        - exact_current_legal_options
+        - exact_current_Team_Rocket_Pokemon_count
+        - opponent_active_current_hp
+        - exact_engine_current_damage_per_legal_attack
+        - current_prizes_remaining_counts
+      preference:
+        prefer_Rocket_Rush_when_its_exact_current_damage_takes_at_least_as_many_current_prizes_as_other_legal_attacks
+      abstain_if:
+        - any_Team_Rocket_identity_ambiguous
+        - damage_modifier_stack_not_exact
+        - weakness_or_resistance_not_exact
+        - prize_value_not_exact
+        - any_legal_option_unresolved
+
+    - id: exact_erasure_ball_discard_count
+      supported_stages:
+        - legal_attack_selection
+        - exact_Erasure_Ball_benched_energy_discard_prompt
+      exact_inputs:
+        - exact_current_legal_options
+        - exact_current_Team_Rocket_Pokemon_count
+        - opponent_active_current_hp
+        - exact_engine_current_damage_for_zero_one_two_discards
+        - exact_benched_attached_energy_cards
+        - current_prizes_remaining_counts
+      preference:
+        prefer_the_smallest_legal_energy_discard_count_that_takes_the_maximum_exact_current_prizes
+      abstain_if:
+        - Power_Saver_status_ambiguous
+        - damage_modifier_stack_not_exact
+        - weakness_or_resistance_not_exact
+        - prize_value_not_exact
+        - benched_energy_identity_or_count_ambiguous
+        - any_legal_option_unresolved
+
+    - id: exact_giovanni_double_switch
+      supported_stages:
+        - exact_Team_Rockets_Giovanni_own_switch_prompt
+        - exact_Team_Rockets_Giovanni_opponent_switch_prompt
+      exact_inputs:
+        - select.context
+        - select.effect_or_contextCard
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+        - opponent_active_and_bench_card_ids
+        - exact_current_attack_legality_after_switch
+        - exact_engine_current_damage_after_switch
+        - opponent_public_current_hp
+        - current_prizes_remaining_counts
+      preference:
+        prefer_only_complete_own_and_opponent_switch_pairs_that_maximize_exact_current_prizes_without_disabling_Power_Saver
+      abstain_if:
+        - prompt_origin_not_exactly_resolved
+        - paired_switch_stage_not_exactly_linked
+        - post_switch_attack_legality_unavailable
+        - post_switch_damage_unavailable
+        - prize_value_not_exact
+        - any_legal_option_unresolved
+
+    - id: exact_maximum_belt_current_threshold
+      supported_stages:
+        - legal_tool_attachment
+      exact_inputs:
+        - exact_current_legal_options
+        - opponent_active_Pokemon_ex_flag
+        - opponent_active_current_hp
+        - exact_engine_current_attack_damage_before_and_after_tool
+        - current_prizes_remaining_counts
+      preference:
+        prefer_Maximum_Belt_only_when_plus_50_crosses_an_exact_current_Pokemon_ex_knockout_threshold
+      abstain_if:
+        - opponent_Pokemon_ex_status_unresolved
+        - no_current_legal_attack
+        - damage_modifier_stack_not_exact
+        - weakness_or_resistance_not_exact
+        - prize_value_not_exact
+        - any_legal_option_unresolved
+
+    - id: exact_mimikyu_current_tera_copy
+      supported_stages:
+        - legal_attack_selection
+      exact_inputs:
+        - exact_current_legal_options
+        - opponent_active_Tera_flag
+        - opponent_active_public_attack_definitions
+        - exact_engine_resolved_copy_attack_damage_and_effects
+        - opponent_active_current_hp
+        - current_prizes_remaining_counts
+      preference:
+        prefer_Gemstone_Mimicry_only_when_an_exact_resolved_current_copy_attack_takes_more_current_prizes_than_other_legal_attacks
+      abstain_if:
+        - opponent_Tera_status_unresolved
+        - copied_attack_cost_or_effect_unresolved
+        - copied_attack_requires_hidden_or_future_information
+        - prize_value_not_exact
+        - any_legal_option_unresolved
+
+    - id: exact_ariana_draw_condition
+      supported_stages:
+        - exact_Team_Rockets_Transceiver_search_prompt
+        - legal_supporter_selection
+      exact_inputs:
+        - exact_current_legal_options
+        - own_current_hand_count
+        - exact_current_all_Pokemon_are_Team_Rocket_boolean
+        - exact_current_Ariana_draw_to_count
+      preference:
+        prefer_Ariana_only_when_her_exact_current_draw_count_exceeds_the_minimum_material_draw_threshold_and_no_exact_current_tactical_supporter_takes_more_prizes
+      abstain_if:
+        - any_own_Pokemon_identity_ambiguous
+        - current_hand_count_unavailable
+        - alternative_supporter_tactical_result_unresolved
+        - any_legal_option_unresolved
+
+    - id: exact_clefairy_current_dragon_threshold
+      supported_stages:
+        - exact_basic_bench_prompt
+        - legal_attack_selection
+      exact_inputs:
+        - exact_current_legal_options
+        - opponent_active_Dragon_flag
+        - opponent_active_current_hp
+        - exact_engine_current_attack_damage_before_and_after_Fairy_Zone
+        - exact_current_all_Pokemon_are_Team_Rocket_boolean
+        - current_prizes_remaining_counts
+      preference:
+        prefer_Lillies_Clefairy_only_when_Fairy_Zone_or_Full_Moon_Rondo_crosses_an_exact_current_prize_threshold
+      abstain_if:
+        - opponent_Dragon_identity_unresolved
+        - no_current_attack_can_use_the_effect
+        - damage_modifier_stack_not_exact
+        - future_turn_value_required
+        - Ariana_opportunity_cost_requires_hidden_draw_contents
+        - any_legal_option_unresolved
+
+categorical_abstentions:
+  - manual_energy_attachment_without_an_exact_current_attack_threshold
+  - Erasure_Ball_energy_identity_tiebreak_requiring_future_recovery
+  - Articuno_bench_choice_requiring_prediction_of_opponent_intent
+  - Team_Rockets_Factory_draw_value_requiring_future_card_identity
+  - Proton_choice_requiring_hidden_deck_contents_beyond_supplied_legal_options
+  - Ariana_draw_value_requiring_future_draw_identity
+  - recovery_choice_requiring_future_draws_or_future_knockouts
+  - matchup_specific_guidance_not_resolved_from_exact_current_state
+  - future_prize_map_or_future_knockout_prediction
+  - opponent_hidden_hand_deck_or_prize_contents
+  - unavailable_or_ambiguous_attack_damage
+  - unknown_non_main_prompt_origin
+  - unresolved_option_or_malformed_legal_combo
+  - score_margin_below_0_25
+
+target_safety:
+  causal_current_and_past_state_only: true
+  exact_current_legal_options_only: true
+  publicly_visible_board_discard_counters_and_logs_only: true
+  own_hidden_hand_or_deck_content_allowed: false
+  opponent_hidden_information_allowed: false
+  future_information_allowed: false
+  outcome_conditioned_labels_allowed: false
+  complete_legal_stage_scoring_required: true
+  complete_stage_failure_behavior: mask_entire_stage
+  minimum_preference_margin: 0.25
+  ambiguous_or_low_margin_behavior: mask
+  missing_label_behavior: mask_not_zero
+  runtime_action_override_allowed: false
+  runtime_authority: none
+  guide_may_override_flat_or_fused_policy: false
+
+weight_schedule_source: config/rl_protocol.yaml#/specialist_training/current_deck_guide
+
+corpus_binding_evidence:
+  status: not_materialized
+  date_start: null
+  date_end: null
+  days: null
+  records: null
+  decisions: null
+  guide_rows: null
+  ready_receipt: null
+  all_daily_feature_and_receipt_checksums_verified: false
+  specialist_identity_verified: false
+  guide_version_verified: false
+  active_training_modified: false
+
+validation:
+  research_sources_reviewed: true
+  expert_writeup_under_word_limit: true
+  yaml_parse_required: true
+  unit_tests_passed: true
+  scorer_canary_passed: true
+  focused_tests_passed: 13
+  guide_rows_in_filtered_expert_corpus: null
+  unresolved_evidence_gaps:
+    - no_world_champion_SME_approval_yet
+    - no_controlled_current_first_versus_second_study_found
+    - no_authoritative_comprehensive_matchup_guide_for_exact_NAIC_list_found
+    - event_matchup_rows_are_heterogeneous_and_many_samples_are_small
+    - exact_current_Articuno_interaction_rulings_not_exhaustively_audited
+    - future_registered_specialist_list_may_differ_from_NAIC_reference_list
+  # An integration receipt should record the checksum of this complete file;
+  # embedding that digest here would be self-referential.
+  contract_checksum: null

@@ -1,0 +1,240 @@
+{
+  "agents": [
+    {
+      "deck_source": "decks/archetype-samples/lopunny-dudunsparce1.csv",
+      "dir": "iono",
+      "group": "official",
+      "id": "iono",
+      "name": "Iono's Deck",
+      "source": "kiyotah/a-sample-rule-based-agent-iono-s-deck"
+    },
+    {
+      "deck_source": "decks/archetype-samples/dragapult1.csv",
+      "dir": "dragapult-ex",
+      "group": "official",
+      "id": "dragapult-ex",
+      "name": "Dragapult ex Deck",
+      "source": "kiyotah/a-sample-rule-based-agent-dragapult-ex-deck"
+    },
+    {
+      "deck_source": "decks/archetype-samples/hydrapple1.csv",
+      "dir": "mega-abomasnow-ex",
+      "group": "official",
+      "id": "mega-abomasnow-ex",
+      "name": "Mega Abomasnow ex Deck",
+      "source": "kiyotah/a-sample-rule-based-agent-mega-abomasnow-ex-deck"
+    },
+    {
+      "deck_source": "decks/competitive/high_performing/2026-05_regional-melbourne-2026_10th_mega-lucario.csv",
+      "dir": "mega-lucario-ex",
+      "group": "official",
+      "id": "mega-lucario-ex",
+      "name": "Mega Lucario ex Deck",
+      "source": "kiyotah/a-sample-rule-based-agent-mega-lucario-ex-deck"
+    },
+    {
+      "dir": "cynthia-garchomp-ex",
+      "group": "community",
+      "id": "cynthia-garchomp-ex",
+      "name": "Cynthia's Garchomp ex Deck",
+      "source": "masamikobayashi/a-sample-cynthia-garchomp-ex-deck"
+    },
+    {
+      "dir": "archaludon-ex",
+      "group": "community",
+      "id": "archaludon-ex",
+      "name": "Archaludon ex Deck",
+      "source": "masamikobayashi/a-sample-archaludon-75-wr-vs-my-1300-starmie"
+    },
+    {
+      "dir": "generic-heuristic",
+      "group": "community",
+      "id": "generic-heuristic",
+      "name": "Generic Heuristic Baseline",
+      "source": "maximim/ptcg-generic-heuristic-baseline-agent"
+    },
+    {
+      "dir": "heuristic-baseline",
+      "group": "community",
+      "id": "heuristic-baseline",
+      "name": "Heuristic Baseline Agent",
+      "source": "serariagomes/heurestic-baseline-agent"
+    },
+    {
+      "dir": "aman-crustle-fighting",
+      "group": "roster",
+      "id": "aman-crustle-fighting",
+      "name": "Aman Crustle-aware Fighting",
+      "source": "aman5153684/a-crustle-aware-fighting-agent"
+    },
+    {
+      "dir": "biohack-day2-new",
+      "group": "roster",
+      "id": "biohack-day2-new",
+      "name": "Biohack44 Beating Day-2 New",
+      "source": "biohack44/beating-the-day-2-new"
+    },
+    {
+      "dir": "biohack-meta-20260707",
+      "group": "roster",
+      "id": "biohack-meta-20260707",
+      "name": "Biohack44 Meta Snapshot 2026-07-07 (default A)",
+      "source": "biohack44/pok-mon-tcg-ai-battle-meta-snapshot-07-july"
+    },
+    {
+      "dir": "dedquoc-rule-based",
+      "group": "roster",
+      "id": "dedquoc-rule-based",
+      "name": "Dedquoc Rule-Based Engine",
+      "source": "dedquoc/the-pok-mon-rule-based-engine"
+    },
+    {
+      "dir": "kokinn-lucario-search-915",
+      "group": "roster",
+      "id": "kokinn-lucario-search-915",
+      "name": "Kokinn Lucario Search 915",
+      "source": "kokinnwakashuu/ptcg-public-915-lucario-search-baseline"
+    },
+    {
+      "dir": "lucifer19-battlecore",
+      "group": "roster",
+      "id": "lucifer19-battlecore",
+      "name": "Lucifer19 BattleCore Compact",
+      "source": "lucifer19/battlecore-compact-agent"
+    },
+    {
+      "dir": "makthanithin-1084-5",
+      "group": "roster",
+      "id": "makthanithin-1084-5",
+      "name": "Makthanithin 1084.5 Baseline",
+      "source": "makthanithin/pokemon-tcg-ai-battle-1084-5-baseline"
+    },
+    {
+      "dir": "penguin-public-scores-915",
+      "group": "roster",
+      "id": "penguin-public-scores-915",
+      "name": "Penguin Public Scores 915",
+      "source": "penguin069/public-scores-915"
+    },
+    {
+      "dir": "pilkwang-lucario-alakazam",
+      "group": "roster",
+      "id": "pilkwang-lucario-alakazam",
+      "name": "Pilkwang Lucario & Alakazam",
+      "source": "pilkwang/pokemon-tcg-lucario-alakazam"
+    },
+    {
+      "dir": "pilkwang-meta-20260708",
+      "group": "roster",
+      "id": "pilkwang-meta-20260708",
+      "name": "Pilkwang Meta Snapshot 2026-07-08",
+      "source": "pilkwang/pok-mon-tcg-ai-battle-meta-snapshot-08-july"
+    },
+    {
+      "dir": "plamen06-pokemon-steel",
+      "group": "roster",
+      "id": "plamen06-pokemon-steel",
+      "name": "Plamen06 Pokemon Steel",
+      "source": "plamen06/pokemon-steel"
+    },
+    {
+      "dir": "rauff-ptcg-advanced",
+      "group": "roster",
+      "id": "rauff-ptcg-advanced",
+      "name": "Rauffauzanrambe PTCG Advanced",
+      "source": "rauffauzanrambe/pokemon-ai-battle-best-ptcg-advanced"
+    },
+    {
+      "dir": "roman-baseline-v10",
+      "group": "roster",
+      "id": "roman-baseline-v10",
+      "name": "RomanRozen Strong Start Baseline V10",
+      "source": "romanrozen/strong-start-baseline-agent-v10-lb-950"
+    },
+    {
+      "dir": "roman-v7-crustle-lucario",
+      "group": "roster",
+      "id": "roman-v7-crustle-lucario",
+      "name": "RomanRozen Crustle+Lucario V7",
+      "source": "romanrozen/strong-start-crustle-lucario-agent-v7-lb-960"
+    },
+    {
+      "dir": "rv1922-ai-battle",
+      "group": "roster",
+      "id": "rv1922-ai-battle",
+      "name": "RV1922 AI Battle Challenge",
+      "source": "rv1922/ai-battle-challenge"
+    },
+    {
+      "dir": "ryota-alakazam-best5",
+      "group": "roster",
+      "id": "ryota-alakazam-best5",
+      "name": "Ryotasueyoshi Alakazam Best 5th",
+      "source": "ryotasueyoshi/rule-based-not-psychic-alakazam-best-5th"
+    },
+    {
+      "dir": "yaminh-ai-challenge",
+      "group": "roster",
+      "id": "yaminh-ai-challenge",
+      "name": "Yaminh Pokemon Company AI Challenge",
+      "source": "yaminh/the-pokemon-company-ai-challenge"
+    },
+    {
+      "dir": "yaroslav-lucario-v2-crustle",
+      "group": "roster",
+      "id": "yaroslav-lucario-v2-crustle",
+      "name": "Yaroslav Mega Lucario V2 Crustle-aware",
+      "source": "yaroslavkholmirzayev/mega-lucario-v2-crustle-aware-best-submit"
+    },
+    {
+      "dir": "alakazam-owner-accepted-iter39-roster18-v5",
+      "group": "specialists",
+      "id": "specialist-alakazam-owner-accepted-iter39-roster18-v5",
+      "name": "Frozen Alakazam specialist \u00b7 roster v5",
+      "source": "internal inference-only roster-v5 derivative of sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea"
+    },
+    {
+      "dir": "hops-trevenant-gate-iter10-462f201f8de6-roster18-v5",
+      "group": "specialists",
+      "id": "specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5",
+      "name": "Frozen Hop's Trevenant specialist \u00b7 roster v5",
+      "source": "internal inference-only roster-v5 derivative of sha256:462f201f8de6c07eef07b3e8f58229360972d1d64308db9c155f211d2ce3faf1"
+    },
+    {
+      "dir": "starmie-gate-iter10-51ed1cc6ffe6-roster18-v5",
+      "group": "specialists",
+      "id": "specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5",
+      "name": "Frozen Mega Starmie ex specialist \u00b7 roster v5",
+      "source": "internal inference-only roster-v5 derivative of sha256:51ed1cc6ffe61be01556e738bbe60117ba9e0f99d20dfe1925b9e9d1bd8bc2d8"
+    },
+    {
+      "dir": "lucario-gate-iter10-ffa401242b2c-roster18-v5",
+      "group": "specialists",
+      "id": "specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5",
+      "name": "Frozen Dragapult Dusknoir specialist \u00b7 roster v5",
+      "source": "internal inference-only roster-v5 derivative of sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd"
+    }
+  ],
+  "excluded_broken": [
+    "makthanithin-mega-lucario-v62",
+    "pixiux-mega-lucario-v63",
+    "raging-bolt-ex"
+  ],
+  "field_notes": {
+    "frozen_specialists": 3,
+    "inaccessible_403": [
+      "alycemiki/lucario-deck-v2-play-like-a-bot",
+      "kacchanwriting/crustle-aware-mega-lucario-ex-anti-wall",
+      "seokjeongeum/strong-start-psychic-anti-meta-v8-lb-1100",
+      "seokjeongeum/strong-start-baseline-agent-v10-lb-950",
+      "seokjeongeum/max-elo-1208-libraryout-w-crustle-great-tusk",
+      "seokjeongeum/pure-dragapult-ex-deck",
+      "seokjeongeum/mega-pokemon-reinforcement-ai-battle",
+      "llccqq624/ptcg-meta-a-crustle-attackfix-v1"
+    ],
+    "original_count": 9,
+    "roster_added": 20,
+    "roster_source": "makimakiai/ptcg-public-28-plus-sample-4-roster-update",
+    "total": 29
+  }
+}

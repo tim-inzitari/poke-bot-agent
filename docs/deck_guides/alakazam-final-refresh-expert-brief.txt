@@ -1,0 +1,215 @@
+ALAKAZAM FINAL-REFRESH PILOT GUIDE
+
+Identity and purpose
+
+This guide covers the current Powerful Hand Alakazam deck used by the
+post-fleet Alakazam refresh. The exact representative is the public modal
+60-card list bound to canonical deck digest
+sha256:25878108d158704a6574356bd5d10ef287878a8f156bb048311f85bfe261db30.
+Its core is four Abra, four Kadabra, four Alakazam, three Dunsparce, two
+Dudunsparce, and a hand-building Trainer and Energy engine. The model guide is
+training-only. For a human pilot, the same ideas are a decision framework:
+build a replacement attacker, grow the hand only as far as the prize map
+requires, and keep enough recovery and deck depth to finish the game.
+
+The central damage equation
+
+Powerful Hand places two damage counters for every card in hand. Convert the
+opposing Active Pokemon's remaining HP into a hand-size target before spending
+anything: required cards = ceiling(remaining HP / 20). Add the effect of
+weakness, resistance, damage prevention, or prize-changing board effects only
+when they are visible and applicable. Recalculate after every draw, discard,
+gust, switch, heal, or damage modifier.
+
+Once the hand reaches the exact knockout threshold, stop treating more cards
+as automatically better. Every additional search or draw can expose the deck
+to decking out, consume the recovery card needed for the next attacker, or
+spend a Supporter that would be stronger after the prize exchange. The goal is
+not the largest hand. It is the smallest safe hand that wins the current prize
+exchange while preserving the next one.
+
+Opening setup
+
+When choosing an Active, prefer Abra when it can safely become the first
+Alakazam. Dunsparce is the fallback when Abra would be trapped or immediately
+lost without advancing the board. During bench setup, establish one second
+Abra before optional utility Pokemon. Develop one Dunsparce line early enough
+to access Dudunsparce draw and recycle, but do not fill the bench with redundant
+draw pieces. Keep a bench slot open when a later replacement attacker,
+Fezandipiti ex, or matchup-specific utility Pokemon may be required.
+
+Your minimum stable board is:
+
+1. an Abra line that can become the current attacker;
+2. a second Abra or evolved line that can become the replacement attacker;
+3. one Dunsparce line when its draw and recycle materially improves the next
+   two turns; and
+4. at least one flexible bench slot unless the winning line is already exact.
+
+Do not Rare Candy an Abra merely because the play is legal. Confirm that the
+Alakazam can attack, that its draw effect will not overdraw the deck, and that
+using Rare Candy does not leave the replacement line impossible. Evolving
+through Kadabra is often correct when it preserves Rare Candy, adds controlled
+draw, or keeps multiple evolution paths live.
+
+Going first
+
+The final package chooses first whenever the rules expose the choice. Use the
+extra development turn to establish Abra plus a replacement line, then add the
+Dunsparce engine. Attach Energy to the line that is most likely to survive and
+attack on the following turn. Avoid committing every resource to the Active
+Abra if the opponent can take it before it evolves.
+
+The ideal first-turn sequence is setup search, board development, then only the
+draw needed to confirm next turn's evolution and attachment. Preserve Dawn,
+Hilda, Poke Pad, and recovery cards until their exact search or draw value is
+known. End with a clear next-turn map: evolution card, Energy, target hand size,
+and a replacement attacker path.
+
+Going second
+
+Going second does not change the deck's identity, but it compresses setup.
+Prioritize a legal attacker line and an Energy attachment over speculative
+hand growth. If an early attack is impossible, spend the turn creating two
+live evolution routes rather than maximizing the current hand. Accept a
+smaller first attack when it preserves the board and creates a two-hit prize
+line that the opponent cannot efficiently answer.
+
+Search and draw sequencing
+
+Sequence deterministic search before broad draw when the search target is
+known. Count the remaining copies of Abra, Kadabra, Alakazam, Rare Candy,
+Energy, and recovery before selecting a card. Then draw only after removing
+the exact wanted card from the deck. Reverse that order only when the draw can
+materially change which search target is correct.
+
+Use Dudunsparce when the extra cards solve a defined problem: reaching knockout
+hand size, finding the evolution, finding Energy, or finding the recovery line.
+Its recycle value matters. Do not cash it in when the current hand already
+attacks for the required knockout and the additional draw only raises deck-out
+risk.
+
+Telepath Psychic Energy and Enriching Energy are draw resources as well as
+attachments. Account for every forced draw before attaching them. Near the end
+of the game, leave enough cards for the mandatory start-of-turn draw and any
+draw effect that the planned line cannot avoid. A powerful attachment that
+empties the deck is not a safe line unless the game ends before the next draw.
+
+Attack and prize planning
+
+Before each attack, write the prize map mentally:
+
+- What does Powerful Hand knock out now?
+- How many prizes does that target yield?
+- What attacker can the opponent return with?
+- Which Alakazam line attacks after the return knockout?
+- How many hand cards will that next knockout require?
+
+Boss's Orders is for a prize-changing or tempo-winning target, not merely a
+legal Bench target. Gust when it creates a knockout, strands a costly retreat,
+removes a draw or energy engine that changes the next turn, or closes the game.
+Otherwise preserve Boss for the point where it changes the prize map.
+
+Kadabra can be a finisher when its attack reaches a small remaining HP total
+without exposing Alakazam or consuming the hand needed for the next prize.
+Treat that as an exact damage line, not an automatic promotion of Kadabra to
+the Active Spot.
+
+Resource and recovery rules
+
+Night Stretcher, Sacred Ash, and Lana's Aid are continuity cards. Before using
+one, identify whether the missing resource is a Basic, an evolution Pokemon,
+an Energy, or multiple Pokemon that must return to the deck. Choose the
+narrowest recovery effect that restores the actual next-attacker path.
+
+Enhanced Hammer is conditional disruption. Use it when removing the visible
+Special Energy meaningfully delays the opponent, breaks an attack, or changes
+the prize race. Do not spend it because a Special Energy is merely present.
+Xerosic's Machinations is a timing tool and value depends on the opponent’s hand size.
+
+Bench and prize discipline
+
+Keep two Alakazam lines possible until the remaining prize map proves one is
+enough. Avoid benching Fezandipiti ex unless its draw is required to repair the
+hand or complete a decisive attack. Every two-prize support Pokemon changes
+the opponent's route to six prizes. Utility Basics are strongest when the
+matchup-specific protection or attack they provide is visibly necessary.
+
+Track prized pieces through absence: if a four-copy card is missing from the
+deck, hand, field, and discard after enough cards are known, treat it as
+possibly prized. Do not assume a hidden prize identity. Build the line that
+works under the public worst case until a prize reveal supplies exact
+information.
+
+Disruption recovery
+
+After hand disruption, rebuild in this order:
+
+1. confirm a legal attacker or evolution line;
+2. confirm an Energy attachment or retreat requirement;
+3. restore the hand to the current knockout threshold;
+4. restore the replacement attacker; and
+5. add optional disruption or utility.
+
+Do not chase the former hand size. Recompute the required hand from the new
+Active target and the new prize state. If a one-turn knockout is no longer
+safe, choose a two-hit line that preserves the board.
+
+Common errors
+
+- Drawing past the exact Powerful Hand threshold and losing to deck-out.
+- Spending Rare Candy without a replacement evolution route.
+- Filling the bench before the opponent's prize plan is known.
+- Using Boss, Enhanced Hammer, or Xerosic, only because it is
+  legal.
+- Attaching draw Energy without counting forced draws and next-turn deck size.
+- Recovering the largest number of cards instead of the exact missing combo.
+- Treating hidden prizes or the opponent's future hand as known information.
+- Building one oversized hand while allowing the only attacker line to fail.
+
+Turn checklist
+
+At every decision, answer these questions:
+
+1. What is the exact current knockout hand size?
+2. Which cards can be spent without falling below it?
+3. Is the next Alakazam line already live?
+4. How many unavoidable draws remain before the next attack?
+5. Does this bench card improve the prize race enough to expose it?
+6. Does this disruption change an attack, retreat, or prize outcome now?
+7. What is the safest line if one unknown key card is prized?
+8. Can the game end before the deck must draw again?
+
+Matchup Specific
+While playing against another Alakazam deck, preserve Xerosic to play on a turn where limiting the opponent’s hand size meaningfully will impact their ability to do damage with Alakazam’s attack. Xerosic can be used on a turn where the opposing Alakazam will be knocked out, forcing the opponent to expend cards to rebuild their Alakazam and their hand size to do damage.
+
+When your opponent plays Xerosic, prioritize discarding cards that are not useful in that matchup. Discard Enhanced Hammer against decks that are not Cynthia’s Garchomp ex and Crustle. Discard Xerosic against decks that are not Alakazam.
+
+While playing against Cynthia’s Garchomp ex, preserve Enhanced Hammer to discard Rocky Fighting Energy. Rocky Fighting Energy makes Alakazam’s attack do nothing. It is critical to discard these energies with Enhanced Hammer before attacking the Pokemon they are attached to.
+
+Play Shaymin onto the bench reactively to avoid a damaged Pokemon from being knocked out by damage from an attack that damages benched Pokemon. Do not let Shaymin sit on the bench and take damage from Froslass against Grimsnarl ex if playing Shaymin does not save a Pokemon from being knocked out by Grimsnarl’s attack
+
+Similarly, while playing against Crustle decks, only use Enhanced Hammer on Mist Energy, unless not doing so will win the game. It is critical to discard Mist Energy with Enhanced Hammer before attacking the Pokemon they are attached to.
+
+Battle Cage should be prioritized against decks that use Froslass and Munkidori. 
+
+Source basis
+
+This pilot guide consolidates the already validated powerful-hand-v1 evidence
+set used by the Alakazam heuristic teacher:
+
+- TCGplayer, "Alakazam Deck Guide - Pokemon TCG":
+  https://www.tcgplayer.com/content/article/Alakazam-Deck-Guide-Pok%C3%A9mon-TCG/7eb46b82-9dc5-40d8-adf9-28cca05f070f/
+- PTCGO News, "PTCGL Alakazam Deck Guide":
+  https://ptcgonews.com/tips/ptcgl-alakazam-deck-guide/
+- Kaggle Pokemon TCG AI Battle discussion 717697:
+  https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/discussion/717697
+
+Training authority
+
+The model guide is curriculum metadata, not a runtime policy. On guide-qualified
+rows it weights observed causal strategic-head targets at the receipt-backed
+multiplier. It never supplies an action logit, never replaces observed outcomes,
+and never reads hidden or future information. Every learned H10 decision head,
+including setup_board_outcome and combo_state, has its own bounded,
+option-conditioned route into fusion; the guide is the sole no-route exception.

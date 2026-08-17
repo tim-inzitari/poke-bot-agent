@@ -1,0 +1,126 @@
+{
+  "schema": "poke_bot.slowking_archetype_learning/v1",
+  "status": "research_only_no_training_or_runtime_authority",
+  "owner_revision": 166,
+  "archetype": {
+    "id": 86,
+    "name": "Slowking",
+    "eligibility": "all_observed_slowking_acting_seats",
+    "exact_list_required_for_learning": false,
+    "exact_list_role": "analysis_conditioning_and_evaluation_only"
+  },
+  "source": {
+    "aggregate_receipt": "state/slowking_multi_day_replay_distillation_2026-07-06_to_2026-08-04.json",
+    "aggregate_receipt_sha256": "sha256:c9012050a055e85c3161e6511130f9bc68470eb54ada9d0581a249ddd9ed1388",
+    "games": 768,
+    "teams": 2,
+    "exact_lists": 3,
+    "wins": 472,
+    "losses": 287,
+    "draws": 9
+  },
+  "split": {
+    "method": "calendar_day_holdout",
+    "train_dates": [
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-30",
+      "2026-07-31",
+      "2026-08-01",
+      "2026-08-02"
+    ],
+    "validation_dates": ["2026-08-03"],
+    "test_dates": ["2026-08-04"],
+    "expected_games": {
+      "train": 429,
+      "validation": 180,
+      "test": 159
+    },
+    "frame_level_random_split_allowed": false
+  },
+  "sampling": {
+    "policy": "uniform_per_observed_acting_seat_game",
+    "base_game_weight": 1.0,
+    "policy_learning_eligible_games": 768,
+    "win_only_filter": false,
+    "exact_list_filter": false,
+    "exact_list_macro_average_required": false,
+    "preserve_losses_and_draws": true
+  },
+  "inputs": {
+    "archetype_id": true,
+    "submitted_deck_multiset": true,
+    "legal_action_set": true,
+    "causal_public_state_and_history": true,
+    "exact_list_fingerprint": "metadata_and_optional_embedding",
+    "opponent_hidden_future_information": false
+  },
+  "learning_targets": {
+    "core": ["legal_action_policy", "value", "outcome_distribution"],
+    "expanded_strategic_heads": [
+      "action_q",
+      "action_type",
+      "action_target",
+      "action_resource",
+      "action_utility",
+      "tactical_outcome",
+      "opponent_response",
+      "resource_forecast",
+      "game_phase",
+      "outcome_distribution",
+      "remaining_turns"
+    ],
+    "slowking_option_conditioned_heads": [
+      "setup_board_outcome",
+      "combo_state"
+    ],
+    "decision_fusion": "bounded_option_conditioned_routes",
+    "missing_target_behavior": "mask_not_zero",
+    "unavailable_card_action_behavior": "legal_action_mask",
+    "guide_role": "training_only_strategic_direction_no_direct_policy_cross_entropy"
+  },
+  "capabilities": {
+    "slowking_core": {"always": true},
+    "top_deck_construction": {"always": true},
+    "copied_attack_toolbox": {"always": true},
+    "setup_board_outcome": {"always": true},
+    "combo_state": {"always": true},
+    "bench_continuity": {"always": true},
+    "resource_forecast": {"always": true},
+    "prize_and_outcome_timing": {"always": true},
+    "boomerang_energy_route": {"requires_cards": ["Boomerang Energy"]},
+    "counter_gain_route": {"requires_cards": ["Counter Gain"]},
+    "secret_box_route": {"requires_cards": ["Secret Box"]},
+    "prime_catcher_route": {"requires_cards": ["Prime Catcher"]},
+    "switch_route": {"requires_cards": ["Switch"]},
+    "hilda_route": {"requires_cards": ["Hilda"]},
+    "colress_tenacity_route": {"requires_cards": ["Colress’s Tenacity"]},
+    "spectrier_route": {"requires_cards": ["Spectrier"]},
+    "second_smoochum_composition": {"minimum_card_counts": {"Smoochum": 2}}
+  },
+  "infrastructure": {
+    "expanded_head_inventory": "poke_bot.strategic_schedule.EXPANDED_HEAD_IDS",
+    "combo_target_builder": "poke_bot.slowking_combo_targets",
+    "combo_loss": "poke_bot.combo_state",
+    "setup_board_outcome": "poke_bot.setup_board_outcome",
+    "typed_loss_aggregation": "poke_bot.archetype_loss_contract",
+    "expert_feature_stream": "poke_bot.pure_rl.expert_feature_stream",
+    "expert_rehearsal": "poke_bot.pure_rl.expert_rehearsal",
+    "decision_fusion": "poke_bot.model.CausalDecisionFusion",
+    "guide": "poke_bot.slowking_heuristics",
+    "reverse_engineered_teacher": "poke_bot.slowking_reverse_engineered_policy",
+    "reverse_engineered_teacher_role": "offline_sparse_feature_confidence_mask_and_regression_baseline",
+    "reverse_engineered_teacher_serving_logit_authority": false,
+    "reverse_engineered_teacher_audit": "state/slowking_reverse_engineered_policy_audit_v1.json",
+    "reverse_engineered_teacher_audit_sha256": "sha256:d9261c80bb06a12aedaa5f544c684f4c5e30d2bdb62431a79cb8fa7a24e28656"
+  },
+  "authority": {
+    "may_materialize_research_rows": true,
+    "may_run_offline_validation": true,
+    "may_start_training": false,
+    "may_register_checkpoint": false,
+    "may_change_selector": false,
+    "may_serve": false,
+    "may_submit": false
+  }
+}

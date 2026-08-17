@@ -1,0 +1,98 @@
+{
+  "schema": "poke_bot.alakazam_rule_aux_heads_config/v1",
+  "version": 1,
+  "revision": 298,
+  "status": "revision_5_schema_bound_default_zero_inert",
+  "canonical_authority": {
+    "goal_path": "goals/alakazam-elmo-rule-derivative/GOAL.md",
+    "goal_sha256": "sha256:7a829abebd348d0ffdf0a73c8b559fe9c799af3d3aff49a64efdfa85a08051b6",
+    "goal_revision": 5,
+    "contract_path": "goals/alakazam-elmo-rule-derivative/contract.json",
+    "contract_sha256": "sha256:dbbd4dbcc057b631d61fa867e45c393d594550b3b45f306f465b6ee5b4428891",
+    "root_owner_revision": 303,
+    "production_typed_source": "state/alakazam-new-list-direct-policy-r241.json",
+    "production_typed_source_sha256": "sha256:8d83f5e9eafc8e554f33dcbfbda7e1b337b8f65dc2e49109be4acdd829850c1e"
+  },
+  "revision_4_predecessor": {
+    "goal_revision": 4,
+    "goal_sha256": "sha256:2af67560510ca7ffd9fe0bc6ff37cdbbd74f5a78d6c5237091bb527d49ce4ed8",
+    "contract_sha256": "sha256:f65e023d454375cfd59324306044da10a116201a187415f0534e24c239bd2dc2",
+    "historical_evidence_only": true,
+    "blind_hash_substitution_allowed": false,
+    "satisfies_revision_5_schema_freeze_alone": false
+  },
+  "target_contract": {
+    "schema": "poke_bot.alakazam_simulator_rule_targets/v1",
+    "schema_digest": "sha256:6b9544fa7285edad25e34ab7fca08bfa4cf9c395e1748178c73708d3377f354f",
+    "selected_action_only": true,
+    "counterfactual_labels": false,
+    "policy_feature_eligible": false,
+    "public_snapshot_identity": "semantic_representation_serial_invariant",
+    "privileged_belief": "target_only_and_masked_until_sealed_private_payload_ledger_extension",
+    "observed_trajectory": "diagnostic_target_only_all_trainable_masks_false_without_exact_r5_sealed_validator",
+    "revision_5_schema_freeze_receipt_required_before_materialization": true,
+    "revision_5_handoff_activation_required_before_trainable_masks": true
+  },
+  "frozen_schema_manifest": {
+    "path": "config/auxiliary_heads/alakazam-simulator-rule-targets-r298.schema.json",
+    "sha256": "sha256:36d457d0034a36f8faeff1ddd6ef2ff1333c6a065dca718168cb33ee8f509e11",
+    "zero_bypass_receipt": "required_before_refeaturization",
+    "revision_5_schema_freeze_receipt": "required_before_materialization_or_target_training",
+    "revision_5_handoff_activation_receipt": "required_before_any_trainable_target_mask"
+  },
+  "canonical_simulator": {
+    "typed_source": "state/canonical-libcg-r236.json",
+    "typed_source_sha256": "sha256:d75ff752808ead08f3ae20f7f2f8a034c9e6163109188a46d3b877bf1910ae2d",
+    "kaggle_environments_version": "1.32.6",
+    "linux_x86_64_sha256": "sha256:d16244a3157fc55c3314f08dcc7c5179168697d78c105b95c7debd556b764bb7",
+    "legal_option_authority": "pinned_competition_simulator"
+  },
+  "runtime": {
+    "runtime_wired": false,
+    "enabled_default": false,
+    "policy_gate": 0.0,
+    "baseline_logits_bit_identical_when_off": true,
+    "legal_option_set_change": false,
+    "immediate_inzi_execution_authority": false,
+    "production_authority": false,
+    "serving_selector_authority": false
+  },
+  "training_boundary": {
+    "pre_handoff_elmo_experiment_only": true,
+    "candidate_training_enabled_now": false,
+    "candidate_training_host_after_handoff": "inzi_blackwell",
+    "revision_5_handoff_activation_receipt_required": true,
+    "backbone_frozen": true,
+    "existing_heads_frozen": true,
+    "fusion_frozen": true,
+    "own_deck_routes_frozen": true,
+    "matchup_adapters_frozen": true,
+    "trainable_module": "poke_bot.alakazam_rule_aux_heads_r298.R298RuleAuxiliaryHeads",
+    "dataset_trainer_hook": "future_explicit_post_handoff_adapter_only",
+    "trajectory_receipt_gate": "same_sealed_r5_validator_instance_required_by_rule_head_target_vectors",
+    "required_raw_corpus": {
+      "window_start_utc": "2026-07-13",
+      "window_end_utc": "2026-08-11",
+      "utc_partition_count_exact": 30,
+      "validated_deduplicated_manifest_sha256_required": true,
+      "source_day_group_disjoint_splits_required": true,
+      "twenty_day_or_subset_fallback_allowed": false
+    }
+  },
+  "gates": {
+    "lethal_threat": 0.0,
+    "prize_race": 0.0,
+    "action_utility": 0.0,
+    "turn_resources": 0.0,
+    "attack_readiness": 0.0,
+    "game_phase": 0.0,
+    "terminal_conversion": 0.0,
+    "opponent_belief_target_only": 0.0,
+    "policy_residual": 0.0
+  },
+  "provenance": {
+    "owner_goal_attachment_sha256": "sha256:0f440fc71043b4352e6401a3187c9d582c1c5614d76e186095e0eef51017af6f",
+    "activation": "none",
+    "note": "This manifest grants no current Inzi execution, production, search, legality, action-selection, serving-selector, or target-training authority."
+  }
+}

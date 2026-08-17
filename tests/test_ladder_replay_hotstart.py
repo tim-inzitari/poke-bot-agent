@@ -1,0 +1,488 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from poke_bot.dataset import BootstrapDataset, GameSequence
+from poke_bot.ladder_deck_mix import (
+    LadderDeck,
+    LadderDeckMix,
+    LadderDeckRepresentatives,
+    load_ladder_deck_mix,
+    load_ladder_deck_representatives,
+)
+from poke_bot.ladder_replay import (
+    LadderReplayClassifier,
+    canonical_deck_sha256,
+)
+from poke_bot.train import split_dataset
+from scripts.run_top_ladder_hotstart import _sha256, _validate_dataset
+from scripts.split_top_ladder_dataset import main as split_top_ladder_dataset
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MIX = ROOT / "data" / "training_mixes" / "top_ladder.v1.json"
+REPS = ROOT / "data" / "training_mixes" / "top_ladder_representatives.v1.json"
+TEAL_PUBLIC_CATALOG = (
+    ROOT
+    / "data"
+    / "training_mixes"
+    / "teal-mask-ogerpon-ex-public-full32.v1.json"
+)
+TEAL_SIGNATURE_AUDIT = (
+    ROOT
+    / "data"
+    / "training_mixes"
+    / "teal-mask-ogerpon-ex-public-signature-audit.v1.json"
+)
+SPECIALIST_REPRESENTATIVES = (
+    ROOT / "data" / "training_mixes" / "specialist_representatives.v1.json"
+)
+
+
+def _sequence(episode_id: str, seat: int) -> GameSequence:
+    return GameSequence(
+        episode_id=episode_id,
+        seat=seat,
+        archetype="crustle",
+        opp_archetype="alakazam",
+        deck=[1] * 60,
+        value=1.0,
+        decisions=[],
+    )
+
+
+def _minimal_classifier_inputs() -> tuple[
+    LadderDeckMix,
+    LadderDeckRepresentatives,
+]:
+    mix_digest = "sha256:" + "1" * 64
+    mix = LadderDeckMix(
+        schema="poke_bot.ladder_deck_mix/v1",
+        mix_id="unit-test",
+        artifact_sha256=mix_digest,
+        source={},
+        coverage={},
+        weight_policy={},
+        decks=(
+            LadderDeck(
+                source_rank=1,
+                deck_id="alakazam",
+                observed_count=1,
+                observed_weight=1.0,
+                known_conditional_weight=1.0,
+                train_weight=1.0,
+                games_featuring=1,
+                game_share=1.0,
+                win_rate=0.5,
+                wilson_95=(0.0, 1.0),
+                classification_method="unit_test",
+                signature_groups=(),
+            ),
+        ),
+        excluded=(),
+    )
+    representatives = LadderDeckRepresentatives(
+        schema="poke_bot.ladder_deck_representatives/v1",
+        artifact_sha256="sha256:" + "2" * 64,
+        source_mix_sha256=mix_digest,
+        source_dataset="unit-test",
+        selection="unit-test",
+        decks={
+            "alakazam": {
+                "card_ids": [999_999] * 60,
+                "modal_seat_count": 1,
+                "labeled_seat_count": 1,
+            }
+        },
+    )
+    return mix, representatives
+
+
+def test_every_pinned_representative_has_exact_family_label() -> None:
+    mix = load_ladder_deck_mix(MIX)
+    representatives = load_ladder_deck_representatives(REPS)
+    classifier = LadderReplayClassifier(mix, representatives)
+
+    assert set(classifier.active_ids) == set(representatives.decks)
+    for deck_id, row in representatives.decks.items():
+        label = classifier.classify_deck(row["card_ids"])
+        assert label.deck_id == deck_id
+        assert label.method == "representative_exact"
+
+
+def test_post_snapshot_family_requires_explicit_additive_allowlist() -> None:
+    cards = [879] + [1] * 59
+    default = LadderReplayClassifier.from_paths(MIX, REPS)
+    assert default.classify_deck(cards).deck_id == "unknown"
+
+    additive = LadderReplayClassifier.from_paths(
+        MIX, REPS, additive_registered_ids=["hops-trevenant"]
+    )
+    label = additive.classify_deck(cards)
+    assert label.deck_id == "hops-trevenant"
+    assert label.method == "registered_signature"
+    assert additive.contract["additive_registered_ids"] == ["hops-trevenant"]
+
+
+def test_spidops_additive_signature_does_not_steal_rockets_mewtwo() -> None:
+    spidops = [400] * 4 + [401] * 4 + [431] + [1] * 51
+    mewtwo = [400] * 4 + [401] * 4 + [431] * 2 + [1] * 50
+    classifier = LadderReplayClassifier.from_paths(
+        MIX,
+        REPS,
+        additive_registered_ids=["team-rockets-spidops"],
+    )
+    label = classifier.classify_deck(spidops)
+    assert label.deck_id == "team-rockets-spidops"
+    assert label.method == "registered_signature"
+    assert classifier.classify_deck(mewtwo).deck_id == "rockets-mewtwo"
+
+
+def test_public_deck_catalog_overrides_stale_cross_archetype_signature(
+    tmp_path: Path,
+) -> None:
+    representatives = load_ladder_deck_representatives(REPS)
+    cards = representatives.decks["alakazam"]["card_ids"]
+    catalog = tmp_path / "spidops-public-catalog.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.public_deck_archetype_catalog/v1",
+                "source": "https://ptcgreplay.netlify.app/",
+                "specialist_id": "team-rockets-spidops",
+                "source_window": {
+                    "start": "2026-06-26",
+                    "end": "2026-06-26",
+                    "days": 1,
+                },
+                "minimum_acting_seat_games": 1,
+                "observed_acting_seat_games": 1,
+                "observed_by_day": {"2026-06-26": 1},
+                "deck_fingerprints": [canonical_deck_sha256(cards)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    classifier = LadderReplayClassifier.from_paths(
+        MIX,
+        REPS,
+        additive_registered_ids=["team-rockets-spidops"],
+        authoritative_deck_catalogs=[catalog],
+    )
+
+    label = classifier.classify_deck(cards)
+    assert label.deck_id == "team-rockets-spidops"
+    assert label.method == "authoritative_public_deck_identity"
+    contract = classifier.contract["authoritative_deck_catalogs"][0]
+    assert contract["minimum_acting_seat_games"] == 1
+    assert contract["observed_acting_seat_games"] == 1
+    assert contract["deck_fingerprint_count"] == 1
+    assert contract["sha256"].startswith("sha256:")
+
+
+def test_authoritative_only_teal_corpus_accepts_exact_slop_box_identity_only() -> None:
+    catalog = json.loads(TEAL_PUBLIC_CATALOG.read_text(encoding="utf-8"))
+    audit = json.loads(TEAL_SIGNATURE_AUDIT.read_text(encoding="utf-8"))
+    representative = json.loads(
+        SPECIALIST_REPRESENTATIVES.read_text(encoding="utf-8")
+    )["decks"]["teal-mask-ogerpon-ex"]["card_ids"]
+    mix, representatives = _minimal_classifier_inputs()
+    classifier = LadderReplayClassifier(
+        mix,
+        representatives,
+        additive_registered_ids=["teal-mask-ogerpon-ex"],
+        authoritative_deck_catalogs=[TEAL_PUBLIC_CATALOG],
+        authoritative_only_ids=["teal-mask-ogerpon-ex"],
+    )
+
+    intended = classifier.classify_deck(
+        catalog["source_deck_rows"][0]["card_ids"]
+    )
+    assert intended.deck_id == "teal-mask-ogerpon-ex"
+    assert intended.method == "authoritative_public_deck_identity"
+
+    assert representative == catalog["source_deck_rows"][0]["card_ids"]
+    accepted_representative = classifier.classify_deck(representative)
+    assert accepted_representative.deck_id == "teal-mask-ogerpon-ex"
+    assert accepted_representative.method == (
+        "authoritative_public_deck_identity"
+    )
+    for row in audit["mega_kangaskhan_collision_rows"]:
+        assert classifier.classify_deck(row["card_ids"]).deck_id != (
+            "teal-mask-ogerpon-ex"
+        )
+    assert classifier.contract["authoritative_only_ids"] == [
+        "teal-mask-ogerpon-ex"
+    ]
+    catalog_contract = classifier.contract["authoritative_deck_catalogs"][0]
+    assert catalog_contract["source_archetype"] == {
+        "id": 151,
+        "name": "Teal Mask Ogerpon ex",
+    }
+    assert (
+        catalog_contract["source_deck_rows_bound_to_fingerprints"] is True
+    )
+
+
+def test_authoritative_only_classifier_requires_a_matching_catalog() -> None:
+    mix, representatives = _minimal_classifier_inputs()
+    with pytest.raises(ValueError, match="lack a public deck catalog"):
+        LadderReplayClassifier(
+            mix,
+            representatives,
+            additive_registered_ids=["teal-mask-ogerpon-ex"],
+            authoritative_only_ids=["teal-mask-ogerpon-ex"],
+        )
+
+
+def test_additive_allowlist_rejects_unregistered_family() -> None:
+    with pytest.raises(ValueError, match="unregistered additive"):
+        LadderReplayClassifier.from_paths(
+            MIX, REPS, additive_registered_ids=["not-a-real-family"]
+        )
+
+
+def test_logical_alias_reuses_festival_lead_evidence_as_thwackey() -> None:
+    representatives = load_ladder_deck_representatives(REPS)
+    classifier = LadderReplayClassifier.from_paths(
+        MIX,
+        REPS,
+        logical_aliases={"festival-lead": "thwackey"},
+    )
+    label = classifier.classify_deck(
+        representatives.decks["festival-lead"]["card_ids"]
+    )
+    assert label.deck_id == "thwackey"
+    assert label.method == "representative_exact+logical_alias"
+    assert classifier.contract["logical_aliases"] == {
+        "festival-lead": "thwackey"
+    }
+
+
+def test_logical_alias_rejects_unknown_identity() -> None:
+    with pytest.raises(ValueError, match="invalid logical ladder aliases"):
+        LadderReplayClassifier.from_paths(
+            MIX,
+            REPS,
+            logical_aliases={"festival-lead": "not-a-real-family"},
+        )
+
+
+def test_ace_labeled_families_generalize_beyond_exact_modal_list(tmp_path: Path) -> None:
+    card_csv = tmp_path / "cards.csv"
+    card_csv.write_text(
+        "Card ID,Card Name,HP\n"
+        "140,Fezandipiti ex,210\n"
+        "190,Archaludon ex,300\n"
+        "648,Marnie's Grimmsnarl ex,320\n",
+        encoding="utf-8",
+    )
+    classifier = LadderReplayClassifier.from_paths(
+        MIX, REPS, card_csv=card_csv
+    )
+    representatives = load_ladder_deck_representatives(REPS)
+    for deck_id in ("marnie-s-grimmsnarl-ex", "archaludon-ex"):
+        cards = list(representatives.decks[deck_id]["card_ids"])
+        # Change one trainer/basic card so this is no longer the modal multiset.
+        replace_at = next(i for i, card_id in enumerate(cards) if card_id not in {140, 190, 648})
+        cards[replace_at] = 999_999
+        label = classifier.classify_deck(cards)
+        assert label.deck_id == deck_id
+        assert label.method == "derived_primary_ace"
+
+
+def test_episode_grouped_split_never_leaks_other_seat() -> None:
+    sequences = [
+        _sequence("ep-a", 0),
+        _sequence("ep-a", 1),
+        _sequence("ep-b", 0),
+        _sequence("ep-b", 1),
+        _sequence("ep-c", 0),
+        _sequence("ep-c", 1),
+    ]
+    train, val = split_dataset(
+        BootstrapDataset(sequences), 0.34, 7, group_by_episode=True
+    )
+    assert train
+    assert val
+    assert {seq.episode_id for seq in train}.isdisjoint(
+        {seq.episode_id for seq in val}
+    )
+
+
+def _validation_meta(dataset: Path, represented: set[str]) -> dict:
+    mix = load_ladder_deck_mix(MIX)
+    expected = {entry.deck_id for entry in mix.decks}
+    return {
+        "output_sha256": _sha256(dataset),
+        "classifier": {
+            "mix_artifact_sha256": mix.artifact_sha256,
+            "active_deck_ids": sorted(expected),
+        },
+        "stats": {
+            "record_archetypes": {name: 1 for name in sorted(represented)}
+        },
+    }
+
+
+def test_dataset_gate_allows_unknown_deck_agnostic_seats(tmp_path: Path) -> None:
+    dataset = tmp_path / "all.jsonl"
+    dataset.write_text("{}\n", encoding="utf-8")
+    expected = {entry.deck_id for entry in load_ladder_deck_mix(MIX).decks}
+    _validate_dataset(
+        dataset,
+        _validation_meta(dataset, expected | {"unknown"}),
+        MIX,
+    )
+
+
+def test_followup_shard_can_have_partial_family_coverage(tmp_path: Path) -> None:
+    dataset = tmp_path / "followup.jsonl"
+    dataset.write_text("{}\n", encoding="utf-8")
+    represented = {"crustle", "unknown"}
+    meta = _validation_meta(dataset, represented)
+    _validate_dataset(
+        dataset,
+        meta,
+        MIX,
+        require_all_families=False,
+    )
+    with pytest.raises(RuntimeError, match="missing="):
+        _validate_dataset(dataset, meta, MIX, require_all_families=True)
+
+
+def test_top_ladder_split_routes_every_record_and_rebuilds_metadata(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "parent.jsonl"
+    records = [
+        {
+            "source": "pokemon-tcg-ai-battle-episodes-2026-07-03",
+            "episode_id": "a",
+            "seat": 0,
+            "archetype": "crustle",
+            "n_decisions": 3,
+            "info_set_ok": True,
+        },
+        {
+            "source": "pokemon-tcg-ai-battle-episodes-2026-07-04",
+            "episode_id": "b",
+            "seat": 1,
+            "archetype": "alakazam",
+            "n_decisions": 5,
+            "info_set_ok": True,
+        },
+        {
+            "source": "pokemon-tcg-ai-battle-episodes-2026-07-05",
+            "episode_id": "c",
+            "seat": 0,
+            "archetype": "crustle",
+            "n_decisions": 7,
+            "info_set_ok": True,
+        },
+    ]
+    parent.write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+    mix = load_ladder_deck_mix(MIX)
+    parent_meta = {
+        "output_sha256": _sha256(parent),
+        "sources": [
+            {"date": f"2026-07-0{day}", "slug": f"day-{day}"}
+            for day in (3, 4, 5)
+        ],
+        "classifier": {
+            "mix_artifact_sha256": mix.artifact_sha256,
+            "active_deck_ids": [entry.deck_id for entry in mix.decks],
+        },
+        "policy_scope": "all_valid_top_ladder_seats",
+        "quality_gates": {"passed": True},
+        "stats": {"records_written": len(records)},
+    }
+    parent.with_suffix(".meta.json").write_text(
+        json.dumps(parent_meta), encoding="utf-8"
+    )
+    first = tmp_path / "first.jsonl"
+    second = tmp_path / "second.jsonl"
+
+    assert (
+        split_top_ladder_dataset(
+            [
+                "--dataset",
+                str(parent),
+                "--shard",
+                "2026-07-03",
+                "2026-07-04",
+                str(first),
+                "--shard",
+                "2026-07-05",
+                "2026-07-05",
+                str(second),
+                "--min-sequences",
+                "1",
+            ]
+        )
+        == 0
+    )
+    first_rows = [json.loads(line) for line in first.read_text().splitlines()]
+    second_rows = [json.loads(line) for line in second.read_text().splitlines()]
+    assert [row["episode_id"] for row in first_rows] == ["a", "b"]
+    assert [row["episode_id"] for row in second_rows] == ["c"]
+    assert len(first_rows) + len(second_rows) == len(records)
+    first_meta = json.loads(first.with_suffix(".meta.json").read_text())
+    second_meta = json.loads(second.with_suffix(".meta.json").read_text())
+    assert first_meta["output_sha256"] == _sha256(first)
+    assert second_meta["output_sha256"] == _sha256(second)
+    assert first_meta["stats"]["decisions_written"] == 8
+    assert second_meta["stats"]["decisions_written"] == 7
+
+
+def test_top_ladder_split_quality_failure_leaves_no_final_children(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "parent.jsonl"
+    record = {
+        "source": "pokemon-tcg-ai-battle-episodes-2026-07-03",
+        "episode_id": "a",
+        "seat": 0,
+        "archetype": "unknown",
+        "n_decisions": 3,
+        "info_set_ok": True,
+    }
+    parent.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    mix = load_ladder_deck_mix(MIX)
+    parent.with_suffix(".meta.json").write_text(
+        json.dumps(
+            {
+                "output_sha256": _sha256(parent),
+                "sources": [{"date": "2026-07-03", "slug": "day-3"}],
+                "classifier": {
+                    "mix_artifact_sha256": mix.artifact_sha256,
+                    "active_deck_ids": [entry.deck_id for entry in mix.decks],
+                },
+                "quality_gates": {"passed": True},
+                "stats": {"records_written": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+    child = tmp_path / "child.jsonl"
+
+    with pytest.raises(RuntimeError, match="recognized seat fraction"):
+        split_top_ladder_dataset(
+            [
+                "--dataset",
+                str(parent),
+                "--shard",
+                "2026-07-03",
+                "2026-07-03",
+                str(child),
+            ]
+        )
+
+    assert not child.exists()
+    assert not child.with_suffix(".meta.json").exists()

@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*~
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+.kaggle/
+**/kaggle.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Downloaded competition/private assets
+kaggle/input/
+baselines/official/
+baselines/community/
+baselines/roster/
+baselines/decks/
+baselines/kernels/
+cards/*.csv
+cg/
+
+# Training and generated artifacts
+data/
+outputs/
+output/
+out/
+dist/
+build/
+tmp/
+*.pt
+*.pth
+*.ckpt
+*.features
+*.partial
+*.jsonl
+*.log
+*.whl
+*.so
+*.dylib
+*.dll
+
+# Private operational exports from the development repository
+.cursor-loop/
+.r241-local-staging/
+.r274-expert-relay-v1/
+.r274-expert-relay-v2/
+state/
+runtime/
+evidence/

@@ -1,0 +1,307 @@
+# Checksum-bound research and sparse causal-target contract for Archaludon ex.
+# This is a prestaging artifact only. It has no selector, runtime, training,
+# transition, gate, or serving authority.
+schema_version: poke_bot.current_deck_guide/v1
+specialist_id: archaludon-ex
+display_name: "Archaludon ex"
+status: blocked_pending_revision56_curriculum_validation_and_corpus_rebind
+guide_version: archaludon-ex-north-star-v1
+teacher_module: poke_bot.archaludon_ex_heuristics
+implementation_status: sparse_causal_teacher_validated
+teacher_module_sha256: sha256:4ec28e4f26c281f7488b20c31bbe17a6e4320cb54cb7dc5e1e4722e839aceca3
+deck_complexity: stateful_resource_conversion
+
+project_representative_binding:
+  path: data/training_mixes/specialist_representatives.v1.json
+  json_pointer: /decks/archaludon-ex
+  source_deck_id: archaludon-ex
+  card_count: 60
+  canonical_multiset_sha256: sha256:43b3939c786067e0621e4acd7c3af958bfa97c501e45e62bc21ab1fa0b4bb1e3
+  cards_sha256: sha256:01590bfd928dc5028af6516e365c55a693ad6a1ccb5426580d5d16e7127e5e34
+  selection: modal_exact_60_card_multiset_among_public_labeled_seats
+  distinct_lists: 6
+  labeled_seat_count: 113
+  modal_seat_count: 81
+
+policy_target:
+  type: sparse_causal_curriculum_row_selector
+  training_mode: strategic_curriculum_v1
+  parameterized_head: false
+  target_logits: none
+  direct_policy_cross_entropy_allowed: false
+  guide_preference_index_role: diagnostics_and_row_qualification_only
+  guide_preference_index_may_affect_loss_or_gradient: false
+  observed_target_authority:
+    - expanded_strategic_targets
+    - setup_board_outcome
+  serving_authority: false
+  override_authoritative_policy: false
+
+setup_board_outcome_head:
+  owner_decision_revision: 55
+  architecture: [d_model, 512, 9]
+  input: board_state_cross_attended_option_hidden
+  computation_role: independent_head
+  fusion_role: fused_input
+  action_influence: bounded_option_conditioned_route
+  fusion_route_initialization: zero_safe_exact_parent_parity
+  base_loss_weight: 0.025
+  eligible_contexts: [initial_setup_active, initial_setup_bench]
+  target_groups:
+    next_own_decision_resource_forecast:
+      source: expanded_strategic_targets.resource_forecast
+      dimensions: 6
+    terminal_outcome:
+      source: expanded_strategic_targets.outcome_class
+      classes: [loss, draw, win]
+  selected_complete_stage_only: true
+  unchosen_candidates_are_masked: true
+  guide_curriculum_term: guide_weight_times_confidence_times_observed_target_loss
+  guide_preference_index_may_affect_loss_or_gradient: false
+  direct_action_selection_authority: false
+  runtime_activation_requires_validation_receipt: true
+  validation_receipt_required_before_bootstrap: true
+
+deck_signature:
+  minimum_card_counts:
+    190: 3  # Archaludon ex
+    8: 8    # Basic Metal Energy
+  minimum_family_counts:
+    duraludon:
+      card_ids: [169, 839, 992]
+      count: 4
+  representative_supporting_card_ids:
+    57: Relicanth
+    169: Duraludon
+    190: Archaludon ex
+    1097: Night Stretcher
+    1121: Ultra Ball
+    1152: "Poké Pad"
+    1182: "Boss's Orders"
+    1213: Judge
+    1227: "Lillie's Determination"
+    1244: Full Metal Lab
+  exact_deck_checksum_overrides_family_signature: true
+  fuzzy_display_name_matching_allowed: false
+
+strategy_sources:
+  - title: "Archaludon ex Strategy: Testing Your Metal"
+    publisher: The Pokemon Company International
+    url: https://www.pokemon.com/us/strategy/archaludon-ex-strategy-testing-your-metal
+    evidence_role: official_tank_discard_recovery_and_Raging_Hammer_strategy
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Archaludon Dudunsparce by Brian Peltz"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/list/28608
+    evidence_role: current_NAIC_2026_reference_list
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Archaludon Dudunsparce by Antoni M."
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/list/28245
+    evidence_role: current_Turin_fifth_place_alternate_with_single_prize_route
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Archaludon Dudunsparce current matchups"
+    publisher: Play! Limitless
+    url: https://play.limitlesstcg.com/decks/archaludon-dudunsparce/matchups?format=standard&rotation=2026&set=POR
+    evidence_role: observational_current_matchup_testing_priorities
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Archaludon ex SSP 130"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/SSP/130
+    evidence_role: exact_Assemble_Alloy_and_Metal_Defender_card_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Duraludon SCR 106"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/SCR/106
+    evidence_role: exact_Hammer_In_and_Raging_Hammer_card_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Dudunsparce TEF 129"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/TEF/129
+    evidence_role: exact_Run_Away_Draw_card_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Relicanth TEF 84"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/TEF/84
+    evidence_role: exact_Memory_Dive_card_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+
+expert_writeup:
+  path: docs/deck_guides/archaludon-ex-expert-brief.txt
+  sha256: sha256:a44a9d3cc0793ace0a1a7fe8a19dcb6bd8a49f92fd400a7a9c17d6d856b9dd01
+  word_count: 6475
+  maximum_words: 10000
+  audience: world_champion_subject_matter_experts
+  guide_identity: archaludon-ex
+  cites_same_strategy_source_set: true
+  primary_document_type: practical_human_deck_pilot_guide
+
+high_confidence_principles:
+  - establish_a_Duraludon_attacker_lane_before_optional_support
+  - preserve_a_replacement_Duraludon_when_a_knockout_is_live
+  - seed_only_useful_Basic_Metal_into_discard_before_Assemble_Alloy
+  - establish_the_Dunsparce_engine_without_speculative_multi_prize_benching
+  - use_Raging_Hammer_only_from_exact_visible_damage_and_current_prize_math
+  - keep_hidden_prize_future_draw_and_future_opponent_response_out_of_labels
+
+causal_heuristic_contract:
+  schema_version: poke_bot.causal_deck_guide_heuristics/v1
+  stage_completeness_rule: score_every_supplied_legal_combo_or_mask_entire_stage
+  minimum_preference_margin: 0.25
+  supported_predicates:
+    - id: exact_initial_Archaludon_active
+      supported_stages: [initial_setup_active]
+      exact_inputs:
+        - select.context
+        - exact_current_legal_options
+        - current_combo_card_ids
+      preference: prefer_visible_Duraludon_then_single_prize_Dunsparce_or_Fan_Rotom
+      abstain_if:
+        - any_legal_option_unresolved
+        - legal_combo_set_incomplete
+    - id: exact_initial_Archaludon_bench
+      supported_stages: [initial_setup_bench]
+      exact_inputs:
+        - select.context
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+      preference: establish_two_Duraludon_then_two_Dunsparce_and_one_Fan_Rotom
+      abstain_if:
+        - any_legal_option_unresolved
+        - legal_combo_set_incomplete
+    - id: exact_visible_search_gap
+      supported_stages:
+        - exact_Fan_Call_search_prompt
+        - exact_Buddy_Buddy_Poffin_search_prompt
+        - exact_Poke_Pad_search_prompt
+        - exact_Ultra_Ball_search_prompt
+        - exact_Hilda_search_prompt
+        - exact_Night_Stretcher_recovery_prompt
+      exact_inputs:
+        - select.context
+        - select.effect_or_contextCard
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+        - own_public_discard_card_ids
+      preference: fill_visible_attacker_draw_engine_or_Basic_Metal_gap
+      abstain_if:
+        - prompt_origin_not_exactly_resolved
+        - any_legal_option_unresolved
+    - id: exact_safe_draw_ability_yes_no
+      supported_stages:
+        - exact_Run_Away_Draw_yes_no
+        - exact_Flip_the_Script_yes_no
+      exact_inputs:
+        - select.effect_or_contextCard
+        - complete_current_yes_no_stage
+        - exact_current_deck_count
+        - exact_current_own_board_Pokemon_count
+      preference: use_current_legal_draw_only_with_conservative_post_draw_reserve
+      abstain_if:
+        - ability_origin_unresolved
+        - deck_count_unresolved
+        - any_legal_option_unresolved
+
+masked_targets:
+  - Assemble_Alloy_energy_source_or_destination
+  - manual_energy_attachment
+  - attack_selection_or_damage_target
+  - Raging_Hammer_damage_or_prize_route
+  - Mega_Mawile_attack_or_prize_math
+  - Ultra_Ball_Prism_Tower_or_other_discard_selection
+  - Scoop_Up_Cyclone_target
+  - gust_disruption_or_matchup_specific_action
+  - face_down_prize_identity
+  - opponent_hidden_hand_deck_or_prize_contents
+  - future_draw_future_action_or_eventual_outcome
+  - unknown_prompt_origin
+  - unresolved_option_or_malformed_legal_combo
+  - score_margin_below_0_25
+
+target_safety:
+  causal_current_and_past_state_only: true
+  exact_current_legal_options_only: true
+  publicly_visible_board_discard_counters_and_logs_only: true
+  own_hidden_hand_or_deck_content_allowed: false
+  opponent_hidden_information_allowed: false
+  future_information_allowed: false
+  outcome_conditioned_labels_allowed: false
+  complete_legal_stage_scoring_required: true
+  complete_stage_failure_behavior: mask_entire_stage
+  minimum_preference_margin: 0.25
+  ambiguous_or_low_margin_behavior: mask
+  missing_label_behavior: mask_not_zero
+  runtime_action_override_allowed: false
+  runtime_authority: none
+  guide_may_override_fused_policy: false
+
+weight_schedule_source: config/rl_protocol.yaml#/specialist_training/current_deck_guide
+
+corpus_binding_evidence:
+  status: blocked_pending_full_public_schema7_rematerialization_and_revision56_validation
+  logical_specialist_id: archaludon-ex
+  source_window: {start: "2026-06-16", end: "2026-07-29", days: 44}
+  minimum_matching_games: 16639
+  audited_source_matching_acting_seats: 21278
+  source_audit: state/archaludon_public_full44_source_audit_v1.json
+  source_audit_sha256: sha256:9603e23bf68d70c70a063eacc5aa8bcf135750ac12b76f476471d59c57feb737
+  records: null
+  decisions: null
+  guide_rows: null
+  dataset_schema_required: 7
+  feature_schema_required: 5
+  schema6_feature_reuse_allowed: false
+  all_days_require_original_public_archive_rematerialization: true
+  guide_corpus_ready: false
+  identity_corpus_root: /srv/poke-bot-agent/archive/archaludon-ex-full-public-2026-06-16_2026-07-29-schema7-r56-v1
+  identity_ready_receipt: /srv/poke-bot-agent/archive/archaludon-ex-full-public-2026-06-16_2026-07-29-schema7-r56-v1/ARCHALUDON_EX_FULL_PUBLIC_CORPUS_READY.json
+  identity_ready_receipt_sha256: null
+  source_lock: state/archaludon_ex_schema7_source_lock_v1.json
+  source_lock_sha256: null
+  guide_corpus_root: /srv/poke-bot-agent/archive/archaludon-ex-guide-full-public-schema7-r56-v1
+  guide_ready_receipt: /srv/poke-bot-agent/archive/archaludon-ex-guide-full-public-schema7-r56-v1/CURRENT_DECK_GUIDE_CORPUS_READY.json
+  guide_ready_receipt_sha256: null
+  final_validation_receipt: /srv/poke-bot-agent/archive/archaludon-ex-guide-full-public-schema7-r56-v1/ARCHALUDON_EX_GUIDE_CORPUS_READY.json
+  final_validation_receipt_sha256: null
+  inzi_destination: /home/pokebot/poke-bot-agent/data/bootstrap/archaludon-ex-full-public-schema7-r56-v1
+  import_receipt: /home/pokebot/poke-bot-agent/outputs/state/archaludon-ex-prestage-corpus-import-v2.json
+  import_receipt_sha256: null
+  prestage_blockers:
+    - revision56_source_lock_not_yet_issued
+    - full_public_schema7_identity_corpus_not_yet_materialized
+    - full_public_schema7_guide_corpus_not_yet_materialized
+    - revision56_option_conditioned_head_route_validation_not_yet_receipted
+    - checksum_validated_import_not_yet_complete
+  zero_guide_day_policy: exact_causal_mask_not_zero_for_unsupported_single_choice_ambiguous_or_low_margin_stages
+  superseded_schema6_corpus:
+    status: historical_ineligible_for_revision56_training
+    source_window: {start: "2026-07-08", end: "2026-07-27", days: 20}
+    records: 1458
+    decisions: 83980
+    guide_rows: 1454
+    identity_corpus_root: /srv/poke-bot-agent/archive/archaludon-ex-latest20-2026-07-08_2026-07-27-v1
+    identity_ready_receipt_sha256: sha256:53a9ce2d3bb9f8644128b692353ee1a6925217e0eef7bb2f11666af2154ecdb0
+    guide_corpus_root: /srv/poke-bot-agent/archive/archaludon-ex-guide-latest20-v2
+    guide_ready_receipt_sha256: sha256:546ff815afdfaad5b1cb53c5596907ef81be7bcfcbbf156e6434bc98c2563d43
+    final_validation_receipt_sha256: sha256:2ea025d2d9b1781c013ff2660ee1b0c6e1cb5dc9c73306f008884f96c4524739
+    imported_destination: /home/pokebot/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/archaludon-ex
+    import_receipt_sha256: sha256:c32c1310f249a9d7c4d5df0dc494a80e974377e397175d4b6952e57169a2684e
+  historical_100k_fallback_allowed: false
+  active_training_modified: false
+
+validation:
+  research_sources_reviewed: true
+  expert_writeup_under_word_limit: true
+  yaml_parse_required: true
+  unit_tests_passed: false
+  scorer_canary_passed: true
+  focused_tests_passed: null
+  guide_rows_in_filtered_expert_corpus: null
+  contract_checksum: null
+  unresolved_evidence_gaps:
+    - full_public_schema7_corpus_not_yet_materialized
+    - revision56_source_lock_not_yet_issued
+    - revision56_option_conditioned_head_routes_not_yet_receipted
+    - no_world_champion_SME_approval_yet
+    - no_controlled_current_matchup_matrix_found
+    - no_universal_first_versus_second_rule_supported

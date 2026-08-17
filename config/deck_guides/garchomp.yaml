@@ -1,0 +1,264 @@
+# Checksum-ready research and causal-target contract for one specialist guide.
+# This staging artifact has no runtime, training, selector, or serving authority.
+schema_version: poke_bot.current_deck_guide/v1
+specialist_id: garchomp
+display_name: "Cynthia's Garchomp ex"
+status: corpus_ready_elmo_and_inzi_checksum_validated
+guide_version: cynthias-garchomp-north-star-v1
+teacher_module: poke_bot.garchomp_heuristics
+implementation_status: sparse_causal_teacher_validated_corpus_ready
+
+policy_target:
+  type: sparse_confidence_weighted_legal_action_preference
+  parameterized_head: false
+  target_logits: shared_flat_or_fused_policy
+  serving_authority: false
+  override_authoritative_policy: false
+
+deck_signature:
+  minimum_card_counts:
+    379: 2 # Cynthia's Gible
+    380: 2 # Cynthia's Gabite
+    381: 2 # Cynthia's Garchomp ex
+  supporting_card_ids:
+    341: "Cynthia's Roselia"
+    342: "Cynthia's Roserade"
+    387: "Cynthia's Spiritomb"
+    1173: "Cynthia's Power Weight"
+
+strategy_sources:
+  - title: "Cynthia's Garchomp ex"
+    publisher: The Pokemon Company International
+    url: https://www.pokemon.com/uk/pokemon-tcg/pokemon-cards/series/sv10/232/
+    evidence_role: authoritative_garchomp_card_text
+    reviewed_at_utc: 2026-07-26T16:00:00Z
+  - title: "The Knowers' Underrated Deck: Garchomp Is the Real Deal"
+    publisher: PokeBeach
+    url: https://www.pokebeach.com/2026/04/the-knowers-underrated-deck-garchomp-is-the-real-deal
+    evidence_role: public_strategy_and_engine_analysis
+    reviewed_at_utc: 2026-07-26T16:00:00Z
+  - title: "Cynthia's Garchomp - Deck Overview"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/332
+    evidence_role: current_results_and_archetype_adoption
+    reviewed_at_utc: 2026-07-26T16:00:00Z
+  - title: "Cynthia's Garchomp by Neddy Kosek"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/list/26245
+    evidence_role: successful_prague_third_place_list
+    reviewed_at_utc: 2026-07-26T16:00:00Z
+  - title: "Cynthia's Roserade (Destined Rivals 8)"
+    publisher: Bulbapedia
+    url: https://bulbapedia.bulbagarden.net/wiki/Cynthia%27s_Roserade_%28Destined_Rivals_184%29
+    evidence_role: roserade_ability_text
+    reviewed_at_utc: 2026-07-26T16:00:00Z
+  - title: "Cynthia's Gabite (sv10-103)"
+    publisher: PokemonCard.io
+    url: https://pokemoncard.io/card/cynthia-s-gabite-sv10-103
+    evidence_role: gabite_ability_text
+    reviewed_at_utc: 2026-07-26T16:00:00Z
+  - title: "Cynthia's Power Weight (Destined Rivals 162)"
+    publisher: Bulbapedia
+    url: https://bulbapedia.bulbagarden.net/wiki/Cynthia%27s_Power_Weight_%28Start_Deck_100_Battle_Collection_682%29
+    evidence_role: power_weight_card_text
+    reviewed_at_utc: 2026-07-26T16:00:00Z
+  - title: "Cynthia's Spiritomb (Destined Rivals 129)"
+    publisher: Bulbapedia
+    url: https://bulbapedia.bulbagarden.net/wiki/Cynthia%27s_Spiritomb_%28Together_in_Pursuit_of_Glory_138%29
+    evidence_role: spiritomb_attack_text
+    reviewed_at_utc: 2026-07-26T16:00:00Z
+  - title: "Finally stopped procrastinating and hit Master rank with Cynthia's Garchomp"
+    publisher: Reddit r/PTCGL
+    url: https://www.reddit.com/r/PTCGL/comments/1ujg6a0/finally_stopped_procrastinating_and_hit_master/
+    evidence_role: explicitly_anecdotal_matchup_and_sequencing_observations
+    reviewed_at_utc: 2026-07-26T16:00:00Z
+
+expert_writeup:
+  path: docs/deck_guides/garchomp-expert-brief.txt
+  sha256: sha256:9da747a7b07793c0da251a7712472598d539a37839382a3ad388be2f45947877
+  word_count: 4971
+  maximum_words: 10000
+  audience: world_champion_subject_matter_experts
+  guide_identity: garchomp
+  cites_same_strategy_source_set: true
+  primary_document_type: practical_human_deck_pilot_guide
+
+high_confidence_principles:
+  - establish_redundant_visible_Cynthias_Gible_lines_before_optional_support
+  - preserve_and_use_visible_Cynthias_Gabite_Champion_Call_before_evolving_it
+  - add_Cynthias_Roserade_only_for_exact_current_damage_thresholds
+  - prefer_Corkscrew_Dive_when_it_takes_the_same_current_prizes_as_Draconic_Buster
+  - use_Draconic_Buster_for_an_exact_current_knockout_not_for_raw_damage_alone
+  - use_Cynthias_Spiritomb_only_from_exact_current_benched_damage
+
+causal_heuristic_contract:
+  schema_version: poke_bot.causal_deck_guide_heuristics/v1
+  stage_completeness_rule: score_every_supplied_legal_combo_or_mask_entire_stage
+  minimum_preference_margin: 0.25
+  supported_predicates:
+    - id: initial_setup_gible_redundancy
+      supported_stages:
+        - initial_setup
+        - exact_basic_search_prompt
+      exact_inputs:
+        - select.context
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+        - own_public_discard_card_ids
+        - current_combo_card_ids
+      preference:
+        prefer_Cynthias_Gible_until_two_visible_lines_exist
+      abstain_if:
+        - prompt_origin_not_exactly_resolved
+        - any_legal_option_unresolved
+        - visible_Gible_line_count_ambiguous
+
+    - id: visible_gabite_evolution_and_champion_call
+      supported_stages:
+        - legal_evolution_action
+        - exact_Champion_Call_search_prompt
+      exact_inputs:
+        - select.context
+        - select.effect_or_contextCard
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+        - own_public_discard_card_ids
+        - current_combo_card_ids
+      preference:
+        fill_an_exact_visible_Gible_to_Gabite_or_Gabite_to_Garchomp_gap_while_preserving_an_available_Champion_Call
+      abstain_if:
+        - prompt_origin_not_exactly_resolved
+        - hidden_hand_or_deck_contents_required
+        - multiple_visible_gaps_have_no_exact_ordering
+        - any_legal_option_unresolved
+
+    - id: exact_roserade_immediate_damage_threshold
+      supported_stages:
+        - legal_evolution_action
+      exact_inputs:
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+        - opponent_active_card_id
+        - opponent_active_current_hp
+        - exact_engine_current_attack_damage_before_new_Roserade
+        - exact_current_attack_legality
+      preference:
+        prefer_Cynthias_Roserade_only_when_plus_30_crosses_an_exact_immediate_active_knockout_threshold
+      abstain_if:
+        - no_current_legal_attack
+        - damage_modifier_stack_not_exact
+        - weakness_or_resistance_not_exact
+        - opponent_active_hp_not_exact
+        - any_legal_option_unresolved
+
+    - id: exact_garchomp_attack_choice
+      supported_stages:
+        - legal_attack_selection
+      exact_inputs:
+        - exact_current_legal_options
+        - opponent_active_current_hp
+        - exact_engine_current_damage_per_legal_attack
+        - current_attached_energy_cards
+        - current_prizes_remaining_counts
+      preference:
+        prefer_Corkscrew_Dive_if_it_takes_the_same_current_prizes_otherwise_prefer_Draconic_Buster_only_for_an_exact_additional_current_knockout
+      abstain_if:
+        - future_recovery_or_next_turn_required_to_rank_actions
+        - damage_modifier_stack_not_exact
+        - weakness_or_resistance_not_exact
+        - prize_value_not_exact
+        - any_legal_option_unresolved
+
+    - id: exact_spiritomb_current_damage_attack
+      supported_stages:
+        - legal_attack_selection
+      exact_inputs:
+        - exact_current_legal_options
+        - own_benched_Cynthias_Pokemon_damage_counters
+        - opponent_active_current_hp
+        - exact_engine_current_damage_per_legal_attack
+      preference:
+        prefer_Raging_Curse_only_when_exact_current_damage_takes_more_current_prizes_than_other_legal_attacks
+      abstain_if:
+        - any_benched_Cynthias_identity_or_damage_is_ambiguous
+        - exact_attack_damage_unavailable
+        - future_damage_or_future_board_required
+        - any_legal_option_unresolved
+
+categorical_abstentions:
+  - Power_Weight_destination_without_an_exact_current_damage_threshold
+  - manual_energy_attachment_or_special_energy_destination
+  - Champion_Call_choice_requiring_hidden_hand_or_deck_contents
+  - Corkscrew_Dive_hand_refill_value_requiring_private_hand_contents
+  - recovery_or_discard_choice_requiring_future_draws
+  - matchup_specific_tech_guidance
+  - future_prize_map_or_future_knockout_prediction
+  - opponent_hidden_hand_deck_or_prize_contents
+  - unavailable_or_ambiguous_attack_damage
+  - unknown_non_main_prompt_origin
+  - unresolved_option_or_malformed_legal_combo
+  - score_margin_below_0_25
+
+target_safety:
+  causal_current_and_past_state_only: true
+  exact_current_legal_options_only: true
+  publicly_visible_board_discard_counters_and_logs_only: true
+  own_hidden_hand_or_deck_content_allowed: false
+  opponent_hidden_information_allowed: false
+  future_information_allowed: false
+  outcome_conditioned_labels_allowed: false
+  complete_legal_stage_scoring_required: true
+  complete_stage_failure_behavior: mask_entire_stage
+  minimum_preference_margin: 0.25
+  ambiguous_or_low_margin_behavior: mask
+  missing_label_behavior: mask_not_zero
+  runtime_action_override_allowed: false
+  runtime_authority: none
+  guide_may_override_flat_or_fused_policy: false
+
+weight_schedule_source: config/rl_protocol.yaml#/specialist_training/current_deck_guide
+
+corpus_binding_evidence:
+  status: ready_on_elmo_and_inzi
+  date_start: 2026-07-04
+  date_end: 2026-07-23
+  days: 20
+  records: 12446
+  decisions: 972970
+  guide_rows: 97171
+  ready_receipt: /srv/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/garchomp/CURRENT_DECK_GUIDE_CORPUS_READY.json
+  ready_receipt_sha256: sha256:91ae9f2e53947926b45dca110830e200007e86d6658969609e4bda8f58e9394b
+  manifest_sha256: sha256:21a86c1d54965a81cc4aaa62615c305527aa6e6609595f8ddd09f2439ea826ea
+  protected_pointer_sha256: sha256:fd2f05f547a8cb1e422eaa0a52f7011726b1e00e6145ae42b57a0cc27f0923c0
+  all_daily_feature_and_receipt_checksums_verified: true
+  exact_sequential_dates_verified: true
+  specialist_identity_verified: true
+  guide_version_verified: true
+  active_training_modified: false
+  inzi_promotion:
+    status: ready
+    managed_service: pokebot-garchomp-guide-promote-v1.service
+    destination: /home/pokebot/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/garchomp
+    state_receipt: /home/pokebot/poke-bot-agent/outputs/state/garchomp-guide-corpus-promotion-v1.json
+    atomic_after_all_shard_checksums_pass: true
+    completed_at_utc: 2026-07-26T06:13:05.696969+00:00
+    manifest_sha256: sha256:21a86c1d54965a81cc4aaa62615c305527aa6e6609595f8ddd09f2439ea826ea
+    protected_pointer_sha256: sha256:fd2f05f547a8cb1e422eaa0a52f7011726b1e00e6145ae42b57a0cc27f0923c0
+    ready_receipt_sha256: sha256:91ae9f2e53947926b45dca110830e200007e86d6658969609e4bda8f58e9394b
+    all_20_daily_feature_and_receipt_hashes_verified: true
+    active_training_modified: false
+
+validation:
+  research_sources_reviewed: true
+  expert_writeup_under_word_limit: true
+  yaml_parse_required: true
+  unit_tests_passed: true
+  scorer_canary_passed: true
+  guide_rows_in_filtered_expert_corpus: 97171
+  unresolved_evidence_gaps:
+    - no_world_champion_SME_approval_yet
+    - no_authoritative_current_first_versus_second_preference_found
+    - no_controlled_current_matchup_matrix_found
+  # The integration receipt should record the checksum of this complete file;
+  # embedding that digest here would be self-referential.
+  contract_checksum: null

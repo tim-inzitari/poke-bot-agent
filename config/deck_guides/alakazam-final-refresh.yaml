@@ -1,0 +1,197 @@
+# Checksum-bound reuse of the validated Powerful Hand Alakazam guide for the
+# post-fleet final-format refresh. This contract adds no runtime guide route and
+# grants no selector, production, freeze, registration, or submission authority.
+schema_version: poke_bot.current_deck_guide/v1
+specialist_id: alakazam
+display_name: "Alakazam — final-format refresh"
+status: ready_existing_validated_guide_rebound_to_final_refresh
+guide_version: powerful-hand-v1
+teacher_module: poke_bot.alakazam_heuristics
+teacher_module_sha256: sha256:c9f8890d5751a70c9a7ce9026545823e92f8384227281f8dba168323d9a13d86
+guide_research_mode: reuse_existing_validated_evidence
+new_strategy_research_performed: false
+
+policy_target:
+  type: sparse_causal_curriculum_with_pairwise_route_direction
+  training_mode: strategic_directional_v2
+  parameterized_head: false
+  target_logits: none
+  direct_policy_cross_entropy_allowed: false
+  guide_preference_index_role: selected_causal_route_pairwise_direction_only
+  guide_preference_index_may_affect_loss_or_gradient: true
+  guide_pairwise_route_heads:
+    - action_q
+    - action_resource
+    - action_utility
+    - setup_board_outcome
+  final_policy_logits_are_guide_targets: false
+  observed_target_authority:
+    - expanded_strategic_targets
+    - setup_board_outcome
+  serving_authority: false
+  runtime_input_allowed: false
+  runtime_action_logit_route_allowed: false
+  override_authoritative_policy: false
+
+representative_binding:
+  runtime_path: /home/pokebot/poke-bot-agent/data/training_mixes/top_ladder_representatives.v1.json
+  json_pointer: /decks/alakazam
+  runtime_file_sha256: sha256:ee42f146fd746ed3dd953515a974b22eeb264ea8eb9513c6e69a41a524454002
+  canonical_multiset_sha256: sha256:25878108d158704a6574356bd5d10ef287878a8f156bb048311f85bfe261db30
+  card_count: 60
+  selection: modal_exact_60_card_multiset_among_public_labeled_seats
+  distinct_lists: 23
+  labeled_seat_count: 3595
+  modal_seat_count: 1635
+  card_ids:
+    - 5
+    - 5
+    - 13
+    - 19
+    - 19
+    - 19
+    - 19
+    - 66
+    - 66
+    - 140
+    - 305
+    - 305
+    - 305
+    - 343
+    - 741
+    - 741
+    - 741
+    - 741
+    - 742
+    - 742
+    - 742
+    - 742
+    - 743
+    - 743
+    - 743
+    - 743
+    - 1079
+    - 1079
+    - 1079
+    - 1081
+    - 1081
+    - 1081
+    - 1086
+    - 1086
+    - 1086
+    - 1086
+    - 1097
+    - 1129
+    - 1152
+    - 1152
+    - 1152
+    - 1152
+    - 1182
+    - 1182
+    - 1182
+    - 1184
+    - 1197
+    - 1197
+    - 1197
+    - 1225
+    - 1225
+    - 1225
+    - 1225
+    - 1231
+    - 1231
+    - 1231
+    - 1231
+    - 1266
+    - 1266
+    - 1266
+
+strategy_sources:
+  - title: "Alakazam Deck Guide — Pokemon TCG"
+    publisher: TCGplayer
+    url: https://www.tcgplayer.com/content/article/Alakazam-Deck-Guide-Pok%C3%A9mon-TCG/7eb46b82-9dc5-40d8-adf9-28cca05f070f/
+    evidence_role: powerful_hand_damage_hand_preservation_and_sequencing
+    reviewed_at_utc: 2026-07-20T00:00:00Z
+  - title: "PTCGL Alakazam Deck Guide"
+    publisher: PTCGO News
+    url: https://ptcgonews.com/tips/ptcgl-alakazam-deck-guide/
+    evidence_role: setup_evolution_draw_and_resource_planning
+    reviewed_at_utc: 2026-07-20T00:00:00Z
+  - title: "Pokemon TCG AI Battle discussion 717697"
+    publisher: Kaggle
+    url: https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/discussion/717697
+    evidence_role: competition_engine_and_agent_context
+    reviewed_at_utc: 2026-07-20T00:00:00Z
+
+expert_writeup:
+  path: docs/deck_guides/alakazam-final-refresh-expert-brief.txt
+  sha256: sha256:38422782224e7c24baccfd5fbc7f40c84a9b8ff37e76bf968dd8b1eb72b0151f
+  word_count: 1795
+  maximum_words: 10000
+  audience: world_champion_subject_matter_experts
+  guide_identity: alakazam
+  cites_same_strategy_source_set: true
+  primary_document_type: practical_human_deck_pilot_guide
+
+causal_heuristic_contract:
+  implementation: poke_bot.alakazam_heuristics
+  implementation_version: powerful-hand-v1
+  causal_public_state_only: true
+  hidden_or_future_information_allowed: false
+  complete_legal_stage_scoring_required: true
+  complete_stage_failure_behavior: mask_entire_stage
+  ambiguous_or_low_confidence_behavior: mask
+  runtime_action_override_allowed: false
+  runtime_authority: none
+
+strategic_curriculum:
+  owner_design_revisions: [51, 55, 56, 104]
+  training_mode: strategic_directional_v2
+  initial_guide_loss_weight: 0.05
+  setup_board_outcome_base_loss_weight: 0.025
+  guide_weight_scope: observed_targets_plus_selected_pairwise_route_direction
+  guide_preference_index_may_affect_loss_or_gradient: true
+  final_policy_logits_are_guide_targets: false
+  every_learned_head_has_distinct_bounded_option_conditioned_fusion_route: true
+  guide_is_only_no_route_exception: true
+  setup_board_outcome:
+    computation_role: independent_head
+    fusion_role: fused_input
+    action_influence: bounded_option_conditioned_route
+  combo_state:
+    included_in_h10: true
+    computation_role: independent_head
+    fusion_role: fused_input
+    action_influence: bounded_option_conditioned_route
+    direct_typed_combo_loss_for_alakazam: 0.0
+
+corpus_binding:
+  protected_pointer: /home/pokebot/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/alakazam/PROTECTED_EXPERT_CORPUS.json
+  protected_pointer_sha256: sha256:e9d9182eea543e7bfe12ad5c2e7a1784fefa4866059ed153965dfffd12c7da1a
+  manifest: /home/pokebot/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/alakazam/manifest.json
+  manifest_sha256: sha256:3836852129511fdffd2767f6701dcc562d1723bb0c345c3cf5068ad9774b9acb
+  date_start: 2026-07-04
+  date_end: 2026-07-23
+  records: 64411
+  decisions: 5152754
+  guide_rows: 3162936
+  natural_corpus_seat_counts:
+    seat_0: 32108
+    seat_1: 32303
+  natural_corpus_is_exact_50_50: false
+  expert_rehearsal_only_for_seat_split_claim: true
+
+rl_seat_contract:
+  assigned_first: equal_to_assigned_second
+  actual_first: equal_to_actual_second
+  consumed_replay_first: equal_to_consumed_replay_second
+  natural_expert_corpus_balance_may_substitute: false
+  package_preference: first_if_allowed
+  second_focused_arm_allowed: false
+
+activation_authority:
+  training_preparation_only: true
+  selector: false
+  production: false
+  freeze: false
+  registration: false
+  kaggle_submission: false

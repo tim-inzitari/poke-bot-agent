@@ -1,0 +1,88 @@
+{
+  "schema": "poke_bot.alakazam_phase1_ladder_eight_lane_search_candidate_config_r224/v1",
+  "owner_contract": "state/alakazam-phase1-ladder-eight-lane-search-r224.json",
+  "owner_decision_revision": 224,
+  "configuration_role": "inert_nonpackaged_candidate_projection_not_a_submission_runtime_config",
+  "active": false,
+  "selected_by_submission_builder": false,
+  "selected_by_submission_entrypoint": false,
+  "phase1_resource_target": {
+    "vcpus": 2,
+    "memory_gib": 12.2,
+    "gpu_available": false,
+    "assume_second_round_h100_resources": false
+  },
+  "lane_scheduler": {
+    "search_mode": "root_parallel_belief_search",
+    "lane_count": 8,
+    "lane_ids": [0, 1, 2, 3, 4, 5, 6, 7],
+    "require_exact_lane_count": true,
+    "allow_automatic_lane_reduction": false,
+    "allow_automatic_serial_fallback": false,
+    "persistent_threads": true,
+    "failure_behavior": "exact_frozen_direct_policy_for_current_real_decision"
+  },
+  "frozen_model_inference": {
+    "sharing_permitted_only_through": "one_queue_owned_micro_batching_broker",
+    "frozen_model_only": true,
+    "broker_must_not_own_or_share_native_simulator_handles": true,
+    "broker_must_not_share_mutable_search_trees_or_transposition_tables": true
+  },
+  "native_simulator": {
+    "binding": "cg.sim.lib",
+    "handle_constructor": "AgentStart()",
+    "one_raw_handle_per_lane": true,
+    "require_unique_handles": true,
+    "require_thread_affinity": true,
+    "allow_cross_thread_handle_use": false,
+    "allow_cg_api_global_agent_ptr": false,
+    "allow_singleton_cg_api_search_wrapper": false,
+    "initialize_global_card_metadata_before_worker_start": true,
+    "search_end_scope": "owning_raw_handle_only"
+  },
+  "aggregation": {
+    "root_parallel_dispatch_requires_all_eight_lanes": true,
+    "require_all_eight_complete_validated_root_reports": true,
+    "allow_partial_result_action_selection": false,
+    "deterministic_reduce_order": "lane_id_ascending_then_original_legal_action_index_ascending",
+    "selection_rule": "highest_aggregate_visit_count_then_original_legal_action_index",
+    "require_current_root_fingerprint_and_legal_order_match": true,
+    "allow_cross_lane_mutable_tree_sharing": false
+  },
+  "deadline": {
+    "clock": "monotonic_wall_clock",
+    "direct_fallback_on_timeout_or_untrusted_result": true,
+    "allow_partial_lane_statistics_for_fallback": false,
+    "allow_background_lane_work_after_real_action_return": false,
+    "require_all_lane_work_finished_or_not_running_before_return": true
+  },
+  "submission_guard": {
+    "active_config_path": "submission/search_config.json",
+    "active_config_sha256": "sha256:7ce431662904d97727d6838bcd60d9f54426d7922058f9aa018614378fbca819",
+    "active_config_enabled": false,
+    "candidate_must_not_replace_or_modify_active_config": true,
+    "candidate_must_not_be_packaged": true
+  },
+  "preflight": {
+    "status": "pending_not_authorized_to_launch",
+    "child_process_required": true,
+    "require_eight_handle_isolation": true,
+    "require_thread_affinity_rejection": true,
+    "require_handle_scoped_searchend": true,
+    "require_deterministic_complete_root_aggregation": true,
+    "require_phase1_memory_and_throughput_receipt": true,
+    "require_no_background_work_and_clean_child_exit": true
+  },
+  "authority": {
+    "candidate_runtime_execution_authorized": false,
+    "child_process_preflight_launch_authorized": false,
+    "managed_service_change_authorized": false,
+    "service_start_authorized": false,
+    "training_authorized": false,
+    "selector_change_authorized": false,
+    "kaggle_api_calls_authorized": false,
+    "kaggle_upload_authorized": false,
+    "kaggle_queue_authorized": false,
+    "kaggle_submission_authorized": false
+  }
+}
